@@ -9,10 +9,9 @@ import type { ZoneCode } from './zones';
  *  guessed. Where the source form had no Tamil — the two ashram forms, which
  *  ashram departments fill in English — `labelTa` is `null`.
  *
- *  A few help texts on the local welfare form did not render legibly in the
- *  PDF extraction (the plug-point pricing notes). Those carry `helpTa: null`
- *  and are marked TO-VERIFY in a comment rather than being invented. An
- *  approximate translation on a form that quotes prices is worse than none.
+ *  Two plug-point pricing notes did not render legibly in the request-form
+ *  PDFs; they were taken from the 2025 bank-details form, where the same text
+ *  renders cleanly. Nothing here is an approximation.
  *
  *  ── Why this is data and not JSX ───────────────────────────────────────────
  *  One component renders all four forms from this table, and the API validates
@@ -134,10 +133,12 @@ const electricalFields = (tamil: boolean): FormField[] => [
     label: 'Number of 5 AMP Plug Points',
     labelTa: null,
     help: 'One 5 AMP plug point will be provided. Additional points are Rs.500/point',
-    // TO-VERIFY: the Tamil for this help text did not render legibly in the
-    // 2025 PDF. Ask the stalls team for the exact string rather than guessing —
-    // it quotes a price.
-    helpTa: null,
+    // Transcribed from the 2025 bank-details form, where this note renders
+    // legibly (the request-form PDF garbled it).
+    helpTa:
+      'ஒரு 5 ஆம்ப் மின் பெட்டி மண்டபத்துடன் சேர்ந்து வழங்கப்படும். அதற்கு அதிகமாக ' +
+      'ஒவ்வொரு கூடுதல் மின் பெட்டிக்கும் ரூ.500 கட்டணமாகும். எனவே, உண்மையாகவே ' +
+      'தேவையான அளவிற்கு மட்டுமே கோரவும்.',
     type: 'number',
     required: true,
     min: 0,
@@ -150,8 +151,9 @@ const electricalFields = (tamil: boolean): FormField[] => [
     help:
       'Rs. 1000 for each 15 AMP plug point (upto 1000 watts, additional Rs.500 ' +
       'for every additional 500 watts)',
-    // TO-VERIFY: as above.
-    helpTa: null,
+    helpTa:
+      'ஒவ்வொரு 15 ஆம்ப் இணைப்பிற்கும் ரூ.1000 கட்டணமாகும். எனவே, உண்மையாகவே தேவையான ' +
+      'அளவிற்கு மட்டுமே கோரவும்.',
     type: 'number',
     required: true,
     min: 0,

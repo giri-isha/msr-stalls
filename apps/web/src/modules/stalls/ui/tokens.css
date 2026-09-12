@@ -1,0 +1,413 @@
+/* MSR Stalls — the module's design tokens, SCOPED.
+ *
+ * Lifted from the standalone app's `styles/tokens.css`. Every value is
+ * unchanged; what changed is the SELECTOR each one sits on, and that is not
+ * cosmetic.
+ *
+ * 🔴 The standalone sheet put these on bare `:root`, and two names collide with
+ * the platform's own tokens. One of them BREAKS THE WHOLE APP:
+ *
+ *   · `--ring`. Here it is a BOX-SHADOW (`0 0 0 1px oklch(...)`). In the
+ *     platform it is a COLOUR, and `index.css` maps `--color-ring: var(--ring)`,
+ *     which is what Tailwind's `ring-*` utilities resolve. On `:root` this
+ *     would feed a shadow value to a colour slot and silently kill every focus
+ *     ring in the application — 121 of them, on screens with nothing to do with
+ *     this module. An accessibility regression with no error anywhere.
+ *   · `--card`. Both are a surface colour and the light values happen to
+ *     match, so this one is a tint difference rather than a break — but it is
+ *     the same mistake and would drift the moment either side is retuned.
+ *
+ * ⚠️ So the tokens live on `.msrs`, the class the module's shell puts on its
+ * own outermost element, and they inherit down from there. Nothing leaks up.
+ *
+ * ⚠️ The dark block is `.dark .msrs`, not `.msrs.dark`. The platform owns the
+ * theme and stamps `.dark` on `<html>` (`lib/use-theme.ts`), so the module
+ * follows the platform's theme rather than keeping a second one. Specificity
+ * works out: `.dark .msrs` (0,2,0) beats `.msrs` (0,1,0).
+ *
+ * Re-extracting from the design file? The standalone header's warning still
+ * applies — see `styles/tokens.css` in the standalone app for the list of
+ * deliberate divergences to re-apply afterwards.
+ */
+.msrs{--bg:oklch(0.985 0.003 277.366); --fg:oklch(0.24 0.006 277.366); --card:oklch(1 0 0);
+    --pri:oklch(0.398 0.195 277.366); --pfg:oklch(0.962 0.018 277.366);
+    --mut:oklch(0.972 0.008 277.366); --mfg:oklch(0.48 0.016 277.366);
+    --bd:oklch(0.918 0.006 277.366); --line:oklch(0.945 0.005 277.366);
+    --hov:oklch(0.955 0.012 277.366); --des:oklch(0.577 0.245 27.325);
+    --pri-t:oklch(0.965 0.022 277.366); --pri-t2:oklch(0.885 0.055 277.366);
+    --ok:oklch(0.52 0.10 160); --ok-t:oklch(0.955 0.035 160); --ok-b:oklch(0.90 0.06 160);
+    /* 🔴 `--warn` was `oklch(0.55 0.11 160)`. Hue 160 is GREEN — the value is
+     * character for character `--ok`'s pattern above with the hue never
+     * changed. Its own tint is hue 92 and its own text hue 70, so the family
+     * disagreed with itself, and the module's one caller (`AreaMaster`'s
+     * "Leave" marker) painted Leave in the same green that means Present two
+     * rows above it. Now amber, at the hue `--warn-fg` was already using.
+     *
+     * ⚠️ `--warn-t` carries `--gold-t`'s exact value rather than a new one, so
+     * the warning pill does not change colour — what changes is that the warn
+     * family now OWNS its tint instead of borrowing gold's. `--gold-t` stays;
+     * `StayAreaDialog` uses it for something that is gold rather than a
+     * warning. Same story for `--warn-b`, which replaces a borrowed `--c4`:
+     * that is a CHART PALETTE step, so regenerating the chart ramp used to move
+     * the border of every warning pill in the module. */
+    --warn:oklch(0.62 0.13 75); --warn-t:oklch(0.955 0.055 92); --warn-b:oklch(0.88 0.09 92);
+    --info:var(--pri); --info-t:var(--pri-t); --info-b:var(--pri-t2);
+    --violet:oklch(0.48 0.16 300); --violet-t:oklch(0.955 0.030 300); --teal-t:oklch(0.960 0.028 195); --teal:oklch(0.44 0.10 195); --gold-t:oklch(0.955 0.055 92);
+    /* Teal had no border of its own and wore `--ok-b`, so a teal pill was
+       outlined in GREEN. Its own hue, at the lightness the other tone borders
+       sit on. */
+    --teal-b:oklch(0.89 0.05 195);
+    /* ── Readable-on-tint text, one per tone ──
+     *
+     * 🔴 These exist because the tone colours above are ACCENTS, not text. Measured
+     * against a white card in the light theme, `--des` on `--mut` is **4.39:1** and
+     * `--des` on `--des-t` is **4.28:1** — both BELOW the 4.5:1 floor for text under
+     * 18.66px, which is every pill in the product. `--ok` scraped through at 4.82:1
+     * and read as washed out at 11px. That is not a taste call; it is the reason the
+     * red "outside the requested window" pill could not be read on the allocate
+     * screen.
+     *
+     * Each `-fg` is the DARKEST in-gamut colour of its own hue that clears 5.5:1 on
+     * its own tint — headroom over the floor, so a future tint retune does not
+     * silently drop back under it. The hue is kept, so a green pill still reads
+     * green; only the lightness moves. Recomputed values, not eyeballed ones.
+     *
+     * ⚠️ Use `--<tone>` for an ICON, a BORDER or a 1px rail. Use `--<tone>-fg` for
+     * anything a person has to READ. Swapping them puts the accent back under the
+     * floor. */
+    --ok-fg:oklch(0.480 0.10 160); --des-fg:oklch(0.510 0.16 27.325);
+    --violet-fg:oklch(0.500 0.16 300); --teal-fg:oklch(0.485 0.08 195);
+    --warn-fg:oklch(0.495 0.10 70); --info-fg:oklch(0.510 0.19 277.366);
+    /* ── Solid tone plates ──
+     *
+     * The toast wears these rather than a tint: a confirmation has to be legible
+     * across a room, and colour cannot carry the meaning while the accent is stuck
+     * under the text floor. White on each of these measures 5.5:1, so the SENTENCE
+     * can be white and the PLATE can be the colour — which is the inversion that
+     * makes a green/red/grey toast readable at all. Shared by both themes on
+     * purpose: an alert should not change hue when the theme does. */
+    --ok-s:oklch(0.505 0.11 160); --des-s:oklch(0.540 0.185 27.325);
+    --info-s:oklch(0.520 0.014 277.366); --on-solid:oklch(1 0 0);
+    /* The violet tint had no border token; the pill map was carrying a literal.
+       Named here so it retunes with the rest of the palette. */
+    --violet-b:oklch(0.84 0.08 300);
+    /* The solid plate's own hairline and lift. On the plate, not on the page,
+       so they are the same in both themes — like the plates themselves. */
+    --on-solid-line:oklch(1 0 0 / 0.16); --solid-sh:0 10px 30px -10px oklch(0 0 0 / 0.45);
+    --des-t:oklch(0.965 0.018 27); --des-t2:oklch(0.975 0.012 27); --des-b:oklch(0.93 0.03 27); --des-b2:oklch(0.90 0.05 27); --des-h:oklch(0.93 0.04 27);
+    --ch1:oklch(0.46 0.16 277.366); --ch2:oklch(0.605 0.135 277.366); --ch3:oklch(0.735 0.095 277.366); --ch4:oklch(0.855 0.055 277.366); --rail:oklch(0.977 0.004 277.366);
+    /* ── The table header rail's own text ──
+     *
+     * A rail is a SURFACE, not a tone, so it needs its own readable text the
+     * same way the tints do. In this theme the rail is barely off the card and
+     * `--mfg` on it is 6.13:1, so this is just `--mfg` — named, not duplicated,
+     * so the two themes can diverge without a screen having to know which one
+     * it is in. */
+    --rail-fg:var(--mfg);
+    --c1:oklch(0.905 0.182 98.111); --c2:oklch(0.795 0.184 86.047); --c3:oklch(0.681 0.162 75.834);
+    --c4:oklch(0.554 0.135 66.442); --c5:oklch(0.476 0.114 61.907);
+    --glass:oklch(1 0 0/0.72); --glass-2:oklch(1 0 0/0.6);
+    --av1:oklch(0.44 0.17 277.366); --av2:oklch(0.50 0.13 250); --av3:oklch(0.48 0.15 300); --av4:oklch(0.52 0.11 200);
+    --av5:oklch(0.554 0.135 66.442); --av6:oklch(0.476 0.114 61.907); --av7:oklch(0.46 0.14 330); --av8:oklch(0.50 0.10 170);
+    --sh:0 1px 2px oklch(0.24 0.006 277.366/0.05), 0 10px 26px -16px oklch(0.24 0.006 277.366/0.22);
+    --ring:0 0 0 1px oklch(0.24 0.006 277.366/0.05);
+    /* ── The shape ramp ──
+     *
+     * Two steps shipped — `--r` and `--r4` — with nothing between, so every
+     * nested surface wore one of the two extremes: an icon well as square as a
+     * checkbox, or as round as the card holding it. The middles are what let a
+     * card read as rounder than the chip inside it, which is the whole
+     * geometry of this look.
+     *
+     * `--r` keeps its name rather than becoming `--r1`: it is spent in roughly
+     * two hundred places and renaming it would be a diff with no reader.
+     *
+     * ⚠️ Geometry, not colour — the dark block must NOT override these. A theme
+     * that changed the shape of its cards would be a defect, and a test asserts
+     * the ramp is identical in both. */
+    --r:0.45rem;    /* hairline things: checkbox, tag, 1px well        7.2px */
+    --r2:0.65rem;   /* controls: input, button, select, small well    10.4px */
+    --r3:0.875rem;  /* icon chip, nested panel, sub-card               14px */
+    --r4:1.17rem;   /* the card itself                               18.7px */
+    /* ── The elevation ramp ──
+     *
+     * `--ring` (a hairline) and `--sh` (a big lift) existed with nothing
+     * between, and `Card` wore the HAIRLINE — which is why every surface in the
+     * module sat flat on the page while a perfectly good shadow token went
+     * unused. Both are kept; ~200 call sites name them.
+     *
+     * ⚠️ Unlike the radius ramp, this one MUST be re-declared for dark. These
+     * are tinted with the foreground indigo at low alpha, which is invisible on
+     * a dark card — the same reason `--sh` already had a dark override. A step
+     * that forgets one is a card with no lift in dark mode only. */
+    --sh-1:0 1px 2px oklch(0.24 0.006 277.366/0.04), 0 1px 3px -1px oklch(0.24 0.006 277.366/0.08);
+    --sh-2:0 2px 4px oklch(0.24 0.006 277.366/0.05), 0 8px 20px -8px oklch(0.24 0.006 277.366/0.16);
+    --sh-3:0 1px 2px oklch(0.24 0.006 277.366/0.05), 0 24px 48px -24px oklch(0.24 0.006 277.366/0.28);
+    /* The filled button's own lift, in its own hue rather than neutral grey.
+       ⚠️ Only for a SOLID primary surface. On a ghost button, which is flush
+       with the card behind it, a coloured shadow reads as a smudge. */
+    --sh-pri:0 2px 4px oklch(0.398 0.195 277.366/0.14), 0 8px 20px -8px oklch(0.398 0.195 277.366/0.34);
+    /* Control and panel surfaces. inputStyle used to fill fields with --bg,
+       which made every input the PAGE colour rather than a surface — the
+       reason the app read as dark in light mode. */
+    /* ── The display face ──
+     *
+     * Outfit for headings, Geist for everything else. A geometric sans against
+     * a neutral one: close enough in structure that a heading does not read as
+     * a different product, distinct enough in the round forms and the tighter
+     * apertures that it reads as a voice.
+     *
+     * ⚠️ The platform retired its own `--font-display` (a serif, Fraunces) and
+     * that retirement STANDS — this token lives on `.msrs`, so it reaches this
+     * module's headings and nothing else. The reasons the serif went were two
+     * users and a lone line reading as a leftover; both are answered by a face
+     * used on every heading across the module.
+     *
+     * The fallback stack is not decoration: if the file fails, a bare family
+     * name drops every heading to the browser's default serif. */
+    --font-display:'Outfit Variable','Outfit','Geist Variable','Geist',-apple-system,Segoe UI,sans-serif;
+    /* 🔴 The overlay backdrop was a RAW `oklch(0.24 0.006 277.366/.45)` written
+       into `Overlay.tsx` — the one thing this codebase's styling rule forbids,
+       because a literal cannot follow the theme. And it did exactly what the
+       rule predicts: the same near-black at the same alpha dims a WHITE page
+       decisively and a DARK page by almost nothing, so in the dark theme the
+       dialog floated on a page that still looked live. Named here, and the dark
+       value is deliberately heavier. */
+    --scrim:oklch(0.24 0.006 277.366/0.45);
+    --field:oklch(1 0 0); --pop:oklch(1 0 0);
+    --grid:oklch(0.935 0.004 277.366);
+    /* Chart palette. Computed, not chosen: every step is the output of the
+       dataviz validator in --pairs all mode against a white card. Changing a
+       value means re-running it — see the P7 design spec, Part B. */
+    --cat1:oklch(0.62 0.19 255); --cat2:oklch(0.69 0.151 60); --cat3:oklch(0.69 0.11 195);
+    --cat4:oklch(0.505 0.19 20); --cat5:oklch(0.45 0.19 315);
+    color-scheme:light;
+}
+
+.dark .msrs{--bg:oklch(0.265 0.008 285.8); --fg:oklch(0.97 0 0); --card:oklch(0.315 0.008 285.9);
+    --mut:oklch(0.365 0.008 286); --mfg:oklch(0.775 0.014 286);
+    --bd:oklch(1 0 0/0.15); --line:oklch(1 0 0/0.10); --hov:oklch(0.41 0.010 286);
+    --des:oklch(0.72 0.17 22.2); --pri-t:oklch(0.395 0.065 277.4); --pri-t2:oklch(0.47 0.10 277.4);
+    --ring:0 0 0 1px oklch(1 0 0/0.09); --sh:0 1px 2px oklch(0 0 0/0.35), 0 10px 26px -16px oklch(0 0 0/0.55);
+    /* The elevation ramp, mirrored. Neutral black at higher alpha rather than
+       the light theme's tinted indigo, which vanishes on a dark card. */
+    --sh-1:0 1px 2px oklch(0 0 0/0.28), 0 1px 3px -1px oklch(0 0 0/0.36);
+    --sh-2:0 2px 4px oklch(0 0 0/0.34), 0 8px 20px -8px oklch(0 0 0/0.46);
+    --sh-3:0 1px 2px oklch(0 0 0/0.40), 0 24px 48px -24px oklch(0 0 0/0.62);
+    /* ⚠️ Near-black, NOT the hue. `--pri` flips to a light lavender in this
+       theme, so a shadow tinted with it would paint a pale glow under the
+       button instead of a lift — brighter than the card it sits on. */
+    --sh-pri:0 2px 4px oklch(0 0 0/0.38), 0 8px 20px -8px oklch(0 0 0/0.50);
+    /* Heavier than the light theme's, not lighter. The page behind an overlay is
+       already dark here, so the light value would barely separate the two —
+       near-black at a higher alpha is what actually reads as "the page behind
+       is out of play". */
+    --scrim:oklch(0 0 0/0.66);
+    --glass:oklch(0.315 0.008 285.9/0.82); --glass-2:oklch(0.315 0.008 285.9/0.7);
+    --ok:oklch(0.78 0.13 160); --ok-t:oklch(0.375 0.055 160); --ok-b:oklch(0.45 0.08 160);
+    --violet:oklch(0.80 0.13 300); --violet-t:oklch(0.375 0.055 300);
+    --teal:oklch(0.80 0.09 195); --teal-t:oklch(0.365 0.045 195);
+    --gold-t:oklch(0.39 0.055 92); --c5:oklch(0.85 0.11 75);
+    /* The warn family, mirrored. `--warn-t` again carries dark `--gold-t`'s
+       exact value, so the pill is unchanged and only its ownership moves.
+       ⚠️ The accent needed a dark override of its own: the light amber is a
+       mid-tone that disappears against a dark card. */
+    --warn:oklch(0.80 0.13 80); --warn-t:oklch(0.39 0.055 92); --warn-b:oklch(0.46 0.07 92);
+    --teal-b:oklch(0.45 0.06 195);
+    /* Same contract as the light block, mirrored: light chromatic text on a dark
+     * tint. Measured too — `--des` on `--des-t` is **3.94:1** in the dark theme and
+     * `--des` on `--mut` is **3.99:1**, so the red pill failed here WORSE than in
+     * light, and nobody had noticed. Each value clears 5.5:1 on both its own tint
+     * and `--mut`; red gives up chroma to get there, because a light red cannot hold
+     * 0.14 chroma and still be light. */
+    --ok-fg:oklch(0.800 0.12 160); --des-fg:oklch(0.805 0.10 22.2);
+    --violet-b:oklch(0.58 0.11 300);
+    --violet-fg:oklch(0.810 0.11 300); --teal-fg:oklch(0.790 0.09 195);
+    --warn-fg:oklch(0.825 0.12 80); --info-fg:oklch(0.830 0.08 277.4);
+    --ch1:oklch(0.82 0.115 277.4); --ch2:oklch(0.70 0.105 277.4); --ch3:oklch(0.58 0.09 277.4); --ch4:oklch(0.46 0.07 277.4); --rail:oklch(1 0 0/0.07);
+    /* 🔴 Here the rail is 7% white LIFTED off the card, which roughly doubles
+     * the surface's luminance — and `--mfg` on it drops to **3.45:1**, under the
+     * floor, on the header row of ten tables. The muted grey is fine on the
+     * card (5.22:1) and fails one step up; that is the whole trap, and it is why
+     * a rail needs a named text colour rather than borrowing the body's.
+     *
+     * ⚠️ Fixed on the TEXT, not the rail. Recessing the rail instead would flip
+     * the zebra direction on every table that tints its nested rows. 5.55:1. */
+    --rail-fg:oklch(0.92 0.014 286);
+    --des-t:oklch(0.375 0.065 27); --des-t2:oklch(0.345 0.045 27); --des-b:oklch(0.45 0.09 27); --des-b2:oklch(0.50 0.11 27); --des-h:oklch(0.43 0.08 27);
+    /* ── The filled button's own text ──
+     *
+     * 🔴 `--pri` flips from a DARK indigo in light to a LIGHT lavender here, and
+     * for a long time `--pfg` did not flip with it. It is declared once, in the
+     * light block, as a near-white — so every filled button, every active
+     * toggle and every avatar in the dark theme painted #eff2ff on #b4beff:
+     * **1.59:1**. Not a near miss; the label was gone. Nothing failed, and it
+     * was wrong in one theme only, which is why it survived a pill-contrast fix
+     * that went looking for exactly this class of bug.
+     *
+     * ⚠️ The fix has to be HERE and not on `--pri`. `--pri` is also the link
+     * colour and the accent on a dark page, so it must stay light in this theme;
+     * the text sitting on it is what has to move. 9.02:1 — deliberately the same
+     * ratio the light theme gets, inverted. */
+    --pri:oklch(0.82 0.10 277.4); --pfg:oklch(0.25 0.04 277.4);
+    --field:oklch(0.365 0.008 286); --pop:oklch(0.345 0.008 286);
+    --grid:oklch(1 0 0/0.09);
+    /* Selected, not flipped: a dark surface needs the marks spread in
+       lightness or rose and amber collapse for a deuteranope. */
+    --cat1:oklch(0.665 0.13 235); --cat2:oklch(0.6 0.19 35); --cat3:oklch(0.665 0.14 160);
+    --cat4:oklch(0.6 0.19 345); --cat5:oklch(0.6 0.19 280);
+    color-scheme:dark;
+}
+
+/* ── app layer, scoped ──
+ *
+ * ⚠️ Every one of these was a bare element selector in the standalone sheet —
+ * `*`, `html, body, #root`, `body`, `a`, `input, select, textarea, button`.
+ * Unscoped they would restyle the entire platform: the canvas colour, the body
+ * font, every link colour and the font-size of every input on every screen of
+ * every other module.
+ */
+.msrs,
+.msrs *{box-sizing:border-box}
+
+/* ⚠️ `html, body, #root{height:100%}` is DELETED, not scoped. Page-level
+ * layout belongs to the platform shell now; the module gets the height its
+ * route slot gives it — which since root ADR 0119 is the whole viewport, because
+ * the module declares `layout: 'full-bleed'` and the shell renders no chrome
+ * around it. Height still comes from the slot, not from `html`.
+ * One-axis clipping is kept, on the module's own box, so a wide screen in here
+ * cannot widen the page.
+ *
+ * `-webkit-text-size-adjust:100%` is also deleted: it is a document-level
+ * property and does nothing on a div. The platform's `index.html` is where
+ * that belongs if it is ever wanted.
+ *
+ * 🔴 `overflow-x:clip`, NOT `hidden`, and the difference is load-bearing rather
+ * than a preference. `overflow-x:hidden` forces the other axis to compute as
+ * `auto`, which makes this element a SCROLL CONTAINER — and the module's
+ * sidebar is `position:sticky; top:0`. Sticky resolves against its nearest
+ * scroll container, so with `hidden` the sidebar sticks to a box that never
+ * scrolls and simply rides the page out of view: the nav disappears the moment
+ * you scroll a long list, which is most screens in here. `clip` clips on one
+ * axis without creating a scrollport, so the other axis stays `visible` and the
+ * sidebar sticks to the viewport, which is what it was written to do.
+ * It clips the same content `hidden` did, so the reason the rule exists — a
+ * wide screen in here must not widen the page — is unchanged. */
+.msrs{
+  overflow-x:clip;
+  background:var(--bg);
+  font-family:'Geist','Geist Variable',-apple-system,Segoe UI,sans-serif;
+  color:var(--fg);-webkit-font-smoothing:antialiased;font-feature-settings:"cv11";
+}
+.msrs input,.msrs select,.msrs textarea,.msrs button{font-family:inherit;font-size:15px;color:inherit}
+.msrs a{color:var(--pri);text-decoration:none}
+
+/* ── The hover lift ──
+ *
+ * ⚠️ A CLASS rather than an inline style, and that is forced rather than
+ * chosen: this module styles with inline objects, and an inline style cannot
+ * express `:hover` or `:focus-visible` at all. Worn by `Card` when it is given
+ * an action, so a card that does something answers the pointer and a card that
+ * is only a panel does not.
+ *
+ * The focus ring is here for the same reason and is not optional — `Card`'s
+ * actionable form is a focusable div, so without this it takes focus with
+ * nothing to show for it. `--pri` rather than the platform's `--ring`, which in
+ * this sheet is a box-shadow (see the header).
+ *
+ * The reduced-motion block at the foot of this file already flattens the
+ * transition, so this needs no second opinion about motion. */
+.msrs .msrs-lift{transition:box-shadow .18s ease,transform .18s ease}
+.msrs .msrs-lift:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+
+/* 🔴 The lift is gated on a device that actually HAS a pointer, and this is a
+ * correctness fix rather than an optimisation. On a touch screen there is no
+ * pointer to leave: the browser applies `:hover` on tap and holds it until you
+ * tap elsewhere. A card that lifts on hover therefore STAYS lifted after you
+ * tap it — and tapping a card navigates, so you return to a page with one card
+ * stuck raised, looking selected when nothing is. This module is installed as a
+ * PWA and used on phones at the event site, so that is the common case, not the
+ * edge one.
+ *
+ * ⚠️ `(hover: hover)` alone is not enough — some Android browsers report it
+ * true. The pair with `(pointer: fine)` is the form that holds.
+ *
+ * The focus ring stays OUTSIDE this query: a phone with a keyboard attached
+ * still needs it, and `:focus-visible` does not latch. */
+@media (hover: hover) and (pointer: fine){
+  .msrs .msrs-lift:hover{box-shadow:var(--sh-2);transform:translateY(-1px)}
+}
+
+/* ── The row action's tinted well ──
+ *
+ * The hover fill is derived from the button's OWN ink with `color-mix`, so one
+ * rule serves every tone — a destructive action wells up red, a neutral one
+ * indigo — and a new tone needs no new CSS. `currentColor` is whatever the
+ * component put in `color`, which is the token the caller passed.
+ *
+ * `color-mix` sits at roughly the same browser floor as `oklch()`, which this
+ * whole sheet already requires, so it adds no new constraint. */
+.msrs .msrs-icon-btn{transition:background .15s ease,border-color .15s ease}
+.msrs .msrs-icon-btn:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+@media (hover: hover) and (pointer: fine){
+  .msrs .msrs-icon-btn:hover{
+    background:color-mix(in oklch, currentColor 12%, var(--card));
+    border-color:color-mix(in oklch, currentColor 32%, var(--bd));
+  }
+}
+
+/* 🔴 The 44px touch target, on touch devices only.
+ *
+ * Every one of the five hand-rolled copies of this button shipped a 26–30px tap
+ * target — about half what a thumb reliably hits — on controls that DELETE
+ * things, in a PWA used on phones at the event site. A mis-tap here is not a
+ * cosmetic problem.
+ *
+ * ⚠️ The pseudo element grows the REACHABLE area, not the button. Growing the
+ * button would relayout every row it sits in; this leaves the 28px box exactly
+ * where it is and extends the hit region 8px past each edge, which is the
+ * standard way to buy a target without buying the space.
+ *
+ * Gated on `(hover: none)` so a desktop pointer keeps a precise 28px target and
+ * two adjacent actions do not overlap each other's invisible margins. */
+@media (hover: none){
+  .msrs .msrs-icon-btn::after{content:'';position:absolute;inset:-8px}
+}
+
+/* ⚠️ Keyframes are namespaced. `fade` and `rise` are generic enough that a
+ * platform stylesheet declaring either would silently steal the animation from
+ * every screen here, with nothing failing — `tw-animate-css` already ships
+ * seven of its own. Six call sites were rewritten to match.
+ *
+ * `drawer-in` is NOT carried over: it had no reference anywhere in the
+ * standalone client, so it was dead before the port. */
+@keyframes msrs-rise{from{transform:translateY(14px);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes msrs-fade{from{opacity:0}to{opacity:1}}
+@keyframes msrs-sheet-up{from{transform:translateY(100%)}to{transform:translateY(0)}}
+/* The loading shimmer. Namespaced like the rest — `shimmer` is exactly the kind
+   of generic name a platform stylesheet would also declare. */
+@keyframes msrs-shimmer{from{background-position:-180% 0}to{background-position:180% 0}}
+
+/* One shimmering block. Sized by the caller; the sweep is here because a
+   gradient animation cannot be expressed in an inline style. `--mut` is the
+   resting tone and `--hov` the highlight, so it reads as a sheen over the
+   surface rather than a stripe in an unrelated grey.
+   The reduced-motion block below flattens the sweep and leaves a plain block,
+   which is the correct still frame. */
+.msrs .msrs-shimmer{
+  background:linear-gradient(90deg,var(--mut) 25%,var(--hov) 37%,var(--mut) 63%);
+  background-size:180% 100%;
+  border-radius:var(--r2);
+  animation:msrs-shimmer 1.4s ease-in-out infinite;
+}
+
+/* Touch targets and text inputs on a phone. 16px is the threshold below which
+   iOS Safari zooms the page on focus, which then leaves the layout scrolled
+   sideways with no way back. */
+@media (max-width: 719px){
+  .msrs input,.msrs select,.msrs textarea{font-size:16px}
+}
+@media (prefers-reduced-motion: reduce){
+  .msrs *{animation-duration:.01ms !important;animation-iteration-count:1 !important;
+    transition-duration:.01ms !important}
+}

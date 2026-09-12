@@ -122,6 +122,15 @@ export async function buildApp(opts: BuildOptions = {}): Promise<FastifyInstance
     files,
     mail,
     statusUrl: (token) => `${webOrigin}/stalls/status/${token}`,
+    linkUrl: (purpose, token) => {
+      const path = {
+        STATUS: 'status',
+        BANK_FORM: 'bank',
+        FSSAI_UPLOAD: 'fssai',
+        STAFF_REGISTRATION: 'staff',
+      }[purpose];
+      return `${webOrigin}/stalls/${path}/${token}`;
+    },
     publicRateLimitMax: Number(process.env.STALLS_PUBLIC_RATE_LIMIT ?? 20),
   });
 

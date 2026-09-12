@@ -111,3 +111,56 @@ export class UnknownPersonError extends Error {
     this.name = 'UnknownPersonError';
   }
 }
+
+/** A selection confirmation (or post-payment mail) was already SENT to this
+ *  request. "Once the email is sent it should not be sent again." Mapped to
+ *  409; the caller may pass `force` to override deliberately. */
+export class AlreadySentError extends Error {
+  constructor(
+    readonly requestId: string,
+    readonly templateKey: string,
+  ) {
+    super(`${templateKey} was already sent for this request`);
+    this.name = 'AlreadySentError';
+  }
+}
+
+/** An onboarding step on a request that is not SELECTED. Mapped to 409. */
+export class NotSelectedError extends Error {
+  constructor(readonly requestId: string) {
+    super('this request is not selected');
+    this.name = 'NotSelectedError';
+  }
+}
+
+/** Payment confirmation on a request that has no quote yet. Mapped to 409. */
+export class NoPaymentError extends Error {
+  constructor(readonly requestId: string) {
+    super('no payment has been quoted for this request');
+    this.name = 'NoPaymentError';
+  }
+}
+
+export class AlreadyConfirmedError extends Error {
+  constructor(readonly requestId: string) {
+    super('payment is already confirmed for this request');
+    this.name = 'AlreadyConfirmedError';
+  }
+}
+
+/** The media store is not configured, so an upload cannot be offered.
+ *  Mapped to 503 — the vendor should try later, not fix their form. */
+export class UploadsUnavailableError extends Error {
+  constructor() {
+    super('uploads are not available right now');
+    this.name = 'UploadsUnavailableError';
+  }
+}
+
+/** Furniture return recorded before anything was issued. Mapped to 409. */
+export class NotIssuedError extends Error {
+  constructor(readonly requestId: string) {
+    super('no chairs or tables were issued to this stall yet');
+    this.name = 'NotIssuedError';
+  }
+}

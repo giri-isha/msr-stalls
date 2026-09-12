@@ -2,6 +2,9 @@ import type { PrismaClient, StallEdition } from '@prisma/client';
 import {
   type ChargesInput,
   DEFAULT_RATE_CARD_2025,
+  DEFAULT_TEMPLATES,
+  type LinksInput,
+  TEMPLATE_KEYS,
   type PublicConfig,
   type RateCardEntry,
   STALL_REQUEST_TYPES,
@@ -43,6 +46,13 @@ const CHARGES_2025 = {
   plug15aRatePaise: rupeesToPaise(1000),
   gstPercent: 18,
   crowdPerStall: 1000,
+  // The vendor pair from the 2025 bank-details form, replacement costs for
+  // Phase 3's deductions, and how many days furniture is billed for.
+  vendorChairRatePaise: rupeesToPaise(100),
+  vendorTableRatePaise: rupeesToPaise(400),
+  chairReplacementPaise: rupeesToPaise(500),
+  tableReplacementPaise: rupeesToPaise(1500),
+  eventDays: 2,
 };
 
 const FINES_2025 = [
@@ -97,6 +107,41 @@ export async function ensureEditionDefaults(db: Db, editionId: string): Promise<
       update: {},
     });
   }
+  // Email templates start from the defaults; an admin edits them from there.
+  for (const key of TEMPLATE_KEYS) {
+    await db.stallEmailTemplate.upsert({
+      where: { editionId_key: { editionId, key } },
+      create: { editionId, key, ...DEFAULT_TEMPLATES[key] },
+      update: {},
+    });
+  }
+  await db.stallEditionLinks.upsert({ where: { editionId }, create: { editionId }, update: {} });
+}
+
+export async function linksFor(db: Db, editionId: string) {
+  return db.stallEditionLinks.upsert({ where: { editionId }, create: { editionId }, update: {} });
+}
+
+export async function updateLinks(
+  db: PrismaClient,
+  editionId: string,
+  input: LinksInput,
+  by: string,
+) {
+  const data = Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined));
+  const row = await db.stallEditionLinks.upsert({
+    where: { editionId },
+    create: { editionId, ...data },
+    update: data,
+  });
+  await recordActivity(db, {
+    actorRef: by,
+    moduleKey: MODULE_KEY,
+    action: 'stall_links.updated',
+    subjectRef: editionId,
+    detail: data,
+  });
+  return row;
 }
 
 export async function createEdition(

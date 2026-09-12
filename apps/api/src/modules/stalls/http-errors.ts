@@ -1,10 +1,15 @@
 import type { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { NotAuthorizedError, ValidationFailedError } from '../../errors';
 import {
+  AlreadyConfirmedError,
+  AlreadySentError,
   CustomFieldInUseError,
   InvalidTransitionError,
   LastAdminError,
   NoActiveEditionError,
+  NoPaymentError,
+  NotIssuedError,
+  NotSelectedError,
   StallAlreadyAllocatedError,
   StallBlockedError,
   TooManyStallsError,
@@ -13,6 +18,7 @@ import {
   UnknownRequestError,
   UnknownStallError,
   UnknownZoneError,
+  UploadsUnavailableError,
 } from './errors';
 import { NotSignedInError } from './roles';
 
@@ -36,12 +42,17 @@ function statusFor(err: unknown): number | null {
     err instanceof StallBlockedError ||
     err instanceof InvalidTransitionError ||
     err instanceof LastAdminError ||
-    err instanceof CustomFieldInUseError
+    err instanceof CustomFieldInUseError ||
+    err instanceof AlreadySentError ||
+    err instanceof NotSelectedError ||
+    err instanceof NoPaymentError ||
+    err instanceof AlreadyConfirmedError ||
+    err instanceof NotIssuedError
   ) {
     return 409;
   }
   if (err instanceof TooManyStallsError || err instanceof ValidationFailedError) return 422;
-  if (err instanceof NoActiveEditionError) return 503;
+  if (err instanceof NoActiveEditionError || err instanceof UploadsUnavailableError) return 503;
   return null;
 }
 

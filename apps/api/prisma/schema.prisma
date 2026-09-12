@@ -181,6 +181,8 @@ model StallEdition {
   flow         StallFlowConfig?
   requests     StallRequest[]
   sequences    StallReferenceSequence[]
+  links        StallEditionLinks?
+  templates    StallEmailTemplate[]
 
   @@map("stall_edition")
   @@schema("stalls")
@@ -228,6 +230,8 @@ model Stall {
   number   String
   category StallCategory
   status   StallStatus   @default(AVAILABLE)
+  /// Electrical cluster within the zone — the 2025 sheet's "cluster" column.
+  cluster  String?
 
   zone              StallZone         @relation(fields: [zoneId], references: [id], onDelete: Cascade)
   allocations       StallAllocation[] @relation("StallAllocationHistory")
@@ -266,6 +270,15 @@ model StallChargeConfig {
   localWelfareDepositPaise Int    @map("local_welfare_deposit_paise")
   plug5aRatePaise          Int    @map("plug_5a_rate_paise")
   plug15aRatePaise         Int    @map("plug_15a_rate_paise")
+  /// The 2025 bank-details form quotes vendors Rs.100/chair and Rs.400/table
+  /// per day — a THIRD pair, distinct from the ashram and local welfare rates.
+  vendorChairRatePaise     Int    @default(10000) @map("vendor_chair_rate_paise")
+  vendorTableRatePaise     Int    @default(40000) @map("vendor_table_rate_paise")
+  /// Deducted from the deposit per missing or damaged item (Phase 3).
+  chairReplacementPaise    Int    @default(50000) @map("chair_replacement_paise")
+  tableReplacementPaise    Int    @default(150000) @map("table_replacement_paise")
+  /// Chairs and tables are priced per day; this is how many days a stall runs.
+  eventDays                Int    @default(2) @map("event_days")
   gstPercent               Int    @default(18) @map("gst_percent")
   /// The Planning screen's divisor: expected crowd ÷ this = suggested stalls.
   crowdPerStall            Int    @default(1000) @map("crowd_per_stall")
@@ -285,6 +298,7 @@ model StallFineType {
   isActive           Boolean @default(true) @map("is_active")
 
   edition StallEdition @relation(fields: [editionId], references: [id], onDelete: Cascade)
+  fines   StallFine[]
 
   @@unique([editionId, reason])
   @@map("stall_fine_type")
@@ -447,6 +461,15 @@ model StallRequest {
   customValues StallCustomFieldValue[]
   allocations  StallAllocation[]
   accessLinks  StallAccessLink[]
+  emailLogs    StallEmailLog[]
+  bankDetails  StallBankDetails?
+  payment      StallPayment?
+  staffCoupon  StallStaffCoupon?
+  fssai        StallFssai?
+  checkIn      StallCheckIn?
+  furniture    StallFurnitureLedger?
+  fines        StallFine[]
+  refund       StallRefund?
 
   @@index([editionId, status, stage])
   @@index([editionId, requestType])
@@ -528,5 +551,275 @@ model StallAllocation {
 
   @@index([requestId])
   @@map("stall_allocation")
+  @@schema("stalls")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 2 — Onboarding & Money
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum StallEmailTemplateKey {
+  SELECTION_VENDOR
+  SELECTION_ASHRAM
+  SELECTION_LOCAL_WELFARE
+  PAYMENT_DETAILS
+  BANK_REMINDER
+  PAYMENT_REMINDER
+  POST_PAYMENT
+
+  @@schema("stalls")
+}
+
+enum StallEmailStatus {
+  SENT
+  FAILED
+
+  @@schema("stalls")
+}
+
+/// Per-edition links and texts the emails and public pages carry.
+model StallEditionLinks {
+  id                   String  @id @default(uuid()) @db.Uuid
+  editionId            String  @unique @map("edition_id") @db.Uuid
+  staffRegistrationUrl String? @map("staff_registration_url")
+  fssaiProcessUrl      String? @map("fssai_process_url")
+  termsUrl             String? @map("terms_url")
+  financeEmail         String? @map("finance_email")
+  /// Isha's NEFT account details, as sent in the payment email.
+  bankInstructions     String? @map("bank_instructions")
+
+  edition StallEdition @relation(fields: [editionId], references: [id], onDelete: Cascade)
+
+  @@map("stall_edition_links")
+  @@schema("stalls")
+}
+
+model StallEmailTemplate {
+  id            String                @id @default(uuid()) @db.Uuid
+  editionId     String                @map("edition_id") @db.Uuid
+  key           StallEmailTemplateKey
+  subject       String
+  body          String
+  attachmentKey String?               @map("attachment_key")
+  updatedAt     DateTime              @updatedAt @map("updated_at") @db.Timestamptz
+  updatedBy     String?               @map("updated_by")
+
+  edition StallEdition @relation(fields: [editionId], references: [id], onDelete: Cascade)
+
+  @@unique([editionId, key])
+  @@map("stall_email_template")
+  @@schema("stalls")
+}
+
+/// Every email the module sent, or tried to. A selection confirmation is
+/// refused when a SENT row exists for the request and key — "once the email is
+/// sent it should not be sent again".
+model StallEmailLog {
+  id          String                @id @default(uuid()) @db.Uuid
+  requestId   String                @map("request_id") @db.Uuid
+  templateKey StallEmailTemplateKey @map("template_key")
+  toEmail     String                @map("to_email")
+  subject     String
+  status      StallEmailStatus
+  error       String?
+  sentAt      DateTime              @default(now()) @map("sent_at") @db.Timestamptz
+  sentBy      String                @map("sent_by")
+
+  request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, templateKey, status])
+  @@map("stall_email_log")
+  @@schema("stalls")
+}
+
+/// The 2025 "MSR stalls bank details and requirements" form, field for field.
+/// The electrical and logistics block on the same form writes to StallRequest.
+model StallBankDetails {
+  requestId          String    @id @map("request_id") @db.Uuid
+  invoiceName        String    @map("invoice_name")
+  accountHolder      String    @map("account_holder")
+  mobile             String
+  address            String
+  pincode            String
+  bankName           String    @map("bank_name")
+  branch             String
+  accountNumber      String    @map("account_number")
+  ifsc               String
+  micr               String?
+  chequeMediaKey     String?   @map("cheque_media_key")
+  advanceReturnAck   Boolean   @map("advance_return_ack")
+  panNumber          String    @map("pan_number")
+  panMediaKey        String?   @map("pan_media_key")
+  /// "None" when the vendor has no GST registration.
+  gstNumber          String    @map("gst_number")
+  gstMediaKey        String?   @map("gst_media_key")
+  neftAgreed         Boolean   @map("neft_agreed")
+  tncAgreed          Boolean   @map("tnc_agreed")
+  submittedAt        DateTime  @default(now()) @map("submitted_at") @db.Timestamptz
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@map("stall_bank_details")
+  @@schema("stalls")
+}
+
+/// The computed bill and, later, finance's confirmation. Columns mirror the
+/// 2025 payment workbook ("Rent Final", "Advance - Final", "Credit details").
+model StallPayment {
+  requestId             String    @id @map("request_id") @db.Uuid
+  stallFeePaise         Int       @map("stall_fee_paise")
+  plugPointsFeePaise    Int       @map("plug_points_fee_paise")
+  furnitureFeePaise     Int       @map("furniture_fee_paise")
+  netPaise              Int       @map("net_paise")
+  gstPercent            Int       @map("gst_percent")
+  gstPaise              Int       @map("gst_paise")
+  grossPaise            Int       @map("gross_paise")
+  stallDepositPaise     Int       @map("stall_deposit_paise")
+  furnitureDepositPaise Int       @map("furniture_deposit_paise")
+  depositTotalPaise     Int       @map("deposit_total_paise")
+  totalPayablePaise     Int       @map("total_payable_paise")
+  quotedAt              DateTime  @default(now()) @map("quoted_at") @db.Timestamptz
+  quotedBy              String    @map("quoted_by")
+  emailSentAt           DateTime? @map("email_sent_at") @db.Timestamptz
+
+  confirmedAt         DateTime? @map("confirmed_at") @db.Timestamptz
+  confirmedBy         String?   @map("confirmed_by")
+  creditDate          DateTime? @map("credit_date") @db.Date
+  referenceNo         String?   @map("reference_no")
+  ecollectCode        String?   @map("ecollect_code")
+  remitterName        String?   @map("remitter_name")
+  mode                String?
+  amountReceivedPaise Int?      @map("amount_received_paise")
+  notes               String?
+
+  request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@map("stall_payment")
+  @@schema("stalls")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 3 — Event Ops
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// The secure key a vendor enters in the external Sewadhar registration so
+/// only that vendor's staff register against that stall.
+model StallStaffCoupon {
+  requestId       String    @id @map("request_id") @db.Uuid
+  code            String    @unique
+  maxStaff        Int       @map("max_staff")
+  registeredCount Int       @default(0) @map("registered_count")
+  issuedAt        DateTime  @default(now()) @map("issued_at") @db.Timestamptz
+  issuedBy        String    @map("issued_by")
+  revokedAt       DateTime? @map("revoked_at") @db.Timestamptz
+
+  request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@map("stall_staff_coupon")
+  @@schema("stalls")
+}
+
+model StallFssai {
+  requestId      String    @id @map("request_id") @db.Uuid
+  mediaKey       String    @map("media_key")
+  fileName       String    @map("file_name")
+  licenseNumber  String?   @map("license_number")
+  validTill      DateTime? @map("valid_till") @db.Date
+  uploadedAt     DateTime  @default(now()) @map("uploaded_at") @db.Timestamptz
+  verifiedAt     DateTime? @map("verified_at") @db.Timestamptz
+  verifiedBy     String?   @map("verified_by")
+  rejectedReason String?   @map("rejected_reason")
+
+  request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@map("stall_fssai")
+  @@schema("stalls")
+}
+
+model StallCheckIn {
+  requestId         String   @id @map("request_id") @db.Uuid
+  checkedInAt       DateTime @default(now()) @map("checked_in_at") @db.Timestamptz
+  checkedInBy       String   @map("checked_in_by")
+  staffPresent      Int      @default(0) @map("staff_present")
+  passes2wIssued    Int      @default(0) @map("passes_2w_issued")
+  passes4wIssued    Int      @default(0) @map("passes_4w_issued")
+  passesStaffIssued Int      @default(0) @map("passes_staff_issued")
+  notes             String?
+
+  request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@map("stall_check_in")
+  @@schema("stalls")
+}
+
+/// The counter's chairs-and-tables challan, both halves: what went out, and
+/// what came back the next day.
+model StallFurnitureLedger {
+  requestId          String    @id @map("request_id") @db.Uuid
+  chairsOrdered      Int       @map("chairs_ordered")
+  tablesOrdered      Int       @map("tables_ordered")
+  chairsIssued       Int       @default(0) @map("chairs_issued")
+  tablesIssued       Int       @default(0) @map("tables_issued")
+  extraChairs        Int       @default(0) @map("extra_chairs")
+  extraTables        Int       @default(0) @map("extra_tables")
+  extraChargePaise   Int       @default(0) @map("extra_charge_paise")
+  cashCollectedPaise Int       @default(0) @map("cash_collected_paise")
+  issuedAt           DateTime? @map("issued_at") @db.Timestamptz
+  issuedBy           String?   @map("issued_by")
+  chairsReturned     Int?      @map("chairs_returned")
+  tablesReturned     Int?      @map("tables_returned")
+  chairsMissing      Int       @default(0) @map("chairs_missing")
+  tablesMissing      Int       @default(0) @map("tables_missing")
+  chairsDamaged      Int       @default(0) @map("chairs_damaged")
+  tablesDamaged      Int       @default(0) @map("tables_damaged")
+  returnedAt         DateTime? @map("returned_at") @db.Timestamptz
+  returnedBy         String?   @map("returned_by")
+  flagged            Boolean   @default(false)
+  notes              String?
+
+  request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@map("stall_furniture_ledger")
+  @@schema("stalls")
+}
+
+model StallFine {
+  id          String    @id @default(uuid()) @db.Uuid
+  requestId   String    @map("request_id") @db.Uuid
+  fineTypeId  String?   @map("fine_type_id") @db.Uuid
+  reason      String
+  amountPaise Int       @map("amount_paise")
+  leviedAt    DateTime  @default(now()) @map("levied_at") @db.Timestamptz
+  leviedBy    String    @map("levied_by")
+  waivedAt    DateTime? @map("waived_at") @db.Timestamptz
+  waivedBy    String?   @map("waived_by")
+
+  request  StallRequest   @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  fineType StallFineType? @relation(fields: [fineTypeId], references: [id])
+
+  @@index([requestId])
+  @@map("stall_fine")
+  @@schema("stalls")
+}
+
+/// The voucher the stalls team hands finance: deposit less deductions.
+model StallRefund {
+  requestId               String    @id @map("request_id") @db.Uuid
+  depositTotalPaise       Int       @map("deposit_total_paise")
+  furnitureDeductionPaise Int       @map("furniture_deduction_paise")
+  finesPaise              Int       @map("fines_paise")
+  refundablePaise         Int       @map("refundable_paise")
+  shortfallPaise          Int       @default(0) @map("shortfall_paise")
+  preparedAt              DateTime  @default(now()) @map("prepared_at") @db.Timestamptz
+  preparedBy              String    @map("prepared_by")
+  sentToFinanceAt         DateTime? @map("sent_to_finance_at") @db.Timestamptz
+  paidAt                  DateTime? @map("paid_at") @db.Timestamptz
+  paidBy                  String?   @map("paid_by")
+  referenceNo             String?   @map("reference_no")
+
+  request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@map("stall_refund")
   @@schema("stalls")
 }

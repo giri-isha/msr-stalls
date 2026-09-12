@@ -15,6 +15,12 @@ export interface StallsDeps {
   /** Absolute URL for a vendor's status page. The module does not know its own
    *  public origin — the shell does. */
   statusUrl(token: string): string;
+  /** Absolute URL for any signed public page: status, bank form, FSSAI
+   *  upload, staff registration. `statusUrl` is `linkUrl('STATUS', …)`. */
+  linkUrl(
+    purpose: 'STATUS' | 'BANK_FORM' | 'FSSAI_UPLOAD' | 'STAFF_REGISTRATION',
+    token: string,
+  ): string;
   /** Per-IP cap on public submissions per minute. */
   publicRateLimitMax: number;
 }

@@ -363,6 +363,11 @@ export const ChargesInput = z.object({
   plug15aRatePaise: Paise,
   gstPercent: z.number().int().min(0).max(100),
   crowdPerStall: z.number().int().min(1).max(100_000),
+  vendorChairRatePaise: Paise,
+  vendorTableRatePaise: Paise,
+  chairReplacementPaise: Paise,
+  tableReplacementPaise: Paise,
+  eventDays: z.number().int().min(1).max(30),
 });
 export type ChargesInput = z.infer<typeof ChargesInput>;
 

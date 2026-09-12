@@ -26,6 +26,7 @@ export const STALL_ACTIONS = [
   'config:read',
   'config:write',
   'users:write',
+  'refunds:write',
 ] as const;
 export type StallAction = (typeof STALL_ACTIONS)[number];
 
@@ -46,6 +47,7 @@ const LEAD_ACTIONS = [
   'comms:write',
   'finance:read',
   'config:read',
+  'refunds:write',
 ] as const;
 
 /** The four staff roles from the requirements PDF's "Types of Users" list.

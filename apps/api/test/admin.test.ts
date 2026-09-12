@@ -40,6 +40,11 @@ const charges = {
   plug15aRatePaise: 100000,
   gstPercent: 18,
   crowdPerStall: 1200,
+  vendorChairRatePaise: 10000,
+  vendorTableRatePaise: 40000,
+  chairReplacementPaise: 50000,
+  tableReplacementPaise: 150000,
+  eventDays: 2,
 };
 
 describe('authorisation', () => {
