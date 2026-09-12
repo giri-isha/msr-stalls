@@ -26,7 +26,7 @@ import { prisma } from '../../prisma';
 import type { ZodTypeProvider } from '../../zod-validation';
 import * as config from './config';
 import { activateEdition, activeEdition, listEditions } from './editions';
-import type { StallsDeps } from './index';
+import type { StallsDeps } from './deps';
 import { applyPlan, listAvailableStalls, readPlan, writePlan } from './planning';
 import { dashboardCounts, flagRequest, getRequest, listRequests, unflagRequest } from './requests';
 import { ROLES, requireAction, requireStaff } from './roles';

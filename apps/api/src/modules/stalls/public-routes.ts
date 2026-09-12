@@ -12,7 +12,7 @@ import { prisma } from '../../prisma';
 import type { ZodTypeProvider } from '../../zod-validation';
 import { resolveAccessLink } from './accounts';
 import { getPublicConfig } from './config';
-import type { StallsDeps } from './index';
+import type { StallsDeps } from './deps';
 import { submitRequest } from './submit';
 
 const TokenParams = z.object({ token: z.string().min(16).max(128) });
