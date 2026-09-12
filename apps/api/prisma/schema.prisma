@@ -1,0 +1,532 @@
+// MSR Stalls — Phase 1 data model.
+//
+// Everything the module owns lives in the `stalls` Postgres schema and every
+// model is prefixed `Stall`, following the host's multiSchema convention (its
+// ADR 0007: `requirements`, `cycle_management`, `volunteering` each own a
+// schema). At migration the `stalls` models are appended to the host's
+// schema.prisma and `"stalls"` is added to its `schemas` list; nothing has to
+// be renamed.
+//
+// The `foundation` schema below holds TWO STUB TABLES that stand in for the
+// host's `Person` and activity trail. They are NOT migrated — the host has the
+// real ones.
+//
+// Money is integer paise. Column names end in `_paise`. No floats, anywhere.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["foundation", "stalls"]
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FOUNDATION STUBS — discarded at migration
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Stands in for the host's Person. A staff member who can sign in.
+model Person {
+  personId       String  @id @default(uuid()) @map("person_id") @db.Uuid
+  email          String  @unique
+  displayName    String  @map("display_name")
+  signInDisabled Boolean @default(false) @map("sign_in_disabled")
+
+  @@map("person")
+  @@schema("foundation")
+}
+
+/// Stands in for the host's activity trail.
+model ActivityTrail {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorRef   String   @map("actor_ref")
+  moduleKey  String   @map("module_key")
+  action     String
+  subjectRef String   @map("subject_ref")
+  detail     Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([moduleKey, subjectRef])
+  @@map("activity_trail")
+  @@schema("foundation")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STALLS MODULE — migrates verbatim
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Enums ───────────────────────────────────────────────────────────────────
+
+enum StallRequestType {
+  ASHRAM
+  ASHRAM_FOOD
+  LOCAL_WELFARE
+  VENDOR
+
+  @@schema("stalls")
+}
+
+/// What a stall SELLS. Distinct from StallCategory, which is who OCCUPIES it.
+enum StallType {
+  FOOD
+  NON_FOOD
+
+  @@schema("stalls")
+}
+
+/// Every kind of thing that can occupy a stall position — the Planning grid's
+/// columns. BACKUP is a real planned category, not a status.
+enum StallCategory {
+  VENDOR_FOOD
+  ASHRAM_FOOD
+  LW_FOOD
+  VENDOR_NON_FOOD
+  ASHRAM_NON_FOOD
+  HELP_DESK
+  BACKUP
+
+  @@schema("stalls")
+}
+
+/// The selection decision. One axis.
+enum StallRequestStatus {
+  SUBMITTED
+  SHORTLISTED
+  SELECTED
+  BACKUP
+  REJECTED
+  CANCELLED
+
+  @@schema("stalls")
+}
+
+/// How far through onboarding a SELECTED request has travelled. The other axis.
+/// Phase 1 drives only NEW; the rest are modelled so Phases 2–3 add behaviour,
+/// not migrations that rewrite history.
+enum StallStage {
+  NEW
+  BANK_FORM_SENT
+  BANK_FORM_FILLED
+  PAYMENT_SENT
+  PAYMENT_CONFIRMED
+  FSSAI_PENDING
+  READY
+  CHECKED_IN
+
+  @@schema("stalls")
+}
+
+enum StallStatus {
+  AVAILABLE
+  ALLOCATED
+  BLOCKED
+
+  @@schema("stalls")
+}
+
+enum StallZoneGroup {
+  AB
+  C
+  CLOSED
+
+  @@schema("stalls")
+}
+
+enum StallFormType {
+  ASHRAM
+  ASHRAM_FOOD
+  LOCAL_WELFARE
+  VENDOR
+  BANK
+  FSSAI
+
+  @@schema("stalls")
+}
+
+enum StallAccessPurpose {
+  STATUS
+  BANK_FORM
+  FSSAI_UPLOAD
+  STAFF_REGISTRATION
+
+  @@schema("stalls")
+}
+
+enum StallAshramUsage {
+  DEPT_DISPLAY
+  DEPT_SALES
+  VENDOR_SALES
+  SPONSOR
+  OTHER
+
+  @@schema("stalls")
+}
+
+// ── Configuration ───────────────────────────────────────────────────────────
+
+/// One MSR. Everything hangs off an edition so 2027 does not reuse 2026's data.
+model StallEdition {
+  id        String   @id @default(uuid()) @db.Uuid
+  year      Int      @unique
+  name      String
+  isActive  Boolean  @default(false) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  zones        StallZone[]
+  rateCard     StallRateCard[]
+  charges      StallChargeConfig?
+  fineTypes    StallFineType[]
+  customFields StallCustomField[]
+  flow         StallFlowConfig?
+  requests     StallRequest[]
+  sequences    StallReferenceSequence[]
+
+  @@map("stall_edition")
+  @@schema("stalls")
+}
+
+model StallZone {
+  id                 String  @id @default(uuid()) @db.Uuid
+  editionId          String  @map("edition_id") @db.Uuid
+  code               String
+  name               String
+  expectedCrowd      Int     @default(0) @map("expected_crowd")
+  /// Closed to VENDORS (no rent quoted). Ashram and local welfare stalls may
+  /// still stand here — 2025's A3 and B2.
+  isClosedToVendors  Boolean @default(false) @map("is_closed_to_vendors")
+  sortOrder          Int     @map("sort_order")
+
+  edition StallEdition   @relation(fields: [editionId], references: [id], onDelete: Cascade)
+  plan    StallZonePlan[]
+  stalls  Stall[]
+
+  @@unique([editionId, code])
+  @@map("stall_zone")
+  @@schema("stalls")
+}
+
+/// The Planning grid: one row per zone × category.
+model StallZonePlan {
+  id           String        @id @default(uuid()) @db.Uuid
+  zoneId       String        @map("zone_id") @db.Uuid
+  category     StallCategory
+  plannedCount Int           @default(0) @map("planned_count")
+
+  zone StallZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@unique([zoneId, category])
+  @@map("stall_zone_plan")
+  @@schema("stalls")
+}
+
+/// The allocatable unit. Generated from the zone plan; editable by an admin.
+model Stall {
+  id       String        @id @default(uuid()) @db.Uuid
+  zoneId   String        @map("zone_id") @db.Uuid
+  /// `A4-17`. Unique within a zone.
+  number   String
+  category StallCategory
+  status   StallStatus   @default(AVAILABLE)
+
+  zone              StallZone         @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  allocations       StallAllocation[] @relation("StallAllocationHistory")
+  activeAllocation  StallAllocation?  @relation("StallActiveAllocation")
+
+  @@unique([zoneId, number])
+  @@map("stall")
+  @@schema("stalls")
+}
+
+model StallRateCard {
+  id          String         @id @default(uuid()) @db.Uuid
+  editionId   String         @map("edition_id") @db.Uuid
+  zoneGroup   StallZoneGroup @map("zone_group")
+  isFood      Boolean        @map("is_food")
+  amountPaise Int            @map("amount_paise")
+
+  edition StallEdition @relation(fields: [editionId], references: [id], onDelete: Cascade)
+
+  @@unique([editionId, zoneGroup, isFood])
+  @@map("stall_rate_card")
+  @@schema("stalls")
+}
+
+/// Per-edition charges. Chair and table rates differ by requester type on the
+/// 2025 forms (ashram: chair Rs.50/day; local welfare: chair Rs.100, table
+/// Rs.300) — both are kept, neither is "the" rate.
+model StallChargeConfig {
+  id                       String @id @default(uuid()) @db.Uuid
+  editionId                String @unique @map("edition_id") @db.Uuid
+  chairRatePaise           Int    @map("chair_rate_paise")
+  tableRatePaise           Int    @map("table_rate_paise")
+  lwChairRatePaise         Int    @map("lw_chair_rate_paise")
+  lwTableRatePaise         Int    @map("lw_table_rate_paise")
+  vendorDepositPaise       Int    @map("vendor_deposit_paise")
+  localWelfareDepositPaise Int    @map("local_welfare_deposit_paise")
+  plug5aRatePaise          Int    @map("plug_5a_rate_paise")
+  plug15aRatePaise         Int    @map("plug_15a_rate_paise")
+  gstPercent               Int    @default(18) @map("gst_percent")
+  /// The Planning screen's divisor: expected crowd ÷ this = suggested stalls.
+  crowdPerStall            Int    @default(1000) @map("crowd_per_stall")
+
+  edition StallEdition @relation(fields: [editionId], references: [id], onDelete: Cascade)
+
+  @@map("stall_charge_config")
+  @@schema("stalls")
+}
+
+/// Phase 3 deducts these from the deposit. Phase 1 only configures them.
+model StallFineType {
+  id                 String  @id @default(uuid()) @db.Uuid
+  editionId          String  @map("edition_id") @db.Uuid
+  reason             String
+  defaultAmountPaise Int     @map("default_amount_paise")
+  isActive           Boolean @default(true) @map("is_active")
+
+  edition StallEdition @relation(fields: [editionId], references: [id], onDelete: Cascade)
+
+  @@unique([editionId, reason])
+  @@map("stall_fine_type")
+  @@schema("stalls")
+}
+
+/// The Form Builder's whole surface: a field an admin APPENDS to a base form.
+/// Deactivated, never deleted, once it has values.
+model StallCustomField {
+  id         String        @id @default(uuid()) @db.Uuid
+  editionId  String        @map("edition_id") @db.Uuid
+  formType   StallFormType @map("form_type")
+  label      String
+  labelTa    String?       @map("label_ta")
+  fieldType  String        @map("field_type")
+  isRequired Boolean       @default(false) @map("is_required")
+  sortOrder  Int           @map("sort_order")
+  isActive   Boolean       @default(true) @map("is_active")
+
+  edition StallEdition            @relation(fields: [editionId], references: [id], onDelete: Cascade)
+  values  StallCustomFieldValue[]
+
+  @@index([editionId, formType])
+  @@map("stall_custom_field")
+  @@schema("stalls")
+}
+
+/// The Flow Builder's whole surface: three switches.
+model StallFlowConfig {
+  id                 String  @id @default(uuid()) @db.Uuid
+  editionId          String  @unique @map("edition_id") @db.Uuid
+  bankStepEnabled    Boolean @default(true) @map("bank_step_enabled")
+  paymentStepEnabled Boolean @default(true) @map("payment_step_enabled")
+  fssaiStepEnabled   Boolean @default(true) @map("fssai_step_enabled")
+
+  edition StallEdition @relation(fields: [editionId], references: [id], onDelete: Cascade)
+
+  @@map("stall_flow_config")
+  @@schema("stalls")
+}
+
+// ── Identity and access ─────────────────────────────────────────────────────
+
+/// An external requester. Created on first submission; no password, no
+/// verification (design decision 6). Never a host Person.
+model StallAccount {
+  id          String   @id @default(uuid()) @db.Uuid
+  /// Normalised: trimmed, lowercased. The one lookup key.
+  email       String   @unique
+  phone       String
+  displayName String   @map("display_name")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  requests    StallRequest[]
+  accessLinks StallAccessLink[]
+
+  @@map("stall_account")
+  @@schema("stalls")
+}
+
+/// The return-access mechanism. Only the HASH of the token is stored, so a
+/// database leak does not hand out live links.
+model StallAccessLink {
+  id        String             @id @default(uuid()) @db.Uuid
+  tokenHash String             @unique @map("token_hash")
+  accountId String             @map("account_id") @db.Uuid
+  requestId String?            @map("request_id") @db.Uuid
+  purpose   StallAccessPurpose
+  expiresAt DateTime           @map("expires_at") @db.Timestamptz
+  usedAt    DateTime?          @map("used_at") @db.Timestamptz
+  revokedAt DateTime?          @map("revoked_at") @db.Timestamptz
+  createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz
+
+  account StallAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  request StallRequest? @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@map("stall_access_link")
+  @@schema("stalls")
+}
+
+/// Module-owned RBAC (host ADR 0016). `personRef` is the host's person_id after
+/// migration; the stub Person's id before it. Deliberately NOT a foreign key —
+/// the host's Person lives in another schema owned by another module, and a
+/// module never reaches into another's tables.
+model StallStaffRole {
+  id        String   @id @default(uuid()) @db.Uuid
+  personRef String   @map("person_ref")
+  roleKey   String   @map("role_key")
+  grantedBy String   @map("granted_by")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@unique([personRef, roleKey])
+  @@map("stall_staff_role")
+  @@schema("stalls")
+}
+
+// ── Requests ────────────────────────────────────────────────────────────────
+
+/// Per-edition, per-type counter, bumped inside the submit transaction so two
+/// concurrent submissions cannot both take VEN-2026-0042.
+model StallReferenceSequence {
+  editionId   String           @map("edition_id") @db.Uuid
+  requestType StallRequestType @map("request_type")
+  next        Int              @default(1)
+
+  edition StallEdition @relation(fields: [editionId], references: [id], onDelete: Cascade)
+
+  @@id([editionId, requestType])
+  @@map("stall_reference_sequence")
+  @@schema("stalls")
+}
+
+/// One table for all four forms. They overlap by ~70%, and the pipeline,
+/// search and export screens all read one list.
+model StallRequest {
+  id        String           @id @default(uuid()) @db.Uuid
+  editionId String           @map("edition_id") @db.Uuid
+  accountId String           @map("account_id") @db.Uuid
+  reference String           @unique
+
+  requestType StallRequestType @map("request_type")
+  stallType   StallType        @map("stall_type")
+
+  stallName     String  @map("stall_name")
+  requesterName String  @map("requester_name")
+  contactNumber String  @map("contact_number")
+  email         String
+  address       String?
+
+  itemsSelling       String  @map("items_selling")
+  numStallsRequested Int     @map("num_stalls_requested")
+  preferredZoneCode  String  @map("preferred_zone_code")
+  remarks            String?
+
+  plugs5a   Int @default(0) @map("plugs_5a")
+  plugs15a  Int @default(0) @map("plugs_15a")
+  gasStoves Int @default(0) @map("gas_stoves")
+
+  tablesNeeded Int @default(0) @map("tables_needed")
+  chairsNeeded Int @default(0) @map("chairs_needed")
+  passes2w     Int @default(0) @map("passes_2w")
+  passes4w     Int @default(0) @map("passes_4w")
+  passesStaff  Int @default(0) @map("passes_staff")
+
+  agreedAt              DateTime  @map("agreed_at") @db.Timestamptz
+  depositAcknowledgedAt DateTime? @map("deposit_acknowledged_at") @db.Timestamptz
+
+  status       StallRequestStatus @default(SUBMITTED)
+  stage        StallStage         @default(NEW)
+  submittedAt  DateTime           @default(now()) @map("submitted_at") @db.Timestamptz
+  updatedAt    DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+  flaggedAt    DateTime?          @map("flagged_at") @db.Timestamptz
+  flagReason   String?            @map("flag_reason")
+  rejectReason String?            @map("reject_reason")
+
+  edition      StallEdition             @relation(fields: [editionId], references: [id], onDelete: Cascade)
+  account      StallAccount             @relation(fields: [accountId], references: [id])
+  ashramDetail StallRequestAshramDetail?
+  appliances   StallRequestAppliance[]
+  customValues StallCustomFieldValue[]
+  allocations  StallAllocation[]
+  accessLinks  StallAccessLink[]
+
+  @@index([editionId, status, stage])
+  @@index([editionId, requestType])
+  @@index([submittedAt(sort: Desc), id(sort: Desc)])
+  @@map("stall_request")
+  @@schema("stalls")
+}
+
+/// The ashram-only block. 1:1 optional.
+model StallRequestAshramDetail {
+  requestId             String           @id @map("request_id") @db.Uuid
+  departmentHead        String           @map("department_head")
+  departmentHeadContact String           @map("department_head_contact")
+  department            String
+  requestedBy           String           @map("requested_by")
+  requesterContact      String           @map("requester_contact")
+  creditCardNeeded      Boolean          @map("credit_card_needed")
+  usage                 StallAshramUsage
+  usageOther            String?          @map("usage_other")
+  wantsThembu           Boolean          @map("wants_thembu")
+  fssaiExpected         Boolean?         @map("fssai_expected")
+
+  request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@map("stall_request_ashram_detail")
+  @@schema("stalls")
+}
+
+/// Child rows, not four nullable column pairs: the 2025 forms cap at 4 but the
+/// 2025 DATA shows stalls listing more, and Phase 3's load sheet sums them.
+model StallRequestAppliance {
+  id        String @id @default(uuid()) @db.Uuid
+  requestId String @map("request_id") @db.Uuid
+  name      String
+  watts     Int
+  sortOrder Int    @map("sort_order")
+
+  request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@map("stall_request_appliance")
+  @@schema("stalls")
+}
+
+model StallCustomFieldValue {
+  id            String @id @default(uuid()) @db.Uuid
+  requestId     String @map("request_id") @db.Uuid
+  customFieldId String @map("custom_field_id") @db.Uuid
+  value         String
+
+  request StallRequest     @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  field   StallCustomField @relation(fields: [customFieldId], references: [id])
+
+  @@unique([requestId, customFieldId])
+  @@map("stall_custom_field_value")
+  @@schema("stalls")
+}
+
+/// A request holding a stall. A request for 3 stalls yields 3 rows.
+///
+/// `activeStallId` is the DATABASE-ENFORCED single occupant: it is UNIQUE and
+/// non-null while the allocation is live, and set to null on release. Two
+/// staff selecting the same stall at once therefore cannot both succeed — the
+/// second insert violates the constraint, whatever the application checked.
+/// `stallId` stays populated after release so the history survives.
+model StallAllocation {
+  id            String    @id @default(uuid()) @db.Uuid
+  requestId     String    @map("request_id") @db.Uuid
+  stallId       String    @map("stall_id") @db.Uuid
+  activeStallId String?   @unique @map("active_stall_id") @db.Uuid
+  allocatedAt   DateTime  @default(now()) @map("allocated_at") @db.Timestamptz
+  allocatedBy   String    @map("allocated_by")
+  releasedAt    DateTime? @map("released_at") @db.Timestamptz
+  releasedBy    String?   @map("released_by")
+
+  request     StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  stall       Stall        @relation("StallAllocationHistory", fields: [stallId], references: [id])
+  activeStall Stall?       @relation("StallActiveAllocation", fields: [activeStallId], references: [id])
+
+  @@index([requestId])
+  @@map("stall_allocation")
+  @@schema("stalls")
+}

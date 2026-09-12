@@ -1,3 +1,4 @@
+export * from './contracts';
 export * from './forms';
 export * from './money';
 export * from './rates';

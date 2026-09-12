@@ -86,7 +86,7 @@ module.exports = {
     // @swc/core parses the sources: dependency-cruiser's bundled TypeScript
     // extractor supports typescript <7 only and this repo is on TS 7, so it
     // falls back to SWC, which is version-independent and handles TS + TSX.
-    tsConfig: { fileName: 'apps/web/tsconfig.json' },
+    tsConfig: { fileName: 'tsconfig.base.json' },
     tsPreCompilationDeps: true,
     enhancedResolveOptions: { extensions: ['.ts', '.tsx', '.js', '.jsx'] },
   },

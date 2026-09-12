@@ -1,0 +1,174 @@
+import { Prisma, type PrismaClient, type StallRequestStatus } from '@prisma/client';
+import { parseStallNumber } from '@msr/stalls';
+import { recordActivity } from '../../activity';
+import {
+  InvalidTransitionError,
+  StallAlreadyAllocatedError,
+  StallBlockedError,
+  TooManyStallsError,
+  UnknownRequestError,
+  UnknownStallError,
+} from './errors';
+import { MODULE_KEY } from './roles';
+
+/** The selection status machine. Anything not listed is an
+ *  `InvalidTransitionError`. Rejecting is allowed from any live status — the
+ *  team does reject after selecting when a vendor drops out. */
+const ALLOWED: Record<StallRequestStatus, StallRequestStatus[]> = {
+  SUBMITTED: ['SHORTLISTED', 'SELECTED', 'BACKUP', 'REJECTED'],
+  SHORTLISTED: ['SELECTED', 'BACKUP', 'REJECTED', 'SUBMITTED'],
+  BACKUP: ['SELECTED', 'REJECTED', 'SHORTLISTED'],
+  SELECTED: ['REJECTED', 'CANCELLED'],
+  REJECTED: ['SHORTLISTED'],
+  CANCELLED: [],
+};
+
+function assertTransition(from: StallRequestStatus, to: StallRequestStatus): void {
+  if (!ALLOWED[from].includes(to)) throw new InvalidTransitionError(from, to);
+}
+
+async function transition(
+  db: PrismaClient,
+  id: string,
+  to: StallRequestStatus,
+  by: string,
+  extra: { rejectReason?: string } = {},
+): Promise<void> {
+  await db.$transaction(async (tx) => {
+    const req = await tx.stallRequest.findUnique({ where: { id }, select: { status: true } });
+    if (!req) throw new UnknownRequestError(id);
+    assertTransition(req.status, to);
+    await tx.stallRequest.update({
+      where: { id },
+      data: { status: to, rejectReason: extra.rejectReason ?? null },
+    });
+    // Leaving SELECTED frees the stalls — a rejected or cancelled request must
+    // not keep holding positions another vendor could take.
+    if (req.status === 'SELECTED' && to !== 'SELECTED') {
+      await releaseAllForRequest(tx, id, by);
+    }
+    await recordActivity(tx, {
+      actorRef: by,
+      moduleKey: MODULE_KEY,
+      action: `stall_request.${to.toLowerCase()}`,
+      subjectRef: id,
+      detail: { from: req.status, ...extra },
+    });
+  });
+}
+
+export const shortlist = (db: PrismaClient, id: string, by: string) =>
+  transition(db, id, 'SHORTLISTED', by);
+export const backupRequest = (db: PrismaClient, id: string, by: string) =>
+  transition(db, id, 'BACKUP', by);
+export const unshortlist = (db: PrismaClient, id: string, by: string) =>
+  transition(db, id, 'SUBMITTED', by);
+export const rejectRequest = (db: PrismaClient, id: string, reason: string, by: string) =>
+  transition(db, id, 'REJECTED', by, { rejectReason: reason });
+export const cancelRequest = (db: PrismaClient, id: string, by: string) =>
+  transition(db, id, 'CANCELLED', by);
+
+async function releaseAllForRequest(tx: Prisma.TransactionClient, requestId: string, by: string) {
+  const live = await tx.stallAllocation.findMany({ where: { requestId, releasedAt: null } });
+  for (const a of live) {
+    await tx.stallAllocation.update({
+      where: { id: a.id },
+      data: { activeStallId: null, releasedAt: new Date(), releasedBy: by },
+    });
+    await tx.stall.update({ where: { id: a.stallId }, data: { status: 'AVAILABLE' } });
+  }
+}
+
+/** Select a request and allocate it stalls, atomically.
+ *
+ *  The single-occupant guarantee is the UNIQUE constraint on
+ *  `StallAllocation.activeStallId`. This function does check the stall's
+ *  status first — so the common case gets a clear error before touching the
+ *  constraint — but it does not RELY on that check: two staff can both read
+ *  AVAILABLE and both proceed, and then exactly one insert succeeds. The
+ *  other's P2002 becomes `StallAlreadyAllocatedError`, and its transaction
+ *  rolls back, so it never half-selects. */
+export async function selectRequest(
+  db: PrismaClient,
+  input: { requestId: string; stallNumbers: string[] },
+  by: string,
+): Promise<{ allocated: string[] }> {
+  try {
+    return await db.$transaction(async (tx) => {
+      const req = await tx.stallRequest.findUnique({
+        where: { id: input.requestId },
+        include: { allocations: { where: { releasedAt: null } } },
+      });
+      if (!req) throw new UnknownRequestError(input.requestId);
+      if (req.status !== 'SELECTED') assertTransition(req.status, 'SELECTED');
+
+      const offered = req.allocations.length + input.stallNumbers.length;
+      if (offered > req.numStallsRequested) {
+        throw new TooManyStallsError(req.numStallsRequested, offered);
+      }
+
+      const allocated: string[] = [];
+      for (const number of input.stallNumbers) {
+        const parsed = parseStallNumber(number);
+        if (!parsed) throw new UnknownStallError(number);
+        const stall = await tx.stall.findFirst({
+          where: { number, zone: { editionId: req.editionId, code: parsed.zone } },
+        });
+        if (!stall) throw new UnknownStallError(number);
+        if (stall.status === 'BLOCKED') throw new StallBlockedError(number);
+        if (stall.status === 'ALLOCATED') throw new StallAlreadyAllocatedError(number);
+
+        await tx.stallAllocation.create({
+          data: {
+            requestId: req.id,
+            stallId: stall.id,
+            activeStallId: stall.id,
+            allocatedBy: by,
+          },
+        });
+        await tx.stall.update({ where: { id: stall.id }, data: { status: 'ALLOCATED' } });
+        allocated.push(number);
+      }
+
+      await tx.stallRequest.update({ where: { id: req.id }, data: { status: 'SELECTED' } });
+      await recordActivity(tx, {
+        actorRef: by,
+        moduleKey: MODULE_KEY,
+        action: 'stall_request.selected',
+        subjectRef: req.id,
+        detail: { from: req.status, stalls: allocated },
+      });
+      return { allocated };
+    });
+  } catch (err) {
+    // The constraint fired: someone else took a stall between our read and our
+    // insert. Which one is in the error's target; the first requested number
+    // is the best we can name if Prisma does not say.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      throw new StallAlreadyAllocatedError(input.stallNumbers[0] ?? '?');
+    }
+    throw err;
+  }
+}
+
+export async function releaseAllocation(db: PrismaClient, allocationId: string, by: string) {
+  await db.$transaction(async (tx) => {
+    const a = await tx.stallAllocation.findUnique({
+      where: { id: allocationId },
+      include: { stall: true },
+    });
+    if (!a || a.releasedAt) throw new UnknownRequestError(allocationId);
+    await tx.stallAllocation.update({
+      where: { id: a.id },
+      data: { activeStallId: null, releasedAt: new Date(), releasedBy: by },
+    });
+    await tx.stall.update({ where: { id: a.stallId }, data: { status: 'AVAILABLE' } });
+    await recordActivity(tx, {
+      actorRef: by,
+      moduleKey: MODULE_KEY,
+      action: 'stall_allocation.released',
+      subjectRef: a.requestId,
+      detail: { stall: a.stall.number },
+    });
+  });
+}
