@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+/* Tokens. Kept to what the screens use; the host has its own theme and the
+   module's components use only Tailwind utilities so they inherit it there. */
+@theme {
+  --color-ink: #1c1917;
+  --color-ink-2: #57534e;
+  --color-ink-3: #a8a29e;
+  --color-surface: #ffffff;
+  --color-surface-2: #f5f5f4;
+  --color-line: #e7e5e4;
+  --color-accent: #b45309;
+  --color-accent-soft: #fef3c7;
+  --color-good: #15803d;
+  --color-good-soft: #dcfce7;
+  --color-warn: #b45309;
+  --color-warn-soft: #fef3c7;
+  --color-bad: #b91c1c;
+  --color-bad-soft: #fee2e2;
+  --color-info: #1d4ed8;
+  --color-info-soft: #dbeafe;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-tamil: "Noto Sans Tamil", "Latha", ui-sans-serif, system-ui, sans-serif;
+}
+
+html { color: var(--color-ink); background: var(--color-surface-2); }
+body { margin: 0; font-family: var(--font-sans); }
+.font-tamil { font-family: var(--font-tamil); }
