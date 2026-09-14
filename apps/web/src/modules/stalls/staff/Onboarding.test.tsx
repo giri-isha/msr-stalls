@@ -24,6 +24,7 @@ function row(over: Record<string, unknown> = {}) {
     staffRegistered: 1,
     staffExpected: 3,
     couponCode: null,
+    couponCapacity: null,
     stage: 'BANK_FORM_SENT',
     pending: [
       { step: 'BANK_FORM', label: 'Bank details pending' },
@@ -214,6 +215,64 @@ describe('the vendor detail', () => {
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('GRE-2026-K7Q4M2X9')).toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: /Issue coupon/ })).not.toBeInTheDocument();
+  });
+
+  // 🔴 "If they want more staff members, in the back end we raise that capacity
+  // to 10, 12." The raise lands on the coupon the vendor already holds, so
+  // nobody has to be sent a new code.
+  test('the back office raises what the coupon admits, on the code already out', async () => {
+    const fetch = installFetch([
+      ['GET', /\/me$/, () => ME_ADMIN],
+      ['GET', /\/onboarding$/, () => [row({ couponCode: 'GRE-2026-K7Q4M2X9' })]],
+      [
+        'GET',
+        /\/onboarding\/.+$/,
+        () => detail({ couponCode: 'GRE-2026-K7Q4M2X9', couponCapacity: 8 }),
+      ],
+      ['PUT', /\/coupon\/capacity$/, () => ({ code: 'GRE-2026-K7Q4M2X9', capacity: 12 })],
+    ]);
+    render();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Green Leaf Organics'));
+    const dialog = await screen.findByRole('dialog');
+    const field = within(dialog).getByLabelText('Admits');
+    expect(field).toHaveValue(8);
+
+    await user.clear(field);
+    await user.type(field, '12');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      const call = fetch.calls.find((c) => c.method === 'PUT');
+      expect(call?.body).toEqual({ capacity: 12 });
+    });
+  });
+
+  // Lowering below what is already registered would leave the stall over its
+  // own cap with no way to read the number as a limit again.
+  test('refuses to lower the cap below the people already registered', async () => {
+    installFetch([
+      ['GET', /\/me$/, () => ME_ADMIN],
+      ['GET', /\/onboarding$/, () => [row({ couponCode: 'GRE-2026-K7Q4M2X9' })]],
+      [
+        'GET',
+        /\/onboarding\/.+$/,
+        () =>
+          detail({ couponCode: 'GRE-2026-K7Q4M2X9', couponCapacity: 8, staffRegistered: 5 }),
+      ],
+    ]);
+    render();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Green Leaf Organics'));
+    const dialog = await screen.findByRole('dialog');
+    const field = within(dialog).getByLabelText('Admits');
+    await user.clear(field);
+    await user.type(field, '2');
+
+    expect(within(dialog).getByText('5 already registered')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Save' })).toBeDisabled();
   });
 
   test('staff numbers are shown in full to the team, unlike the vendor’s own page', async () => {

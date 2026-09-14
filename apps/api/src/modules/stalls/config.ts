@@ -5,11 +5,13 @@ import {
   DEFAULT_RATE_CARD_2025,
   DEFAULT_TEMPLATES,
   DEFAULT_ZONES_2025,
+  type PlanCategoryView,
   type PublicConfig,
   type RateCardEntry,
   type RateScope,
   STALL_REQUEST_TYPES,
   ZONE_BLURB_2025,
+  type ZoneView,
   lookupRate,
   rupeesToPaise,
 } from '@msr/stalls';
@@ -183,8 +185,47 @@ export async function planCategoriesFor(db: Db, editionId: string) {
   return db.stallPlanCategory.findMany({ where: { editionId }, orderBy: { sortOrder: 'asc' } });
 }
 
-export async function listZones(db: Db, editionId: string) {
-  return db.stallZone.findMany({ where: { editionId }, orderBy: { sortOrder: 'asc' } });
+/** Bays, each with what is standing in it.
+ *
+ *  ⚠️ The count travels with the row because the Admin screen has to say why a
+ *  bay cannot be removed BEFORE the button is pressed. Finding out from a 409
+ *  after the fact is a worse screen and an avoidable round trip. */
+export async function listZones(
+  db: Db,
+  editionId: string,
+): Promise<Array<ZoneView & { id: string }>> {
+  const rows = await db.stallZone.findMany({
+    where: { editionId },
+    orderBy: { sortOrder: 'asc' },
+    include: { _count: { select: { stalls: true } } },
+  });
+  return rows.map((z) => ({
+    id: z.id,
+    code: z.code,
+    name: z.name,
+    expectedCrowd: z.expectedCrowd,
+    isClosedToVendors: z.isClosedToVendors,
+    sortOrder: z.sortOrder,
+    stallCount: z._count.stalls,
+  }));
+}
+
+/** The planning grid's columns, each saying whether anything stands on it. A
+ *  column in use cannot be dropped, and the screen disables it rather than
+ *  offering a delete that will be refused. */
+export async function listPlanCategories(db: Db, editionId: string): Promise<PlanCategoryView[]> {
+  const rows = await db.stallPlanCategory.findMany({
+    where: { editionId },
+    orderBy: { sortOrder: 'asc' },
+    include: { _count: { select: { plans: true, stalls: true } } },
+  });
+  return rows.map((c) => ({
+    key: c.key,
+    name: c.name,
+    isFood: c.isFood,
+    sortOrder: c.sortOrder,
+    inUse: c._count.plans > 0 || c._count.stalls > 0,
+  }));
 }
 
 export async function chargesFor(db: Db, editionId: string) {

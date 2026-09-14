@@ -1,0 +1,261 @@
+import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { ME_ADMIN, installFetch, renderAt } from '../test-utils';
+import { Admin } from './Admin';
+
+beforeEach(() => vi.unstubAllGlobals());
+
+/** What the staff config endpoint answers. Every list here is the edition's own
+ *  configuration — bays and planning columns are rows, not constants — so the
+ *  screen has to draw itself from this payload and nothing else. */
+const CONFIG = {
+  edition: {
+    id: 'e1',
+    year: 2026,
+    name: 'MSR 2026',
+    isActive: true,
+    virtualAccountRentPrefix: null,
+    virtualAccountDepositPrefix: null,
+    maxStallsPerRequest: 3,
+  },
+  zones: [
+    {
+      id: 'z-c1',
+      code: 'C1',
+      name: 'C1 — Moon side',
+      expectedCrowd: 25000,
+      isClosedToVendors: false,
+      sortOrder: 0,
+      stallCount: 0,
+    },
+    {
+      id: 'z-a3',
+      code: 'A3',
+      name: 'A3 — Behind Adiyogi',
+      expectedCrowd: 4200,
+      isClosedToVendors: true,
+      sortOrder: 1,
+      stallCount: 6,
+    },
+  ],
+  planCategories: [
+    { key: 'VENDOR_FOOD', name: 'Vendor food', isFood: true, sortOrder: 0, inUse: true },
+    { key: 'BACKUP', name: 'Backup', isFood: false, sortOrder: 1, inUse: false },
+  ],
+  rateCard: [
+    {
+      zoneCode: 'C1',
+      isFood: true,
+      scope: 'VENDOR' as const,
+      amountPaise: 1_500_000,
+      depositPaise: 400_000,
+    },
+    {
+      zoneCode: 'A3',
+      isFood: true,
+      scope: 'LOCAL_WELFARE' as const,
+      amountPaise: 1_200_000,
+      depositPaise: 400_000,
+    },
+  ],
+  charges: {
+    id: 'ch1',
+    editionId: 'e1',
+    chairRatePaise: 5000,
+    tableRatePaise: 15000,
+    lwChairRatePaise: 10000,
+    lwTableRatePaise: 30000,
+    vendorChairRatePaise: 10000,
+    vendorTableRatePaise: 40000,
+    plug5aRatePaise: 50000,
+    plug15aRatePaise: 100000,
+    gstPercent: 18,
+    crowdPerStall: 1000,
+    chairTableDepositPaise: 400000,
+    equipmentDays: 1,
+    chairReplacementPaise: 40000,
+    tableReplacementPaise: 90000,
+    damagePenaltyPaise: 25000,
+  },
+  flow: { bankStepEnabled: true, paymentStepEnabled: true, fssaiStepEnabled: true },
+  fineTypes: [],
+  customFields: [],
+};
+
+const routes = [{ path: '/m/stalls/admin', element: <Admin /> }];
+const render = () => renderAt('/m/stalls/admin', routes, { me: true });
+
+const base = (extra: ReadonlyArray<readonly [string, RegExp, unknown]> = []) =>
+  installFetch([
+    ['GET', /\/me$/, () => ME_ADMIN],
+    ['GET', /\/config$/, () => CONFIG],
+    ...(extra as ReadonlyArray<readonly [string, RegExp, () => unknown]>),
+  ]);
+
+describe('bays', () => {
+  test('adds a bay for a layout that has been redrawn', async () => {
+    const fetch = base([['POST', /\/config\/zones$/, () => ({ id: 'z-d1' })]]);
+    render();
+    const user = userEvent.setup();
+
+    await screen.findByLabelText('C1 name');
+    await user.type(screen.getByLabelText('Code'), 'D1');
+    await user.type(screen.getByLabelText('Name'), 'D1 — new lawn');
+    await user.type(screen.getByLabelText('Expected crowd'), '8000');
+    await user.click(screen.getByRole('button', { name: /add bay/i }));
+
+    await waitFor(() => {
+      const call = fetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/config/zones'));
+      expect(call?.body).toMatchObject({ code: 'D1', name: 'D1 — new lawn', expectedCrowd: 8000 });
+    });
+  });
+
+  // ⚠️ Disabled with the reason on it, not offered and then refused. Removing a
+  // bay that holds stalls would have to cascade away the stalls, the
+  // allocations and the record of who stood where.
+  test('a bay with stalls in it cannot be removed, and says why', async () => {
+    base();
+    render();
+    await screen.findByLabelText('C1 name');
+
+    expect(screen.getByLabelText('Remove C1')).toBeEnabled();
+    expect(screen.getByLabelText(/A3 has 6 stalls and cannot be removed/)).toBeDisabled();
+  });
+
+  test('removing an empty bay asks the API to delete it', async () => {
+    const fetch = base([['DELETE', /\/config\/zones\/C1$/, () => null]]);
+    render();
+    const user = userEvent.setup();
+
+    await screen.findByLabelText('C1 name');
+    await user.click(screen.getByLabelText('Remove C1'));
+
+    await waitFor(() =>
+      expect(
+        fetch.calls.some((c) => c.method === 'DELETE' && c.url.endsWith('/config/zones/C1')),
+      ).toBe(true),
+    );
+  });
+});
+
+describe('planning columns', () => {
+  const open = async (user: ReturnType<typeof userEvent.setup>) => {
+    await screen.findByLabelText('C1 name');
+    await user.click(screen.getByRole('tab', { name: /planning columns/i }));
+  };
+
+  // 🔴 The 2025 sheet carries sponsor and Adiyogi columns the old enum never
+  // had, so a sponsor stall could not be counted apart from an ashram one.
+  test('adds a column the sheet carries and the enum never had', async () => {
+    const fetch = base([['PUT', /\/config\/plan-categories$/, () => ({})]]);
+    render();
+    const user = userEvent.setup();
+    await open(user);
+
+    await user.type(screen.getByLabelText('Key'), 'SPONSOR_FOOD');
+    await user.type(screen.getByLabelText('Column heading'), 'Sponsor food');
+    await user.click(screen.getByRole('button', { name: /add column/i }));
+    await user.click(screen.getByRole('button', { name: /save columns/i }));
+
+    await waitFor(() => {
+      const call = fetch.calls.find((c) => c.method === 'PUT');
+      expect((call?.body as { categories: Array<{ key: string }> }).categories.map((x) => x.key)).toEqual([
+        'VENDOR_FOOD',
+        'BACKUP',
+        'SPONSOR_FOOD',
+      ]);
+    });
+  });
+
+  test('a column already planned against offers no delete at all', async () => {
+    base();
+    render();
+    const user = userEvent.setup();
+    await open(user);
+
+    expect(screen.getByText('In use')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Remove VENDOR_FOOD')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Remove BACKUP')).toBeInTheDocument();
+  });
+
+  test('reordering renumbers the columns from their new positions', async () => {
+    const fetch = base([['PUT', /\/config\/plan-categories$/, () => ({})]]);
+    render();
+    const user = userEvent.setup();
+    await open(user);
+
+    await user.click(screen.getByLabelText('Move BACKUP up'));
+    await user.click(screen.getByRole('button', { name: /save columns/i }));
+
+    await waitFor(() => {
+      const call = fetch.calls.find((c) => c.method === 'PUT');
+      const sent = (call?.body as { categories: Array<{ key: string; sortOrder: number }> })
+        .categories;
+      expect(sent).toEqual([
+        { key: 'BACKUP', name: 'Backup', isFood: false, sortOrder: 0 },
+        { key: 'VENDOR_FOOD', name: 'Vendor food', isFood: true, sortOrder: 1 },
+      ]);
+    });
+  });
+});
+
+describe('season settings', () => {
+  test('sends the account prefixes Finance issues, and empty means not issued', async () => {
+    const fetch = base([['PATCH', /\/editions\/e1\/settings$/, () => ({})]]);
+    render();
+    const user = userEvent.setup();
+
+    await screen.findByLabelText('C1 name');
+    await user.click(screen.getByRole('tab', { name: /editions/i }));
+    await user.type(screen.getByLabelText('Virtual account prefix — rent'), 'MSRRENT');
+    await user.click(screen.getByRole('button', { name: /save settings/i }));
+
+    await waitFor(() => {
+      const call = fetch.calls.find((c) => c.method === 'PATCH');
+      expect(call?.body).toMatchObject({
+        name: 'MSR 2026',
+        virtualAccountRentPrefix: 'MSRRENT',
+        // Never issued, and sent as null rather than an empty string — the API
+        // reads null as "Finance has not issued one for this season".
+        virtualAccountDepositPrefix: null,
+        maxStallsPerRequest: 3,
+      });
+    });
+  });
+});
+
+describe('the rent matrix', () => {
+  test('a bay closed to trade still takes its local welfare figures', async () => {
+    base();
+    render();
+    const user = userEvent.setup();
+
+    await screen.findByLabelText('C1 name');
+    await user.click(screen.getByRole('tab', { name: /rates/i }));
+
+    // Closed to trade, so no vendor inputs at all…
+    expect(screen.getAllByText('Closed to trade').length).toBeGreaterThan(0);
+    expect(screen.queryByLabelText('A3 vendor rent')).not.toBeInTheDocument();
+    // …and priced for local welfare, which is the whole point of the rework.
+    expect(screen.getByLabelText('A3 local welfare rent')).toHaveValue(12000);
+    expect(screen.getByLabelText('A3 local welfare advance')).toHaveValue(4000);
+  });
+
+  test('a row left at zero is dropped rather than saved as a free stall', async () => {
+    const fetch = base([['PUT', /\/config\/rate-card$/, () => ({})]]);
+    render();
+    const user = userEvent.setup();
+
+    await screen.findByLabelText('C1 name');
+    await user.click(screen.getByRole('tab', { name: /rates/i }));
+    await user.clear(screen.getByLabelText('C1 vendor rent'));
+    await user.click(screen.getByRole('button', { name: /save rates/i }));
+
+    await waitFor(() => {
+      const call = fetch.calls.find((c) => c.method === 'PUT');
+      const sent = (call?.body as { entries: Array<{ zoneCode: string }> }).entries;
+      expect(sent.map((e) => e.zoneCode)).toEqual(['A3']);
+    });
+  });
+});

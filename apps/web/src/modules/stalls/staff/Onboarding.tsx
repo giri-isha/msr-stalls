@@ -1,7 +1,13 @@
 import type { OnboardingRow } from '@msr/stalls';
 import { formatInr } from '@msr/stalls';
-import { useMemo, useState } from 'react';
-import { getOnboarding, issueCoupon, removeVendorStaff, verifyFssai } from '../api';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  getOnboarding,
+  issueCoupon,
+  removeVendorStaff,
+  setCouponCapacity,
+  verifyFssai,
+} from '../api';
 import { TypeBadge } from '../components/StatusPill';
 import { formatDate, formatDateTime, useLoad } from '../hooks';
 import { listOnboarding } from '../api';
@@ -15,6 +21,7 @@ import {
   Facts,
   H1,
   Icon,
+  Input,
   Loading,
   Search,
   Section,
@@ -407,6 +414,15 @@ function OnboardingDetailDialog({
                     Issue coupon
                   </Btn>
                 )}
+                {data.couponCode && (
+                  <CouponCapacity
+                    requestId={id}
+                    capacity={data.couponCapacity ?? 0}
+                    registered={data.staffRegistered}
+                    writable={can('requests:write')}
+                    onSaved={refresh}
+                  />
+                )}
               </div>
               {data.staff.length === 0 ? (
                 <Empty>Nobody registered yet.</Empty>
@@ -462,5 +478,84 @@ function OnboardingDetailDialog({
         </div>
       )}
     </Dialog>
+  );
+}
+
+/**
+ * What one coupon may register.
+ *
+ * 🔴 Eight by default — "as a default we raise the coupon code with eight staff
+ * members for each stall" — and moved case by case from here: "if they want
+ * more staff members, in the back end we raise that capacity to 10, 12". The
+ * change lands on the coupon the vendor already holds, so nobody has to be
+ * sent a new code.
+ *
+ * ⚠️ It is the COUPON's number, never the vendor's own "staff passes" answer.
+ * That answer was a request made on a form months earlier; this is what the
+ * stall team has agreed to let through the gate, and the gate is what the
+ * counter enforces. Reading the vendor's figure also meant zero for every local
+ * welfare stall, whose form never asks — and a cap of zero read as "no limit"
+ * is how a stall with eight passes registered eighty.
+ */
+function CouponCapacity({
+  requestId,
+  capacity,
+  registered,
+  writable,
+  onSaved,
+}: {
+  requestId: string;
+  capacity: number;
+  registered: number;
+  writable: boolean;
+  onSaved: () => void;
+}) {
+  const toast = useToast();
+  const [value, setValue] = useState(String(capacity));
+  const [saving, setSaving] = useState(false);
+  useEffect(() => setValue(String(capacity)), [capacity]);
+
+  const next = Math.floor(Number(value));
+  // Lowering below what is already registered would leave the stall over its
+  // own cap with no way to read the number as a limit again.
+  const tooLow = next < registered;
+  const dirty = next !== capacity && next >= 1 && !tooLow;
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await setCouponCapacity(requestId, next);
+      toast.ok(`Coupon now admits ${next}.`);
+      onSaved();
+    } catch (e) {
+      toast.fail(e);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+      <label htmlFor='coupon-capacity'>Admits</label>
+      <Input
+        id='coupon-capacity'
+        type='number'
+        min={1}
+        max={200}
+        value={value}
+        disabled={!writable || saving}
+        onChange={(e) => setValue(e.target.value)}
+        style={{ width: 72, padding: '5px 8px', fontSize: 12.5, textAlign: 'right' }}
+      />
+      <span>people</span>
+      {tooLow && (
+        <span style={{ color: 'var(--warn-fg)' }}>
+          {registered} already registered
+        </span>
+      )}
+      <Btn disabled={!writable || !dirty || saving} onClick={save}>
+        Save
+      </Btn>
+    </span>
   );
 }

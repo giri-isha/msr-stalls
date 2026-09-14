@@ -26,6 +26,8 @@ import type {
   PresignUploadResponse,
   PublicConfig,
   PublicStatusResponse,
+  ZoneView,
+  PlanCategoryView,
   RateCardEntry,
   RateScope,
   SignatureView,
@@ -143,15 +145,21 @@ export const applyPlan = () =>
 // ── Staff: config ───────────────────────────────────────────────────────────
 
 export interface StaffConfig {
-  edition: { id: string; year: number; name: string; isActive: boolean };
-  zones: Array<{
+  edition: {
     id: string;
-    code: string;
+    year: number;
     name: string;
-    expectedCrowd: number;
-    isClosedToVendors: boolean;
-    sortOrder: number;
-  }>;
+    isActive: boolean;
+    /** Finance issues these per season; null until they have. A request with no
+     *  prefix quotes no account to pay into. */
+    virtualAccountRentPrefix: string | null;
+    virtualAccountDepositPrefix: string | null;
+    maxStallsPerRequest: number;
+  };
+  zones: Array<ZoneView & { id: string }>;
+  /** The planning grid's columns, each saying whether anything already stands
+   *  on it — a column in use cannot be dropped. */
+  planCategories: PlanCategoryView[];
   /** One row per bay x food/non-food x scope, each carrying its own refundable
    *  advance. Not a band: the rent genuinely differs bay by bay, and banding
    *  them meant two bays that happened to share a letter could never be priced

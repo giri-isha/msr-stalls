@@ -229,15 +229,17 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'config:read');
     const edition = await activeEdition(prisma);
-    const [zones, rateCard, charges, flow, fineTypes, customFields] = await Promise.all([
-      config.listZones(prisma, edition.id),
-      config.rateCardFor(prisma, edition.id),
-      config.chargesFor(prisma, edition.id),
-      config.flowFor(prisma, edition.id),
-      config.listFineTypes(prisma, edition.id),
-      config.listCustomFields(prisma, edition.id),
-    ]);
-    return { edition, zones, rateCard, charges, flow, fineTypes, customFields };
+    const [zones, planCategories, rateCard, charges, flow, fineTypes, customFields] =
+      await Promise.all([
+        config.listZones(prisma, edition.id),
+        config.listPlanCategories(prisma, edition.id),
+        config.rateCardFor(prisma, edition.id),
+        config.chargesFor(prisma, edition.id),
+        config.flowFor(prisma, edition.id),
+        config.listFineTypes(prisma, edition.id),
+        config.listCustomFields(prisma, edition.id),
+      ]);
+    return { edition, zones, planCategories, rateCard, charges, flow, fineTypes, customFields };
   });
 
   zod.get('/editions', async (req) => {
