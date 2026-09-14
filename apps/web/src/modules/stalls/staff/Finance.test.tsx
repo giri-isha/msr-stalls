@@ -125,6 +125,72 @@ describe('confirming a credit', () => {
     });
   });
 
+  test('the agreed fee is recorded beside the quote, never on top of it', async () => {
+    // "For A3 the cost is 10,000 — for the coconut wala, probably we will give
+    // that stall at 5,000." The card figure is what they were told; this is
+    // what they owe, and Finance needs both when the season is reconciled.
+    const fetch = stub([['PUT', /\/discretionary-fee$/, () => [204, null]]]);
+    render();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Payment confirmation' }));
+    await user.click(await screen.findByRole('button', { name: 'Record credit' }));
+
+    const dialog = await screen.findByRole('dialog');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Agree a different fee for this stall…' }),
+    );
+    await user.type(within(dialog).getByLabelText('Fee agreed (₹)'), '5000');
+    await user.type(within(dialog).getByLabelText('Why'), 'Local welfare — agreed by the dept');
+    await user.click(within(dialog).getByRole('button', { name: 'Save agreed fee' }));
+
+    await waitFor(() => {
+      const put = fetch.calls.find((c) => c.method === 'PUT');
+      expect(put?.url).toContain('/discretionary-fee');
+      expect(put?.body).toMatchObject({
+        discretionaryFeePaise: 500_000,
+        reason: 'Local welfare — agreed by the dept',
+      });
+    });
+  });
+
+  test('a figure with no reason is refused before it leaves the screen', async () => {
+    const fetch = stub([['PUT', /\/discretionary-fee$/, () => [204, null]]]);
+    render();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Payment confirmation' }));
+    await user.click(await screen.findByRole('button', { name: 'Record credit' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Agree a different fee for this stall…' }),
+    );
+    await user.type(within(dialog).getByLabelText('Fee agreed (₹)'), '5000');
+    await user.click(within(dialog).getByRole('button', { name: 'Save agreed fee' }));
+
+    expect(await screen.findByText('Say why the amount was reduced.')).toBeInTheDocument();
+    expect(fetch.calls.some((c) => c.method === 'PUT')).toBe(false);
+  });
+
+  test('a concession already agreed shows both figures and what is owed', async () => {
+    payments = [
+      paymentRow({
+        quote: quote({
+          discretionaryFeePaise: 500_000,
+          discretionaryReason: 'Local welfare',
+          payableFeePaise: 500_000,
+          grandTotalPaise: 900_000,
+        }),
+      }),
+    ];
+    stub();
+    render();
+
+    await screen.findByText('Green Leaf Organics');
+    expect(screen.getByText(/Agreed fee/)).toBeInTheDocument();
+    expect(screen.getByText(/Local welfare/)).toBeInTheDocument();
+  });
+
   test('the dialog will not submit without a reference number', async () => {
     stub();
     render();

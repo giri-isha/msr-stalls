@@ -412,6 +412,7 @@ function TemplatePanel() {
   const [key, setKey] = useState<TemplateKeyValue>('SELECTION_VENDOR');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
+  const [whatsappBody, setWhatsappBody] = useState('');
   const [dirty, setDirty] = useState(false);
 
   const current = data?.templates.find((t) => t.key === key);
@@ -421,10 +422,14 @@ function TemplatePanel() {
     if (!current) return;
     setSubject(current.subject);
     setBody(current.body);
+    setWhatsappBody(current.whatsappBody);
     setDirty(false);
-  }, [current?.key, current?.subject, current?.body]);
+  }, [current?.key, current?.subject, current?.body, current?.whatsappBody]);
 
-  const unknown = useMemo(() => unknownPlaceholders(`${subject}\n${body}`), [subject, body]);
+  const unknown = useMemo(
+    () => unknownPlaceholders(`${subject}\n${body}\n${whatsappBody}`),
+    [subject, body, whatsappBody],
+  );
 
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox>{error.message}</ErrorBox>;
@@ -432,7 +437,11 @@ function TemplatePanel() {
 
   const save = async () => {
     try {
-      await putTemplate(key, { subject, body });
+      // ⚠️ `whatsappBody` goes with every save. The contract defaults it to the
+      // empty string, and an empty WhatsApp body means "this letter is email
+      // only" — so a save that left it out silently switched the WhatsApp
+      // message off every time somebody fixed a typo in the email.
+      await putTemplate(key, { subject, body, whatsappBody });
       toast.ok('Template saved.');
       setDirty(false);
       reload();
@@ -487,6 +496,26 @@ function TemplatePanel() {
             value={body}
             onChange={(e) => {
               setBody(e.target.value);
+              setDirty(true);
+            }}
+            style={{ fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 12.5 }}
+          />
+        </label>
+
+        {/* 🔴 The selection letter goes out on both channels — "we would like
+            to send them a WhatsApp message, as well as an email" — and the two
+            are not the same text. A letter pasted into WhatsApp whole is a wall
+            nobody scrolls, so this is written short and carries no attachment.
+            Empty means this letter is email-only. */}
+        <label htmlFor='template-whatsapp' style={{ display: 'grid', gap: 5 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 600 }}>WhatsApp message</span>
+          <Textarea
+            id='template-whatsapp'
+            rows={6}
+            value={whatsappBody}
+            placeholder='Leave empty to send this letter by email only.'
+            onChange={(e) => {
+              setWhatsappBody(e.target.value);
               setDirty(true);
             }}
             style={{ fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 12.5 }}

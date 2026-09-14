@@ -147,6 +147,21 @@ docs/                         specs, plans, migration checklist
 - **The stall NUMBER is withheld until check-in.** The bay is told early,
   because the rent depends on it; the number is handed over at the counter,
   where somebody is standing there to have the conversation it starts.
+- **The bay a requester ASKED for and the bay they AGREED to are two columns.**
+  The team routinely moves a shortlisted applicant to another side, and what
+  they settle on is what the stall is priced at — settled before any stall
+  number exists, because the payment letter goes out first. `agreedZoneCode` is
+  written at selection or on an amendment, and the quote reads it ahead of the
+  preference.
+- **A request is capped at what one decision can cover.** Two stalls in one
+  bay, by default; ground in a second bay is a second request, so the team can
+  accept one and decline the other. The number is the edition's, editable in
+  Admin, and enforced on the public write.
+- **A role may be scoped to a requester type.** The local welfare team files
+  inside this application, on behalf of village traders who have no email
+  address — which makes them staff holding real `requests:write`, with no
+  business in a commercial vendor's bank details. Every list narrows to the
+  scope and every request-addressed route checks it (`scope.ts`).
 - **A coupon's capacity is the coupon's own** — eight by default, raised case by
   case — and never the vendor's staff-pass answer. A cap of zero admits nobody
   rather than everybody.

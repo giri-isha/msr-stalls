@@ -15,6 +15,9 @@ const TEMPLATES = {
     description: t.description,
     subject: t.subject,
     body: t.body,
+    // The selection letter goes out on both channels and the two are not the
+    // same text. A fixture that left this off is how the screen came to drop it.
+    whatsappBody: t.whatsappBody,
     appliesTo: [...t.appliesTo],
     updatedAt: null,
     attachment: null,
@@ -147,6 +150,46 @@ describe('the template editor', () => {
       const put = fetch.calls.find((c) => c.method === 'PUT');
       expect(put?.url).toContain('/comms/templates/SELECTION_VENDOR');
       expect(put?.body).toMatchObject({ subject: 'Confirmed' });
+    });
+  });
+
+  test('an edit to the email keeps the WhatsApp wording', async () => {
+    // ⚠️ The contract defaults `whatsappBody` to the empty string, and empty
+    // means "email only" to the send path — so a save that omitted it switched
+    // the WhatsApp message off every time somebody fixed a typo in the email.
+    const fetch = stub();
+    render();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Templates' }));
+    const subject = await screen.findByLabelText('Subject');
+    await user.clear(subject);
+    await user.type(subject, 'Confirmed');
+    await user.click(screen.getByRole('button', { name: 'Save template' }));
+
+    await waitFor(() => {
+      const put = fetch.calls.find((c) => c.method === 'PUT');
+      expect(put?.body).toMatchObject({ whatsappBody: TEMPLATES.templates[0].whatsappBody });
+    });
+  });
+
+  test('the WhatsApp wording is edited beside the email, not instead of it', async () => {
+    const fetch = stub();
+    render();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Templates' }));
+    const wa = await screen.findByLabelText('WhatsApp message');
+    await user.clear(wa);
+    await user.type(wa, 'You have been selected. Details by email.');
+    await user.click(screen.getByRole('button', { name: 'Save template' }));
+
+    await waitFor(() => {
+      const put = fetch.calls.find((c) => c.method === 'PUT');
+      expect(put?.body).toMatchObject({
+        whatsappBody: 'You have been selected. Details by email.',
+        subject: TEMPLATES.templates[0].subject,
+      });
     });
   });
 

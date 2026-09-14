@@ -40,6 +40,7 @@ import type {
   RequestDetail,
   RequestPage,
   SendEmailResult,
+  SetDiscretionaryFeeInput,
   StaffMember,
   StallRole,
   SubmitBankDetailsInput,
@@ -337,8 +338,10 @@ export interface TemplatesResponse {
 
 export const getTemplates = () => apiFetch<TemplatesResponse>(`${BASE}/comms/templates`);
 
-export const putTemplate = (key: TemplateKeyValue, body: { subject: string; body: string }) =>
-  apiFetch<void>(`${BASE}/comms/templates/${key}`, { method: 'PUT', json: body });
+export const putTemplate = (
+  key: TemplateKeyValue,
+  body: { subject: string; body: string; whatsappBody: string },
+) => apiFetch<void>(`${BASE}/comms/templates/${key}`, { method: 'PUT', json: body });
 
 export const putTemplateAttachment = (
   key: TemplateKeyValue,
@@ -407,6 +410,15 @@ export const confirmPayment = (requestId: string, body: ConfirmPaymentInput) =>
   apiFetch<void>(`${BASE}/finance/payments/${requestId}`, { method: 'POST', json: body });
 export const deletePaymentRecord = (recordId: string) =>
   apiFetch<void>(`${BASE}/finance/payments/${recordId}`, { method: 'DELETE' });
+
+/** The concession the local welfare team agreed on one stall. Recorded beside
+ *  the quote, never on top of it — what the requester was told and what they
+ *  owe are two figures. `null` clears it. */
+export const setDiscretionaryFee = (requestId: string, body: SetDiscretionaryFeeInput) =>
+  apiFetch<void>(`${BASE}/finance/payments/${requestId}/discretionary-fee`, {
+    method: 'PUT',
+    json: body,
+  });
 
 export const listRefunds = () => apiFetch<RefundRow[]>(`${BASE}/finance/refunds`);
 export const submitRefund = (requestId: string, body: SubmitRefundInput) =>

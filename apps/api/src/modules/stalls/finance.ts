@@ -4,12 +4,14 @@ import {
   type PaymentRecordView,
   type PaymentRow,
   type RefundRow,
+  type SetDiscretionaryFeeInput,
   type SubmitRefundInput,
   computeRefund,
   equipmentDeduction,
   needsPaymentStep,
 } from '@msr/stalls';
 import { recordActivity } from '../../activity';
+import { ValidationFailedError } from '../../errors';
 import { chargesFor } from './config';
 import type { Db } from './editions';
 import { DuplicatePaymentError, RefundAlreadySubmittedError, UnknownRequestError } from './errors';
@@ -87,16 +89,17 @@ async function toPaymentRow(
     // An UNPRICED stall is never "settled": A3 and B2 carry no rate, so nothing
     // is known about what is owed, and zero-versus-zero would otherwise read as
     // paid in full and drop the row off Finance's list.
+    // ⚠️ Against `payableFeePaise`, not `feeTotalPaise`. Where the team agreed a
+    // concession, the quoted figure is what the requester was TOLD and the
+    // payable one is what they OWE — settling against the quote would leave a
+    // stall that paid exactly what was agreed permanently outstanding.
     fullySettled:
       !quote.unpriced &&
-      receivedRentPaise >= quote.feeTotalPaise &&
+      receivedRentPaise >= quote.payableFeePaise &&
       receivedDepositPaise >= quote.depositTotalPaise,
   };
 }
 
-/** Everyone who owes money: selected vendors and local welfare stalls. Ashram
- *  departments are not billed and are absent, rather than present with a row of
- *  zeros that Finance would have to learn to ignore. */
 /** The requester types that pay us, narrowed to what the caller may see.
  *  Ashram stalls never appear on either finance screen — they are not billed —
  *  so the intersection is taken here rather than adding a second clause. */
@@ -105,6 +108,9 @@ function payingTypes(scope: RequestScope): StallRequestType[] {
   return scope === null ? paying : paying.filter((t) => scope.includes(t));
 }
 
+/** Everyone who owes money: selected vendors and local welfare stalls. Ashram
+ *  departments are not billed and are absent, rather than present with a row of
+ *  zeros that Finance would have to learn to ignore. */
 export async function listPayments(
   db: Db,
   editionId: string,
@@ -121,6 +127,87 @@ export async function listPayments(
   });
   const ctx = await quoteContext(db, editionId);
   return Promise.all(rows.map((r) => toPaymentRow(r, ctx)));
+}
+
+/** The concession the local welfare team agreed on one stall.
+ *
+ *  🔴 "For A3 the cost is 10,000 — for the coconut wala, probably we will give
+ *  that stall at 5,000." The judgement is theirs, per trader, and it is made
+ *  after the card rate exists. Without somewhere to record it the quoted figure
+ *  is the only figure the system knows, so a stall that paid exactly what was
+ *  agreed never reads as settled and Finance reconciles against a number nobody
+ *  ever asked for.
+ *
+ *  ⚠️ `feeTotalPaise` on the plan is NOT rewritten. That is what the requester
+ *  was told; this is what is owed. The gap between them is the concession, and
+ *  the team is entitled to see both.
+ *
+ *  ⚠️ The fee only. The deposit comes back in full, so conceding it would mean
+ *  refunding money that was never taken.
+ *
+ *  The plan is created from the current quote if the payment letter has not
+ *  gone out yet — a concession agreed in a phone call before any letter is
+ *  agreed against the figure standing at that moment, and `quotedAt` records
+ *  when that was.
+ */
+export async function setDiscretionaryFee(
+  db: PrismaClient,
+  requestId: string,
+  input: SetDiscretionaryFeeInput,
+  by: string,
+): Promise<void> {
+  const r = await db.stallRequest.findUnique({ where: { id: requestId }, include: factsInclude });
+  if (!r) throw new UnknownRequestError(requestId);
+  if (!needsPaymentStep(r.requestType)) throw new UnknownRequestError(requestId);
+
+  // A figure below the card rate with nothing beside it is indistinguishable
+  // from a typo six months later. Clearing it clears the reason with it.
+  if (input.discretionaryFeePaise !== null && !input.reason) {
+    throw new ValidationFailedError([
+      { row: 0, fieldKey: 'reason', message: 'a concession has to say why it was given' },
+    ]);
+  }
+
+  const q = quoteFor(r, await quoteContext(db, r.editionId));
+  if (!q || q.exempt) throw new UnknownRequestError(requestId);
+
+  await db.stallPaymentPlan.upsert({
+    where: { requestId },
+    create: {
+      requestId,
+      stallFeePaise: q.stallFeePaise,
+      plugFeePaise: q.plugFeePaise,
+      equipmentFeePaise: q.equipmentFeePaise,
+      netPaise: q.netPaise,
+      gstPaise: q.gstPaise,
+      feeTotalPaise: q.feeTotalPaise,
+      stallDepositPaise: q.stallDepositPaise,
+      equipmentDepositPaise: q.equipmentDepositPaise,
+      depositTotalPaise: q.depositTotalPaise,
+      discretionaryFeePaise: input.discretionaryFeePaise,
+      discretionaryReason: input.discretionaryFeePaise === null ? null : input.reason,
+    },
+    update: {
+      discretionaryFeePaise: input.discretionaryFeePaise,
+      discretionaryReason: input.discretionaryFeePaise === null ? null : input.reason,
+    },
+  });
+
+  await refreshStage(db, requestId);
+  await recordActivity(db, {
+    actorRef: by,
+    moduleKey: MODULE_KEY,
+    action:
+      input.discretionaryFeePaise === null
+        ? 'stall_payment_plan.concession_cleared'
+        : 'stall_payment_plan.concession_set',
+    subjectRef: requestId,
+    detail: {
+      quotedPaise: q.feeTotalPaise,
+      agreedPaise: input.discretionaryFeePaise,
+      reason: input.reason,
+    },
+  });
 }
 
 export async function confirmPayment(

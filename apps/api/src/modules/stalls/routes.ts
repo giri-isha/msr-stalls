@@ -30,6 +30,7 @@ import {
   SelectRequestInput,
   SendEmailInput,
   SetCouponCapacityInput,
+  SetDiscretionaryFeeInput,
   SubmitRefundInput,
   TEMPLATE_PLACEHOLDERS,
   TemplateKeyValue,
@@ -723,6 +724,23 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     await finance.deletePayment(prisma, req.params.id, caller.personId);
     reply.status(204);
   });
+
+  /** The concession the local welfare team agreed on one stall — "for A3 the
+   *  cost is 10,000; for the coconut wala, probably we will give that at
+   *  5,000". Recorded beside the quote, never on top of it: what the requester
+   *  was told and what they owe are two figures, and the team is entitled to
+   *  see both. `null` clears it and puts the quoted figure back in force. */
+  zod.put(
+    '/finance/payments/:id/discretionary-fee',
+    { schema: { params: IdParams, body: SetDiscretionaryFeeInput } },
+    async (req, reply) => {
+      const caller = await requireStaff(req, prisma);
+      requireAction(caller, 'finance:write');
+      await requireRequestScope(caller, prisma, req.params.id);
+      await finance.setDiscretionaryFee(prisma, req.params.id, req.body, caller.personId);
+      reply.status(204);
+    },
+  );
 
   zod.get('/finance/refunds', async (req) => {
     const caller = await requireStaff(req, prisma);

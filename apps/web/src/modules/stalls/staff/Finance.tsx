@@ -8,6 +8,7 @@ import {
   listPayments,
   listRefunds,
   sendEmails,
+  setDiscretionaryFee,
   setVoucherRef,
   submitRefund,
 } from '../api';
@@ -193,6 +194,15 @@ function DuePanel() {
                         <div style={{ fontSize: 10.5, color: 'var(--mfg)', fontWeight: 400 }}>
                           incl. {formatInr(r.quote.depositTotalPaise)} deposit
                         </div>
+                        {/* The total already follows the concession. Without
+                            this line it silently disagrees with the itemised
+                            columns beside it, which still show the card rate. */}
+                        {r.quote.discretionaryFeePaise !== null && (
+                          <div style={{ fontSize: 10.5, color: 'var(--mfg)', fontWeight: 400 }}>
+                            Agreed fee {formatInr(r.quote.payableFeePaise)} —{' '}
+                            {r.quote.discretionaryReason}
+                          </div>
+                        )}
                       </TD>
                     </>
                   )}
@@ -233,9 +243,21 @@ function Money({ row }: { row: PaymentRow }) {
   if (row.quote.unpriced) {
     return <div style={{ fontSize: 12.5, color: 'var(--mfg)' }}>No rent quoted for this zone.</div>;
   }
+  const conceded = row.quote.discretionaryFeePaise !== null;
   return (
     <div style={{ fontSize: 12.5, display: 'grid', gap: 2 }}>
-      <div>Fee incl. GST: {formatInr(row.quote.feeTotalPaise)}</div>
+      {/* Both figures, always, where a concession stands: what the requester was
+          TOLD and what they OWE are different facts, and Finance reconciling a
+          season six months later needs to see the gap rather than infer it. */}
+      <div style={conceded ? { textDecoration: 'line-through', color: 'var(--mfg)' } : undefined}>
+        Fee incl. GST: {formatInr(row.quote.feeTotalPaise)}
+      </div>
+      {conceded && (
+        <div>
+          Agreed fee: {formatInr(row.quote.payableFeePaise)}
+          <span style={{ color: 'var(--mfg)' }}> — {row.quote.discretionaryReason}</span>
+        </div>
+      )}
       <div>Deposit: {formatInr(row.quote.depositTotalPaise)}</div>
       <div style={{ fontWeight: 700 }}>Total: {formatInr(row.quote.grandTotalPaise)}</div>
     </div>
@@ -327,6 +349,103 @@ function ConfirmPanel() {
   );
 }
 
+/** Recording what the team actually agreed to collect on one stall.
+ *
+ *  🔴 "For A3 the cost is 10,000 — for the coconut wala, probably we will give
+ *  that stall at 5,000." Local welfare pitches are priced off the rate card and
+ *  then settled at whatever the local welfare team judged that trader could
+ *  give. The card figure stays as it is; this is the other number, and without
+ *  it a stall that paid exactly what was agreed never reads as settled.
+ *
+ *  The reason is required, and that is not ceremony: a figure below the card
+ *  rate with nothing beside it is indistinguishable from a typo six months on,
+ *  when whoever agreed it has moved on and Finance is closing the season.
+ */
+function Concession({
+  row,
+  onToast,
+  onDone,
+}: {
+  row: PaymentRow;
+  onToast: ReturnType<typeof useToast>;
+  onDone: () => void;
+}) {
+  const set = row.quote.discretionaryFeePaise !== null;
+  const [open, setOpen] = useState(set);
+  const [fee, setFee] = useState(
+    set ? String(paiseToRupees(row.quote.discretionaryFeePaise ?? 0)) : '',
+  );
+  const [reason, setReason] = useState(row.quote.discretionaryReason ?? '');
+  const [busy, setBusy] = useState(false);
+
+  if (row.quote.unpriced) return null;
+
+  const save = async (clear: boolean) => {
+    const rupees = Number(fee);
+    if (!clear && (!Number.isFinite(rupees) || rupees < 0)) {
+      onToast.fail(new Error('Enter the amount agreed.'));
+      return;
+    }
+    if (!clear && reason.trim().length === 0) {
+      onToast.fail(new Error('Say why the amount was reduced.'));
+      return;
+    }
+    setBusy(true);
+    try {
+      await setDiscretionaryFee(row.requestId, {
+        discretionaryFeePaise: clear ? null : rupeesToPaise(rupees),
+        reason: clear ? null : reason.trim(),
+      });
+      onToast.ok(clear ? 'Back to the quoted fee.' : 'Agreed fee recorded.');
+      onDone();
+    } catch (e) {
+      onToast.fail(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open) {
+    return <Btn onClick={() => setOpen(true)}>Agree a different fee for this stall…</Btn>;
+  }
+
+  return (
+    <Card pad={12} style={{ display: 'grid', gap: 10 }}>
+      <div style={{ fontSize: 12.5, color: 'var(--mfg)' }}>
+        Quoted {formatInr(row.quote.feeTotalPaise)} incl. GST. Recording a different figure leaves
+        the quote untouched — both are kept.
+      </div>
+      <FormField id='concession-fee' label='Fee agreed (₹)'>
+        <Input
+          id='concession-fee'
+          type='number'
+          min={0}
+          value={fee}
+          onChange={(e) => setFee(e.target.value)}
+        />
+      </FormField>
+      <FormField id='concession-reason' label='Why'>
+        <Input
+          id='concession-reason'
+          value={reason}
+          placeholder='e.g. Local welfare — agreed by the department'
+          onChange={(e) => setReason(e.target.value)}
+        />
+      </FormField>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <Btn kind='primary' disabled={busy} onClick={() => save(false)}>
+          Save agreed fee
+        </Btn>
+        {set && (
+          <Btn disabled={busy} onClick={() => save(true)}>
+            Back to the quoted fee
+          </Btn>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function ConfirmDialog({
   row,
   canWrite,
@@ -344,7 +463,7 @@ function ConfirmDialog({
   const [referenceNo, setReferenceNo] = useState('');
   const [eCollectCode, setECollect] = useState('');
   const [amount, setAmount] = useState(
-    String(paiseToRupees(row.quote.feeTotalPaise - row.receivedRentPaise)),
+    String(paiseToRupees(row.quote.payableFeePaise - row.receivedRentPaise)),
   );
   const [receivedOn, setReceivedOn] = useState(new Date().toISOString().slice(0, 10));
   const [remitterName, setRemitter] = useState('');
@@ -439,6 +558,8 @@ function ConfirmDialog({
             </Table>
           </Card>
         )}
+
+        {canWrite && <Concession row={row} onToast={onToast} onDone={onDone} />}
 
         {canWrite && (
           <>

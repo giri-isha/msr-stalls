@@ -25,6 +25,7 @@ package both sides share.
 | Anyone with the link can register | `POST /public/requests` — the one open write, rate-limited per IP | Built |
 | Register and log in with email or phone number | Submitting IS the signup: it creates an account keyed on the email and mints a signed link. `/stalls/status` takes an email address **or** a mobile number and emails that account its link back. | Differs — no password, no OTP. See [Vendor identity](#vendor-identity) below. |
 | Admin-added questions | `StallCustomField`, Admin → Custom fields | Built |
+| At most two stalls in one bay per request — "if they want another area, they raise another request, so we can individually accept one and reject the other" | `StallEdition.maxStallsPerRequest`, enforced in `submit.ts`; 422 with the cap in the message | Built |
 
 ## 2. Planning
 
@@ -43,6 +44,9 @@ package both sides share.
 | View the same, then **select** | `SelectDialog`, `POST /requests/:id/select` | Built |
 | A column for the stall number area, from the configured zones | `StallAllocation` → `Stall.number`; shown on the list, the detail and the vendor's own page | Built |
 | One stall, one occupant | Database constraint on `StallAllocation.activeStallId`, not a check-then-write | Built |
+| Moving a requester to another bay — "that side is already filled up, why don't you look at this side" | `StallRequest.agreedZoneCode`, written by `POST /requests/:id/select` or `PATCH /requests/:id`. It is what the quote prices, ahead of the bay that was asked for | Built |
+| Selecting before a stall number exists — "the side will be decided, but the stall number may not be still put at the time of the payment" | `stallNumbers` may be empty; the bay alone selects the request | Built |
+| Correcting a request over the phone — "in case there are any other changes, we anyway speak to them and make that" | `PATCH /requests/:id`, Stall Requests → request detail → Amend. Status, allocations, money and the agreement timestamps are deliberately not patchable | Built |
 
 ## 4. Vendor communication
 
@@ -51,6 +55,9 @@ package both sides share.
 | Email template with an attachment | `StallEmailTemplate` (subject, body, one attachment key), Communication → Templates | Built |
 | Different templates for ashram and vendor stalls | `SELECTION_ASHRAM` / `SELECTION_VENDOR` | Built |
 | Bulk send and individual send | One route (`POST /comms/send`); a list of one is an individual send | Built |
+| WhatsApp beside the email — "we would like to send them a WhatsApp message, as well as an email" | A second body per template (`whatsappBody`), edited on the same screen. Short, no attachment; empty means the letter is email-only | Built |
+| Editable wording — "the content we may like to change, but it should have a specific way of getting the data from the system for each person" | Communication → Templates, with the placeholder list and a warning for one the module cannot fill | Built |
+| Triggered by hand, not automatically — "we toggle between shortlist and selected; sometimes by mistake we do the selection, so let the mail be a manual trigger" | Every send is a button; nothing sends on a status change | Built |
 | Once sent, never sent again | `UNIQUE (requestId, templateKey, channel)` on `StallMessageLog` — a constraint, not a flag. Per channel, so a WhatsApp that failed can be retried without re-sending the email | Built |
 | Who has had a letter, and when | Communication list shows `sentAt` per template | Built |
 
@@ -74,6 +81,7 @@ package both sides share.
 | Who was sent it, with the date | `StallMessageLog`, per channel | Built |
 | The figures frozen at the moment the vendor is told | `StallPaymentPlan` | Built |
 | Finance confirms fee and deposit with reference, amount and date | `StallPaymentRecord`, Finance → Payment confirmation | Built |
+| What the local welfare team actually agreed to collect — "for A3 the cost is 10,000; for the coconut wala, probably we will give that at 5,000 — it is best that it is there in the system" | `StallPaymentPlan.discretionaryFeePaise` with a required reason, `PUT /finance/payments/:id/discretionary-fee`. The quoted figure is kept: what they were told and what they owe are two numbers, and "paid in full" is measured against the second | Built |
 | Payment through the system | Not built. Payment is NEFT to a virtual account, as in 2025, and the Finance screen says so. | Open — deliberate; revisit only if a gateway is introduced |
 | Reminder calls for payment pending | `StallReminderCall(kind: PAYMENT)`, same screen | Built |
 
@@ -143,7 +151,7 @@ package both sides share.
 | Access management | Admin → Users, `StallStaffRole` | Built |
 | Bays added and removed for a redrawn venue | Admin → Bays (`POST`/`DELETE /config/zones`). A bay holding stalls refuses with a 409 rather than cascading | Built |
 | The planning grid's columns | Admin → Planning columns (`PUT /config/plan-categories`), including the sponsor and Adiyogi columns the 2025 sheet carries | Built |
-| The season's own settings | Admin → Editions (`PATCH /editions/:id/settings`): name, the two virtual-account prefixes, the stalls-per-request cap | Built |
+| The season's own settings | Admin → Editions (`PATCH /editions/:id/settings`): name, the two virtual-account prefixes, the stalls-per-request cap — which the public write enforces | Built |
 | Number of stalls, stall numbers | Planning → Apply | Built |
 | What one coupon admits | Onboarding → the coupon block (`PUT /onboarding/:id/coupon/capacity`). Eight by default, raised case by case on the code the vendor already holds | Built |
 
@@ -154,6 +162,7 @@ package both sides share.
 | External vendors / local welfare / ashram stall vendors | Requester types on the account side (`StallRequestType`), never staff roles | Built |
 | Admin, Lead, Volunteer | `ROLES` in `@msr/stalls/rbac.ts` | Built |
 | — | A fourth role, **Finance**, exists because the finance requirement needs one that is not the Lead | Differs — an addition, not a substitution |
+| The local welfare team works inside the application and files on behalf of their traders | A fifth role, **Local Welfare**, scoped to `LOCAL_WELFARE` requests. `scope.ts` narrows every list and guards every request-addressed route, so the role's write access cannot reach a commercial vendor's record | Built |
 
 ---
 

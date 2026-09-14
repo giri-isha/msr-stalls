@@ -373,6 +373,12 @@ export function quote(over: Record<string, unknown> = {}) {
     grandTotalPaise: 2_996_000,
     exempt: false,
     unpriced: false,
+    /** No concession by default. `payableFeePaise` is what "paid in full" is
+     *  measured against — it tracks the agreed figure where the team gave one,
+     *  and the quoted figure otherwise. */
+    discretionaryFeePaise: null,
+    discretionaryReason: null,
+    payableFeePaise: 2_596_000,
     ...over,
   };
 }
