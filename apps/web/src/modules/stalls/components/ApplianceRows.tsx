@@ -1,6 +1,6 @@
-import { Plus, Trash2 } from 'lucide-react';
-import { Button } from '../../../components/ui/button';
-import { Input } from '../../../components/ui/input';
+import { Btn } from '../ui/ui';
+import { IconBtn } from '../ui/components/IconBtn';
+import { NumberInput, TextInput } from './FormControls';
 
 export interface ApplianceRow {
   name: string;
@@ -9,7 +9,7 @@ export interface ApplianceRow {
 
 /** The 2025 form had four fixed "Appliance N + wattage" pairs. The 2025 data
  *  shows stalls listing more, so this is a growable list — the API stores child
- *  rows and Phase 3's load sheet sums them. */
+ *  rows and the electrical sheet sums them. */
 export function ApplianceRows({
   id,
   value,
@@ -27,9 +27,20 @@ export function ApplianceRows({
   const add = () => onChange([...value, { name: '', watts: '' }]);
 
   return (
-    <div className='space-y-2' id={id}>
+    <div id={id} style={{ display: 'grid', gap: 8 }}>
       {value.length > 0 && (
-        <div className='grid grid-cols-[1fr_8rem_2.5rem] gap-2 text-xs text-ink-2'>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 7rem 28px',
+            gap: 8,
+            fontSize: 10.5,
+            fontWeight: 700,
+            letterSpacing: '.5px',
+            textTransform: 'uppercase',
+            color: 'var(--mfg)',
+          }}
+        >
           <span>Appliance name</span>
           <span>Wattage</span>
           <span />
@@ -37,34 +48,27 @@ export function ApplianceRows({
       )}
       {value.map((row, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: rows have no identity of their own
-        <div key={i} className='grid grid-cols-[1fr_8rem_2.5rem] gap-2'>
-          <Input
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 7rem 28px', gap: 8, alignItems: 'center' }}>
+          <TextInput
             aria-label={`Appliance ${i + 1} name`}
             placeholder='e.g. Deep freezer'
             value={row.name}
             onChange={(e) => update(i, { name: e.target.value })}
           />
-          <Input
+          <NumberInput
             aria-label={`Appliance ${i + 1} wattage`}
-            type='number'
-            min={0}
             placeholder='W'
             value={row.watts}
             onChange={(e) => update(i, { watts: e.target.value })}
           />
-          <Button
-            variant='ghost'
-            size='icon'
-            aria-label={`Remove appliance ${i + 1}`}
-            onClick={() => remove(i)}
-          >
-            <Trash2 className='h-4 w-4' />
-          </Button>
+          <IconBtn label={`Remove appliance ${i + 1}`} glyph='trash' tone='var(--des)' onClick={() => remove(i)} />
         </div>
       ))}
-      <Button variant='outline' size='sm' onClick={add} disabled={value.length >= max}>
-        <Plus className='h-3.5 w-3.5' /> Add appliance
-      </Button>
+      <div>
+        <Btn onClick={add} disabled={value.length >= max}>
+          + Add appliance
+        </Btn>
+      </div>
     </div>
   );
 }

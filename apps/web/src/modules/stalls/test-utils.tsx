@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 import { type RouteObject, RouterProvider, createMemoryRouter } from 'react-router';
 import { vi } from 'vitest';
 import { MeProvider } from './me';
+import { ToastProvider } from './ui/components/Toast';
 
 export interface Call {
   method: string;
@@ -45,12 +46,18 @@ export function installFetch(routes: ReadonlyArray<readonly [string, RegExp, Han
 /** Render `routes` inside a memory router positioned at `path`. */
 export function renderAt(path: string, routes: RouteObject[], opts: { me?: boolean } = {}) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
-  const tree: ReactElement = opts.me ? (
-    <MeProvider>
-      <RouterProvider router={router} />
-    </MeProvider>
-  ) : (
-    <RouterProvider router={router} />
+  // Every screen may raise a toast, so the provider is always there — as it
+  // is in production, where the shell mounts it above the router.
+  const tree: ReactElement = (
+    <ToastProvider>
+      {opts.me ? (
+        <MeProvider>
+          <RouterProvider router={router} />
+        </MeProvider>
+      ) : (
+        <RouterProvider router={router} />
+      )}
+    </ToastProvider>
   );
   return { ...render(tree), router };
 }

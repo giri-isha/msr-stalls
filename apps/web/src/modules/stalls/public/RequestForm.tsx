@@ -8,31 +8,28 @@ import {
 } from '@msr/stalls';
 import { useMemo, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router';
-import { Button } from '../../../components/ui/button';
-import { Card, CardContent } from '../../../components/ui/card';
-import { Checkbox, Field, Input, Select, Textarea } from '../../../components/ui/input';
-import { ApiError, fieldErrorsFrom } from '../../../lib/api-client';
+import { ApiError, fieldErrorsFrom } from '../api-client';
 import { getPublicConfig, submitRequest } from '../api';
 import { type ApplianceRow, ApplianceRows } from '../components/ApplianceRows';
 import { BilingualLabel } from '../components/BilingualLabel';
+import {
+  CheckRow,
+  Field,
+  HelpLine,
+  NumberInput,
+  RadioList,
+  SelectInput,
+  TextArea,
+  TextInput,
+} from '../components/FormControls';
 import { ZoneSelect } from '../components/ZoneSelect';
 import { useLoad } from '../hooks';
+import { Btn, Card, ErrorBox, H1 } from '../ui/ui';
 import { SLUG_TYPE } from './FormPicker';
 
 type Values = Record<string, string | boolean | ApplianceRow[]>;
 
 const ASHRAM_TYPES = new Set<StallRequestType>(['ASHRAM', 'ASHRAM_FOOD']);
-const ASHRAM_BLOCK = new Set([
-  'departmentHead',
-  'departmentHeadContact',
-  'department',
-  'requestedBy',
-  'requesterContact',
-  'creditCardNeeded',
-  'usage',
-  'wantsThembu',
-  'fssaiExpected',
-]);
 const NUMERIC = new Set([
   'numStallsRequested',
   'plugs5a',
@@ -53,11 +50,7 @@ const yes = (v: unknown) => v === 'YES';
  *  field names and the contract's keys differ in a few known places — the
  *  ashram forms nest a department block and have no vendor name of their own —
  *  and this is the one function that knows about them. */
-function buildInput(
-  type: StallRequestType,
-  values: Values,
-  customFieldIds: string[],
-): Record<string, unknown> {
+export function buildInput(type: StallRequestType, values: Values, customFieldIds: string[]): Record<string, unknown> {
   const ashram = ASHRAM_TYPES.has(type);
   const appliances = (Array.isArray(values.appliances) ? values.appliances : [])
     .filter((a) => a.name.trim() !== '')
@@ -85,8 +78,7 @@ function buildInput(
     appliances: appliances.length ? appliances : undefined,
     customFields,
   };
-  for (const k of NUMERIC)
-    if (k !== 'numStallsRequested' && k in values) base[k] = num(values[k]) ?? 0;
+  for (const k of NUMERIC) if (k !== 'numStallsRequested' && k in values) base[k] = num(values[k]) ?? 0;
   if (ashram) {
     base.ashram = {
       departmentHead: str(values.departmentHead),
@@ -105,7 +97,7 @@ function buildInput(
 
 /** The inverse of the renames above, for putting a server or Zod error back on
  *  the input that caused it. */
-function fieldNameFor(path: string, type: StallRequestType): string {
+export function fieldNameFor(path: string, type: StallRequestType): string {
   const ashram = ASHRAM_TYPES.has(type);
   if (path.startsWith('ashram.')) return path.slice('ashram.'.length);
   if (path === 'ashram') return 'departmentHead';
@@ -163,18 +155,13 @@ function Form({ type }: { type: StallRequestType }) {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setTopError(null);
-    // Required-ness comes from the form definition; shape from the contract.
     const missing: Record<string, string> = {};
     for (const f of allFields) {
       if (f.required && isEmpty(values[f.name])) {
         missing[f.name] = f.type === 'checkbox' ? 'Please tick to continue' : 'Required';
       }
     }
-    const built = buildInput(
-      type,
-      values,
-      customFields.map((f) => f.id),
-    );
+    const built = buildInput(type, values, customFields.map((f) => f.id));
     const parsed = SubmitRequestInput.safeParse(built);
     if (!parsed.success) {
       for (const issue of parsed.error.issues) {
@@ -196,9 +183,7 @@ function Form({ type }: { type: StallRequestType }) {
       navigate('/stalls/submitted', { state: { ...r, type }, replace: true });
     } catch (err) {
       const fe = fieldErrorsFrom(err);
-      const mapped = Object.fromEntries(
-        Object.entries(fe).map(([k, v]) => [fieldNameFor(k, type), v]),
-      );
+      const mapped = Object.fromEntries(Object.entries(fe).map(([k, v]) => [fieldNameFor(k, type), v]));
       setErrors(mapped);
       setTopError(
         err instanceof ApiError && err.status === 503
@@ -215,59 +200,75 @@ function Form({ type }: { type: StallRequestType }) {
   const isFood = ASHRAM_TYPES.has(type) ? type === 'ASHRAM_FOOD' : values.stallType === 'FOOD';
 
   return (
-    <form onSubmit={onSubmit} noValidate className='space-y-5'>
-      <div>
-        <h1 className='text-2xl font-bold'>{def.title}</h1>
-        {config.data && (
-          <p className='mt-1 text-xs text-ink-3'>
-            {config.data.edition.name}
-            {type === 'LOCAL_WELFARE' &&
-              ` · Refundable caution deposit ${formatInr(config.data.charges.localWelfareDepositPaise)}`}
-          </p>
-        )}
-      </div>
+    <form onSubmit={onSubmit} noValidate>
+      <H1
+        sub={
+          config.data
+            ? `${config.data.edition.name}${
+                type === 'LOCAL_WELFARE'
+                  ? ` · Refundable caution deposit ${formatInr(config.data.charges.localWelfareDepositPaise)}`
+                  : ''
+              }`
+            : undefined
+        }
+      >
+        {def.title}
+      </H1>
 
-      <Card className='border-accent/40 bg-accent-soft/30'>
-        <CardContent className='space-y-2 p-4 text-sm'>
-          <p>{def.disclaimer}</p>
+      <Card style={{ marginBottom: 14, background: 'var(--pri-t)', borderColor: 'var(--pri-t2)' }}>
+        <div style={{ fontSize: 13, lineHeight: 1.55 }}>
+          <div>{def.disclaimer}</div>
           {def.disclaimerTa && (
-            <p className='font-tamil' lang='ta'>
+            <div className='msrs-ta' lang='ta' style={{ marginTop: 6 }}>
               {def.disclaimerTa}
-            </p>
+            </div>
           )}
-        </CardContent>
+        </div>
       </Card>
 
       {topError && (
-        <p
-          role='alert'
-          className='rounded-md border border-bad/30 bg-bad-soft px-3 py-2 text-sm text-bad'
-        >
-          {topError}
-        </p>
+        <div style={{ marginBottom: 14 }}>
+          <ErrorBox>
+            <span role='alert'>{topError}</span>
+          </ErrorBox>
+        </div>
       )}
 
       <Card>
-        <CardContent className='space-y-5 p-5'>
-          {allFields.map((f) => (
-            <FieldControl
-              key={f.name}
-              field={f}
-              value={values[f.name]}
-              error={errors[f.name]}
-              onChange={(v) => set(f.name, v)}
-              config={config.data}
-              type={type}
-              isFood={isFood}
-            />
-          ))}
-        </CardContent>
+        {allFields.map((f) => (
+          <FieldControl
+            key={f.name}
+            field={f}
+            value={values[f.name]}
+            error={errors[f.name]}
+            onChange={(v) => set(f.name, v)}
+            config={config.data}
+            type={type}
+            isFood={isFood}
+          />
+        ))}
       </Card>
 
-      <div className='flex items-center justify-end gap-3'>
-        <Button type='submit' size='lg' disabled={submitting || values.agreed !== true}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+        <button
+          type='submit'
+          disabled={submitting || values.agreed !== true}
+          className={submitting || values.agreed !== true ? undefined : 'msrs-lift'}
+          style={{
+            padding: '10px 18px',
+            borderRadius: 'var(--r2)',
+            border: '1px solid transparent',
+            background: 'var(--pri)',
+            color: 'var(--pfg)',
+            fontSize: 13.5,
+            fontWeight: 700,
+            cursor: submitting || values.agreed !== true ? 'not-allowed' : 'pointer',
+            opacity: submitting || values.agreed !== true ? 0.5 : 1,
+            boxShadow: 'var(--sh-pri)',
+          }}
+        >
           {submitting ? 'Submitting…' : 'Submit request'}
-        </Button>
+        </button>
       </div>
     </form>
   );
@@ -291,69 +292,29 @@ function FieldControl({
   isFood: boolean;
 }) {
   const id = f.name;
-  const label = <BilingualLabel en={f.label} ta={f.labelTa} />;
-  const help = f.help ? (
-    <>
-      {f.help}
-      {f.helpTa && (
-        <>
-          {' / '}
-          <span className='font-tamil' lang='ta'>
-            {f.helpTa}
-          </span>
-        </>
-      )}
-    </>
-  ) : undefined;
   const invalid = error ? true : undefined;
-  const common = {
-    id,
-    'aria-invalid': invalid,
-    'aria-describedby': error ? `${id}-error` : undefined,
-  };
+  const common = { id, invalid, 'aria-describedby': error ? `${id}-error` : undefined };
 
   if (f.type === 'checkbox') {
     return (
-      <div className='space-y-1.5'>
-        {f.help && (
-          <p className='text-sm text-ink-2' id={`${id}-help`}>
-            {help}
-          </p>
-        )}
-        <label htmlFor={id} className='flex items-start gap-2 text-sm'>
-          <Checkbox
-            {...common}
-            checked={value === true}
-            onChange={(e) => onChange(e.target.checked)}
-            className='mt-0.5'
-          />
-          <span>
-            {label}
-            {f.required && (
-              <span className='ml-1 text-bad' aria-hidden>
-                *
-              </span>
-            )}
-          </span>
-        </label>
-        {error && (
-          <p id={`${id}-error`} role='alert' className='text-xs text-bad'>
-            {error}
-          </p>
-        )}
-      </div>
+      <CheckRow
+        id={id}
+        checked={value === true}
+        onChange={onChange}
+        label={f.label}
+        labelTa={f.labelTa}
+        help={f.help}
+        helpTa={f.helpTa ?? null}
+        error={error}
+        required={f.required}
+      />
     );
   }
 
   return (
-    <Field id={id} label={label} help={help} error={error} required={f.required}>
+    <Field id={id} label={f.label} labelTa={f.labelTa} help={f.help} helpTa={f.helpTa ?? null} error={error} required={f.required}>
       {f.type === 'appliances' ? (
-        <ApplianceRows
-          id={id}
-          value={Array.isArray(value) ? value : []}
-          onChange={onChange}
-          max={f.max}
-        />
+        <ApplianceRows id={id} value={Array.isArray(value) ? value : []} onChange={onChange} max={f.max} />
       ) : f.name === 'preferredZoneCode' && f.options ? (
         <ZoneSelect
           name={id}
@@ -366,28 +327,15 @@ function FieldControl({
           invalid={invalid}
         />
       ) : f.type === 'radio' && f.options ? (
-        <div className='space-y-1.5' role='radiogroup'>
-          {f.options.map((o) => (
-            <label
-              key={o.value}
-              htmlFor={`${id}-${o.value}`}
-              className='flex items-center gap-2 text-sm'
-            >
-              <input
-                id={`${id}-${o.value}`}
-                type='radio'
-                name={id}
-                value={o.value}
-                checked={value === o.value}
-                onChange={() => onChange(o.value)}
-                className='accent-accent'
-              />
-              <BilingualLabel en={o.label} ta={o.labelTa} />
-            </label>
-          ))}
-        </div>
+        <RadioList
+          name={id}
+          value={str(value)}
+          onChange={onChange}
+          invalid={invalid}
+          options={f.options.map((o) => ({ value: o.value, label: o.label, labelTa: o.labelTa }))}
+        />
       ) : f.type === 'select' && f.options ? (
-        <Select {...common} value={str(value)} onChange={(e) => onChange(e.target.value)}>
+        <SelectInput {...common} value={str(value)} onChange={(e) => onChange(e.target.value)}>
           <option value=''>Choose…</option>
           {f.options.map((o) => (
             <option key={o.value} value={o.value}>
@@ -395,21 +343,13 @@ function FieldControl({
               {o.labelTa ? ` / ${o.labelTa}` : ''}
             </option>
           ))}
-        </Select>
+        </SelectInput>
       ) : f.type === 'textarea' ? (
-        <Textarea {...common} value={str(value)} onChange={(e) => onChange(e.target.value)} />
+        <TextArea {...common} value={str(value)} onChange={(e) => onChange(e.target.value)} />
       ) : f.type === 'number' ? (
-        <Input
-          {...common}
-          type='number'
-          inputMode='numeric'
-          min={f.min}
-          max={f.max}
-          value={str(value)}
-          onChange={(e) => onChange(e.target.value)}
-        />
+        <NumberInput {...common} value={str(value)} onChange={(e) => onChange(e.target.value)} />
       ) : (
-        <Input
+        <TextInput
           {...common}
           type={f.type === 'email' ? 'email' : f.type === 'tel' ? 'tel' : 'text'}
           inputMode={f.type === 'tel' ? 'tel' : undefined}
@@ -421,3 +361,5 @@ function FieldControl({
     </Field>
   );
 }
+
+export { BilingualLabel, HelpLine };

@@ -1,6 +1,6 @@
 import type { MeResponse, StallAction } from '@msr/stalls';
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { ApiError } from '../../lib/api-client';
+import { ApiError } from './api-client';
 import { getMe } from './api';
 
 interface MeState {

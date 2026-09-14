@@ -1,65 +1,105 @@
-// SHELL — sidebar chrome around the staff screens, plus the sign-in gate.
-// Discarded at migration: the host has its own shell, its own nav and Isha
-// SSO. What survives is what this wraps — `MeProvider` and the screens.
-import { LogOut } from 'lucide-react';
+// SHELL — the sidebar chrome around the staff screens, and the sign-in gate.
+// Discarded at migration: the host has its own shell, nav and Isha SSO. What
+// survives is what this wraps — the module's Frame, ToastProvider, MeProvider
+// and screens. Styled with the module's own tokens so it looks like the
+// module it hosts.
 import { NavLink, Outlet } from 'react-router';
-import { Button } from '@/components/ui/button';
-import { apiFetch } from '@/lib/api-client';
-import { cn } from '@/lib/cn';
-import { MeProvider, STALLS_NAV, useMe } from '@/modules/stalls';
+import { Frame, Icon, MeProvider, STALLS_NAV, ToastProvider, useMe } from '@/modules/stalls';
+import { apiFetch } from '@/modules/stalls/api-client';
+import { Btn, Loading } from '@/modules/stalls/ui/ui';
+import { useIsNarrow } from '@/modules/stalls/ui/useBreakpoint';
 import { DevSignIn } from './DevSignIn';
 
 function Sidebar() {
   const { me, reload } = useMe();
-  const groups = [...new Set(STALLS_NAV.map((n) => n.group))];
+  const narrow = useIsNarrow();
+  const items = STALLS_NAV.filter((n) => !n.requires || me?.actions.includes(n.requires));
+  const groups = [...new Set(items.map((n) => n.group))];
   const signOut = async () => {
     await apiFetch('/api/dev/signout', { method: 'POST' });
     reload();
   };
-  return (
-    <aside className='flex w-60 shrink-0 flex-col border-r border-line bg-surface'>
-      <div className='border-b border-line px-5 py-4'>
-        <div className='text-xs font-semibold uppercase tracking-wider text-ink-3'>Sahayaka</div>
-        <div className='mt-0.5 text-base font-bold'>MSR Stalls</div>
+
+  const link = (n: (typeof items)[number]) => (
+    <NavLink
+      key={n.to}
+      to={n.to}
+      end={n.end}
+      style={({ isActive }) => ({
+        display: 'flex',
+        alignItems: 'center',
+        gap: 9,
+        padding: narrow ? '7px 10px' : '7px 10px',
+        borderRadius: 'var(--r2)',
+        fontSize: 13,
+        fontWeight: isActive ? 700 : 500,
+        color: isActive ? 'var(--pri)' : 'var(--fg)',
+        background: isActive ? 'var(--pri-t)' : 'transparent',
+        whiteSpace: 'nowrap',
+        textDecoration: 'none',
+      })}
+    >
+      <Icon name={n.icon} size={15} />
+      {n.label}
+    </NavLink>
+  );
+
+  if (narrow) {
+    return (
+      <div style={{ borderBottom: '1px solid var(--bd)', background: 'var(--card)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 16, flex: 1 }}>MSR Stalls</div>
+          <span style={{ fontSize: 12, color: 'var(--mfg)' }}>{me?.displayName}</span>
+          <Btn onClick={signOut}>Sign out</Btn>
+        </div>
+        <nav style={{ display: 'flex', gap: 4, overflowX: 'auto', padding: '0 10px 10px' }}>{items.map(link)}</nav>
       </div>
-      <nav className='flex-1 overflow-y-auto px-3 py-3'>
+    );
+  }
+
+  return (
+    <aside
+      style={{
+        width: 236,
+        flex: 'none',
+        position: 'sticky',
+        top: 0,
+        alignSelf: 'flex-start',
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        borderRight: '1px solid var(--bd)',
+        background: 'var(--card)',
+      }}
+    >
+      <div style={{ padding: '18px 18px 14px', borderBottom: '1px solid var(--line)' }}>
+        <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.7px', textTransform: 'uppercase', color: 'var(--mfg)' }}>
+          Sahayaka
+        </div>
+        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, letterSpacing: '-.3px', marginTop: 2 }}>
+          MSR Stalls
+        </div>
+      </div>
+      <nav style={{ flex: 1, overflowY: 'auto', padding: '10px 10px' }}>
         {groups.map((group) => (
-          <div key={group ?? 'root'} className='mb-4'>
+          <div key={group ?? 'root'} style={{ marginBottom: 14 }}>
             {group && (
-              <div className='px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-ink-3'>
+              <div style={{ padding: '4px 10px 4px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.6px', textTransform: 'uppercase', color: 'var(--mfg)' }}>
                 {group}
               </div>
             )}
-            {STALLS_NAV.filter((n) => n.group === group)
-              .filter((n) => !n.requires || me?.actions.includes(n.requires))
-              .map((n) => (
-                <NavLink
-                  key={n.to}
-                  to={n.to}
-                  end={n.end}
-                  className={({ isActive }) =>
-                    cn(
-                      'block rounded-md px-2 py-1.5 text-sm',
-                      isActive
-                        ? 'bg-accent-soft font-semibold text-accent'
-                        : 'text-ink hover:bg-surface-2',
-                    )
-                  }
-                >
-                  {n.label}
-                </NavLink>
-              ))}
+            <div style={{ display: 'grid', gap: 2 }}>{items.filter((n) => n.group === group).map(link)}</div>
           </div>
         ))}
       </nav>
-      <div className='border-t border-line px-4 py-3'>
-        <div className='truncate text-sm font-medium'>{me?.displayName}</div>
-        <div className='truncate text-xs text-ink-2'>
+      <div style={{ padding: 14, borderTop: '1px solid var(--line)' }}>
+        <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {me?.displayName}
+        </div>
+        <div style={{ fontSize: 11.5, color: 'var(--mfg)', marginBottom: 8 }}>
           {me?.roleKeys.map((r) => r.replace('stalls_', '')).join(', ') || 'no stalls role'}
         </div>
-        <Button variant='ghost' size='sm' className='mt-2 w-full justify-start' onClick={signOut}>
-          <LogOut className='h-3.5 w-3.5' /> Sign out
-        </Button>
+        <Btn onClick={signOut}>Sign out</Btn>
       </div>
     </aside>
   );
@@ -67,14 +107,13 @@ function Sidebar() {
 
 function Gate() {
   const { me, status, reload } = useMe();
-  if (status === 'loading') {
-    return <div className='p-10 text-sm text-ink-2'>Loading…</div>;
-  }
+  const narrow = useIsNarrow();
+  if (status === 'loading') return <Loading />;
   if (!me) return <DevSignIn onSignedIn={reload} />;
   return (
-    <div className='flex min-h-screen'>
+    <div style={{ display: 'flex', flexDirection: narrow ? 'column' : 'row', minHeight: '100vh' }}>
       <Sidebar />
-      <main className='min-w-0 flex-1 overflow-auto p-7'>
+      <main style={{ flex: 1, minWidth: 0, padding: narrow ? 14 : 26 }}>
         <Outlet />
       </main>
     </div>
@@ -83,8 +122,12 @@ function Gate() {
 
 export function StaffLayout() {
   return (
-    <MeProvider>
-      <Gate />
-    </MeProvider>
+    <Frame>
+      <ToastProvider>
+        <MeProvider>
+          <Gate />
+        </MeProvider>
+      </ToastProvider>
+    </Frame>
   );
 }

@@ -1,33 +1,29 @@
 import type { ListRequestsQuery, RequestSummary } from '@msr/stalls';
-import { Flag, LayoutGrid, List, Search } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { Button } from '../../../components/ui/button';
-import { Card, CardContent } from '../../../components/ui/card';
-import { Input, Select } from '../../../components/ui/input';
-import { TBody, TD, TH, THead, TR, Table } from '../../../components/ui/table';
-import { cn } from '../../../lib/cn';
 import { listRequests } from '../api';
-import { STATUS_LABEL, StatusPill, TYPE_LABEL, TypeBadge } from '../components/StatusPill';
+import { SelectInput, TextInput } from '../components/FormControls';
+import { Grid, Mono, Sub } from '../components/Grid';
+import { STATUS_LABEL, StatusPill, TYPE_LABEL, TypeTag } from '../components/StatusPill';
 import { formatDate } from '../hooks';
+import { Icon } from '../ui/icons';
+import { Btn, Card, Empty, ErrorBox, H1, Toolbar, toolBtnStyle } from '../ui/ui';
 import { RequestDetail } from './RequestDetail';
 
 type Mode = 'triage' | 'all';
 
-/** "Stall Requests" (triage: what needs a decision, cards or table) and "All
- *  Requests" (the full pipeline table with every filter) are one screen with
- *  two presets — the prototype had both, and they read the same list. */
+/** "Stall Requests" (triage: what needs a decision, cards by default) and
+ *  "All Requests" (the full pipeline table with every filter) are one screen
+ *  with two presets — the prototype had both, and they read the same list. */
 export function Requests({ mode }: { mode: Mode }) {
   const [params, setParams] = useSearchParams();
   const q = params.get('q') ?? '';
   const requestType = params.get('requestType') ?? '';
   const status = params.get('status') ?? '';
-  const stage = params.get('stage') ?? '';
   const zoneCode = params.get('zoneCode') ?? '';
   const flagged = params.get('flagged') === 'true';
   const [view, setView] = useState<'table' | 'cards'>(mode === 'triage' ? 'cards' : 'table');
   const [selected, setSelected] = useState<string | null>(null);
-
   const [items, setItems] = useState<RequestSummary[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -37,7 +33,6 @@ export function Requests({ mode }: { mode: Mode }) {
     q: q || undefined,
     requestType: (requestType || undefined) as ListRequestsQuery['requestType'],
     status: (status || undefined) as ListRequestsQuery['status'],
-    stage: (stage || undefined) as ListRequestsQuery['stage'],
     zoneCode: (zoneCode || undefined) as ListRequestsQuery['zoneCode'],
     flagged: flagged || undefined,
     limit: 50,
@@ -49,10 +44,7 @@ export function Requests({ mode }: { mode: Mode }) {
       setLoading(true);
       setError(null);
       try {
-        const page = await listRequests({
-          ...query,
-          cursor: append ? (cursor ?? undefined) : undefined,
-        });
+        const page = await listRequests({ ...query, cursor: append ? (cursor ?? undefined) : undefined });
         setItems((prev) => (append ? [...prev, ...page.items] : page.items));
         setCursor(page.nextCursor);
       } catch (e) {
@@ -64,7 +56,6 @@ export function Requests({ mode }: { mode: Mode }) {
     // biome-ignore lint/correctness/useExhaustiveDependencies: key is the serialised query
     [key, cursor],
   );
-
   // biome-ignore lint/correctness/useExhaustiveDependencies: reload when the query changes
   useEffect(() => {
     void load(false);
@@ -76,230 +67,175 @@ export function Requests({ mode }: { mode: Mode }) {
     else next.delete(k);
     setParams(next, { replace: true });
   };
-
   const onChanged = () => void load(false);
 
   return (
-    <div className='space-y-4'>
-      <div className='flex flex-wrap items-end justify-between gap-3'>
-        <div>
-          <h1 className='text-2xl font-bold'>
-            {mode === 'triage' ? 'Stall Requests' : 'All Requests'}
-          </h1>
-          <p className='text-sm text-ink-2'>
-            {mode === 'triage'
-              ? 'Review, shortlist and select. Click a request to see its full application.'
-              : 'Every request in the pipeline, with every filter.'}
-          </p>
-        </div>
-        <div className='flex items-center gap-1 rounded-md border border-line bg-surface p-0.5'>
-          <Button
-            variant={view === 'table' ? 'secondary' : 'ghost'}
-            size='sm'
-            onClick={() => setView('table')}
-            aria-pressed={view === 'table'}
-            aria-label='Table view'
-          >
-            <List className='h-4 w-4' />
-          </Button>
-          <Button
-            variant={view === 'cards' ? 'secondary' : 'ghost'}
-            size='sm'
-            onClick={() => setView('cards')}
-            aria-pressed={view === 'cards'}
-            aria-label='Card view'
-          >
-            <LayoutGrid className='h-4 w-4' />
-          </Button>
-        </div>
-      </div>
+    <div>
+      <H1
+        icon={<Icon name={mode === 'triage' ? 'clipboard-list' : 'list-view'} size={20} />}
+        sub={mode === 'triage' ? 'Review, shortlist and select. Open a request to see its full application.' : 'Every request in the pipeline, with every filter.'}
+        actions={
+          <div style={{ display: 'inline-flex', gap: 4, padding: 4, background: 'var(--mut)', borderRadius: 'calc(var(--r4) - 4px)' }}>
+            {(['table', 'cards'] as const).map((v) => (
+              <button
+                type='button'
+                key={v}
+                onClick={() => setView(v)}
+                aria-pressed={view === v}
+                aria-label={v === 'table' ? 'Table view' : 'Card view'}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '7px 12px',
+                  borderRadius: 'calc(var(--r4) - 8px)',
+                  border: 0,
+                  cursor: 'pointer',
+                  fontSize: 12.5,
+                  fontWeight: view === v ? 700 : 500,
+                  background: view === v ? 'var(--card)' : 'transparent',
+                  color: view === v ? 'var(--fg)' : 'var(--mfg)',
+                  boxShadow: view === v ? 'var(--ring)' : 'none',
+                }}
+              >
+                <Icon name={v === 'table' ? 'list-view' : 'layout-grid'} size={14} />
+                {v === 'table' ? 'Table' : 'Cards'}
+              </button>
+            ))}
+          </div>
+        }
+      >
+        {mode === 'triage' ? 'Stall Requests' : 'All Requests'}
+      </H1>
 
-      <div className='flex flex-wrap gap-2'>
-        <div className='relative min-w-64 flex-1'>
-          <Search className='pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-ink-3' />
-          <Input
-            aria-label='Search'
-            placeholder='Search by name, reference, email or phone…'
-            className='pl-8'
-            value={q}
-            onChange={(e) => setParam('q', e.target.value)}
-          />
+      <Toolbar>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <TextInput aria-label='Search' placeholder='Search by name, reference, email or phone…' value={q} onChange={(e) => setParam('q', e.target.value)} />
         </div>
-        <Select
-          aria-label='Type'
-          value={requestType}
-          onChange={(e) => setParam('requestType', e.target.value)}
-          className='w-44'
-        >
+        <SelectInput aria-label='Type' value={requestType} onChange={(e) => setParam('requestType', e.target.value)} style={{ width: 170 }}>
           <option value=''>All types</option>
           {Object.entries(TYPE_LABEL).map(([k, v]) => (
             <option key={k} value={k}>
               {v}
             </option>
           ))}
-        </Select>
-        <Select
-          aria-label='Status'
-          value={status}
-          onChange={(e) => setParam('status', e.target.value)}
-          className='w-40'
-        >
+        </SelectInput>
+        <SelectInput aria-label='Status' value={status} onChange={(e) => setParam('status', e.target.value)} style={{ width: 160 }}>
           <option value=''>All statuses</option>
           {Object.entries(STATUS_LABEL).map(([k, v]) => (
             <option key={k} value={k}>
               {v}
             </option>
           ))}
-        </Select>
+        </SelectInput>
         {mode === 'all' && (
           <>
-            <Select
-              aria-label='Zone'
-              value={zoneCode}
-              onChange={(e) => setParam('zoneCode', e.target.value)}
-              className='w-32'
-            >
+            <SelectInput aria-label='Zone' value={zoneCode} onChange={(e) => setParam('zoneCode', e.target.value)} style={{ width: 120 }}>
               <option value=''>All zones</option>
               {['A3', 'A4', 'B2', 'B3', 'B4', 'C1', 'C2'].map((z) => (
-                <option key={z} value={z}>
-                  {z}
-                </option>
+                <option key={z}>{z}</option>
               ))}
-            </Select>
-            <Button
-              variant={flagged ? 'secondary' : 'outline'}
-              size='default'
-              onClick={() => setParam('flagged', flagged ? '' : 'true')}
-              aria-pressed={flagged}
-            >
-              <Flag className='h-4 w-4' /> Flagged
-            </Button>
+            </SelectInput>
+            <button type='button' onClick={() => setParam('flagged', flagged ? '' : 'true')} aria-pressed={flagged} style={toolBtnStyle(flagged)}>
+              <Icon name='alert-triangle' size={13} /> Flagged
+            </button>
           </>
         )}
-      </div>
+      </Toolbar>
 
       {error && (
-        <p role='alert' className='text-sm text-bad'>
-          {error}
-        </p>
-      )}
-
-      {view === 'table' ? (
-        <Card>
-          <Table>
-            <THead>
-              <TR>
-                <TH>Reference</TH>
-                <TH>Stall</TH>
-                <TH>Type</TH>
-                <TH>Requester</TH>
-                <TH>Zone</TH>
-                <TH className='text-right'>Stalls</TH>
-                <TH>Status</TH>
-                <TH>Allocated</TH>
-                <TH>Submitted</TH>
-              </TR>
-            </THead>
-            <TBody>
-              {items.map((r) => (
-                <TR
-                  key={r.id}
-                  className='cursor-pointer'
-                  data-state={selected === r.id ? 'selected' : undefined}
-                  onClick={() => setSelected(r.id)}
-                >
-                  <TD className='font-mono text-xs'>
-                    {r.flagged && (
-                      <Flag className='mr-1 inline h-3 w-3 text-warn' aria-label='Flagged' />
-                    )}
-                    {r.reference}
-                  </TD>
-                  <TD className='font-medium'>{r.stallName}</TD>
-                  <TD>
-                    <TypeBadge type={r.requestType} />
-                  </TD>
-                  <TD>
-                    <div>{r.requesterName}</div>
-                    <div className='text-xs text-ink-2'>{r.contactNumber}</div>
-                  </TD>
-                  <TD>{r.preferredZoneCode}</TD>
-                  <TD className='text-right'>{r.numStallsRequested}</TD>
-                  <TD>
-                    <StatusPill status={r.status} />
-                  </TD>
-                  <TD className='font-mono text-xs'>{r.allocatedStalls.join(', ')}</TD>
-                  <TD className='text-xs text-ink-2'>{formatDate(r.submittedAt)}</TD>
-                </TR>
-              ))}
-              {!loading && items.length === 0 && (
-                <TR>
-                  <TD colSpan={9} className='py-10 text-center text-ink-2'>
-                    No requests match.
-                  </TD>
-                </TR>
-              )}
-            </TBody>
-          </Table>
-        </Card>
-      ) : (
-        <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-3'>
-          {items.map((r) => (
-            <button
-              type='button'
-              key={r.id}
-              onClick={() => setSelected(r.id)}
-              className={cn('text-left', selected === r.id && '[&>div]:border-accent')}
-            >
-              <Card className='h-full transition-colors hover:border-accent'>
-                <CardContent className='space-y-2 p-4'>
-                  <div className='flex items-start justify-between gap-2'>
-                    <div className='min-w-0'>
-                      <div className='font-mono text-xs text-ink-2'>
-                        {r.flagged && <Flag className='mr-1 inline h-3 w-3 text-warn' />}
-                        {r.reference}
-                      </div>
-                      <div className='truncate font-semibold'>{r.stallName}</div>
-                    </div>
-                    <StatusPill status={r.status} />
-                  </div>
-                  <div className='flex flex-wrap items-center gap-2 text-xs text-ink-2'>
-                    <TypeBadge type={r.requestType} />
-                    <span>{r.stallType === 'FOOD' ? 'Food' : 'Non-food'}</span>
-                    <span>· {r.preferredZoneCode}</span>
-                    <span>
-                      · {r.numStallsRequested} stall{r.numStallsRequested > 1 ? 's' : ''}
-                    </span>
-                  </div>
-                  <div className='text-sm'>
-                    {r.requesterName} <span className='text-ink-2'>· {r.contactNumber}</span>
-                  </div>
-                  {r.allocatedStalls.length > 0 && (
-                    <div className='font-mono text-xs text-good'>
-                      {r.allocatedStalls.join(', ')}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </button>
-          ))}
-          {!loading && items.length === 0 && (
-            <p className='col-span-full py-10 text-center text-sm text-ink-2'>No requests match.</p>
-          )}
+        <div style={{ marginBottom: 12 }}>
+          <ErrorBox>{error}</ErrorBox>
         </div>
       )}
 
-      <div className='flex items-center justify-between text-xs text-ink-2'>
+      {view === 'table' ? (
+        <Grid<RequestSummary>
+          rows={items}
+          rowKey={(r) => r.id}
+          onRow={(r) => setSelected(r.id)}
+          selectedKey={selected}
+          empty='No requests match.'
+          columns={[
+            {
+              key: 'ref',
+              header: 'Reference',
+              width: '130px',
+              mobile: 'sub',
+              render: (r) => (
+                <span style={{ display: 'inline-flex', gap: 5, alignItems: 'center' }}>
+                  {r.flagged && <Icon name='alert-triangle' size={12} color='var(--warn)' />}
+                  <Mono>{r.reference}</Mono>
+                </span>
+              ),
+            },
+            { key: 'stall', header: 'Stall', width: '1.5fr', mobile: 'title', render: (r) => <b>{r.stallName}</b> },
+            { key: 'type', header: 'Type', width: '120px', render: (r) => <TypeTag type={r.requestType} size='sm' /> },
+            {
+              key: 'req',
+              header: 'Requester',
+              width: '1.2fr',
+              render: (r) => (
+                <>
+                  {r.requesterName}
+                  <Sub>{r.contactNumber}</Sub>
+                </>
+              ),
+            },
+            { key: 'zone', header: 'Zone', width: '60px', render: (r) => r.preferredZoneCode },
+            { key: 'n', header: 'Stalls', width: '60px', align: 'right', render: (r) => r.numStallsRequested },
+            { key: 'status', header: 'Status', width: '120px', render: (r) => <StatusPill status={r.status} size='sm' /> },
+            { key: 'alloc', header: 'Allocated', width: '110px', render: (r) => <Mono>{r.allocatedStalls.join(', ')}</Mono> },
+            { key: 'date', header: 'Submitted', width: '100px', mobile: 'hide', render: (r) => <span style={{ color: 'var(--mfg)' }}>{formatDate(r.submittedAt)}</span> },
+          ]}
+        />
+      ) : items.length === 0 && !loading ? (
+        <Card>
+          <Empty>No requests match.</Empty>
+        </Card>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: 12 }}>
+          {items.map((r) => (
+            <Card key={r.id} pad={14} onAct={() => setSelected(r.id)} label={`${r.stallName} ${r.reference}`} style={selected === r.id ? { borderColor: 'var(--pri)', boxShadow: '0 0 0 1px var(--pri)' } : undefined}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: 'var(--mfg)', display: 'flex', gap: 5, alignItems: 'center' }}>
+                    {r.flagged && <Icon name='alert-triangle' size={12} color='var(--warn)' />}
+                    <Mono>{r.reference}</Mono>
+                  </div>
+                  <div style={{ fontWeight: 700, fontSize: 14.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.stallName}</div>
+                </div>
+                <StatusPill status={r.status} size='sm' />
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 8, fontSize: 12, color: 'var(--mfg)' }}>
+                <TypeTag type={r.requestType} size='sm' />
+                <span>{r.stallType === 'FOOD' ? 'Food' : 'Non-food'}</span>
+                <span>· {r.preferredZoneCode}</span>
+                <span>· {r.numStallsRequested} stall{r.numStallsRequested > 1 ? 's' : ''}</span>
+              </div>
+              <div style={{ fontSize: 13, marginTop: 8 }}>
+                {r.requesterName} <span style={{ color: 'var(--mfg)' }}>· {r.contactNumber}</span>
+              </div>
+              {r.allocatedStalls.length > 0 && (
+                <div style={{ marginTop: 6, fontSize: 12, color: 'var(--ok-fg)' }}>
+                  <Mono>{r.allocatedStalls.join(', ')}</Mono>
+                </div>
+              )}
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, fontSize: 12, color: 'var(--mfg)' }}>
         <span>{loading ? 'Loading…' : `${items.length} shown`}</span>
         {cursor && (
-          <Button variant='outline' size='sm' onClick={() => load(true)} disabled={loading}>
+          <Btn onClick={() => load(true)} disabled={loading}>
             Load more
-          </Button>
+          </Btn>
         )}
       </div>
 
-      {selected && (
-        <RequestDetail id={selected} onClose={() => setSelected(null)} onChanged={onChanged} />
-      )}
+      {selected && <RequestDetail id={selected} onClose={() => setSelected(null)} onChanged={onChanged} />}
     </div>
   );
 }

@@ -1,10 +1,9 @@
 // SHELL — the standalone stand-in for Isha SSO. Lists the seeded staff and
-// signs in as one of them with a single click. Discarded at migration; the
-// API route it calls exists only outside production.
+// signs in as one of them with a click. Discarded at migration; the API route
+// it calls exists only outside production.
 import { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { apiFetch } from '@/lib/api-client';
+import { apiFetch } from '@/modules/stalls/api-client';
+import { Card, ErrorBox, H1 } from '@/modules/stalls/ui/ui';
 
 interface Person {
   personId: string;
@@ -20,7 +19,7 @@ export function DevSignIn({ onSignedIn }: { onSignedIn: () => void }) {
   useEffect(() => {
     apiFetch<Person[]>('/api/dev/people')
       .then(setPeople)
-      .catch((e) => setError(e.message));
+      .catch((e) => setError((e as Error).message));
   }, []);
 
   const signIn = async (email: string) => {
@@ -37,38 +36,46 @@ export function DevSignIn({ onSignedIn }: { onSignedIn: () => void }) {
   };
 
   return (
-    <div className='flex min-h-screen items-center justify-center p-6'>
-      <Card className='w-full max-w-md'>
-        <CardHeader>
-          <CardTitle>Sign in — development</CardTitle>
-          <CardDescription>
-            In the host this is Isha SSO. Here, pick a seeded staff member. Run{' '}
-            <code className='rounded bg-surface-2 px-1'>npm run db:seed</code> if the list is empty.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className='space-y-2'>
-          {people.map((p) => (
-            <Button
-              key={p.personId}
-              variant='outline'
-              className='w-full justify-between'
-              disabled={busy !== null}
-              onClick={() => signIn(p.email)}
-            >
-              <span>{p.displayName}</span>
-              <span className='text-xs text-ink-2'>{p.email}</span>
-            </Button>
-          ))}
-          {people.length === 0 && !error && (
-            <p className='text-sm text-ink-2'>No staff seeded yet.</p>
-          )}
-          {error && (
-            <p role='alert' className='text-sm text-bad'>
-              {error}
-            </p>
-          )}
-        </CardContent>
-      </Card>
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ width: '100%', maxWidth: 440 }}>
+        <H1 sub='In the host this is Isha SSO. Here, pick a seeded staff member.'>Sign in — development</H1>
+        <Card pad={10}>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {people.map((p) => (
+              <button
+                type='button'
+                key={p.personId}
+                disabled={busy !== null}
+                onClick={() => signIn(p.email)}
+                className='msrs-lift'
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 12px',
+                  borderRadius: 'var(--r2)',
+                  border: '1px solid var(--bd)',
+                  background: 'var(--card)',
+                  color: 'var(--fg)',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  textAlign: 'left',
+                }}
+              >
+                <span style={{ fontWeight: 600 }}>{p.displayName}</span>
+                <span style={{ fontSize: 12, color: 'var(--mfg)' }}>{p.email}</span>
+              </button>
+            ))}
+            {people.length === 0 && !error && (
+              <div style={{ fontSize: 13, color: 'var(--mfg)', padding: 8 }}>
+                No staff seeded yet — run <code>npm run db:seed</code>.
+              </div>
+            )}
+            {error && <ErrorBox>{error}</ErrorBox>}
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }

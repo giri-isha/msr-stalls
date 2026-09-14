@@ -71,7 +71,7 @@ describe('Planning', () => {
     const crowd = await screen.findByLabelText('A4 expected crowd');
     await user.clear(crowd);
     await user.type(crowd, '50000');
-    const a4row = crowd.closest('tr') as HTMLElement;
+    const a4row = crowd.closest('[role="row"]') as HTMLElement;
     expect(a4row).toHaveTextContent('50');
 
     const vf = screen.getByLabelText('A4 Vendor Food');

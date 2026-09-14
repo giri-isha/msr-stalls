@@ -1,18 +1,42 @@
+import type { RequestStatus } from '@msr/stalls';
 import { useParams } from 'react-router';
-import { Card, CardContent } from '../../../components/ui/card';
-import { ApiError } from '../../../lib/api-client';
+import { ApiError } from '../api-client';
 import { getStatus } from '../api';
 import { StatusPill, TYPE_LABEL } from '../components/StatusPill';
+import { Steps } from '../components/Steps';
 import { formatDate, useLoad } from '../hooks';
+import { Card, Empty, H1, Loading } from '../ui/ui';
 
 const STATUS_COPY: Record<string, string> = {
   SUBMITTED: 'Received. The stall team will review it.',
   SHORTLISTED: 'Under consideration.',
-  SELECTED: 'Selected. Further instructions will follow by email.',
+  SELECTED: 'Selected. Follow the steps below.',
   BACKUP: 'On the backup list — you will be contacted if a stall frees up.',
   REJECTED: 'Not selected this year.',
   CANCELLED: 'Cancelled.',
 };
+
+function ActionLink({ href, children }: { href: string; children: string }) {
+  return (
+    <a
+      href={href}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '8px 14px',
+        borderRadius: 'var(--r2)',
+        background: 'var(--pri)',
+        color: 'var(--pfg)',
+        fontWeight: 700,
+        fontSize: 13,
+        boxShadow: 'var(--sh-pri)',
+      }}
+    >
+      {children}
+    </a>
+  );
+}
 
 /** Reached only through the signed link in the receipt email. A bad or
  *  expired token is a plain "not valid" page — never a hint about why. */
@@ -20,52 +44,63 @@ export function StatusPage() {
   const { token = '' } = useParams();
   const { data, error, loading } = useLoad(() => getStatus(token), [token]);
 
-  if (loading) return <p className='text-sm text-ink-2'>Loading…</p>;
+  if (loading) return <Loading />;
   if (error || !data) {
     const notFound = error instanceof ApiError && error.status === 404;
     return (
       <Card>
-        <CardContent className='p-6 text-center'>
-          <h1 className='text-lg font-semibold'>
+        <Empty>
+          <div style={{ fontWeight: 700, color: 'var(--fg)', marginBottom: 4 }}>
             {notFound ? 'This link is not valid' : 'Something went wrong'}
-          </h1>
-          <p className='mt-1 text-sm text-ink-2'>
-            {notFound
-              ? 'Please use the link from your most recent confirmation email.'
-              : 'Please try again in a moment.'}
-          </p>
-        </CardContent>
+          </div>
+          {notFound ? 'Please use the link from your most recent confirmation email.' : 'Please try again in a moment.'}
+        </Empty>
       </Card>
     );
   }
 
   return (
-    <div className='space-y-4'>
-      <div>
-        <h1 className='text-2xl font-bold'>Your stall requests</h1>
-        <p className='mt-1 text-sm text-ink-2'>{data.displayName}</p>
-      </div>
-      {data.requests.map((r) => (
-        <Card key={r.reference}>
-          <CardContent className='flex flex-wrap items-start justify-between gap-3 p-5'>
-            <div className='min-w-0'>
-              <div className='font-mono text-xs text-ink-2'>{r.reference}</div>
-              <div className='text-base font-semibold'>{r.stallName}</div>
-              <div className='text-xs text-ink-2'>
-                {TYPE_LABEL[r.requestType] ?? r.requestType} · submitted {formatDate(r.submittedAt)}
+    <div>
+      <H1 sub={data.displayName}>Your stall requests</H1>
+      <div style={{ display: 'grid', gap: 12 }}>
+        {data.requests.map((r) => (
+          <Card key={r.reference}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11.5, color: 'var(--mfg)' }}>{r.reference}</div>
+                <div style={{ fontSize: 16, fontWeight: 700 }}>{r.stallName}</div>
+                <div style={{ fontSize: 12, color: 'var(--mfg)' }}>
+                  {TYPE_LABEL[r.requestType] ?? r.requestType} · submitted {formatDate(r.submittedAt)}
+                </div>
               </div>
-              <p className='mt-2 text-sm'>{STATUS_COPY[r.status]}</p>
-              {r.allocatedStalls.length > 0 && (
-                <p className='mt-1 text-sm'>
-                  Stall{r.allocatedStalls.length > 1 ? 's' : ''}:{' '}
-                  <span className='font-semibold'>{r.allocatedStalls.join(', ')}</span>
-                </p>
-              )}
+              <StatusPill status={r.status as RequestStatus} />
             </div>
-            <StatusPill status={r.status} />
-          </CardContent>
-        </Card>
-      ))}
+            <p style={{ fontSize: 13.5, margin: '12px 0 0' }}>{STATUS_COPY[r.status]}</p>
+            {r.allocatedStalls.length > 0 && (
+              <p style={{ fontSize: 13.5, margin: '6px 0 0' }}>
+                Stall{r.allocatedStalls.length > 1 ? 's' : ''}: <b>{r.allocatedStalls.join(', ')}</b>
+              </p>
+            )}
+            {(r.steps ?? []).length > 0 && (
+              <div style={{ marginTop: 14 }}>
+                <Steps steps={r.steps} />
+              </div>
+            )}
+            {(r.bankFormUrl || r.fssaiUploadUrl || r.staffUrl || r.paymentDue) && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14, alignItems: 'center' }}>
+                {r.bankFormUrl && <ActionLink href={r.bankFormUrl}>Fill in bank & GST details</ActionLink>}
+                {r.paymentDue && (
+                  <span style={{ fontSize: 13 }}>
+                    Payment due: <b>{r.paymentDue}</b> — see your payment email for NEFT details.
+                  </span>
+                )}
+                {r.fssaiUploadUrl && <ActionLink href={r.fssaiUploadUrl}>Upload FSSAI certificate</ActionLink>}
+                {r.staffUrl && <ActionLink href={r.staffUrl}>Staff registration</ActionLink>}
+              </div>
+            )}
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }

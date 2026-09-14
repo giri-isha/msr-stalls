@@ -411,3 +411,17 @@
   .msrs *{animation-duration:.01ms !important;animation-iteration-count:1 !important;
     transition-duration:.01ms !important}
 }
+
+/* ── Stalls additions ──
+ * Tamil beside English on the public forms: a font stack with Tamil glyphs,
+ * scoped like everything else here. */
+.msrs .msrs-ta{font-family:'Noto Sans Tamil','Latha','Nirmala UI','Geist Variable','Geist',sans-serif}
+/* A clickable grid row answers the pointer the way a lifted card does. */
+.msrs .msrs-row{transition:background .12s ease}
+.msrs .msrs-row:focus-visible{outline:2px solid var(--pri);outline-offset:-2px}
+@media (hover: hover) and (pointer: fine){ .msrs .msrs-row:hover{background:var(--hov)} }
+/* Print: the electrical sheet is handed to the venue team on A4. */
+@media print{
+  .msrs .msrs-noprint{display:none !important}
+  .msrs{background:#fff;color:#000}
+}

@@ -147,11 +147,11 @@ export const BANK_FORM_FIELDS: FormField[] = [
     name: 'chequeMediaKey',
     label: 'Cancelled Cheque or Bank Passbook front page with Name',
     labelTa: 'ரத்து செய்யப்பட்ட காசோலை அல்லது வங்கி பாஸ்புக் முதல் பக்கம்',
-    help: 'Cancelled cheque should have the same Name and bank details as above',
+    help: 'Cancelled cheque should have the same Name and bank details as above. Attach it here if you can; otherwise the stall team will ask for it by email',
     helpTa:
       'காசோலையில் இருக்கும் பெயரும் வங்கி கணக்கு விவரங்களில் கொடுக்கப்பட்டுள்ள பெயரும் ஒரே மாதிரி இருக்க வேண்டும்',
     type: 'text',
-    required: true,
+    required: false,
   },
   {
     name: 'advanceReturnAck',

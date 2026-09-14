@@ -66,18 +66,14 @@ module.exports = {
       // not import the standalone shell's routing or layout.
       name: 'stalls-web-imports-only-shared',
       comment:
-        'apps/web/src/modules/stalls/ may import only its own folder, @msr/stalls, ' +
-        'and the shared UI/lib primitives that exist in msr-app-replit at the same ' +
-        'paths. The app shell (src/app/) is standalone-only and does not migrate.',
+        'apps/web/src/modules/stalls/ may import only its own folder and @msr/stalls. ' +
+        'It carries its own UI system (ui/, ported from msr-volunteering under the ' +
+        '.msrs scope) and its own API client, so nothing from the shell migrates with it.',
       severity: 'error',
       from: { path: '^apps/web/src/modules/stalls/' },
       to: {
         path: '^apps/web/src/',
-        pathNot: [
-          '^apps/web/src/modules/stalls/',
-          '^apps/web/src/components/',
-          '^apps/web/src/lib/',
-        ],
+        pathNot: ['^apps/web/src/modules/stalls/'],
       },
     },
   ],
