@@ -38,6 +38,19 @@ const STAFF = [
   { email: 'deepa.r@ishafoundation.org', displayName: 'Deepa Ramanathan', roles: ['stalls_lead'] },
   { email: 'kavya.n@ishafoundation.org', displayName: 'Kavya Nair', roles: ['stalls_volunteer'] },
   { email: 'meena.k@ishafoundation.org', displayName: 'Meena Krishnan', roles: ['stalls_finance'] },
+  // The two narrow roles, seeded so their limits can be seen rather than taken
+  // on trust: the local welfare team sees only their own requests, and the
+  // electrical team sees only the sheet.
+  {
+    email: 'lakshmi.p@ishafoundation.org',
+    displayName: 'Lakshmi Perumal',
+    roles: ['stalls_local_welfare'],
+  },
+  {
+    email: 'suresh.k@ishafoundation.org',
+    displayName: 'Suresh Kumar',
+    roles: ['stalls_electrical'],
+  },
   { email: 'arjun.b@ishafoundation.org', displayName: 'Arjun Balaji', roles: [] },
 ];
 
