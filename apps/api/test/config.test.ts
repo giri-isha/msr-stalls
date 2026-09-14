@@ -99,7 +99,11 @@ describe('seeded defaults', () => {
     const { ensureEditionDefaults } = await import('../src/modules/stalls/config');
     await ensureEditionDefaults(prisma, e.id);
     expect(await prisma.stallZone.count({ where: { editionId: e.id } })).toBe(7);
-    expect(await prisma.stallRateCard.count({ where: { editionId: e.id } })).toBe(4);
+    // Per bay x food/non-food x scope, not four banded rows: five bays priced
+    // for trade and all seven for local welfare, doubled for food and non-food.
+    expect(await prisma.stallRateCard.count({ where: { editionId: e.id } })).toBe(
+      5 * 2 + 7 * 2,
+    );
   });
 });
 
@@ -142,7 +146,13 @@ describe('getPublicConfig', () => {
   test('carries nothing staff-only', async () => {
     await seedEdition();
     const cfg = (await getPublicConfig(prisma)) as unknown as Record<string, unknown>;
-    expect(Object.keys(cfg).sort()).toEqual(['charges', 'customFields', 'edition', 'zones']);
+    expect(Object.keys(cfg).sort()).toEqual([
+      'charges',
+      'customFields',
+      'edition',
+      'maxStallsPerRequest',
+      'zones',
+    ]);
   });
 });
 

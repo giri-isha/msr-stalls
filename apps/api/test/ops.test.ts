@@ -1,8 +1,9 @@
-import { rupeesToPaise } from '@msr/stalls';
+import { DEFAULT_STAFF_COUPON_CAPACITY, rupeesToPaise } from '@msr/stalls';
 import type { StallEdition } from '@prisma/client';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { checkIn, listCheckIns, undoCheckIn } from '../src/modules/stalls/checkin';
 import { electricalSheet } from '../src/modules/stalls/electrical';
+import { ensureCoupon } from '../src/modules/stalls/onboarding';
 import {
   actOnEquipment,
   challan,
@@ -86,8 +87,23 @@ describe('check-in', () => {
     expect(row.stallNumbers).toEqual(['C1-1']);
     expect(row.passes2w).toBe(2);
     expect(row.staffRegistered).toBe(0);
-    expect(row.staffExpected).toBe(3);
-    expect(row.pending.map((p) => p.step)).toContain('STAFF_REGISTRATION');
+    // 🔴 The counter enforces the COUPON's capacity, not the number the vendor
+    // asked for on a form months earlier. No coupon issued yet, so nothing is
+    // expected of them and nothing is pending — and zero here means zero, not
+    // "no limit", which is how a stall with eight passes registered eighty.
+    expect(row.staffExpected).toBe(0);
+    expect(row.pending.map((p) => p.step)).not.toContain('STAFF_REGISTRATION');
+  });
+
+  test('once a coupon is issued the counter expects its capacity, not the form’s', async () => {
+    const { requestId } = await selected(['C1-2'], { passesStaff: 3 });
+    await ensureCoupon(prisma, requestId, 'Green Leaf Organics', edition.year, SYSTEM);
+
+    const row = (await listCheckIns(prisma, edition.id)).find((r) => r.requestId === requestId);
+    // Eight is the team's default — "as a default we raise the coupon code with
+    // eight staff members for each stall" — and it is not the 3 on the form.
+    expect(row?.staffExpected).toBe(DEFAULT_STAFF_COUPON_CAPACITY);
+    expect(row?.pending.map((p) => p.step)).toContain('STAFF_REGISTRATION');
   });
 
   test('finds a stall by its number as well as by name', async () => {

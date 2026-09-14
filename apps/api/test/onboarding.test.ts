@@ -1,4 +1,4 @@
-import { RegisterStaffInput } from '@msr/stalls';
+import { DEFAULT_STAFF_COUPON_CAPACITY, RegisterStaffInput } from '@msr/stalls';
 import type { StallEdition } from '@prisma/client';
 import { beforeEach, describe, expect, test } from 'vitest';
 import {
@@ -13,6 +13,7 @@ import {
   registerStaff,
   removeStaff,
   resolveCoupon,
+  setCouponCapacity,
   submitFssai,
   verifyFssai,
 } from '../src/modules/stalls/onboarding';
@@ -97,7 +98,10 @@ describe('staff registration', () => {
 
     const view = await registerStaff(prisma, staffBody({ couponCode: coupon.code }));
     expect(view.registered).toBe(1);
-    expect(view.maxStaff).toBe(3);
+    // 🔴 The coupon's own capacity, not the 3 this vendor asked for on a form
+    // months earlier. Eight is the team's default and the back office moves it
+    // case by case; the vendor's answer is a request, not the gate's rule.
+    expect(view.maxStaff).toBe(DEFAULT_STAFF_COUPON_CAPACITY);
     expect(view.stallName).toBe('Green Leaf Organics');
   });
 
@@ -141,12 +145,44 @@ describe('staff registration', () => {
     expect((await listStaffFor(prisma, requestId))[0].name).toBe('Ravi K Kumar');
   });
 
-  test('refuses more staff than the stall has passes for', async () => {
+  test('refuses more staff than the coupon was raised for', async () => {
     const { requestId } = await selected(['C1-1'], { passesStaff: 1 });
     const coupon = await couponFor(requestId);
+    await setCouponCapacity(prisma, requestId, 1, SYSTEM);
+
     await registerStaff(prisma, staffBody({ couponCode: coupon.code }));
     await expect(
       registerStaff(prisma, staffBody({ couponCode: coupon.code, mobile: '9840066666' })),
+    ).rejects.toBeInstanceOf(CouponFullError);
+  });
+
+  // "If they want more staff members, in the back end we raise that capacity to
+  // 10, 12." The raise has to take effect on a coupon already in a vendor's
+  // hands, without minting a new code they would have to be sent again.
+  test('the back office raises a coupon that is already out, and it lets more in', async () => {
+    const { requestId } = await selected(['C1-1']);
+    const coupon = await couponFor(requestId);
+    await setCouponCapacity(prisma, requestId, 1, SYSTEM);
+    await registerStaff(prisma, staffBody({ couponCode: coupon.code }));
+
+    await setCouponCapacity(prisma, requestId, 2, SYSTEM);
+    const view = await registerStaff(
+      prisma,
+      staffBody({ couponCode: coupon.code, mobile: '9840066666' }),
+    );
+    expect(view.registered).toBe(2);
+    expect(view.maxStaff).toBe(2);
+  });
+
+  // ⚠️ A cap of zero is a cap, not an absence of one. Reading it as "unlimited"
+  // is how a stall with eight passes registered eighty, and it would have been
+  // every local welfare coupon, whose form never asks for a staff count.
+  test('a capacity of zero admits nobody rather than everybody', async () => {
+    const { requestId } = await selected(['C1-1']);
+    const coupon = await couponFor(requestId);
+    await setCouponCapacity(prisma, requestId, 0, SYSTEM);
+    await expect(
+      registerStaff(prisma, staffBody({ couponCode: coupon.code })),
     ).rejects.toBeInstanceOf(CouponFullError);
   });
 
@@ -293,12 +329,16 @@ describe('the onboarding table', () => {
 
   test('the pending list is the same one the vendor and check-in see', async () => {
     const { requestId } = await selected(['C1-1'], { passesStaff: 2 });
-    const row = (await listOnboarding(prisma, edition.id)).find((r) => r.requestId === requestId);
-    expect(row?.pending.map((p) => p.step)).toEqual([
-      'BANK_FORM',
-      'PAYMENT',
-      'FSSAI',
-      'STAFF_REGISTRATION',
-    ]);
+    const pending = async () =>
+      (await listOnboarding(prisma, edition.id))
+        .find((r) => r.requestId === requestId)
+        ?.pending.map((p) => p.step);
+
+    // Staff registration is not pending on anybody until a coupon exists —
+    // there is nothing for the vendor to do and no capacity to fill.
+    expect(await pending()).toEqual(['BANK_FORM', 'PAYMENT', 'FSSAI']);
+
+    await couponFor(requestId);
+    expect(await pending()).toEqual(['BANK_FORM', 'PAYMENT', 'FSSAI', 'STAFF_REGISTRATION']);
   });
 });

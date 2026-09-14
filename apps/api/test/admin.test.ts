@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import type { StallEdition } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
-import { SubmitRequestInput } from '@msr/stalls';
+import { type RateCardEntry, SubmitRequestInput } from '@msr/stalls';
 import { buildApp } from '../src/app';
+import { rateCardFor } from '../src/modules/stalls/config';
 import { submitRequest } from '../src/modules/stalls/submit';
 import {
   LogMailer,
@@ -17,6 +19,7 @@ import {
 let app: FastifyInstance;
 let admin: Staff;
 let lead: Staff;
+let edition: StallEdition;
 
 beforeAll(async () => {
   app = await buildApp({ logger: false, mail: new LogMailer() });
@@ -24,7 +27,7 @@ beforeAll(async () => {
 afterAll(() => app.close());
 beforeEach(async () => {
   await resetDatabase();
-  await seedEdition();
+  edition = await seedEdition();
   admin = await seedStaff(['stalls_admin'], 'admin@example.org');
   lead = await seedStaff(['stalls_lead'], 'lead@example.org');
 });
@@ -34,17 +37,17 @@ const charges = {
   tableRatePaise: 15000,
   lwChairRatePaise: 10000,
   lwTableRatePaise: 30000,
-  vendorDepositPaise: 400000,
-  localWelfareDepositPaise: 400000,
   plug5aRatePaise: 50000,
   plug15aRatePaise: 100000,
   gstPercent: 18,
   crowdPerStall: 1200,
   vendorChairRatePaise: 10000,
   vendorTableRatePaise: 40000,
+  chairTableDepositPaise: 400000,
+  equipmentDays: 2,
   chairReplacementPaise: 50000,
   tableReplacementPaise: 150000,
-  eventDays: 2,
+  damagePenaltyPaise: 25000,
 };
 
 describe('authorisation', () => {
@@ -123,18 +126,47 @@ describe('charges and flow', () => {
 });
 
 describe('rate card', () => {
-  test('replaces amounts by zone group and food type', async () => {
-    const put = await app.inject({
+  /** The whole card is sent on every save: a row left out is a bay this scope
+   *  no longer prices, and the public form then says "not available this year"
+   *  rather than quoting a stale figure. So a test that changes one bay has to
+   *  send the rest back unchanged, exactly as the Admin screen does. */
+  const putCard = (entries: RateCardEntry[]) =>
+    app.inject({
       method: 'PUT',
       url: '/api/m/stalls/config/rate-card',
       headers: admin.headers,
-      payload: { entries: [{ zoneGroup: 'C', isFood: true, amountPaise: 1_600_000 }] },
+      payload: { entries },
     });
-    expect(put.statusCode).toBe(200);
+
+  test('replaces the amount for one bay and leaves its neighbours alone', async () => {
+    const card = await rateCardFor(prisma, edition.id);
+    const entries = card.map((e) =>
+      e.zoneCode === 'C1' && e.isFood && e.scope === 'VENDOR'
+        ? { ...e, amountPaise: 1_600_000 }
+        : e,
+    );
+    expect((await putCard(entries)).statusCode).toBe(200);
+
     const pub = await app.inject({ method: 'GET', url: '/api/m/stalls/public/config' });
-    const c1 = pub.json().zones.find((z: { code: string }) => z.code === 'C1');
-    expect(c1.rentFoodPaise).toBe(1_600_000);
-    expect(c1.rentNonFoodPaise).toBe(1_200_000); // untouched
+    const zones = pub.json().zones;
+    expect(zones.find((z: { code: string }) => z.code === 'C1').rentFoodPaise).toBe(1_600_000);
+    expect(zones.find((z: { code: string }) => z.code === 'C1').rentNonFoodPaise).toBe(1_200_000);
+    // C2 shares the printed band with C1 and must NOT move with it — pricing
+    // two bays apart is the reason the card is per bay rather than per band.
+    expect(zones.find((z: { code: string }) => z.code === 'C2').rentFoodPaise).toBe(1_500_000);
+  });
+
+  test('the advance rides on the row, so it is set per bay too', async () => {
+    const card = await rateCardFor(prisma, edition.id);
+    const entries = card.map((e) =>
+      e.zoneCode === 'C1' ? { ...e, depositPaise: 200_000 } : e,
+    );
+    expect((await putCard(entries)).statusCode).toBe(200);
+
+    const pub = await app.inject({ method: 'GET', url: '/api/m/stalls/public/config' });
+    const zones = pub.json().zones;
+    expect(zones.find((z: { code: string }) => z.code === 'C1').depositPaise).toBe(200_000);
+    expect(zones.find((z: { code: string }) => z.code === 'C2').depositPaise).toBe(400_000);
   });
 });
 

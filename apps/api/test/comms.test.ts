@@ -9,6 +9,7 @@ import {
   sendTemplate,
   updateTemplate,
 } from '../src/modules/stalls/comms';
+import { checkIn } from '../src/modules/stalls/checkin';
 import { WrongTemplateError } from '../src/modules/stalls/errors';
 import { SYSTEM, prisma, resetDatabase, seedEdition } from './helpers/db';
 import { selected, type TestDeps, testDeps } from './helpers/onboarding';
@@ -46,12 +47,37 @@ describe('templates', () => {
       prisma,
       edition.id,
       'SELECTION_VENDOR',
-      { subject: 'Confirmed: {{stallName}}', body: 'Stall {{stallNumbers}}. Bye.' },
+      { subject: 'Confirmed: {{stallName}}', body: 'Bay {{zoneCode}}. Bye.' },
       SYSTEM,
     );
     await send('SELECTION_VENDOR', [requestId]);
     expect(deps.mail.sent[0].subject).toBe('Confirmed: Green Leaf Organics');
-    expect(deps.mail.sent[0].text).toBe('Stall C1-1. Bye.');
+    expect(deps.mail.sent[0].text).toBe('Bay C1. Bye.');
+  });
+
+  // 🔴 The team asked that the stall NUMBER not go out before the vendor is
+  // standing at the counter: "some of them will come back saying I want to
+  // change this location". The AREA is told early and has to be, because the
+  // rent depends on it. So the placeholder exists, and renders blank until
+  // check-in rather than being refused — a letter an admin writes afterwards
+  // can still carry it.
+  test('the stall number renders blank before check-in and fills after it', async () => {
+    const { requestId } = await selected(['C1-1']);
+    await updateTemplate(
+      prisma,
+      edition.id,
+      'SELECTION_VENDOR',
+      { subject: 'x', body: 'Number [{{stallNumbers}}] in bay {{zoneCode}}.' },
+      SYSTEM,
+    );
+
+    await send('SELECTION_VENDOR', [requestId]);
+    expect(deps.mail.sent[0].text).toBe('Number [] in bay C1.');
+
+    await checkIn(prisma, requestId, undefined, SYSTEM);
+    await clearSendLog(prisma, requestId, 'SELECTION_VENDOR', SYSTEM);
+    await send('SELECTION_VENDOR', [requestId]);
+    expect(deps.mail.sent[1].text).toBe('Number [C1-1] in bay C1.');
   });
 });
 
@@ -127,15 +153,38 @@ describe('sending', () => {
     expect(result.skipped[0].reason).toContain('not selected');
   });
 
-  test('a transport failure leaves the letter re-sendable', async () => {
+  // ⚠️ Two channels now, so "the send failed" and "a send failed" are different
+  // events. One channel getting through is enough to move the request on — a
+  // vendor who read the WhatsApp is waiting to pay, and holding onboarding back
+  // for the mail server would strand them. Either way the channel that failed
+  // keeps no log row, so it is still offered for sending.
+  test('a channel that fails is re-sendable while the one that worked stands', async () => {
     const { requestId } = await selected(['C1-1']);
     deps.mail.send = async () => {
       throw new Error('smtp down');
     };
-    const failed = await send('SELECTION_VENDOR', [requestId]);
-    expect(failed.skipped[0].reason).toContain('try again');
-    // Nothing recorded, so the row is still offered for sending.
+    const partial = await send('SELECTION_VENDOR', [requestId]);
+
+    expect(partial.skipped[0].reason).toBe('sent, but email failed');
+    expect(deps.whatsapp.sent).toHaveLength(1);
     expect(await prisma.stallMessageLog.count({ where: { requestId, channel: 'EMAIL' } })).toBe(0);
+    expect(
+      await prisma.stallMessageLog.count({ where: { requestId, channel: 'WHATSAPP' } }),
+    ).toBe(1);
+  });
+
+  test('when every channel fails the letter is not counted as sent at all', async () => {
+    const { requestId } = await selected(['C1-1']);
+    deps.mail.send = async () => {
+      throw new Error('smtp down');
+    };
+    deps.whatsapp.send = async () => {
+      throw new Error('provider down');
+    };
+    const failed = await send('SELECTION_VENDOR', [requestId]);
+
+    expect(failed.skipped[0].reason).toContain('try again');
+    expect(await prisma.stallMessageLog.count({ where: { requestId } })).toBe(0);
   });
 
   test('the payment letter freezes the amount the vendor was told', async () => {
@@ -150,7 +199,7 @@ describe('sending', () => {
 
     // An admin editing the rate afterwards does not move the frozen figure.
     await prisma.stallRateCard.updateMany({
-      where: { editionId: edition.id, zoneGroup: 'C', isFood: true },
+      where: { editionId: edition.id, zoneCode: 'C1', scope: 'VENDOR', isFood: true },
       data: { amountPaise: 9_999_900 },
     });
     const after = await prisma.stallPaymentPlan.findUnique({ where: { requestId } });

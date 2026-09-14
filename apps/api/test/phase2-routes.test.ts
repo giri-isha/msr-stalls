@@ -1,9 +1,10 @@
+import { DEFAULT_STAFF_COUPON_CAPACITY } from '@msr/stalls';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import type { StallEdition } from '@prisma/client';
 import { buildApp } from '../src/app';
 import { mintAccessLink } from '../src/modules/stalls/accounts';
-import { ensureCoupon } from '../src/modules/stalls/onboarding';
+import { ensureCoupon, setCouponCapacity } from '../src/modules/stalls/onboarding';
 import {
   LogMailer,
   type Staff,
@@ -263,7 +264,8 @@ describe('staff registration, reached with nothing but a coupon', () => {
     const view = await pub('GET', `/staff-registration/${code}`);
     expect(view.statusCode).toBe(200);
     expect(view.json().stallName).toBe('Green Leaf Organics');
-    expect(view.json().maxStaff).toBe(2);
+    // The coupon's capacity, not the 2 the vendor asked for on the form.
+    expect(view.json().maxStaff).toBe(DEFAULT_STAFF_COUPON_CAPACITY);
 
     const res = await pub('POST', '/staff-registration', {
       couponCode: code,
@@ -283,6 +285,7 @@ describe('staff registration, reached with nothing but a coupon', () => {
   test('the cap is enforced at the edge, with a 409 the page can explain', async () => {
     const { requestId } = await selected(['C1-1'], { passesStaff: 1 });
     const code = await coupon(requestId);
+    await setCouponCapacity(prisma, requestId, 1, 'system');
     await pub('POST', '/staff-registration', {
       couponCode: code,
       name: 'A',

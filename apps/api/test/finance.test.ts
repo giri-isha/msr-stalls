@@ -82,7 +82,7 @@ describe('what is owed', () => {
     const before = await rowFor(requestId);
 
     await prisma.stallRateCard.updateMany({
-      where: { editionId: edition.id, zoneGroup: 'C', isFood: true },
+      where: { editionId: edition.id, zoneCode: 'C1', scope: 'VENDOR', isFood: true },
       data: { amountPaise: rupeesToPaise(99_999) },
     });
     const after = await rowFor(requestId);
@@ -330,6 +330,19 @@ describe('refunds', () => {
 
 describe('a zone with no rate', () => {
   test('never reads as settled — nothing is known about what is owed', async () => {
+    // A3 is closed to TRADE. A vendor standing in it is the case with no rate.
+    await makeStalls(edition.id, 'A3', { VENDOR_FOOD: 2 });
+    const { requestId } = await selected(['A3-1'], { preferredZoneCode: 'A3' });
+    const row = (await listPayments(prisma, edition.id)).find((r) => r.requestId === requestId);
+    expect(row?.quote.unpriced).toBe(true);
+    expect(row?.fullySettled).toBe(false);
+  });
+
+  // 🔴 The same bay, the same ground, a different requester — and a figure
+  // rather than nothing. A3 and B2 carry the VAP traders, who pay the most of
+  // any local welfare stall; quoting them nothing is what left the stalls that
+  // pay the most unbillable all season.
+  test('the same bay IS priced for local welfare, and can settle', async () => {
     await makeStalls(edition.id, 'A3', { LW_FOOD: 2 });
     const { requestId } = await selected(['A3-1'], {
       requestType: 'LOCAL_WELFARE',
@@ -337,7 +350,7 @@ describe('a zone with no rate', () => {
       preferredZoneCode: 'A3',
     });
     const row = (await listPayments(prisma, edition.id)).find((r) => r.requestId === requestId);
-    expect(row?.quote.unpriced).toBe(true);
-    expect(row?.fullySettled).toBe(false);
+    expect(row?.quote.unpriced).toBe(false);
+    expect(row?.quote.stallFeePaise).toBeGreaterThan(0);
   });
 });
