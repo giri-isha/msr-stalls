@@ -63,7 +63,7 @@ import {
 } from './requests';
 import { UnknownRequestError } from './errors';
 import { ROLES, requireAction, requireStaff } from './roles';
-import { requireRequestScope, scopeOf } from './scope';
+import { requireOwnerScope, requireRequestScope, scopeOf } from './scope';
 import {
   backupRequest,
   cancelRequest,
@@ -231,6 +231,12 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
   zod.delete('/allocations/:id', { schema: { params: IdParams } }, async (req, reply) => {
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'selection:write');
+    await requireOwnerScope(caller, prisma, () =>
+      prisma.stallAllocation.findUnique({
+        where: { id: req.params.id },
+        select: { requestId: true },
+      }),
+    );
     await releaseAllocation(prisma, req.params.id, caller.personId);
     reply.status(204);
   });
@@ -691,9 +697,17 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     return onboarding.listStaffFor(prisma, req.params.id);
   });
 
+  // ⚠️ `:id` is the registration's, not the request's — the scope check has to
+  // walk to the stall it belongs to before it can answer.
   zod.delete('/staff-registrations/:id', { schema: { params: IdParams } }, async (req, reply) => {
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'requests:write');
+    await requireOwnerScope(caller, prisma, () =>
+      prisma.stallVendorStaff.findUnique({
+        where: { id: req.params.id },
+        select: { requestId: true },
+      }),
+    );
     await onboarding.removeStaff(prisma, req.params.id, caller.personId);
     reply.status(204);
   });
@@ -718,9 +732,17 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     },
   );
 
+  // ⚠️ `:id` is the credit record's here, not the request's — unlike the POST
+  // above it, which is addressed by request.
   zod.delete('/finance/payments/:id', { schema: { params: IdParams } }, async (req, reply) => {
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'finance:write');
+    await requireOwnerScope(caller, prisma, () =>
+      prisma.stallPaymentRecord.findUnique({
+        where: { id: req.params.id },
+        select: { requestId: true },
+      }),
+    );
     await finance.deletePayment(prisma, req.params.id, caller.personId);
     reply.status(204);
   });

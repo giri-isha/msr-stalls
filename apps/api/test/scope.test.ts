@@ -129,6 +129,28 @@ describe('one request, addressed by id', () => {
     expect((await get(lw, `/onboarding/${vendorId}`)).statusCode).toBe(403);
   });
 
+  test('a child row belonging to another type’s request is a 403', async () => {
+    // ⚠️ `:id` here is the registration's, not the request's — the check has to
+    // walk to the stall it hangs off before it can answer.
+    await selectRequest(prisma, { requestId: vendorId, stallNumbers: ['A4-1'] }, SYSTEM);
+    const staffRow = await prisma.stallVendorStaff.create({
+      data: {
+        requestId: vendorId,
+        name: 'Murugan',
+        mobile: '9840011111',
+        idType: 'AADHAAR',
+        idNumber: '1234',
+      },
+    });
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/m/stalls/staff-registrations/${staffRow.id}`,
+      headers: lw.headers,
+    });
+    expect(res.statusCode).toBe(403);
+    expect(await prisma.stallVendorStaff.count({ where: { id: staffRow.id } })).toBe(1);
+  });
+
   test('an id that matches nothing is a 404, not a 403', async () => {
     // Answering 403 would say an id exists to somebody not allowed to know it.
     const res = await get(lw, '/requests/11111111-1111-4111-8111-111111111111');

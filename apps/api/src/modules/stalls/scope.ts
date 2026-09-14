@@ -64,3 +64,20 @@ export async function requireRequestScope(
     throw new RequestTypeForbiddenError(r.requestType);
   }
 }
+
+/** The same check for a route addressed by a CHILD row — a staff registration,
+ *  a payment record, an allocation — whose `:id` is not a request id.
+ *
+ *  The lookup is passed in rather than done here so this file stays ignorant of
+ *  which tables hang off a request, and it runs only for a scoped caller: an
+ *  unscoped one costs no extra query, which is every caller but one role. */
+export async function requireOwnerScope(
+  caller: StaffCaller,
+  db: PrismaClient,
+  findOwner: () => Promise<{ requestId: string } | null>,
+): Promise<void> {
+  if (scopeOf(caller) === null) return;
+  const row = await findOwner();
+  if (!row) return;
+  await requireRequestScope(caller, db, row.requestId);
+}
