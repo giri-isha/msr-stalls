@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'vitest';
-import { SubmitRequestInput } from '@msr/stalls';
+import { type RateScope, SubmitRequestInput, lookupRate } from '@msr/stalls';
 import {
   createCustomField,
   createEdition,
@@ -43,15 +43,44 @@ describe('seeded defaults', () => {
     expect(closed).toEqual(['A3', 'B2']);
   });
 
-  test('rate card matches the printed 2025 form', async () => {
+  test('rate card matches the printed 2025 form, bay by bay', async () => {
     const e = await seedEdition();
     const card = await rateCardFor(prisma, e.id);
-    const find = (g: string, f: boolean) =>
-      card.find((c) => c.zoneGroup === g && c.isFood === f)?.amountPaise;
-    expect(find('AB', true)).toBe(1_800_000);
-    expect(find('AB', false)).toBe(1_500_000);
-    expect(find('C', true)).toBe(1_500_000);
-    expect(find('C', false)).toBe(1_200_000);
+    const rent = (zoneCode: string, isFood: boolean, scope: RateScope) =>
+      lookupRate(card, zoneCode, isFood, scope)?.amountPaise;
+
+    // Page 3 of the vendor form, which quotes a band. It is stored per bay, so
+    // every bay in the band has to carry the band's figure in its own right.
+    for (const zoneCode of ['A4', 'B3', 'B4']) {
+      expect(rent(zoneCode, true, 'VENDOR')).toBe(1_800_000);
+      expect(rent(zoneCode, false, 'VENDOR')).toBe(1_500_000);
+    }
+    for (const zoneCode of ['C1', 'C2']) {
+      expect(rent(zoneCode, true, 'VENDOR')).toBe(1_500_000);
+      expect(rent(zoneCode, false, 'VENDOR')).toBe(1_200_000);
+    }
+  });
+
+  test('the bays closed to trade are priced for local welfare, not unpriced', async () => {
+    const e = await seedEdition();
+    const card = await rateCardFor(prisma, e.id);
+    // "Closed" on the printed form means closed TO VENDORS. A3 and B2 carry the
+    // VAP traders, who pay the most of any local welfare stall — quoting them
+    // nothing is what left those stalls unbillable.
+    for (const zoneCode of ['A3', 'B2']) {
+      expect(lookupRate(card, zoneCode, true, 'VENDOR')).toBeNull();
+      expect(lookupRate(card, zoneCode, true, 'LOCAL_WELFARE')?.amountPaise).toBeGreaterThan(0);
+    }
+  });
+
+  test('each rate row carries its own refundable advance', async () => {
+    const e = await seedEdition();
+    const card = await rateCardFor(prisma, e.id);
+    // Area-wise, not one flat figure: the advance rides on the rate row so a
+    // bay's rent and its advance are edited together and cannot drift apart.
+    for (const row of card) {
+      expect(row.depositPaise).toBeGreaterThan(0);
+    }
   });
 
   test('creates a reference counter for each of the four request types', async () => {

@@ -85,7 +85,7 @@ describe('sending', () => {
     const { requestId } = await selected(['C1-1']);
     await Promise.all([send('SELECTION_VENDOR', [requestId]), send('SELECTION_VENDOR', [requestId])]);
     expect(deps.mail.sent).toHaveLength(1);
-    expect(await prisma.stallEmailLog.count({ where: { requestId } })).toBe(1);
+    expect(await prisma.stallMessageLog.count({ where: { requestId, channel: 'EMAIL' } })).toBe(1);
   });
 
   test('the vendor letter is refused for an ashram department', async () => {
@@ -135,7 +135,7 @@ describe('sending', () => {
     const failed = await send('SELECTION_VENDOR', [requestId]);
     expect(failed.skipped[0].reason).toContain('try again');
     // Nothing recorded, so the row is still offered for sending.
-    expect(await prisma.stallEmailLog.count({ where: { requestId } })).toBe(0);
+    expect(await prisma.stallMessageLog.count({ where: { requestId, channel: 'EMAIL' } })).toBe(0);
   });
 
   test('the payment letter freezes the amount the vendor was told', async () => {

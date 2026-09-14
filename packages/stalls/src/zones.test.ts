@@ -6,6 +6,7 @@ import {
   isZoneCode,
   planTotals,
   suggestStallCount,
+  type ZonePlanRow,
 } from './zones';
 
 describe('DEFAULT_ZONES_2025', () => {
@@ -84,7 +85,7 @@ describe('planTotals', () => {
   const KEYS = ['VENDOR_FOOD', 'ASHRAM_FOOD', 'LW_FOOD', 'VENDOR_NON_FOOD', 'ASHRAM_NON_FOOD'];
 
   test('totals each category and the grand total across zones', () => {
-    const rows = [
+    const rows: ZonePlanRow[] = [
       {
         zoneCode: 'A3',
         counts: { ASHRAM_FOOD: 2, ASHRAM_NON_FOOD: 6 },

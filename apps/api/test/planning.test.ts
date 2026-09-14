@@ -56,9 +56,10 @@ describe('applyPlan', () => {
     expect(r.created).toEqual(['A4-1', 'A4-2', 'A4-3']);
     const stalls = await prisma.stall.findMany({
       where: { zone: { code: 'A4' } },
+      include: { category: true },
       orderBy: { number: 'asc' },
     });
-    expect(stalls.map((s) => s.category)).toEqual([
+    expect(stalls.map((s) => s.category.key)).toEqual([
       'VENDOR_FOOD',
       'VENDOR_FOOD',
       'ASHRAM_NON_FOOD',
@@ -124,9 +125,10 @@ describe('applyPlan', () => {
     expect(r.created).toEqual([]);
     const stalls = await prisma.stall.findMany({
       where: { zone: { code: 'A4' } },
+      include: { category: true },
       orderBy: { number: 'asc' },
     });
-    expect(stalls.map((s) => [s.number, s.category, s.status])).toEqual([
+    expect(stalls.map((s) => [s.number, s.category.key, s.status])).toEqual([
       ['A4-1', 'VENDOR_FOOD', 'ALLOCATED'],
       ['A4-2', 'ASHRAM_FOOD', 'AVAILABLE'],
     ]);
