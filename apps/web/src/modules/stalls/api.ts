@@ -167,6 +167,7 @@ export interface StaffConfig {
     virtualAccountRentPrefix: string | null;
     virtualAccountDepositPrefix: string | null;
     maxStallsPerRequest: number;
+    termsUrl: string | null;
   };
   zones: Array<ZoneView & { id: string }>;
   /** The planning grid's columns, each saying whether anything already stands
@@ -233,6 +234,9 @@ export const updateEditionSettings = (
     virtualAccountRentPrefix: string | null;
     virtualAccountDepositPrefix: string | null;
     maxStallsPerRequest: number;
+    /** Where this season's terms can be read, linked beside the acceptance
+     *  tick-box on the bank form. Null until the legal team issues one. */
+    termsUrl: string | null;
   },
 ) => apiFetch<unknown>(`${BASE}/editions/${id}/settings`, { method: 'PATCH', json: input });
 export const putRateCard = (entries: RateCardEntry[]) =>

@@ -511,6 +511,19 @@ export const EditionSettingsInput = z.object({
   virtualAccountRentPrefix: VirtualAccountPrefix,
   virtualAccountDepositPrefix: VirtualAccountPrefix,
   maxStallsPerRequest: z.number().int().min(1).max(20),
+  /** Where this season's terms and conditions can be read, linked beside the
+   *  tick-box on the bank form that records having accepted them.
+   *
+   *  ⚠️ `http(s)` only, and an empty string clears it. A `javascript:` or
+   *  `data:` href would be rendered on a public page reached by a signed link,
+   *  which is the one page in this module a stranger can be sent to. */
+  termsUrl: z
+    .string()
+    .trim()
+    .max(2000)
+    .refine((s) => s === '' || /^https?:\/\//i.test(s), 'expected an http:// or https:// link')
+    .nullable()
+    .default(null),
 });
 export type EditionSettingsInput = z.infer<typeof EditionSettingsInput>;
 
@@ -520,6 +533,7 @@ export interface EditionSettingsView {
   virtualAccountRentPrefix: string | null;
   virtualAccountDepositPrefix: string | null;
   maxStallsPerRequest: number;
+  termsUrl: string | null;
 }
 
 export const ZoneInput = z.object({
@@ -847,6 +861,10 @@ export interface BankFormView {
   stallNumbers: string[];
   zoneCode: string | null;
   editionName: string;
+  /** Where this season's terms and conditions can be read. Null when the legal
+   *  team has not issued a document — the consent is then shown without a link
+   *  rather than with one that goes nowhere. */
+  termsUrl: string | null;
   /** What was asked for at request time, to prefill the requirements block. */
   current: {
     plugs5a: number;

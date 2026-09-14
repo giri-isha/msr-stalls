@@ -130,6 +130,23 @@ describe('the bank form', () => {
     expect(view.submittedAt).toBeNull();
   });
 
+  test('carries the terms the vendor is asked to accept', async () => {
+    // 🔴 This form records `agreedTermsAt`. Without the document beside the
+    // tick-box the requester accepts terms they were never shown, which is the
+    // one consent here that has to be producible if a stall is in dispute.
+    const { requestId } = await selected(['C1-1']);
+    expect((await getBankForm(prisma, requestId)).termsUrl).toBeNull();
+
+    const r = await prisma.stallRequest.findUniqueOrThrow({ where: { id: requestId } });
+    await prisma.stallEdition.update({
+      where: { id: r.editionId },
+      data: { termsUrl: 'https://isha.test/terms-2026.pdf' },
+    });
+    expect((await getBankForm(prisma, requestId)).termsUrl).toBe(
+      'https://isha.test/terms-2026.pdf',
+    );
+  });
+
   test('stores the details and overwrites the stale requirements', async () => {
     const { requestId } = await selected(['C1-1'], { chairsNeeded: 0, plugs5a: 0, passesStaff: 0 });
     await submitBankDetails(prisma, requestId, await body());

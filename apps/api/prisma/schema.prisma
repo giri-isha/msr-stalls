@@ -199,6 +199,21 @@ model StallEdition {
   /// one".
   maxStallsPerRequest Int @default(2) @map("max_stalls_per_request")
 
+  /// Where this season's terms and conditions can be read.
+  ///
+  /// 🔴 The bank form records `agreedTermsAt` against a tick-box, and the 2025
+  /// form that tick-box came from put a LINK beside it: "to view the terms and
+  /// conditions document, please click here". Without somewhere to hold that
+  /// link, a requester accepts terms they were never shown — which is the one
+  /// consent on that form that has to be producible if a stall is ever in
+  /// dispute.
+  ///
+  /// Null until the legal team issues the season's document, and the form then
+  /// shows the consent without a link rather than promising one that 404s. This
+  /// is the wording people TICK; the signed agreement is a separate artefact
+  /// with its own audit trail — see `StallContractSignature`.
+  termsUrl String? @map("terms_url")
+
   zones          StallZone[]
   planCategories StallPlanCategory[]
   rateCard       StallRateCard[]

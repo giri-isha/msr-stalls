@@ -552,6 +552,7 @@ function EditionSettings({ c, writable, run }: PanelProps) {
     virtualAccountRentPrefix: '',
     virtualAccountDepositPrefix: '',
     maxStallsPerRequest: 1,
+    termsUrl: '',
   });
   const [loaded, setLoaded] = useState<string | null>(null);
   if (c.edition.id !== loaded) {
@@ -561,13 +562,14 @@ function EditionSettings({ c, writable, run }: PanelProps) {
       virtualAccountRentPrefix: c.edition.virtualAccountRentPrefix ?? '',
       virtualAccountDepositPrefix: c.edition.virtualAccountDepositPrefix ?? '',
       maxStallsPerRequest: c.edition.maxStallsPerRequest,
+      termsUrl: c.edition.termsUrl ?? '',
     });
   }
 
   return (
     <Panel
       title='Season settings'
-      note='The edition’s name as it appears on every letter, the two virtual-account prefixes Finance issues for it, and the cap on how many stalls one request may ask for in a single bay.'
+      note='The edition’s name as it appears on every letter, the two virtual-account prefixes Finance issues for it, the cap on how many stalls one request may ask for in a single bay, and where this season’s terms can be read.'
       footer={
         <Btn
           kind='primary'
@@ -579,6 +581,7 @@ function EditionSettings({ c, writable, run }: PanelProps) {
                 virtualAccountRentPrefix: v.virtualAccountRentPrefix.trim() || null,
                 virtualAccountDepositPrefix: v.virtualAccountDepositPrefix.trim() || null,
                 maxStallsPerRequest: v.maxStallsPerRequest,
+                termsUrl: v.termsUrl.trim() || null,
               }),
             )
           }
@@ -628,6 +631,25 @@ function EditionSettings({ c, writable, run }: PanelProps) {
           />
         </FormField>
       </Grid>
+      {/* 🔴 The bank form records that a requester accepted the terms. This is
+          the document they accepted — without it that consent cannot be
+          produced if a stall is ever in dispute. Blank until the legal team
+          issues the season's document, and the form then shows the consent
+          without a link rather than one that goes nowhere. */}
+      <FormField
+        id='ed-terms'
+        label='Terms and conditions link'
+        help='Shown beside the acceptance tick-box on the bank details form. Leave blank until the document is issued.'
+      >
+        <Input
+          id='ed-terms'
+          type='url'
+          value={v.termsUrl}
+          placeholder='https://…'
+          disabled={!writable}
+          onChange={(e) => setV({ ...v, termsUrl: e.target.value })}
+        />
+      </FormField>
     </Panel>
   );
 }

@@ -459,6 +459,51 @@ describe('the season’s own settings', () => {
     expect(pub.json().edition.name).toBe('Maha Shivratri 2026');
   });
 
+  test('the season’s terms document is set here and reaches the form that asks for consent', async () => {
+    const settings = (termsUrl: string | null) =>
+      app.inject({
+        method: 'PATCH',
+        url: `/api/m/stalls/editions/${edition.id}/settings`,
+        headers: admin.headers,
+        payload: {
+          name: 'MSR 2026',
+          virtualAccountRentPrefix: null,
+          virtualAccountDepositPrefix: null,
+          maxStallsPerRequest: 2,
+          termsUrl,
+        },
+      });
+
+    expect((await settings('https://isha.test/stalls/terms-2026.pdf')).statusCode).toBe(200);
+    const row = await prisma.stallEdition.findUniqueOrThrow({ where: { id: edition.id } });
+    expect(row.termsUrl).toBe('https://isha.test/stalls/terms-2026.pdf');
+
+    // Blank is "no document this season", not a link to nowhere — the bank form
+    // then shows the consent without a link rather than a href that 404s.
+    expect((await settings('')).statusCode).toBe(200);
+    expect(
+      (await prisma.stallEdition.findUniqueOrThrow({ where: { id: edition.id } })).termsUrl,
+    ).toBeNull();
+  });
+
+  test('a link that is not http is refused', async () => {
+    // The bank form is the one public page in this module a stranger can be
+    // sent a link to, and this href is rendered on it.
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/m/stalls/editions/${edition.id}/settings`,
+      headers: admin.headers,
+      payload: {
+        name: 'MSR 2026',
+        virtualAccountRentPrefix: null,
+        virtualAccountDepositPrefix: null,
+        maxStallsPerRequest: 2,
+        termsUrl: 'javascript:alert(1)',
+      },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   test('a lead may not change them', async () => {
     const res = await app.inject({
       method: 'PATCH',

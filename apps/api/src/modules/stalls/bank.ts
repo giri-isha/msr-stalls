@@ -31,6 +31,7 @@ export async function getBankForm(db: Db, requestId: string): Promise<BankFormVi
     stallNumbers: allocatedNumbers(r),
     zoneCode: allocatedZone(r),
     editionName: r.edition.name,
+    termsUrl: r.edition.termsUrl,
     current: {
       plugs5a: r.plugs5a,
       plugs15a: r.plugs15a,

@@ -419,10 +419,17 @@ export async function updateEditionSettings(
     virtualAccountRentPrefix: string | null;
     virtualAccountDepositPrefix: string | null;
     maxStallsPerRequest: number;
+    termsUrl?: string | null;
   },
   by: string,
 ) {
-  const updated = await db.stallEdition.update({ where: { id: editionId }, data: input });
+  const updated = await db.stallEdition.update({
+    where: { id: editionId },
+    // An empty string is "there is no document this season", not a link to
+    // nowhere — the form shows the consent without a link rather than a href
+    // that 404s.
+    data: { ...input, termsUrl: input.termsUrl?.trim() || null },
+  });
   await recordActivity(db, {
     actorRef: by,
     moduleKey: MODULE_KEY,

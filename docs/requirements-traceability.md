@@ -69,6 +69,8 @@ package both sides share.
 | The 2025 bank form's fields, vendors only | `StallBankDetail`, `/stalls/bank/:token` | Built |
 | Cheque, PAN and GST documents | Presigned straight to object storage; the API never sees the bytes | Built |
 | Contract agreement | The agreement checkboxes the 2025 form used (`agreedTermsAt`, `agreedNeftAt`), plus digital signature through a provider port (`signer.ts`, `StallContractSignature`) — `GET/POST /requests/:id/signature` and `POST .../refresh` | Built; no provider is wired up in this repo, and the standalone adapter reports itself unconfigured rather than pretending |
+| The terms document the requester accepts — "to view the terms and conditions document, please click here" on the 2025 form | `StallEdition.termsUrl`, set in Admin → Season settings, linked beside the acceptance tick-box on the bank form. Blank until the legal team issues one, and the consent then stands without a link rather than with one that 404s | Built |
+| MICR code | Required on the 2025 form; optional here | Differs — the cancelled cheque carries it and is uploaded anyway, so requiring it turns a legible cheque into a blocked submission |
 | Reminder calls for bank details pending | `StallReminderCall(kind: BANK)`, Communication → Reminder calls | Built |
 | A vendor who lost the email can get back to the form | Their status page lists what is outstanding and opens the bank form from there | Built |
 

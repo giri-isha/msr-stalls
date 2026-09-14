@@ -357,6 +357,13 @@ export function BankForm() {
             I will transfer the amount online using NEFT. *
           </span>
         </label>
+        {/* 🔴 The 2025 form put a LINK beside this tick-box — "to view the terms
+            and conditions document, please click here" — and this is the
+            consent that has to be producible if a stall is ever in dispute.
+            Without the link a requester accepts terms they were never shown.
+            The season's document is set in Admin → Editions; where the legal
+            team has not issued one, the consent stands on its own wording
+            rather than promising a document that is not there. */}
         <label
           htmlFor='agree-terms'
           style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13 }}
@@ -369,7 +376,24 @@ export function BankForm() {
           <span>
             I agree that the deposit will be returned only to the bank account given above, and that
             deductions may be made for unreturned or damaged chairs and tables or for an unclean
-            stall. *
+            stall.{' '}
+            {data.termsUrl && (
+              <>
+                I have read and accept the{' '}
+                <a
+                  href={data.termsUrl}
+                  target='_blank'
+                  rel='noreferrer noopener'
+                  // ⚠️ Stops the label's own click from toggling the box: a
+                  // requester opening the terms must not silently tick them.
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  terms and conditions for stalls
+                </a>
+                .{' '}
+              </>
+            )}
+            *
           </span>
         </label>
         <FieldError of={errors.agreeNeft ?? errors.agreeTerms} />

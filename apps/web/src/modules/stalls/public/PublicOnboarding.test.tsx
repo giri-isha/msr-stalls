@@ -27,6 +27,7 @@ const BANK_VIEW = {
   stallNumbers: ['C1-4'],
   zoneCode: 'C1',
   editionName: 'MSR 2026',
+  termsUrl: null as string | null,
   current: {
     plugs5a: 4,
     plugs15a: 5,
@@ -75,6 +76,31 @@ describe('the bank details form', () => {
     await user.click(screen.getByLabelText(/deposit will be returned/));
     // Still missing the cheque and the PAN.
     expect(screen.getByRole('button', { name: 'Submit' })).toBeDisabled();
+  });
+
+  test('links the terms it asks the vendor to accept', async () => {
+    // 🔴 This form records that the requester accepted the terms. The link is
+    // the document they accepted — without it the consent cannot be produced if
+    // a stall is ever in dispute.
+    installFetch([
+      ['GET', /\/public\/bank\//, () => ({ ...BANK_VIEW, termsUrl: 'https://isha.test/tc.pdf' })],
+    ]);
+    render();
+
+    const link = await screen.findByRole('link', { name: /terms and conditions for stalls/ });
+    expect(link).toHaveAttribute('href', 'https://isha.test/tc.pdf');
+    // Opening the document must not be what ticks the box.
+    expect(link).toHaveAttribute('target', '_blank');
+  });
+
+  test('with no document issued the consent stands on its own wording', async () => {
+    installFetch([['GET', /\/public\/bank\//, () => BANK_VIEW]]);
+    render();
+
+    await screen.findByText(/VEN-2026-0001/);
+    // A link that goes nowhere is worse than none: a requester will click it.
+    expect(screen.queryByRole('link', { name: /terms and conditions/ })).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/deposit will be returned/)).toBeInTheDocument();
   });
 
   test('an already-submitted form reads back rather than offering a second go', async () => {
