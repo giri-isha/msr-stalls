@@ -31,6 +31,7 @@ import {
 } from './facts';
 import { quoteContext, quoteFor, toQuoteView } from './quotes';
 import { MODULE_KEY } from './roles';
+import { type RequestScope, scopeWhere } from './scope';
 
 /** Everything between "you are selected" and "you are all set": the coupon a
  *  vendor's staff register with, the FSSAI certificate, and the table that
@@ -332,10 +333,14 @@ function toRow(r: RequestWithFacts, flow: Awaited<ReturnType<typeof flowFor>>): 
   };
 }
 
-export async function listOnboarding(db: Db, editionId: string): Promise<OnboardingRow[]> {
+export async function listOnboarding(
+  db: Db,
+  editionId: string,
+  scope: RequestScope = null,
+): Promise<OnboardingRow[]> {
   const [rows, flow] = await Promise.all([
     db.stallRequest.findMany({
-      where: { editionId, status: 'SELECTED' },
+      where: { editionId, status: 'SELECTED', ...scopeWhere(scope) },
       include: factsInclude,
       orderBy: [{ requestType: 'asc' }, { stallName: 'asc' }],
     }),

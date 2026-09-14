@@ -1,9 +1,9 @@
 import type { ListRequestsQuery, RequestSummary } from '@msr/stalls';
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { listRequests } from '../api';
+import { listRequests, listZones } from '../api';
 import { STATUS_LABEL, StatusPill, TYPE_LABEL, TypeBadge } from '../components/StatusPill';
-import { formatDate } from '../hooks';
+import { formatDate, useLoad } from '../hooks';
 import {
   Btn,
   Card,
@@ -28,8 +28,6 @@ import { RequestDetail } from './RequestDetail';
 
 type Mode = 'triage' | 'all';
 
-const ZONES = ['A3', 'A4', 'B2', 'B3', 'B4', 'C1', 'C2'];
-
 /** "Stall Requests" (triage: what needs a decision, cards or table) and "All
  *  Requests" (the full pipeline table with every filter) are one screen with
  *  two presets — the prototype had both, and they read the same list. */
@@ -43,6 +41,10 @@ export function Requests({ mode }: { mode: Mode }) {
   const zoneCode = params.get('zoneCode') ?? '';
   const flagged = params.get('flagged') === 'true';
   const [view, setView] = useState<'table' | 'cards'>(mode === 'triage' ? 'cards' : 'table');
+  // The bays are the season's own rows, not a list in this file: the venue is
+  // redrawn every year, and a filter that cannot offer a new bay hides every
+  // request standing in it.
+  const { data: zones } = useLoad(() => listZones(), []);
   const [selected, setSelected] = useState<string | null>(null);
 
   const [items, setItems] = useState<RequestSummary[]>([]);
@@ -182,9 +184,9 @@ export function Requests({ mode }: { mode: Mode }) {
               style={{ width: 'auto', minWidth: 120 }}
             >
               <option value=''>All zones</option>
-              {ZONES.map((z) => (
-                <option key={z} value={z}>
-                  {z}
+              {(zones ?? []).map((z) => (
+                <option key={z.code} value={z.code}>
+                  {z.code}
                 </option>
               ))}
             </Select>

@@ -17,6 +17,7 @@ import {
   useIsMobile,
   useToast,
 } from '../ui';
+import { AmendDialog } from './AmendDialog';
 import { SelectDialog } from './SelectDialog';
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
@@ -86,13 +87,14 @@ export function RequestDetail({
   const [reasonFor, setReasonFor] = useState<'reject' | 'flag' | null>(null);
   const [reason, setReason] = useState('');
   const [selecting, setSelecting] = useState(false);
+  const [amending, setAmending] = useState(false);
   const panel = useRef<HTMLElement>(null);
 
   // ⚠️ Only while nothing is stacked on top. The reason prompt and the stall
   // picker are `Dialog`s with their own Escape handler; without this gate one
   // key press closes both, so dismissing a confirm also throws away the record
   // behind it.
-  useEscape(onClose, reasonFor === null && !selecting);
+  useEscape(onClose, reasonFor === null && !selecting && !amending);
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -273,6 +275,11 @@ export function RequestDetail({
                 Cancel
               </Btn>
             )}
+            {canWrite && (
+              <Btn disabled={busy} onClick={() => setAmending(true)}>
+                <Icon name='pencil' size={13} /> Amend…
+              </Btn>
+            )}
             {canWrite &&
               (r.flagged ? (
                 <Btn
@@ -339,7 +346,25 @@ export function RequestDetail({
               <Row label='Contact' value={r.contactNumber} />
               <Row label='Address' value={r.address} />
               <Row label='Stall type' value={r.stallType === 'FOOD' ? 'Food' : 'Non-food'} />
-              <Row label='Preferred location' value={r.preferredZoneCode} />
+              <Row label='Bay requested' value={r.preferredZoneCode} />
+              {/* 🔴 What the stall is PRICED at, once the team and the requester
+                  have settled it — which is routinely not the bay that was asked
+                  for, and is settled before any stall number exists. */}
+              <Row
+                label='Bay agreed'
+                value={
+                  r.agreedZoneCode ? (
+                    <>
+                      {r.agreedZoneCode}
+                      {r.agreedZoneCode !== r.preferredZoneCode && (
+                        <Tag tone='warn' size='sm' style={{ marginLeft: 7 }}>
+                          moved from {r.preferredZoneCode}
+                        </Tag>
+                      )}
+                    </>
+                  ) : null
+                }
+              />
               <Row label='Stalls requested' value={r.numStallsRequested} />
               <Row label='Items' value={r.itemsSelling} />
               <Row label='Remarks' value={r.remarks} />
@@ -461,6 +486,18 @@ export function RequestDetail({
           onClose={() => setSelecting(false)}
           onDone={() => {
             setSelecting(false);
+            reload();
+            onChanged();
+          }}
+        />
+      )}
+
+      {r && amending && (
+        <AmendDialog
+          request={r}
+          onClose={() => setAmending(false)}
+          onDone={() => {
+            setAmending(false);
             reload();
             onChanged();
           }}

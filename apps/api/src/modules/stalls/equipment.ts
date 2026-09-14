@@ -7,6 +7,7 @@ import type { Db } from './editions';
 import { UnknownRequestError } from './errors';
 import { allocatedNumbers } from './facts';
 import { MODULE_KEY } from './roles';
+import { type RequestScope, scopeWhere } from './scope';
 
 /** The chairs-and-tables counter, over two days.
  *
@@ -111,11 +112,16 @@ async function ensureIssue(db: PrismaClient, r: Row): Promise<StallEquipmentIssu
 /** Every selected stall that ordered furniture, plus any that has a counter row
  *  already — a stall that ordered nothing and then took two chairs at the
  *  counter must not vanish from the collection list the next morning. */
-export async function listEquipment(db: PrismaClient, editionId: string): Promise<EquipmentRow[]> {
+export async function listEquipment(
+  db: PrismaClient,
+  editionId: string,
+  scope: RequestScope = null,
+): Promise<EquipmentRow[]> {
   const rows = await db.stallRequest.findMany({
     where: {
       editionId,
       status: 'SELECTED',
+      ...scopeWhere(scope),
       OR: [
         { chairsNeeded: { gt: 0 } },
         { tablesNeeded: { gt: 0 } },

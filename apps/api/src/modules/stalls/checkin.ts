@@ -13,6 +13,7 @@ import {
   staffExpected,
 } from './facts';
 import { MODULE_KEY } from './roles';
+import { type RequestScope, scopeWhere } from './scope';
 
 /** The check-in counter.
  *
@@ -52,13 +53,19 @@ function toRow(r: RequestWithFacts, flow: Awaited<ReturnType<typeof flowFor>>): 
   };
 }
 
-export async function listCheckIns(db: Db, editionId: string, q?: string): Promise<CheckInRow[]> {
+export async function listCheckIns(
+  db: Db,
+  editionId: string,
+  q?: string,
+  scope: RequestScope = null,
+): Promise<CheckInRow[]> {
   const term = q?.trim();
   const [rows, flow] = await Promise.all([
     db.stallRequest.findMany({
       where: {
         editionId,
         status: 'SELECTED',
+        ...scopeWhere(scope),
         ...(term
           ? {
               OR: [

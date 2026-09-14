@@ -188,6 +188,38 @@ export function publicConfigFor(scope: string | null) {
   };
 }
 
+/** The edition's bays, as `GET /zones` returns them. Every staff screen that
+ *  filters or assigns by bay reads this rather than a list of its own. */
+export const ZONES = [
+  {
+    id: 'z-a3',
+    code: 'A3',
+    name: 'VIP Snake side',
+    expectedCrowd: 5000,
+    isClosedToVendors: true,
+    sortOrder: 1,
+    stallCount: 12,
+  },
+  {
+    id: 'z-a4',
+    code: 'A4',
+    name: 'Snake side',
+    expectedCrowd: 20000,
+    isClosedToVendors: false,
+    sortOrder: 2,
+    stallCount: 30,
+  },
+  {
+    id: 'z-c1',
+    code: 'C1',
+    name: 'Moon side',
+    expectedCrowd: 15000,
+    isClosedToVendors: false,
+    sortOrder: 3,
+    stallCount: 24,
+  },
+];
+
 export function summary(over: Record<string, unknown> = {}) {
   return {
     id: '22222222-2222-4222-8222-222222222222',
@@ -199,6 +231,9 @@ export function summary(over: Record<string, unknown> = {}) {
     email: 'priya@greenleaf.example',
     contactNumber: '9840012345',
     preferredZoneCode: 'C1',
+    /** Null until the team and the requester have settled the bay — which is
+     *  what the stall is priced at, and is not always the one asked for. */
+    agreedZoneCode: null,
     numStallsRequested: 1,
     status: 'SUBMITTED',
     stage: 'NEW',

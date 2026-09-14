@@ -1,16 +1,21 @@
 import type { AvailableStall, RequestDetail } from '@msr/stalls';
 import { useMemo, useState } from 'react';
 import { ApiError } from '../api-client';
-import { availableStalls, select } from '../api';
+import { availableStalls, listZones, select } from '../api';
 import { useLoad } from '../hooks';
 import { Btn, Dialog, Empty, Loading, Select, useToast } from '../ui';
-
-const ZONES = ['A3', 'A4', 'B2', 'B3', 'B4', 'C1', 'C2'];
 
 /** Pick free stalls for a request. Shows only AVAILABLE stalls, opens on the
  *  vendor's preferred zone, and caps the pick at what the request asked for
  *  minus what it already holds. A 409 means someone took a stall between the
- *  list loading and the click — the list reloads and the toast says so. */
+ *  list loading and the click — the list reloads and the toast says so.
+ *
+ *  🔴 The bay is the other half of this dialog, and on most selections it is
+ *  the ONLY half: "the side will be decided, but the stall number may not be
+ *  still put at the time of the payment". The bay is what the rent is read
+ *  from, so a vendor moved from the bay they asked for has to be recorded as
+ *  agreed to the new one before the payment letter goes out — months before
+ *  any number exists. Confirm is therefore enabled by either choice. */
 export function SelectDialog({
   request: r,
   onClose,
@@ -23,9 +28,14 @@ export function SelectDialog({
   const toast = useToast();
   const [zone, setZone] = useState<string>(r.preferredZoneCode);
   const { data, loading, reload } = useLoad(() => availableStalls(zone || undefined), [zone]);
+  const { data: zones } = useLoad(() => listZones(), []);
   const [picked, setPicked] = useState<string[]>([]);
+  const [agreedZone, setAgreedZone] = useState<string>(
+    r.agreedZoneCode ?? r.preferredZoneCode ?? '',
+  );
   const [busy, setBusy] = useState(false);
 
+  const bays = zones ?? [];
   const remaining = Math.max(0, r.numStallsRequested - r.allocations.length);
   const stalls = data ?? [];
   const byZone = useMemo(() => {
@@ -42,8 +52,12 @@ export function SelectDialog({
   const confirm = async () => {
     setBusy(true);
     try {
-      const out = await select(r.id, picked);
-      toast.ok(`Allocated ${out.allocated.join(', ')}`);
+      const out = await select(r.id, picked, agreedZone || undefined);
+      toast.ok(
+        out.allocated.length > 0
+          ? `Allocated ${out.allocated.join(', ')}`
+          : `Selected for ${agreedZone} — stall number to follow`,
+      );
       onDone();
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
@@ -71,12 +85,47 @@ export function SelectDialog({
       footer={
         <>
           <Btn onClick={onClose}>Cancel</Btn>
-          <Btn kind='primary' disabled={busy || picked.length === 0} onClick={confirm}>
-            {busy ? 'Allocating…' : `Allocate ${picked.length || ''}`.trim()}
+          <Btn
+            kind='primary'
+            disabled={busy || (picked.length === 0 && !agreedZone)}
+            onClick={confirm}
+          >
+            {busy ? 'Selecting…' : picked.length > 0 ? `Allocate ${picked.length}` : 'Select'}
           </Btn>
         </>
       }
     >
+      <div
+        style={{
+          display: 'grid',
+          gap: 4,
+          padding: '10px 12px',
+          marginBottom: 14,
+          border: '1px solid var(--line)',
+          borderRadius: 8,
+        }}
+      >
+        <label htmlFor='agreed-bay' style={{ fontSize: 11, fontWeight: 700, color: 'var(--mfg)' }}>
+          Bay agreed with the requester
+        </label>
+        <Select
+          id='agreed-bay'
+          value={agreedZone}
+          onChange={(e) => setAgreedZone(e.target.value)}
+          style={{ width: 'auto', minWidth: 220 }}
+        >
+          <option value=''>Not agreed yet</option>
+          {bays.map((z) => (
+            <option key={z.code} value={z.code}>
+              {z.code} — {z.name}
+            </option>
+          ))}
+        </Select>
+        <span style={{ fontSize: 11, color: 'var(--mfg)' }}>
+          This is what the stall is priced at. They asked for {r.preferredZoneCode}.
+        </span>
+      </div>
+
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
         <Select
           aria-label='Zone'
@@ -85,9 +134,9 @@ export function SelectDialog({
           style={{ width: 'auto', minWidth: 150 }}
         >
           <option value=''>All zones</option>
-          {ZONES.map((z) => (
-            <option key={z} value={z}>
-              {z}
+          {bays.map((z) => (
+            <option key={z.code} value={z.code}>
+              {z.code}
             </option>
           ))}
         </Select>
@@ -100,7 +149,8 @@ export function SelectDialog({
         <Loading />
       ) : stalls.length === 0 ? (
         <Empty>
-          No available stalls{zone ? ` in ${zone}` : ''}. Apply a plan under Planning &amp; Zones.
+          No available stalls{zone ? ` in ${zone}` : ''}. You can still select on the agreed bay
+          alone and give the number later.
         </Empty>
       ) : (
         <div style={{ display: 'grid', gap: 14 }}>

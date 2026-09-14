@@ -2,14 +2,16 @@ import type { Prisma, PrismaClient } from '@prisma/client';
 import type {
   DashboardCounts,
   ListRequestsQuery,
+  PatchRequestInput,
   RequestDetail,
   RequestPage,
   RequestSummary,
 } from '@msr/stalls';
 import { recordActivity } from '../../activity';
 import type { Db } from './editions';
-import { UnknownRequestError } from './errors';
+import { UnknownRequestError, UnknownZoneError } from './errors';
 import { MODULE_KEY } from './roles';
+import { type RequestScope, narrowType, scopeWhere } from './scope';
 
 const summaryInclude = {
   allocations: {
@@ -66,9 +68,14 @@ export async function listRequests(
   db: Db,
   editionId: string,
   q: ListRequestsQuery,
+  scope: RequestScope = null,
 ): Promise<RequestPage> {
-  const where: Prisma.StallRequestWhereInput = { editionId };
-  if (q.requestType) where.requestType = q.requestType;
+  // A caller asking for a type their roles do not cover gets an empty page, not
+  // an error: the filter matches nothing they may see, which is what "no
+  // results" means.
+  const typeWhere = narrowType(scope, q.requestType);
+  if (!typeWhere) return { items: [], nextCursor: null };
+  const where: Prisma.StallRequestWhereInput = { editionId, ...typeWhere };
   if (q.status) where.status = q.status;
   if (q.stage) where.stage = q.stage;
   if (q.zoneCode) where.preferredZoneCode = q.zoneCode;
@@ -169,6 +176,84 @@ export async function getRequest(db: Db, id: string): Promise<RequestDetail> {
   };
 }
 
+/** Correcting a request on the staff side.
+ *
+ *  🔴 Two jobs, one route. The first is ordinary: "in case there are any other
+ *  changes, we anyway speak to them over call and make that" — a phone number
+ *  typed wrong, a chair count that moved, an item list the vendor revised.
+ *
+ *  The second is the bay. A shortlisted vendor is routinely moved — "why don't
+ *  you look at this side, that side is already filled up" — and the bay they
+ *  settle on is what the rent is read from. `selectRequest` records it when the
+ *  move happens at selection; this records it when it happens after, and is the
+ *  only way to clear it back to null when the conversation falls through.
+ *
+ *  ⚠️ What is ABSENT is the point: status, stage, stall numbers, money and the
+ *  agreement timestamps are not patchable here. Each has its own route and its
+ *  own guard, and a general patch that could reach them would be a way around
+ *  every one of those. See `PatchRequestInput`.
+ *
+ *  A patch after the payment letter has gone out does not change what the
+ *  vendor was told: that figure is frozen in `StallPaymentPlan`. It changes
+ *  what the NEXT letter and the electrical sheet will say, which is what a
+ *  correction is for.
+ */
+export async function patchRequest(
+  db: PrismaClient,
+  id: string,
+  input: PatchRequestInput,
+  by: string,
+): Promise<RequestDetail> {
+  const r = await db.stallRequest.findUnique({
+    where: { id },
+    select: { id: true, editionId: true },
+  });
+  if (!r) throw new UnknownRequestError(id);
+
+  // Both bays are checked against the edition's OWN zones. `ZoneCodeValue` only
+  // says a string is shaped like a bay code; whether this season has that bay
+  // is a row, and Admin adds and removes them.
+  for (const code of [input.preferredZoneCode, input.agreedZoneCode]) {
+    if (!code) continue;
+    const zone = await db.stallZone.findFirst({
+      where: { editionId: r.editionId, code },
+      select: { id: true },
+    });
+    if (!zone) throw new UnknownZoneError(code);
+  }
+
+  const { appliances, ...scalars } = input;
+  await db.$transaction(async (tx) => {
+    if (Object.keys(scalars).length > 0) {
+      await tx.stallRequest.update({ where: { id }, data: scalars });
+    }
+    // Appliances are child rows and arrive whole: the list sent IS the list,
+    // so a patch that omits one is removing it, not leaving it alone.
+    if (appliances) {
+      await tx.stallRequestAppliance.deleteMany({ where: { requestId: id } });
+      if (appliances.length > 0) {
+        await tx.stallRequestAppliance.createMany({
+          data: appliances.map((a, sortOrder) => ({
+            requestId: id,
+            name: a.name,
+            watts: a.watts,
+            sortOrder,
+          })),
+        });
+      }
+    }
+    await recordActivity(tx, {
+      actorRef: by,
+      moduleKey: MODULE_KEY,
+      action: 'stall_request.amended',
+      subjectRef: id,
+      detail: { fields: Object.keys(input) },
+    });
+  });
+
+  return getRequest(db, id);
+}
+
 export async function flagRequest(db: PrismaClient, id: string, reason: string, by: string) {
   const exists = await db.stallRequest.findUnique({ where: { id }, select: { id: true } });
   if (!exists) throw new UnknownRequestError(id);
@@ -197,12 +282,20 @@ export async function unflagRequest(db: PrismaClient, id: string, by: string) {
   });
 }
 
-export async function dashboardCounts(db: Db, editionId: string): Promise<DashboardCounts> {
+export async function dashboardCounts(
+  db: Db,
+  editionId: string,
+  scope: RequestScope = null,
+): Promise<DashboardCounts> {
+  // The stall counts are the venue's, not any one requester's, so they are not
+  // narrowed — a scoped caller sees how much ground exists, and whose it is
+  // only for the requests they cover.
+  const mine: Prisma.StallRequestWhereInput = { editionId, ...scopeWhere(scope) };
   const [total, byType, byStatus, flagged, planned, allocated] = await Promise.all([
-    db.stallRequest.count({ where: { editionId } }),
-    db.stallRequest.groupBy({ by: ['requestType'], where: { editionId }, _count: { _all: true } }),
-    db.stallRequest.groupBy({ by: ['status'], where: { editionId }, _count: { _all: true } }),
-    db.stallRequest.count({ where: { editionId, flaggedAt: { not: null } } }),
+    db.stallRequest.count({ where: mine }),
+    db.stallRequest.groupBy({ by: ['requestType'], where: mine, _count: { _all: true } }),
+    db.stallRequest.groupBy({ by: ['status'], where: mine, _count: { _all: true } }),
+    db.stallRequest.count({ where: { ...mine, flaggedAt: { not: null } } }),
     db.stall.count({ where: { zone: { editionId } } }),
     db.stall.count({ where: { zone: { editionId }, status: 'ALLOCATED' } }),
   ]);

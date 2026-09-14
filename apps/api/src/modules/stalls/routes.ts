@@ -21,6 +21,7 @@ import {
   ListRequestsQuery,
   LogReminderInput,
   type MeResponse,
+  PatchRequestInput,
   PlanCategoryInput,
   PresignUploadInput,
   RateCardInput,
@@ -51,9 +52,17 @@ import * as finance from './finance';
 import * as onboarding from './onboarding';
 import { applyPlan, listAvailableStalls, readPlan, writePlan } from './planning';
 import { presignUpload } from './uploads';
-import { dashboardCounts, flagRequest, getRequest, listRequests, unflagRequest } from './requests';
+import {
+  dashboardCounts,
+  flagRequest,
+  getRequest,
+  listRequests,
+  patchRequest,
+  unflagRequest,
+} from './requests';
 import { UnknownRequestError } from './errors';
 import { ROLES, requireAction, requireStaff } from './roles';
+import { requireRequestScope, scopeOf } from './scope';
 import {
   backupRequest,
   cancelRequest,
@@ -90,22 +99,42 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'requests:read');
     const edition = await activeEdition(prisma);
-    return dashboardCounts(prisma, edition.id);
+    return dashboardCounts(prisma, edition.id, scopeOf(caller));
   });
 
   // ── Requests ──────────────────────────────────────────────────────────────
+  //
+  // 🔴 Every route that reaches one request by id also calls
+  // `requireRequestScope`. `requireAction` answers "may this person do this at
+  // all"; the scope answers "to whose stall". The local welfare team holds real
+  // write access and no business reading a commercial vendor's bank details,
+  // and the rule is only worth declaring if every door checks it.
   zod.get('/requests', { schema: { querystring: ListRequestsQuery } }, async (req) => {
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'requests:read');
     const edition = await activeEdition(prisma);
-    return listRequests(prisma, edition.id, req.query);
+    return listRequests(prisma, edition.id, req.query, scopeOf(caller));
   });
 
   zod.get('/requests/:id', { schema: { params: IdParams } }, async (req) => {
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'requests:read');
+    await requireRequestScope(caller, prisma, req.params.id);
     return getRequest(prisma, req.params.id);
   });
+
+  /** Correcting an application after the fact — including the bay the team and
+   *  the requester settle on, which is what the stall is priced at. */
+  zod.patch(
+    '/requests/:id',
+    { schema: { params: IdParams, body: PatchRequestInput } },
+    async (req) => {
+      const caller = await requireStaff(req, prisma);
+      requireAction(caller, 'requests:write');
+      await requireRequestScope(caller, prisma, req.params.id);
+      return patchRequest(prisma, req.params.id, req.body, caller.personId);
+    },
+  );
 
   zod.post(
     '/requests/:id/flag',
@@ -113,6 +142,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     async (req, reply) => {
       const caller = await requireStaff(req, prisma);
       requireAction(caller, 'requests:write');
+      await requireRequestScope(caller, prisma, req.params.id);
       await flagRequest(prisma, req.params.id, req.body.reason, caller.personId);
       reply.status(204);
     },
@@ -121,6 +151,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
   zod.delete('/requests/:id/flag', { schema: { params: IdParams } }, async (req, reply) => {
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'requests:write');
+    await requireRequestScope(caller, prisma, req.params.id);
     await unflagRequest(prisma, req.params.id, caller.personId);
     reply.status(204);
   });
@@ -134,6 +165,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     ) => {
       const caller = await requireStaff(req, prisma);
       requireAction(caller, 'selection:write');
+      await requireRequestScope(caller, prisma, req.params.id);
       await fn(prisma, req.params.id, caller.personId);
       reply.status(204);
     };
@@ -165,20 +197,31 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     async (req, reply) => {
       const caller = await requireStaff(req, prisma);
       requireAction(caller, 'selection:write');
+      await requireRequestScope(caller, prisma, req.params.id);
       await rejectRequest(prisma, req.params.id, req.body.reason, caller.personId);
       reply.status(204);
     },
   );
 
+  /** ⚠️ `agreedZoneCode` is half of this call, not a decoration. The bay is
+   *  settled at selection and the stall number days later, and the bay is what
+   *  the rent is read from — so a selection that moves a vendor to another bay
+   *  must carry it, or the payment letter quotes the bay they asked for rather
+   *  than the one they were given. */
   zod.post(
     '/requests/:id/select',
     { schema: { params: IdParams, body: SelectRequestInput } },
     async (req) => {
       const caller = await requireStaff(req, prisma);
       requireAction(caller, 'selection:write');
+      await requireRequestScope(caller, prisma, req.params.id);
       return selectRequest(
         prisma,
-        { requestId: req.params.id, stallNumbers: req.body.stallNumbers },
+        {
+          requestId: req.params.id,
+          stallNumbers: req.body.stallNumbers,
+          agreedZoneCode: req.body.agreedZoneCode,
+        },
         caller.personId,
       );
     },
@@ -240,6 +283,20 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
         config.listCustomFields(prisma, edition.id),
       ]);
     return { edition, zones, planCategories, rateCard, charges, flow, fineTypes, customFields };
+  });
+
+  /** The edition's bays on their own, behind `requests:read` rather than
+   *  `config:read`.
+   *
+   *  🔴 Every staff screen that filters by bay needs this list, and the venue is
+   *  redrawn every season — so a screen that carries its own copy shows last
+   *  year's ground. Reading which bays exist is not configuring them: a
+   *  volunteer at the counter holds `requests:read` and no business in Admin. */
+  zod.get('/zones', async (req) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'requests:read');
+    const edition = await activeEdition(prisma);
+    return config.listZones(prisma, edition.id);
   });
 
   zod.get('/editions', async (req) => {
@@ -473,7 +530,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'comms:write');
     const edition = await activeEdition(prisma);
-    return comms.listRecipients(prisma, edition.id);
+    return comms.listRecipients(prisma, edition.id, scopeOf(caller));
   });
 
   /** Bulk and individual send are ONE route. The screen offers two buttons;
@@ -493,6 +550,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
       const caller = await requireStaff(req, prisma);
       // Clearing the send log so a letter can go out again is an admin act.
       requireAction(caller, 'config:write');
+      await requireRequestScope(caller, prisma, req.params.id);
       await comms.clearSendLog(prisma, req.params.id, req.params.key, caller.personId);
       reply.status(204);
     },
@@ -505,7 +563,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
       const caller = await requireStaff(req, prisma);
       requireAction(caller, 'comms:write');
       const edition = await activeEdition(prisma);
-      return comms.listReminders(prisma, edition.id, req.query.kind);
+      return comms.listReminders(prisma, edition.id, req.query.kind, scopeOf(caller));
     },
   );
 
@@ -515,6 +573,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     async (req, reply) => {
       const caller = await requireStaff(req, prisma);
       requireAction(caller, 'comms:write');
+      await requireRequestScope(caller, prisma, req.params.id);
       await comms.logReminder(prisma, req.params.id, req.body, caller.personId);
       reply.status(204);
     },
@@ -525,18 +584,20 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'requests:read');
     const edition = await activeEdition(prisma);
-    return onboarding.listOnboarding(prisma, edition.id);
+    return onboarding.listOnboarding(prisma, edition.id, scopeOf(caller));
   });
 
   zod.get('/onboarding/:id', { schema: { params: IdParams } }, async (req) => {
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'requests:read');
+    await requireRequestScope(caller, prisma, req.params.id);
     return onboarding.getOnboarding(prisma, req.params.id, deps.files);
   });
 
   zod.post('/onboarding/:id/coupon', { schema: { params: IdParams } }, async (req) => {
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'requests:write');
+    await requireRequestScope(caller, prisma, req.params.id);
     const r = await prisma.stallRequest.findUnique({
       where: { id: req.params.id },
       include: { edition: true },
@@ -564,6 +625,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     async (req) => {
       const caller = await requireStaff(req, prisma);
       requireAction(caller, 'requests:write');
+      await requireRequestScope(caller, prisma, req.params.id);
       const coupon = await onboarding.setCouponCapacity(
         prisma,
         req.params.id,
@@ -585,6 +647,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
   zod.get('/requests/:id/signature', { schema: { params: IdParams } }, async (req) => {
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'requests:read');
+    await requireRequestScope(caller, prisma, req.params.id);
     return signature.readSignature(prisma, req.params.id);
   });
 
@@ -594,6 +657,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
   zod.post('/requests/:id/signature', { schema: { params: IdParams } }, async (req) => {
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'comms:write');
+    await requireRequestScope(caller, prisma, req.params.id);
     return signature.sendForSignature(prisma, req.params.id, deps, caller.personId);
   });
 
@@ -603,6 +667,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
   zod.post('/requests/:id/signature/refresh', { schema: { params: IdParams } }, async (req) => {
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'requests:read');
+    await requireRequestScope(caller, prisma, req.params.id);
     return signature.refreshSignature(prisma, req.params.id, deps);
   });
 
@@ -612,6 +677,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     async (req, reply) => {
       const caller = await requireStaff(req, prisma);
       requireAction(caller, 'requests:write');
+      await requireRequestScope(caller, prisma, req.params.id);
       await onboarding.verifyFssai(prisma, req.params.id, req.body.verified, caller.personId);
       reply.status(204);
     },
@@ -620,6 +686,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
   zod.get('/onboarding/:id/staff', { schema: { params: IdParams } }, async (req) => {
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'requests:read');
+    await requireRequestScope(caller, prisma, req.params.id);
     return onboarding.listStaffFor(prisma, req.params.id);
   });
 
@@ -635,7 +702,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'finance:read');
     const edition = await activeEdition(prisma);
-    return finance.listPayments(prisma, edition.id);
+    return finance.listPayments(prisma, edition.id, scopeOf(caller));
   });
 
   zod.post(
@@ -644,6 +711,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     async (req, reply) => {
       const caller = await requireStaff(req, prisma);
       requireAction(caller, 'finance:write');
+      await requireRequestScope(caller, prisma, req.params.id);
       await finance.confirmPayment(prisma, req.params.id, req.body, caller.personId);
       reply.status(204);
     },
@@ -660,7 +728,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'finance:read');
     const edition = await activeEdition(prisma);
-    return finance.listRefunds(prisma, edition.id);
+    return finance.listRefunds(prisma, edition.id, scopeOf(caller));
   });
 
   zod.post(
@@ -672,6 +740,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
       // is what the Lead role does NOT hold, so this is deliberately the
       // finance action and not `requests:write`.
       requireAction(caller, 'finance:write');
+      await requireRequestScope(caller, prisma, req.params.id);
       return finance.submitRefund(prisma, req.params.id, req.body, caller.personId);
     },
   );
@@ -687,6 +756,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     async (req, reply) => {
       const caller = await requireStaff(req, prisma);
       requireAction(caller, 'finance:write');
+      await requireRequestScope(caller, prisma, req.params.id);
       await finance.setVoucherRef(prisma, req.params.id, req.body.voucherRef, caller.personId);
       reply.status(204);
     },
@@ -714,19 +784,21 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
       const caller = await requireStaff(req, prisma);
       requireAction(caller, 'requests:read');
       const edition = await activeEdition(prisma);
-      return checkin.listCheckIns(prisma, edition.id, req.query.q);
+      return checkin.listCheckIns(prisma, edition.id, req.query.q, scopeOf(caller));
     },
   );
 
   zod.post('/checkin/:id', { schema: { params: IdParams, body: CheckInInput } }, async (req) => {
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'checkin:write');
+    await requireRequestScope(caller, prisma, req.params.id);
     return checkin.checkIn(prisma, req.params.id, req.body.note, caller.personId);
   });
 
   zod.delete('/checkin/:id', { schema: { params: IdParams } }, async (req) => {
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'checkin:write');
+    await requireRequestScope(caller, prisma, req.params.id);
     return checkin.undoCheckIn(prisma, req.params.id, caller.personId);
   });
 
@@ -734,7 +806,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'requests:read');
     const edition = await activeEdition(prisma);
-    return equipment.listEquipment(prisma, edition.id);
+    return equipment.listEquipment(prisma, edition.id, scopeOf(caller));
   });
 
   zod.patch(
@@ -743,6 +815,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     async (req) => {
       const caller = await requireStaff(req, prisma);
       requireAction(caller, 'checkin:write');
+      await requireRequestScope(caller, prisma, req.params.id);
       return equipment.patchEquipment(prisma, req.params.id, req.body, caller.personId);
     },
   );
@@ -753,6 +826,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     async (req) => {
       const caller = await requireStaff(req, prisma);
       requireAction(caller, 'checkin:write');
+      await requireRequestScope(caller, prisma, req.params.id);
       return equipment.actOnEquipment(prisma, req.params.id, req.body.action, caller.personId);
     },
   );

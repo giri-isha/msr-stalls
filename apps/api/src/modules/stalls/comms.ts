@@ -21,6 +21,7 @@ import { ensureCoupon } from './onboarding';
 import { planToView, quoteContext, quoteFor, toQuoteView } from './quotes';
 import { signatureLinkFor } from './signature';
 import { MODULE_KEY } from './roles';
+import { type RequestScope, scopeWhere } from './scope';
 
 /** Vendor communication: the editable letters, who has had one, and the log of
  *  chasing calls.
@@ -138,9 +139,13 @@ function suggestedTemplate(requestType: string): TemplateKeyValue {
 /** Everyone SELECTED, with what has already gone out. Not paginated: the whole
  *  point of the screen is to tick a box against every row and send once, and a
  *  selection list is a few hundred rows at most. */
-export async function listRecipients(db: Db, editionId: string): Promise<CommRecipient[]> {
+export async function listRecipients(
+  db: Db,
+  editionId: string,
+  scope: RequestScope = null,
+): Promise<CommRecipient[]> {
   const rows = await db.stallRequest.findMany({
-    where: { editionId, status: 'SELECTED' },
+    where: { editionId, status: 'SELECTED', ...scopeWhere(scope) },
     include: {
       allocations: { where: { releasedAt: null }, include: { stall: true } },
       messages: true,
@@ -509,11 +514,13 @@ export async function listReminders(
   db: Db,
   editionId: string,
   kind: ReminderKind,
+  scope: RequestScope = null,
 ): Promise<ReminderRow[]> {
   const rows = await db.stallRequest.findMany({
     where: {
       editionId,
       status: 'SELECTED',
+      ...scopeWhere(scope),
       ...(kind === 'BANK'
         ? { requestType: 'VENDOR', bankDetail: null }
         : { requestType: { in: ['VENDOR', 'LOCAL_WELFARE'] }, payments: { none: {} } }),

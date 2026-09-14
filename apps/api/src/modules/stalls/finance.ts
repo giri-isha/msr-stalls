@@ -1,4 +1,4 @@
-import { Prisma, type PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient, type StallRequestType } from '@prisma/client';
 import {
   type ConfirmPaymentInput,
   type PaymentRecordView,
@@ -16,6 +16,7 @@ import { DuplicatePaymentError, RefundAlreadySubmittedError, UnknownRequestError
 import { allocatedNumbers, factsInclude, refreshStage, type RequestWithFacts } from './facts';
 import { planToView, quoteContext, quoteFor, toQuoteView } from './quotes';
 import { MODULE_KEY } from './roles';
+import type { RequestScope } from './scope';
 
 /** Finance: what is owed, what has come in, and what goes back.
  *
@@ -96,12 +97,24 @@ async function toPaymentRow(
 /** Everyone who owes money: selected vendors and local welfare stalls. Ashram
  *  departments are not billed and are absent, rather than present with a row of
  *  zeros that Finance would have to learn to ignore. */
-export async function listPayments(db: Db, editionId: string): Promise<PaymentRow[]> {
+/** The requester types that pay us, narrowed to what the caller may see.
+ *  Ashram stalls never appear on either finance screen — they are not billed —
+ *  so the intersection is taken here rather than adding a second clause. */
+function payingTypes(scope: RequestScope): StallRequestType[] {
+  const paying: StallRequestType[] = ['VENDOR', 'LOCAL_WELFARE'];
+  return scope === null ? paying : paying.filter((t) => scope.includes(t));
+}
+
+export async function listPayments(
+  db: Db,
+  editionId: string,
+  scope: RequestScope = null,
+): Promise<PaymentRow[]> {
   const rows = await db.stallRequest.findMany({
     where: {
       editionId,
       status: 'SELECTED',
-      requestType: { in: ['VENDOR', 'LOCAL_WELFARE'] },
+      requestType: { in: payingTypes(scope) },
     },
     include: factsInclude,
     orderBy: [{ requestType: 'asc' }, { stallName: 'asc' }],
@@ -239,12 +252,16 @@ async function toRefundRow(
   };
 }
 
-export async function listRefunds(db: Db, editionId: string): Promise<RefundRow[]> {
+export async function listRefunds(
+  db: Db,
+  editionId: string,
+  scope: RequestScope = null,
+): Promise<RefundRow[]> {
   const rows = await db.stallRequest.findMany({
     where: {
       editionId,
       status: 'SELECTED',
-      requestType: { in: ['VENDOR', 'LOCAL_WELFARE'] },
+      requestType: { in: payingTypes(scope) },
     },
     include: refundInclude,
     orderBy: [{ stallName: 'asc' }],

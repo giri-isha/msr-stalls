@@ -12,8 +12,10 @@ import {
   StallAlreadyAllocatedError,
   StallBlockedError,
   RefundAlreadySubmittedError,
+  RequestTypeForbiddenError,
   StepNotOpenError,
   TooManyStallsError,
+  TooManyStallsRequestedError,
   UnknownAccessLinkError,
   UnknownCouponError,
   UnknownPersonError,
@@ -34,7 +36,10 @@ import { NotSignedInError } from './roles';
  *  code constructed inside a route. */
 function statusFor(err: unknown): number | null {
   if (err instanceof NotSignedInError) return 401;
-  if (err instanceof NotAuthorizedError) return 403;
+  // A role that reaches some requester types but not this one. 403, the same
+  // as holding no grant at all — the caller may not, and which half of the
+  // rule stopped them is not their business.
+  if (err instanceof NotAuthorizedError || err instanceof RequestTypeForbiddenError) return 403;
   if (
     err instanceof UnknownAccessLinkError ||
     err instanceof UnknownRequestError ||
@@ -67,7 +72,13 @@ function statusFor(err: unknown): number | null {
   ) {
     return 409;
   }
-  if (err instanceof TooManyStallsError || err instanceof ValidationFailedError) return 422;
+  if (
+    err instanceof TooManyStallsError ||
+    err instanceof TooManyStallsRequestedError ||
+    err instanceof ValidationFailedError
+  ) {
+    return 422;
+  }
   // 503, not 500. "No provider is wired up in this environment" and "the
   // provider refused this document" are both conditions the caller can retry
   // once somebody configures or fixes the service — not a bug in the request.

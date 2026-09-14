@@ -21,6 +21,7 @@ import type {
   MeResponse,
   OnboardingDetail,
   OnboardingRow,
+  PatchRequestInput,
   PaymentRow,
   PresignUploadInput,
   PresignUploadResponse,
@@ -109,6 +110,12 @@ export const listRequests = (q: Partial<ListRequestsQuery> = {}) =>
 
 export const getRequest = (id: string) => apiFetch<RequestDetail>(`${BASE}/requests/${id}`);
 
+/** Correcting an application — what the requester told the team over the phone,
+ *  and the bay they settled on. Status, money and stall numbers are not here:
+ *  each has its own route and its own guard. */
+export const patchRequest = (id: string, input: PatchRequestInput) =>
+  apiFetch<RequestDetail>(`${BASE}/requests/${id}`, { method: 'PATCH', json: input });
+
 export const flagRequest = (id: string, reason: string) =>
   apiFetch<void>(`${BASE}/requests/${id}/flag`, { method: 'POST', json: { reason } });
 export const unflagRequest = (id: string) =>
@@ -124,10 +131,14 @@ export const backup = (id: string) => post(id, 'backup');
 export const cancel = (id: string) => post(id, 'cancel');
 export const reject = (id: string, reason: string) =>
   apiFetch<void>(`${BASE}/requests/${id}/reject`, { method: 'POST', json: { reason } });
-export const select = (id: string, stallNumbers: string[]) =>
+/** ⚠️ `agreedZoneCode` is not optional decoration. The bay is settled at
+ *  selection and the stall number days later, and the bay is what the rent is
+ *  read from — a selection that moves a vendor without it quotes the bay they
+ *  asked for. */
+export const select = (id: string, stallNumbers: string[], agreedZoneCode?: string) =>
   apiFetch<{ allocated: string[] }>(`${BASE}/requests/${id}/select`, {
     method: 'POST',
-    json: { stallNumbers },
+    json: { stallNumbers, ...(agreedZoneCode ? { agreedZoneCode } : {}) },
   });
 export const releaseAllocation = (allocationId: string) =>
   apiFetch<void>(`${BASE}/allocations/${allocationId}`, { method: 'DELETE' });
@@ -181,6 +192,11 @@ export interface StaffConfig {
 }
 
 export const getConfig = () => apiFetch<StaffConfig>(`${BASE}/config`);
+
+/** The edition's bays alone. Behind `requests:read`, so every screen that
+ *  filters by bay can read the season's own list rather than carrying a copy
+ *  that goes stale the year the venue is redrawn. */
+export const listZones = () => apiFetch<Array<ZoneView & { id: string }>>(`${BASE}/zones`);
 export const listEditions = () =>
   apiFetch<Array<{ id: string; year: number; name: string; isActive: boolean }>>(
     `${BASE}/editions`,

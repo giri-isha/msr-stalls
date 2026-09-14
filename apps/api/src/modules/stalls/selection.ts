@@ -8,6 +8,7 @@ import {
   TooManyStallsError,
   UnknownRequestError,
   UnknownStallError,
+  UnknownZoneError,
 } from './errors';
 import { MODULE_KEY } from './roles';
 
@@ -90,7 +91,7 @@ async function releaseAllForRequest(tx: Prisma.TransactionClient, requestId: str
  *  rolls back, so it never half-selects. */
 export async function selectRequest(
   db: PrismaClient,
-  input: { requestId: string; stallNumbers: string[] },
+  input: { requestId: string; stallNumbers: string[]; agreedZoneCode?: string },
   by: string,
 ): Promise<{ allocated: string[] }> {
   try {
@@ -101,6 +102,23 @@ export async function selectRequest(
       });
       if (!req) throw new UnknownRequestError(input.requestId);
       if (req.status !== 'SELECTED') assertTransition(req.status, 'SELECTED');
+
+      // 🔴 The bay is agreed BEFORE a stall number exists — "the side will be
+      // decided, but the stall number may not be still put at the time of the
+      // payment" — and the bay is what the stall is PRICED at. Recording it
+      // here is what stops a vendor moved from A3 to B2 being quoted A3's rent
+      // in a payment letter that goes out days before any number exists.
+      if (input.agreedZoneCode) {
+        const zone = await tx.stallZone.findFirst({
+          where: { editionId: req.editionId, code: input.agreedZoneCode },
+          select: { code: true },
+        });
+        if (!zone) throw new UnknownZoneError(input.agreedZoneCode);
+        await tx.stallRequest.update({
+          where: { id: req.id },
+          data: { agreedZoneCode: zone.code },
+        });
+      }
 
       const offered = req.allocations.length + input.stallNumbers.length;
       if (offered > req.numStallsRequested) {
@@ -136,7 +154,11 @@ export async function selectRequest(
         moduleKey: MODULE_KEY,
         action: 'stall_request.selected',
         subjectRef: req.id,
-        detail: { from: req.status, stalls: allocated },
+        detail: {
+          from: req.status,
+          stalls: allocated,
+          ...(input.agreedZoneCode ? { agreedZone: input.agreedZoneCode } : {}),
+        },
       });
       return { allocated };
     });

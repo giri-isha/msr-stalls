@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient, StallRequestType } from '@prisma/client';
 import { type SubmitRequestInput, formatReference } from '@msr/stalls';
 import { findOrCreateAccount, mintAccessLink } from './accounts';
 import { type Db, activeEdition } from './editions';
+import { TooManyStallsRequestedError } from './errors';
 import type { Mailer } from './mailer';
 
 /** How long a status link stays live. Long: the vendor comes back to it in
@@ -56,6 +57,19 @@ export async function submitRequest(
 
   const result = await db.$transaction(async (tx) => {
     const edition = await activeEdition(tx);
+
+    // 🔴 The cap is per BAY, and that is the whole point of it: "a vendor can
+    // select only a maximum of two stalls from one side or one area. If they
+    // want another area, they raise another request — that will be better for
+    // us, to individually accept one and reject the other." A form asking for
+    // six stalls in A3 is one decision the team cannot split.
+    //
+    // Enforced here rather than in the Zod schema because the number is the
+    // edition's, editable in Admin, and a schema is a constant.
+    if (input.numStallsRequested > edition.maxStallsPerRequest) {
+      throw new TooManyStallsRequestedError(input.numStallsRequested, edition.maxStallsPerRequest);
+    }
+
     const account = await findOrCreateAccount(tx, {
       email: input.email,
       phone: input.contactNumber,
