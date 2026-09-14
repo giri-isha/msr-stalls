@@ -1,6 +1,5 @@
-import { ZONE_CODES } from '@msr/stalls';
 import { useMemo, useState } from 'react';
-import { getElectrical } from '../api';
+import { getConfig, getElectrical } from '../api';
 import { useLoad } from '../hooks';
 import {
   Btn,
@@ -39,6 +38,11 @@ export function Electrical() {
   const [zone, setZone] = useState<string>('');
   const [q, setQ] = useState('');
   const { data, error, loading } = useLoad(() => getElectrical(zone || undefined), [zone]);
+  // The bays are the edition's own rows, not a constant: the venue layout is
+  // redrawn every year, and a filter built from a fixed list would quietly
+  // offer no way to print a bay that was added this season.
+  const config = useLoad(getConfig);
+  const zones = config.data?.zones ?? [];
 
   const rows = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -77,15 +81,16 @@ export function Electrical() {
           >
             All clusters
           </button>
-          {ZONE_CODES.map((z) => (
+          {zones.map((z) => (
             <button
-              key={z}
+              key={z.code}
               type='button'
-              aria-pressed={zone === z}
-              onClick={() => setZone(z)}
-              style={toolBtnStyle(zone === z)}
+              aria-pressed={zone === z.code}
+              onClick={() => setZone(z.code)}
+              style={toolBtnStyle(zone === z.code)}
+              title={z.name}
             >
-              {z}
+              {z.code}
             </button>
           ))}
           <Search value={q} onChange={setQ} placeholder='Search stall number or name…' />

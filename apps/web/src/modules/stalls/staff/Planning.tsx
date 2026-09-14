@@ -1,4 +1,4 @@
-import { STALL_CATEGORIES, type ZoneCode, type ZonePlanView, suggestStallCount } from '@msr/stalls';
+import { type ZoneCode, type ZonePlanView, suggestStallCount } from '@msr/stalls';
 import { useEffect, useState } from 'react';
 import { applyPlan, getPlan, putPlan } from '../api';
 import { useLoad } from '../hooks';
@@ -21,15 +21,13 @@ import {
   useToast,
 } from '../ui';
 
-const CAT_LABEL: Record<string, string> = {
-  VENDOR_FOOD: 'Vendor Food',
-  ASHRAM_FOOD: 'Ashram Food',
-  LW_FOOD: 'LW Food',
-  VENDOR_NON_FOOD: 'Vendor Non-food',
-  ASHRAM_NON_FOOD: 'Ashram Non-food',
-  HELP_DESK: 'Help Desk',
-  BACKUP: 'Backup',
-};
+/** The grid's columns, in the order the edition put them.
+ *
+ *  ⚠️ Read off the payload, never a constant in this file. The columns are the
+ *  edition's own configuration — the 2025 sheet carried sponsor and Adiyogi
+ *  columns an enum never had — and a screen holding its own list would silently
+ *  drop a column an admin added, under-counting the bay it stands in. */
+type Column = ZonePlanView['categories'][number];
 
 type Draft = {
   crowdPerStall: string;
@@ -41,7 +39,7 @@ const toDraft = (p: ZonePlanView): Draft => ({
   rows: p.rows.map((r) => ({
     zoneCode: r.zoneCode,
     expectedCrowd: String(r.expectedCrowd),
-    counts: Object.fromEntries(STALL_CATEGORIES.map((c) => [c, String(r.counts[c] ?? 0)])),
+    counts: Object.fromEntries(p.categories.map((c) => [c.key, String(r.counts[c.key] ?? 0)])),
   })),
 });
 
@@ -76,8 +74,9 @@ export function Planning() {
   if (error || !data) return <ErrorBox>{error?.message ?? 'Could not load the plan.'}</ErrorBox>;
 
   const divisor = n(draft.crowdPerStall);
+  const columns: Column[] = data.categories;
   const rowTotal = (r: Draft['rows'][number]) =>
-    STALL_CATEGORIES.reduce((t, c) => t + n(r.counts[c]), 0);
+    columns.reduce((t, c) => t + n(r.counts[c.key]), 0);
   const colTotal = (c: string) => draft.rows.reduce((t, r) => t + n(r.counts[c]), 0);
   const grand = draft.rows.reduce((t, r) => t + rowTotal(r), 0);
   const dirty = JSON.stringify(draft) !== JSON.stringify(toDraft(data));
@@ -105,10 +104,7 @@ export function Planning() {
         rows: draft.rows.map((r) => ({
           zoneCode: r.zoneCode as ZoneCode,
           expectedCrowd: n(r.expectedCrowd),
-          counts: Object.fromEntries(STALL_CATEGORIES.map((c) => [c, n(r.counts[c])])) as Record<
-            (typeof STALL_CATEGORIES)[number],
-            number
-          >,
+          counts: Object.fromEntries(columns.map((c) => [c.key, n(r.counts[c.key])])),
         })),
       });
       toast.ok('Plan saved');
@@ -192,9 +188,9 @@ export function Planning() {
               <TH align='right' title='Crowd ÷ people per stall, rounded up'>
                 Suggested
               </TH>
-              {STALL_CATEGORIES.map((c) => (
-                <TH key={c} align='right'>
-                  {CAT_LABEL[c]}
+              {columns.map((c) => (
+                <TH key={c.key} align='right'>
+                  {c.name}
                 </TH>
               ))}
               <TH align='right'>Total</TH>
@@ -236,16 +232,16 @@ export function Planning() {
                   >
                     {suggested}
                   </TD>
-                  {STALL_CATEGORIES.map((c) => (
-                    <TD key={c} align='right'>
+                  {columns.map((c) => (
+                    <TD key={c.key} align='right'>
                       <Input
-                        aria-label={`${r.zoneCode} ${CAT_LABEL[c]}`}
+                        aria-label={`${r.zoneCode} ${c.name}`}
                         type='number'
                         min={0}
                         style={{ width: 64, ...cellInput }}
-                        value={r.counts[c]}
+                        value={r.counts[c.key] ?? '0'}
                         disabled={!writable}
-                        onChange={(e) => setCount(i, c, e.target.value)}
+                        onChange={(e) => setCount(i, c.key, e.target.value)}
                       />
                     </TD>
                   ))}
@@ -270,9 +266,9 @@ export function Planning() {
               <TD align='right' muted>
                 {draft.rows.reduce((t, r) => t + suggestStallCount(n(r.expectedCrowd), divisor), 0)}
               </TD>
-              {STALL_CATEGORIES.map((c) => (
-                <TD key={c} align='right'>
-                  {colTotal(c)}
+              {columns.map((c) => (
+                <TD key={c.key} align='right'>
+                  {colTotal(c.key)}
                 </TD>
               ))}
               <TD align='right' data-testid='grand-total'>
