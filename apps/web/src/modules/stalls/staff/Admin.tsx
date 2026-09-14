@@ -1,5 +1,6 @@
+import type { RateCardEntry, RateScope } from '@msr/stalls';
 import { ROLES, formatInr, paiseToRupees, rupeesToPaise } from '@msr/stalls';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import * as api from '../api';
 import { useLoad } from '../hooks';
 import { useMe } from '../me';
@@ -323,68 +324,167 @@ function ZoneRow({
   );
 }
 
+/**
+ * The rent matrix: one row per bay, four figures each.
+ *
+ * The old panel edited four numbers against two bands — "A4/B3/B4" and
+ * "C1/C2" — which is how the printed form quotes it but not how the ground
+ * works. Two bays that happen to share a letter are a different proposition
+ * (a VIP bay behind Adiyogi against a general-seating bay) and could never be
+ * priced apart. Worse, the bays closed to trade had no row at all, so the VAP
+ * traders who pay the most of any local welfare stall were unbillable.
+ *
+ * ⚠️ Local welfare is its OWN scope, not a discount. The same ground is quoted
+ * one figure to a trader and a lower one to a village welfare requester,
+ * because the second is a contribution rather than a market price. A bay closed
+ * to vendors still takes local welfare figures — that is the whole point.
+ *
+ * ⚠️ The advance rides on the rate row, so it is area-wise too: "keep the
+ * advance also area wise — it might be 3000, and for the free area it might be
+ * only 2000". Rent and advance are edited together here and cannot drift apart.
+ */
 function Rates({ c, writable, run }: PanelProps) {
-  const [entries, setEntries] = useState(c.rateCard);
+  const [entries, setEntries] = useState<RateCardEntry[]>(c.rateCard);
+  const [isFood, setIsFood] = useState(true);
   useEffect(() => setEntries(c.rateCard), [c.rateCard]);
-  const get = (g: 'AB' | 'C', f: boolean) =>
-    entries.find((e) => e.zoneGroup === g && e.isFood === f)?.amountPaise ?? 0;
-  const set = (g: 'AB' | 'C', f: boolean, p: number) =>
+
+  const row = (zoneCode: string, scope: RateScope) =>
+    entries.find((e) => e.zoneCode === zoneCode && e.isFood === isFood && e.scope === scope) ??
+    null;
+
+  const set = (zoneCode: string, scope: RateScope, patch: Partial<RateCardEntry>) =>
     setEntries((es) => {
-      const i = es.findIndex((e) => e.zoneGroup === g && e.isFood === f);
-      const next = [...es];
-      if (i >= 0) next[i] = { ...next[i], amountPaise: p };
-      else next.push({ zoneGroup: g, isFood: f, amountPaise: p });
-      return next;
+      const i = es.findIndex(
+        (e) => e.zoneCode === zoneCode && e.isFood === isFood && e.scope === scope,
+      );
+      if (i >= 0) {
+        const next = [...es];
+        next[i] = { ...next[i], ...patch };
+        return next;
+      }
+      return [
+        ...es,
+        { zoneCode, isFood, scope, amountPaise: 0, depositPaise: 0, ...patch },
+      ];
     });
+
+  // A row left at zero rent is not a free stall — it is a bay this scope does
+  // not price. Dropping it is what makes the form say "not available this
+  // year" rather than quoting nothing and taking the booking anyway.
+  const priced = entries.filter((e) => e.amountPaise > 0);
+
   return (
     <Panel
-      title='Stall rent'
-      note='Per stall, before GST. A3 and B2 are closed to vendors and carry no rent.'
+      title='Stall rent and advance'
+      note='Per stall, before GST, for each bay. A bay left at zero is not priced at that scope and the form will not offer it. The advance is refundable and is set per bay beside the rent.'
       footer={
-        <Btn
-          kind='primary'
-          disabled={!writable}
-          onClick={() =>
-            run('Rates saved', () =>
-              api.putRateCard(entries.filter((e) => e.zoneGroup !== 'CLOSED')),
-            )
-          }
-        >
+        <Btn kind='primary' disabled={!writable} onClick={() => run('Rates saved', () => api.putRateCard(priced))}>
           Save rates
         </Btn>
       }
     >
-      <Grid>
-        <RupeeInput
-          id='ab-food'
-          label='A4 / B3 / B4 — Food'
-          paise={get('AB', true)}
-          onPaise={(p) => set('AB', true, p)}
-          disabled={!writable}
-        />
-        <RupeeInput
-          id='ab-nonfood'
-          label='A4 / B3 / B4 — Non-food'
-          paise={get('AB', false)}
-          onPaise={(p) => set('AB', false, p)}
-          disabled={!writable}
-        />
-        <RupeeInput
-          id='c-food'
-          label='C1 / C2 — Food'
-          paise={get('C', true)}
-          onPaise={(p) => set('C', true, p)}
-          disabled={!writable}
-        />
-        <RupeeInput
-          id='c-nonfood'
-          label='C1 / C2 — Non-food'
-          paise={get('C', false)}
-          onPaise={(p) => set('C', false, p)}
-          disabled={!writable}
-        />
-      </Grid>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        {[
+          { label: 'Food', value: true },
+          { label: 'Non-food', value: false },
+        ].map((t) => (
+          <button
+            key={t.label}
+            type='button'
+            aria-pressed={isFood === t.value}
+            onClick={() => setIsFood(t.value)}
+            style={toolBtnStyle(isFood === t.value)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <Table>
+        <THead>
+          <TR>
+            <TH>Bay</TH>
+            <TH align='right'>Vendor rent</TH>
+            <TH align='right'>Vendor advance</TH>
+            <TH align='right'>Local welfare rent</TH>
+            <TH align='right'>Local welfare advance</TH>
+          </TR>
+        </THead>
+        <TBody>
+          {c.zones.map((z) => (
+            <TR key={z.id}>
+              <TD>
+                <span style={{ fontWeight: 600 }}>{z.code}</span>
+                <span style={{ color: 'var(--mfg)', marginLeft: 8, fontSize: 12 }}>{z.name}</span>
+              </TD>
+              {(['VENDOR', 'LOCAL_WELFARE'] as const).map((scope) => {
+                // ⚠️ `--mfg`, not a warning colour. A bay the trade cannot have
+                // is an absence, not a mistake somebody made.
+                const closedToTrade = scope === 'VENDOR' && z.isClosedToVendors;
+                const r = row(z.code, scope);
+                return closedToTrade ? (
+                  <TD key={scope} align='right' colSpan={2} muted>
+                    Closed to trade
+                  </TD>
+                ) : (
+                  <Fragment key={scope}>
+                    <TD align='right'>
+                      <RateCell
+                        id={`${z.code}-${scope}-rent`}
+                        label={`${z.code} ${scope === 'VENDOR' ? 'vendor' : 'local welfare'} rent`}
+                        paise={r?.amountPaise ?? 0}
+                        onPaise={(amountPaise) => set(z.code, scope, { amountPaise })}
+                        disabled={!writable}
+                      />
+                    </TD>
+                    <TD align='right'>
+                      <RateCell
+                        id={`${z.code}-${scope}-adv`}
+                        label={`${z.code} ${scope === 'VENDOR' ? 'vendor' : 'local welfare'} advance`}
+                        paise={r?.depositPaise ?? 0}
+                        onPaise={(depositPaise) => set(z.code, scope, { depositPaise })}
+                        disabled={!writable}
+                      />
+                    </TD>
+                  </Fragment>
+                );
+              })}
+            </TR>
+          ))}
+        </TBody>
+      </Table>
     </Panel>
+  );
+}
+
+/** A rupee cell inside the rent grid. Narrower than `RupeeInput` and without a
+ *  label of its own, because the column heading already carries it — the label
+ *  is kept for screen readers only. */
+function RateCell({
+  id,
+  label,
+  paise,
+  onPaise,
+  disabled,
+}: {
+  id: string;
+  label: string;
+  paise: number;
+  onPaise: (p: number) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Input
+      id={id}
+      aria-label={label}
+      type='number'
+      min={0}
+      step={100}
+      style={{ width: 110, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+      value={paiseToRupees(paise)}
+      disabled={disabled}
+      onChange={(e) => onPaise(rupeesToPaise(Number(e.target.value) || 0))}
+    />
   );
 }
 
@@ -399,7 +499,7 @@ function Charges({ c, writable, run }: PanelProps) {
   return (
     <Panel
       title='Charges and deposits'
-      note='The 2025 forms quoted different chair and table rates to ashram departments and to local welfare stalls. Both are kept.'
+      note='The 2025 forms quoted three different chair and table rates — to ashram departments, to local welfare stalls and to vendors. All three are kept, because they are what was charged. The refundable advance is not here: it is set per bay, beside that bay’s rent.'
       footer={
         <Btn
           kind='primary'
@@ -420,11 +520,17 @@ function Charges({ c, writable, run }: PanelProps) {
         <RupeeInput id='table' label='Table / day (ashram)' {...f('tableRatePaise')} />
         <RupeeInput id='lwchair' label='Chair / day (local welfare)' {...f('lwChairRatePaise')} />
         <RupeeInput id='lwtable' label='Table / day (local welfare)' {...f('lwTableRatePaise')} />
-        <RupeeInput id='vdep' label='Security deposit — vendor' {...f('vendorDepositPaise')} />
+        <RupeeInput id='vchair' label='Chair / day (vendor)' {...f('vendorChairRatePaise')} />
+        <RupeeInput id='vtable' label='Table / day (vendor)' {...f('vendorTableRatePaise')} />
         <RupeeInput
-          id='lwdep'
-          label='Caution deposit — local welfare'
-          {...f('localWelfareDepositPaise')}
+          id='chairrep'
+          label='Chair replacement (not returned)'
+          {...f('chairReplacementPaise')}
+        />
+        <RupeeInput
+          id='tablerep'
+          label='Table replacement (not returned)'
+          {...f('tableReplacementPaise')}
         />
         <RupeeInput id='p5' label='Extra 5 A plug point' {...f('plug5aRatePaise')} />
         <RupeeInput id='p15' label='15 A plug point' {...f('plug15aRatePaise')} />
@@ -437,6 +543,20 @@ function Charges({ c, writable, run }: PanelProps) {
             value={v.gstPercent}
             disabled={!writable}
             onChange={(e) => setV({ ...v, gstPercent: Number(e.target.value) || 0 })}
+          />
+        </FormField>
+        {/* Chairs and tables are billed per day, so the number of days is part
+            of the bill and not a fact about the calendar. Editing it re-prices
+            every furniture line that has not been frozen onto a payment letter. */}
+        <FormField id='days' label='Event days (furniture billing)'>
+          <Input
+            id='days'
+            type='number'
+            min={1}
+            max={30}
+            value={v.eventDays}
+            disabled={!writable}
+            onChange={(e) => setV({ ...v, eventDays: Number(e.target.value) || 1 })}
           />
         </FormField>
         <FormField id='cps2' label='People per stall (planning)'>

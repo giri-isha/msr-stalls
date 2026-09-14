@@ -26,6 +26,7 @@ import type {
   PresignUploadResponse,
   PublicConfig,
   PublicStatusResponse,
+  RateCardEntry,
   RequestAccessLinkResponse,
   RefundRow,
   RegisterStaffInput,
@@ -145,7 +146,11 @@ export interface StaffConfig {
     isClosedToVendors: boolean;
     sortOrder: number;
   }>;
-  rateCard: Array<{ zoneGroup: 'AB' | 'C' | 'CLOSED'; isFood: boolean; amountPaise: number }>;
+  /** One row per bay x food/non-food x scope, each carrying its own refundable
+   *  advance. Not a band: the rent genuinely differs bay by bay, and banding
+   *  them meant two bays that happened to share a letter could never be priced
+   *  apart. */
+  rateCard: RateCardEntry[];
   charges: ChargesInput & { id: string; editionId: string };
   flow: { bankStepEnabled: boolean; paymentStepEnabled: boolean; fssaiStepEnabled: boolean };
   fineTypes: Array<{ id: string; reason: string; defaultAmountPaise: number; isActive: boolean }>;
@@ -174,9 +179,8 @@ export const updateZone = (
   code: string,
   input: { name: string; expectedCrowd: number; isClosedToVendors: boolean },
 ) => apiFetch<unknown>(`${BASE}/config/zones/${code}`, { method: 'PUT', json: input });
-export const putRateCard = (
-  entries: Array<{ zoneGroup: 'AB' | 'C' | 'CLOSED'; isFood: boolean; amountPaise: number }>,
-) => apiFetch<unknown>(`${BASE}/config/rate-card`, { method: 'PUT', json: { entries } });
+export const putRateCard = (entries: RateCardEntry[]) =>
+  apiFetch<unknown>(`${BASE}/config/rate-card`, { method: 'PUT', json: { entries } });
 export const putCharges = (input: ChargesInput) =>
   apiFetch<unknown>(`${BASE}/config/charges`, { method: 'PUT', json: input });
 export const putFlow = (input: StaffConfig['flow']) =>
