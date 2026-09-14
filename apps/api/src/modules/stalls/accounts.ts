@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { StallAccessLink, StallAccessPurpose, StallAccount } from '@prisma/client';
+import { parseContact } from '@msr/stalls';
 import type { Db } from './editions';
 import { UnknownAccessLinkError } from './errors';
 
@@ -20,6 +21,30 @@ export async function findOrCreateAccount(
   if (existing) return existing;
   return db.stallAccount.create({
     data: { email, phone: input.phone, displayName: input.displayName },
+  });
+}
+
+/** The account behind an email address or a mobile number, for a vendor who
+ *  has lost their link.
+ *
+ *  Both columns are stored normalised — `normalizeEmail` on the way in, and
+ *  `IndianMobile` reduces a number to its bare ten digits — so this is an
+ *  exact match on either, never a scan or a LIKE. `null` for a contact that
+ *  parses but matches nothing, and for one that does not parse at all: the
+ *  caller must answer the same way to both.
+ *
+ *  A mobile is not unique in the table (two stalls can share a shopkeeper's
+ *  number under different addresses), so the FIRST account registered under it
+ *  wins. The email is the module's identity key; a number is a way back to it. */
+export async function findAccountByContact(db: Db, raw: string): Promise<StallAccount | null> {
+  const contact = parseContact(raw);
+  if (!contact) return null;
+  if (contact.kind === 'EMAIL') {
+    return db.stallAccount.findUnique({ where: { email: contact.value } });
+  }
+  return db.stallAccount.findFirst({
+    where: { phone: contact.value },
+    orderBy: { createdAt: 'asc' },
   });
 }
 

@@ -1,32 +1,59 @@
 import type { RequestDetail as Detail } from '@msr/stalls';
-import { Flag, X } from 'lucide-react';
-import { useState } from 'react';
-import { toast } from 'sonner';
-import { Button } from '../../../components/ui/button';
-import { Dialog } from '../../../components/ui/dialog';
-import { Textarea } from '../../../components/ui/input';
+import { useRef, useState } from 'react';
 import { ApiError } from '../../../lib/api-client';
 import * as api from '../api';
 import { StatusPill, TypeBadge } from '../components/StatusPill';
 import { formatDateTime, useLoad } from '../hooks';
 import { useMe } from '../me';
+import {
+  Btn,
+  Dialog,
+  ErrorBox,
+  Icon,
+  Loading,
+  Tag,
+  Textarea,
+  useEscape,
+  useIsMobile,
+  useToast,
+} from '../ui';
 import { SelectDialog } from './SelectDialog';
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   if (value === null || value === undefined || value === '' || value === 0) return null;
   return (
-    <div className='grid grid-cols-[10rem_1fr] gap-2 py-1 text-sm'>
-      <dt className='text-ink-2'>{label}</dt>
-      <dd className='min-w-0 break-words'>{value}</dd>
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '10.5rem 1fr',
+        gap: 10,
+        padding: '5px 0',
+        fontSize: 12.5,
+        lineHeight: 1.5,
+      }}
+    >
+      <dt style={{ color: 'var(--mfg)' }}>{label}</dt>
+      <dd style={{ margin: 0, minWidth: 0, overflowWrap: 'anywhere' }}>{value}</dd>
     </div>
   );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className='border-t border-line pt-3'>
-      <h3 className='mb-1 text-xs font-semibold uppercase tracking-wide text-ink-2'>{title}</h3>
-      <dl>{children}</dl>
+    <section style={{ borderTop: '1px solid var(--line)', paddingTop: 12, marginTop: 12 }}>
+      <h3
+        style={{
+          margin: '0 0 4px',
+          fontSize: 10.5,
+          fontWeight: 700,
+          letterSpacing: '.8px',
+          textTransform: 'uppercase',
+          color: 'var(--mfg)',
+        }}
+      >
+        {title}
+      </h3>
+      <dl style={{ margin: 0 }}>{children}</dl>
     </section>
   );
 }
@@ -52,21 +79,30 @@ export function RequestDetail({
   onChanged: () => void;
 }) {
   const { can } = useMe();
+  const toast = useToast();
+  const mobile = useIsMobile();
   const { data: r, error, loading, reload } = useLoad(() => api.getRequest(id), [id]);
   const [busy, setBusy] = useState(false);
   const [reasonFor, setReasonFor] = useState<'reject' | 'flag' | null>(null);
   const [reason, setReason] = useState('');
   const [selecting, setSelecting] = useState(false);
+  const panel = useRef<HTMLElement>(null);
+
+  // ⚠️ Only while nothing is stacked on top. The reason prompt and the stall
+  // picker are `Dialog`s with their own Escape handler; without this gate one
+  // key press closes both, so dismissing a confirm also throws away the record
+  // behind it.
+  useEscape(onClose, reasonFor === null && !selecting);
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
     setBusy(true);
     try {
       await fn();
-      toast.success(label);
+      toast.ok(label);
       reload();
       onChanged();
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'Something went wrong');
+      toast.fail(e instanceof ApiError ? e : new Error('Something went wrong'));
     } finally {
       setBusy(false);
     }
@@ -86,140 +122,206 @@ export function RequestDetail({
 
   return (
     <aside
-      className='fixed inset-y-0 right-0 z-40 flex w-full max-w-xl flex-col border-l border-line bg-surface shadow-2xl'
+      ref={panel}
       aria-label='Request detail'
+      style={{
+        position: 'fixed',
+        top: 0,
+        bottom: 0,
+        right: 0,
+        zIndex: 190,
+        display: 'flex',
+        flexDirection: 'column',
+        width: '100%',
+        maxWidth: mobile ? '100%' : 600,
+        background: 'var(--card)',
+        borderLeft: '1px solid var(--bd)',
+        boxShadow: 'var(--sh-3)',
+        animation: 'msrs-fade .15s ease both',
+      }}
     >
-      <div className='flex items-start justify-between gap-3 border-b border-line p-4'>
-        <div className='min-w-0'>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 12,
+          padding: '14px 18px',
+          borderBottom: '1px solid var(--bd)',
+          flex: 'none',
+        }}
+      >
+        <div style={{ minWidth: 0, flex: 1 }}>
           {r && (
             <>
-              <div className='font-mono text-xs text-ink-2'>{r.reference}</div>
-              <h2 className='truncate text-lg font-bold'>{r.stallName}</h2>
-              <div className='mt-1 flex flex-wrap items-center gap-2'>
+              <div
+                style={{
+                  fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace',
+                  fontSize: 11,
+                  color: 'var(--mfg)',
+                }}
+              >
+                {r.reference}
+              </div>
+              <h2
+                style={{
+                  margin: '2px 0 0',
+                  fontFamily: 'var(--font-display)',
+                  fontSize: 19,
+                  fontWeight: 600,
+                  letterSpacing: '-.4px',
+                  lineHeight: 1.2,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {r.stallName}
+              </h2>
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  gap: 7,
+                  marginTop: 8,
+                }}
+              >
                 <TypeBadge type={r.requestType} />
                 <StatusPill status={r.status} />
                 {r.flagged && (
-                  <span className='inline-flex items-center gap-1 text-xs text-warn'>
-                    <Flag className='h-3 w-3' /> {r.flagReason}
-                  </span>
+                  <Tag tone='warn' size='sm' title={r.flagReason ?? undefined}>
+                    <Icon name='alert-triangle' size={11} />
+                    {r.flagReason}
+                  </Tag>
                 )}
               </div>
             </>
           )}
         </div>
-        <Button variant='ghost' size='icon' onClick={onClose} aria-label='Close'>
-          <X className='h-4 w-4' />
-        </Button>
+        <button
+          type='button'
+          onClick={onClose}
+          aria-label='Close'
+          style={{
+            border: 0,
+            background: 'none',
+            cursor: 'pointer',
+            color: 'var(--mfg)',
+            display: 'flex',
+            flex: 'none',
+            padding: mobile ? 12 : 4,
+            margin: mobile ? -12 : -4,
+          }}
+        >
+          <Icon name='x' size={18} />
+        </button>
       </div>
 
-      {loading && <p className='p-4 text-sm text-ink-2'>Loading…</p>}
+      {loading && <Loading />}
       {error && (
-        <p role='alert' className='p-4 text-sm text-bad'>
-          {error.message}
-        </p>
+        <div style={{ padding: 18 }}>
+          <ErrorBox>{error.message}</ErrorBox>
+        </div>
       )}
 
       {r && (
         <>
-          <div className='flex flex-wrap gap-2 border-b border-line bg-surface-2 p-3'>
+          {/* The action rail. On the table's own plate rather than the card, so
+              the controls read as a toolbar for the record below rather than as
+              the record's first row. */}
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 7,
+              padding: '11px 18px',
+              borderBottom: '1px solid var(--bd)',
+              background: 'var(--rail)',
+              flex: 'none',
+            }}
+          >
             {canSelect && (r.status === 'SUBMITTED' || r.status === 'BACKUP') && (
-              <Button
-                size='sm'
-                variant='outline'
-                disabled={busy}
-                onClick={() => run('Shortlisted', () => api.shortlist(r.id))}
-              >
+              <Btn disabled={busy} onClick={() => run('Shortlisted', () => api.shortlist(r.id))}>
                 Shortlist
-              </Button>
+              </Btn>
             )}
             {canSelect && r.status === 'SHORTLISTED' && (
-              <Button
-                size='sm'
-                variant='outline'
+              <Btn
                 disabled={busy}
                 onClick={() => run('Back to submitted', () => api.unshortlist(r.id))}
               >
                 Unshortlist
-              </Button>
+              </Btn>
             )}
             {canSelect && (r.status === 'SUBMITTED' || r.status === 'SHORTLISTED') && (
-              <Button
-                size='sm'
-                variant='outline'
-                disabled={busy}
-                onClick={() => run('Moved to backup', () => api.backup(r.id))}
-              >
+              <Btn disabled={busy} onClick={() => run('Moved to backup', () => api.backup(r.id))}>
                 Backup
-              </Button>
+              </Btn>
             )}
             {canSelect && r.status !== 'REJECTED' && r.status !== 'CANCELLED' && (
-              <Button size='sm' disabled={busy} onClick={() => setSelecting(true)}>
+              <Btn kind='primary' disabled={busy} onClick={() => setSelecting(true)}>
                 {r.status === 'SELECTED' ? 'Add stall' : 'Select…'}
-              </Button>
+              </Btn>
             )}
             {canSelect && r.status !== 'REJECTED' && r.status !== 'CANCELLED' && (
-              <Button
-                size='sm'
-                variant='destructive'
-                disabled={busy}
-                onClick={() => setReasonFor('reject')}
-              >
+              <Btn kind='danger' disabled={busy} onClick={() => setReasonFor('reject')}>
                 Reject…
-              </Button>
+              </Btn>
             )}
             {canSelect && r.status === 'SELECTED' && (
-              <Button
-                size='sm'
-                variant='ghost'
-                disabled={busy}
-                onClick={() => run('Cancelled', () => api.cancel(r.id))}
-              >
+              <Btn disabled={busy} onClick={() => run('Cancelled', () => api.cancel(r.id))}>
                 Cancel
-              </Button>
+              </Btn>
             )}
             {canWrite &&
               (r.flagged ? (
-                <Button
-                  size='sm'
-                  variant='ghost'
+                <Btn
                   disabled={busy}
                   onClick={() => run('Unflagged', () => api.unflagRequest(r.id))}
                 >
                   Unflag
-                </Button>
+                </Btn>
               ) : (
-                <Button
-                  size='sm'
-                  variant='ghost'
-                  disabled={busy}
-                  onClick={() => setReasonFor('flag')}
-                >
-                  <Flag className='h-3.5 w-3.5' /> Flag for follow-up
-                </Button>
+                <Btn disabled={busy} onClick={() => setReasonFor('flag')}>
+                  <Icon name='alert-triangle' size={13} /> Flag for follow-up
+                </Btn>
               ))}
           </div>
 
-          <div className='flex-1 space-y-3 overflow-y-auto p-4'>
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 18px 24px' }}>
             {r.allocations.length > 0 && (
               <Section title='Allocation'>
                 {r.allocations.map((a) => (
-                  <div key={a.id} className='flex items-center justify-between py-1 text-sm'>
-                    <span>
-                      <span className='font-mono font-semibold'>{a.stallNumber}</span>
-                      <span className='ml-2 text-ink-2'>
-                        {a.category.replace(/_/g, ' ').toLowerCase()} ·{' '}
-                        {formatDateTime(a.allocatedAt)}
-                      </span>
+                  <div
+                    key={a.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '7px 0',
+                      fontSize: 12.5,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace',
+                        fontWeight: 700,
+                        color: 'var(--ok-fg)',
+                      }}
+                    >
+                      {a.stallNumber}
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0, color: 'var(--mfg)' }}>
+                      {a.category.replace(/_/g, ' ').toLowerCase()} ·{' '}
+                      {formatDateTime(a.allocatedAt)}
                     </span>
                     {canSelect && (
-                      <Button
-                        size='sm'
-                        variant='ghost'
+                      <Btn
                         disabled={busy}
                         onClick={() => run('Released', () => api.releaseAllocation(a.id))}
                       >
                         Release
-                      </Button>
+                      </Btn>
                     )}
                   </div>
                 ))}
@@ -280,14 +382,14 @@ export function RequestDetail({
                   <Row
                     label='Appliances'
                     value={
-                      <ul className='space-y-0.5'>
+                      <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none' }}>
                         {r.appliances.map((a, i) => (
                           // biome-ignore lint/suspicious/noArrayIndexKey: display only
                           <li key={i}>
-                            {a.name} <span className='text-ink-2'>— {a.watts} W</span>
+                            {a.name} <span style={{ color: 'var(--mfg)' }}>— {a.watts} W</span>
                           </li>
                         ))}
-                        <li className='text-xs text-ink-2'>
+                        <li style={{ fontSize: 11.5, color: 'var(--mfg)', marginTop: 3 }}>
                           Total {r.appliances.reduce((n, a) => n + a.watts, 0)} W
                         </li>
                       </ul>
@@ -319,37 +421,39 @@ export function RequestDetail({
         </>
       )}
 
-      <Dialog
-        open={reasonFor !== null}
-        onClose={() => setReasonFor(null)}
-        title={reasonFor === 'reject' ? 'Reject this request' : 'Flag for follow-up'}
-        description={
-          reasonFor === 'reject'
-            ? 'The reason is kept on the record and is not shown to the vendor.'
-            : 'A short note for whoever picks this up next.'
-        }
-        footer={
-          <>
-            <Button variant='outline' onClick={() => setReasonFor(null)}>
-              Back
-            </Button>
-            <Button
-              variant={reasonFor === 'reject' ? 'destructive' : 'default'}
-              disabled={!reason.trim()}
-              onClick={submitReason}
-            >
-              {reasonFor === 'reject' ? 'Reject' : 'Flag'}
-            </Button>
-          </>
-        }
-      >
-        <Textarea
-          aria-label='Reason'
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          autoFocus
-        />
-      </Dialog>
+      {reasonFor !== null && (
+        <Dialog
+          title={reasonFor === 'reject' ? 'Reject this request' : 'Flag for follow-up'}
+          note={
+            reasonFor === 'reject'
+              ? 'The reason is kept on the record and is not shown to the vendor.'
+              : 'A short note for whoever picks this up next.'
+          }
+          onClose={() => setReasonFor(null)}
+          footer={
+            <>
+              <Btn onClick={() => setReasonFor(null)}>Back</Btn>
+              <Btn
+                kind={reasonFor === 'reject' ? 'danger' : 'primary'}
+                disabled={!reason.trim()}
+                onClick={submitReason}
+              >
+                {reasonFor === 'reject' ? 'Reject' : 'Flag'}
+              </Btn>
+            </>
+          }
+        >
+          <Textarea
+            aria-label='Reason'
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            // A one-field prompt, opened by an explicit click: focus belongs in
+            // the box the reader came here to type in. `Dialog`'s focus trap
+            // sees the focus is already inside and leaves it alone.
+            autoFocus
+          />
+        </Dialog>
+      )}
 
       {r && selecting && (
         <SelectDialog

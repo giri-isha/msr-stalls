@@ -34,6 +34,17 @@ export interface StallRole {
   name: string;
   description: string;
   actions: readonly StallAction[];
+  /** Which requester types this role may see and touch. `null` is every type.
+   *
+   *  🔴 The local welfare team works inside this application — they file the
+   *  requests, because the traders they file them for are village vendors who
+   *  mostly have no email address and no way to fill a form themselves. That
+   *  makes them staff. It does not make them stall coordinators: they have no
+   *  business reading a commercial vendor's bank details or rejecting somebody
+   *  else's request. Without a scope the only way to let them enter a request
+   *  is `requests:write`, which is unscoped, so the choice would be "give them
+   *  everything" or "keep doing it on paper". */
+  requestTypeScope: readonly string[] | null;
 }
 
 const LEAD_ACTIONS = [
@@ -58,24 +69,35 @@ export const ROLES: StallRole[] = [
     name: 'Admin',
     description: 'Full access, including module configuration',
     actions: STALL_ACTIONS,
+    requestTypeScope: null,
   },
   {
     roleKey: 'stalls_lead',
     name: 'Lead (Stall Coordinator)',
     description: 'Planning, selection, communication and finance visibility',
     actions: LEAD_ACTIONS,
+    requestTypeScope: null,
   },
   {
     roleKey: 'stalls_volunteer',
     name: 'Volunteer',
     description: 'Check-in, chairs and tables',
     actions: ['requests:read', 'checkin:write'],
+    requestTypeScope: null,
   },
   {
     roleKey: 'stalls_finance',
     name: 'Finance',
     description: 'Payment confirmation and refunds',
     actions: ['requests:read', 'finance:read', 'finance:write'],
+    requestTypeScope: null,
+  },
+  {
+    roleKey: 'stalls_local_welfare',
+    name: 'Local Welfare',
+    description: 'Files and follows up local welfare stalls, and nothing else',
+    actions: ['requests:read', 'requests:write', 'selection:read', 'finance:read'],
+    requestTypeScope: ['LOCAL_WELFARE'],
   },
 ];
 
@@ -93,4 +115,24 @@ export function can(roleKeys: string[], action: StallAction): boolean {
 
 export function actionsFor(roleKeys: string[]): StallAction[] {
   return STALL_ACTIONS.filter((action) => can(roleKeys, action));
+}
+
+/** The requester types these roles may reach, or `null` for all of them.
+ *
+ *  ⚠️ Scopes UNION rather than intersect: someone holding both Lead and Local
+ *  Welfare is a lead who also files local welfare stalls, not a lead confined
+ *  to them. An unscoped role therefore widens the answer to `null`, and that is
+ *  the whole rule — a narrow role can never take access away from a broad one,
+ *  it can only be the only thing someone holds. */
+export function requestTypeScopeFor(roleKeys: string[]): string[] | null {
+  const held = roleKeys.map((key) => BY_KEY.get(key)).filter((r) => r !== undefined);
+  if (held.length === 0) return [];
+  if (held.some((r) => r.requestTypeScope === null)) return null;
+  return [...new Set(held.flatMap((r) => r.requestTypeScope ?? []))];
+}
+
+/** Whether these roles may touch a request of this type at all. */
+export function canReachRequestType(roleKeys: string[], requestType: string): boolean {
+  const scope = requestTypeScopeFor(roleKeys);
+  return scope === null || scope.includes(requestType);
 }

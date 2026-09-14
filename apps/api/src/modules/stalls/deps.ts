@@ -5,6 +5,8 @@
 // into a reach into its own internals.
 import type { MediaStore } from '../../storage/media-namespace';
 import type { Mailer } from './mailer';
+import type { Signer } from './signer';
+import type { WhatsAppSender } from './whatsapp';
 
 export interface StallsDeps {
   /** Object storage — S3 in the host, a directory here. Phase 1 registers it
@@ -12,9 +14,25 @@ export interface StallsDeps {
   files: MediaStore;
   /** Outbound mail. Log-only here; whatever the host provides there. */
   mail: Mailer;
-  /** Absolute URL for a vendor's status page. The module does not know its own
-   *  public origin — the shell does. */
+  /** Outbound WhatsApp. The channel a village trader actually reads — see
+   *  `whatsapp.ts`. Log-only here. */
+  whatsapp: WhatsAppSender;
+  /** Digital signature for the stall agreement. Unconfigured here, so the
+   *  signature step reports itself as not sent rather than pretending. */
+  signer: Signer;
+  /** Absolute URLs for the pages a vendor reaches from an email. The module
+   *  does not know its own public origin — the shell does, and the host mounts
+   *  these routes wherever it likes. */
   statusUrl(token: string): string;
+  bankFormUrl(token: string): string;
+  fssaiUrl(token: string): string;
+  /** Takes the coupon CODE, not a token: the staff-registration page asks for
+   *  the coupon anyway, and a vendor forwards this link to their own team. */
+  staffRegistrationUrl(code: string): string;
+  /** Where a requester goes to sign the stall agreement. Some providers hand
+   *  back their own URL, in which case this is unused; others expect the host
+   *  to host the frame. */
+  signatureUrl(token: string): string;
   /** Per-IP cap on public submissions per minute. */
   publicRateLimitMax: number;
 }

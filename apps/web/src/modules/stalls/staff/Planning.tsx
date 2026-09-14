@@ -1,15 +1,25 @@
 import { STALL_CATEGORIES, type ZoneCode, type ZonePlanView, suggestStallCount } from '@msr/stalls';
 import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { Button } from '../../../components/ui/button';
-import { Card } from '../../../components/ui/card';
-import { Dialog } from '../../../components/ui/dialog';
-import { Input } from '../../../components/ui/input';
-import { TBody, TD, TH, THead, TR, Table } from '../../../components/ui/table';
-import { cn } from '../../../lib/cn';
 import { applyPlan, getPlan, putPlan } from '../api';
 import { useLoad } from '../hooks';
 import { useMe } from '../me';
+import {
+  Btn,
+  Card,
+  Dialog,
+  ErrorBox,
+  H1,
+  Icon,
+  Input,
+  Loading,
+  TBody,
+  TD,
+  TH,
+  THead,
+  TR,
+  Table,
+  useToast,
+} from '../ui';
 
 const CAT_LABEL: Record<string, string> = {
   VENDOR_FOOD: 'Vendor Food',
@@ -37,11 +47,21 @@ const toDraft = (p: ZonePlanView): Draft => ({
 
 const n = (s: string) => (s.trim() === '' ? 0 : Math.max(0, Math.floor(Number(s)) || 0));
 
+/** A number cell in the grid. Right-aligned and tabular so a column of counts
+ *  reads as a column rather than as ragged text. */
+const cellInput: React.CSSProperties = {
+  textAlign: 'right',
+  fontVariantNumeric: 'tabular-nums',
+  padding: '6px 8px',
+  fontSize: 12.5,
+};
+
 /** The prototype's planning grid: a row per zone, a column per category, an
  *  expected crowd and a people-per-stall divisor that drive a suggestion, and
  *  live totals. Save writes the plan; Apply turns it into stalls. */
 export function Planning() {
   const { can } = useMe();
+  const toast = useToast();
   const { data, error, loading, reload } = useLoad(getPlan);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
@@ -52,8 +72,8 @@ export function Planning() {
     if (data) setDraft(toDraft(data));
   }, [data]);
 
-  if (loading || !draft) return <p className='text-sm text-ink-2'>Loading…</p>;
-  if (error || !data) return <p className='text-sm text-bad'>{error?.message}</p>;
+  if (loading || !draft) return <Loading />;
+  if (error || !data) return <ErrorBox>{error?.message ?? 'Could not load the plan.'}</ErrorBox>;
 
   const divisor = n(draft.crowdPerStall);
   const rowTotal = (r: Draft['rows'][number]) =>
@@ -91,10 +111,10 @@ export function Planning() {
           >,
         })),
       });
-      toast.success('Plan saved');
+      toast.ok('Plan saved');
       reload();
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.fail(e);
     } finally {
       setSaving(false);
     }
@@ -106,68 +126,80 @@ export function Planning() {
     try {
       if (dirty) await save();
       const r = await applyPlan();
-      toast.success(
+      toast.ok(
         `Applied: ${r.created.length} created, ${r.removed.length} removed${
           r.kept.length ? `, ${r.kept.length} kept (allocated)` : ''
         }`,
       );
       reload();
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.fail(e);
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className='space-y-4'>
-      <div className='flex flex-wrap items-end justify-between gap-3'>
-        <div>
-          <h1 className='text-2xl font-bold'>Planning &amp; Zones</h1>
-          <p className='text-sm text-ink-2'>
-            Stall count per zone is suggested from the expected crowd ÷ people per stall, then set
-            by hand per category. Apply generates the stall numbers.
-          </p>
-        </div>
-        <div className='flex items-center gap-2'>
-          <label htmlFor='cps' className='text-sm text-ink-2'>
-            People per stall
-          </label>
-          <Input
-            id='cps'
-            type='number'
-            min={1}
-            className='w-28'
-            value={draft.crowdPerStall}
-            disabled={!writable}
-            onChange={(e) => setDraft({ ...draft, crowdPerStall: e.target.value })}
-          />
-          <Button variant='outline' disabled={!writable || !dirty || saving} onClick={save}>
-            Save
-          </Button>
-          <Button disabled={!writable || saving} onClick={() => setConfirmApply(true)}>
-            Apply plan
-          </Button>
-        </div>
-      </div>
+    <div>
+      <H1
+        icon={<Icon name='layers' size={18} />}
+        sub='Stall count per zone is suggested from the expected crowd ÷ people per stall, then set by hand per category. Apply generates the stall numbers.'
+        actions={
+          <>
+            <label
+              htmlFor='cps'
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 7,
+                fontSize: 12.5,
+                color: 'var(--mfg)',
+              }}
+            >
+              People per stall
+              <Input
+                id='cps'
+                type='number'
+                min={1}
+                style={{ width: 90, ...cellInput }}
+                value={draft.crowdPerStall}
+                disabled={!writable}
+                onChange={(e) => setDraft({ ...draft, crowdPerStall: e.target.value })}
+              />
+            </label>
+            <Btn disabled={!writable || !dirty || saving} onClick={save}>
+              Save
+            </Btn>
+            <Btn
+              kind='primary'
+              disabled={!writable || saving}
+              onClick={() => setConfirmApply(true)}
+            >
+              Apply plan
+            </Btn>
+          </>
+        }
+      >
+        Planning &amp; Zones
+      </H1>
 
-      <Card>
+      <Card pad={0} style={{ overflow: 'hidden' }}>
         <Table>
           <THead>
             <TR>
               <TH>Zone</TH>
-              <TH className='text-right'>Crowd</TH>
-              <TH className='text-right' title='Crowd ÷ people per stall, rounded up'>
+              <TH align='right'>Crowd</TH>
+              <TH align='right' title='Crowd ÷ people per stall, rounded up'>
                 Suggested
               </TH>
               {STALL_CATEGORIES.map((c) => (
-                <TH key={c} className='text-right'>
+                <TH key={c} align='right'>
                   {CAT_LABEL[c]}
                 </TH>
               ))}
-              <TH className='text-right'>Total</TH>
-              <TH className='text-right'>Existing</TH>
-              <TH className='text-right'>Allocated</TH>
+              <TH align='right'>Total</TH>
+              <TH align='right'>Existing</TH>
+              <TH align='right'>Allocated</TH>
             </TR>
           </THead>
           <TBody>
@@ -178,105 +210,125 @@ export function Planning() {
               return (
                 <TR key={r.zoneCode}>
                   <TD>
-                    <div className='font-semibold'>{r.zoneCode}</div>
-                    <div className='text-xs text-ink-2'>
+                    <div style={{ fontWeight: 700 }}>{r.zoneCode}</div>
+                    <div style={{ fontSize: 11, color: 'var(--mfg)' }}>
                       {live.isClosedToVendors ? 'closed to vendors' : 'open'}
                     </div>
                   </TD>
-                  <TD className='text-right'>
+                  <TD align='right'>
                     <Input
                       aria-label={`${r.zoneCode} expected crowd`}
                       type='number'
                       min={0}
-                      className='w-24 text-right'
+                      style={{ width: 92, ...cellInput }}
                       value={r.expectedCrowd}
                       disabled={!writable}
                       onChange={(e) => setRow(i, { expectedCrowd: e.target.value })}
                     />
                   </TD>
+                  {/* ⚠️ `--warn`, not `--des`. Planning fewer stalls than the
+                      crowd suggests is a judgement somebody may have made on
+                      purpose; red would call it an error and there is no error
+                      here to fix. */}
                   <TD
-                    className={cn(
-                      'text-right tabular-nums',
-                      total < suggested ? 'text-warn' : 'text-ink-2',
-                    )}
+                    align='right'
+                    style={{ color: total < suggested ? 'var(--warn-fg)' : undefined }}
                   >
                     {suggested}
                   </TD>
                   {STALL_CATEGORIES.map((c) => (
-                    <TD key={c} className='text-right'>
+                    <TD key={c} align='right'>
                       <Input
                         aria-label={`${r.zoneCode} ${CAT_LABEL[c]}`}
                         type='number'
                         min={0}
-                        className='w-16 text-right'
+                        style={{ width: 64, ...cellInput }}
                         value={r.counts[c]}
                         disabled={!writable}
                         onChange={(e) => setCount(i, c, e.target.value)}
                       />
                     </TD>
                   ))}
-                  <TD className='text-right font-semibold tabular-nums'>{total}</TD>
+                  <TD align='right' style={{ fontWeight: 700 }}>
+                    {total}
+                  </TD>
                   <TD
-                    className={cn(
-                      'text-right tabular-nums',
-                      total < live.stallsExisting && 'text-warn',
-                    )}
+                    align='right'
+                    style={{ color: total < live.stallsExisting ? 'var(--warn-fg)' : undefined }}
                   >
                     {live.stallsExisting}
                   </TD>
-                  <TD className='text-right tabular-nums'>{live.stallsAllocated}</TD>
+                  <TD align='right'>{live.stallsAllocated}</TD>
                 </TR>
               );
             })}
-            <TR className='bg-surface-2 font-semibold'>
+            <TR style={{ background: 'var(--rail)', fontWeight: 700 }}>
               <TD>Total</TD>
-              <TD className='text-right tabular-nums'>
+              <TD align='right'>
                 {draft.rows.reduce((t, r) => t + n(r.expectedCrowd), 0).toLocaleString('en-IN')}
               </TD>
-              <TD className='text-right tabular-nums text-ink-2'>
+              <TD align='right' muted>
                 {draft.rows.reduce((t, r) => t + suggestStallCount(n(r.expectedCrowd), divisor), 0)}
               </TD>
               {STALL_CATEGORIES.map((c) => (
-                <TD key={c} className='text-right tabular-nums'>
+                <TD key={c} align='right'>
                   {colTotal(c)}
                 </TD>
               ))}
-              <TD className='text-right tabular-nums' data-testid='grand-total'>
+              <TD align='right' data-testid='grand-total'>
                 {grand}
               </TD>
-              <TD className='text-right tabular-nums'>
-                {data.rows.reduce((t, r) => t + r.stallsExisting, 0)}
-              </TD>
-              <TD className='text-right tabular-nums'>
-                {data.rows.reduce((t, r) => t + r.stallsAllocated, 0)}
-              </TD>
+              <TD align='right'>{data.rows.reduce((t, r) => t + r.stallsExisting, 0)}</TD>
+              <TD align='right'>{data.rows.reduce((t, r) => t + r.stallsAllocated, 0)}</TD>
             </TR>
           </TBody>
         </Table>
       </Card>
 
-      <Dialog
-        open={confirmApply}
-        onClose={() => setConfirmApply(false)}
-        title='Apply this plan?'
-        description='Stall numbers are generated to match the counts above. Stalls holding a live allocation are never removed.'
-        footer={
-          <>
-            <Button variant='outline' onClick={() => setConfirmApply(false)}>
-              Back
-            </Button>
-            <Button onClick={apply}>Apply</Button>
-          </>
-        }
-      >
-        {shrinking && (
-          <p className='rounded-md bg-warn-soft px-3 py-2 text-sm text-warn'>
-            At least one zone now plans fewer stalls than exist. Surplus available stalls will be
-            removed; allocated ones are kept and reported.
-          </p>
-        )}
-        {dirty && <p className='mt-2 text-sm text-ink-2'>Unsaved changes will be saved first.</p>}
-      </Dialog>
+      {confirmApply && (
+        <Dialog
+          title='Apply this plan?'
+          note='Stall numbers are generated to match the counts above. Stalls holding a live allocation are never removed.'
+          onClose={() => setConfirmApply(false)}
+          footer={
+            <>
+              <Btn onClick={() => setConfirmApply(false)}>Back</Btn>
+              <Btn kind='primary' onClick={apply}>
+                Apply
+              </Btn>
+            </>
+          }
+        >
+          {shrinking && (
+            <div
+              style={{
+                display: 'flex',
+                gap: 9,
+                padding: '11px 13px',
+                borderRadius: 'var(--r2)',
+                background: 'var(--warn-t)',
+                border: '1px solid var(--warn-b)',
+                color: 'var(--warn-fg)',
+                fontSize: 12.5,
+                lineHeight: 1.55,
+              }}
+            >
+              <span style={{ flex: 'none', marginTop: 1 }}>
+                <Icon name='alert-triangle' size={15} />
+              </span>
+              <span>
+                At least one zone now plans fewer stalls than exist. Surplus available stalls will
+                be removed; allocated ones are kept and reported.
+              </span>
+            </div>
+          )}
+          {dirty && (
+            <p style={{ fontSize: 12.5, color: 'var(--mfg)', margin: '10px 0 0' }}>
+              Unsaved changes will be saved first.
+            </p>
+          )}
+        </Dialog>
+      )}
     </div>
   );
 }

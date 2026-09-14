@@ -1,6 +1,6 @@
 import type { FieldOption, PublicZone } from '@msr/stalls';
 import { formatInr } from '@msr/stalls';
-import { cn } from '../../../lib/cn';
+import { ChoicePlate, Radio } from '../ui';
 
 /** The preferred-location radio list. For vendors it quotes the rent per zone
  *  from the live rate card and marks closed zones unavailable; for local
@@ -26,36 +26,42 @@ export function ZoneSelect({
 }) {
   const byCode = new Map((zones ?? []).map((z) => [z.code, z]));
   return (
-    <div className='space-y-2' role='radiogroup' aria-invalid={invalid || undefined}>
+    <div style={{ display: 'grid', gap: 8 }} role='radiogroup' aria-invalid={invalid || undefined}>
       {options.map((o) => {
         const z = byCode.get(o.value);
         const rent = z ? (isFood ? z.rentFoodPaise : z.rentNonFoodPaise) : null;
         const unavailable = showRent && z !== undefined && (z.isClosedToVendors || rent === null);
         const id = `${name}-${o.value}`;
         return (
-          <label
+          <ChoicePlate
             key={o.value}
             htmlFor={id}
-            className={cn(
-              'flex cursor-pointer items-start gap-3 rounded-md border border-line bg-surface px-3 py-2 text-sm',
-              value === o.value && 'border-accent bg-accent-soft/40',
-              unavailable && 'cursor-not-allowed opacity-60',
-            )}
+            selected={value === o.value}
+            disabled={unavailable}
           >
-            <input
+            <Radio
               id={id}
-              type='radio'
               name={name}
               value={o.value}
               checked={value === o.value}
               disabled={unavailable}
               onChange={() => onChange(o.value)}
-              className='mt-1 accent-accent'
+              style={{ marginTop: 2 }}
             />
-            <span className='flex-1'>
-              <span className='font-medium'>{o.label}</span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ fontWeight: 600 }}>{o.label}</span>
               {showRent && (
-                <span className='block text-xs text-ink-2'>
+                <span
+                  style={{
+                    display: 'block',
+                    fontSize: 11.5,
+                    // ⚠️ `--mfg`, not `--des` — a zone the vendor cannot have is
+                    // an absence, not an error they made. Red here would read as
+                    // "you picked wrong" on a plate they are not allowed to pick.
+                    color: 'var(--mfg)',
+                    marginTop: 2,
+                  }}
+                >
                   {unavailable
                     ? 'Not available to vendors this year'
                     : rent !== null
@@ -64,7 +70,7 @@ export function ZoneSelect({
                 </span>
               )}
             </span>
-          </label>
+          </ChoicePlate>
         );
       })}
     </div>

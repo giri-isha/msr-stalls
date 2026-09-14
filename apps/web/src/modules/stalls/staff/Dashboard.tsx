@@ -1,96 +1,201 @@
+import type { RequestStatus } from '@msr/stalls';
 import { Link } from 'react-router';
-import { Card, CardContent } from '../../../components/ui/card';
 import { getDashboard } from '../api';
-import { STATUS_LABEL, TYPE_LABEL } from '../components/StatusPill';
+import { requestStatusTone, STATUS_LABEL, TYPE_LABEL } from '../components/StatusPill';
 import { useLoad } from '../hooks';
+import { card, ErrorBox, H1, Icon, Loading, TONE, type Tone, useIsMobile } from '../ui';
 
+/**
+ * One reading.
+ *
+ * ⚠️ The shape is `StatTiles`' — a tinted glyph chip, the number at 22px/700
+ * with a −.6px track, the caption at 11.5px on `--mfg` — drawn here rather than
+ * imported because that component's tiles are a view FILTER whose labels are
+ * the filter values it sends back. These tiles navigate. Reusing it would mean
+ * an `onPick` that is really a router push and a `statusTone` that has never
+ * heard of "Backup"; the twenty lines below are the smaller cost, and they
+ * follow the same tokens, so a retune still moves both.
+ */
 function Tile({
   label,
   value,
   hint,
+  glyph,
+  tone = 'neutral',
   to,
 }: {
   label: string;
   value: string | number;
   hint?: string;
+  glyph: string;
+  tone?: Tone;
   to?: string;
 }) {
-  const body = (
-    <Card className={to ? 'transition-colors hover:border-accent' : undefined}>
-      <CardContent className='p-4'>
-        <div className='text-xs font-medium uppercase tracking-wide text-ink-2'>{label}</div>
-        <div className='mt-1 text-2xl font-bold'>{value}</div>
-        {hint && <div className='mt-0.5 text-xs text-ink-3'>{hint}</div>}
-      </CardContent>
-    </Card>
+  const mobile = useIsMobile();
+  const [tint, fg] = TONE[tone];
+  const face = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: mobile ? 10 : 12 }}>
+      <div
+        style={{
+          width: mobile ? 30 : 36,
+          height: mobile ? 30 : 36,
+          borderRadius: 'var(--r3)',
+          background: tint,
+          color: fg,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flex: 'none',
+        }}
+      >
+        <Icon name={glyph} size={mobile ? 15 : 17} />
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: mobile ? 18 : 22, fontWeight: 700, letterSpacing: '-.6px' }}>
+          {typeof value === 'number' ? value.toLocaleString('en-IN') : value}
+        </div>
+        <div
+          style={{
+            fontSize: 11.5,
+            color: 'var(--mfg)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {label}
+        </div>
+        {hint && <div style={{ fontSize: 10.5, color: 'var(--mfg)', marginTop: 1 }}>{hint}</div>}
+      </div>
+    </div>
   );
-  return to ? <Link to={to}>{body}</Link> : body;
+
+  const box: React.CSSProperties = { ...card, padding: mobile ? 12 : 14 };
+  if (!to) return <div style={box}>{face}</div>;
+  return (
+    <Link to={to} className='msrs-lift' style={{ ...box, display: 'block', color: 'inherit' }}>
+      {face}
+    </Link>
+  );
 }
+
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section style={{ marginBottom: 22 }}>
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: '.9px',
+          textTransform: 'uppercase',
+          color: 'var(--mfg)',
+          marginBottom: 9,
+        }}
+      >
+        {title}
+      </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))',
+          gap: 12,
+        }}
+      >
+        {children}
+      </div>
+    </section>
+  );
+}
+
+const TYPE_GLYPH: Record<string, string> = {
+  VENDOR: 'ticket',
+  LOCAL_WELFARE: 'users',
+  ASHRAM: 'layout-grid',
+  ASHRAM_FOOD: 'layers',
+};
+
+const STATUS_GLYPH: Record<RequestStatus, string> = {
+  SUBMITTED: 'clipboard-list',
+  SHORTLISTED: 'clock',
+  SELECTED: 'circle-check',
+  BACKUP: 'refresh',
+  REJECTED: 'ban',
+  CANCELLED: 'ban',
+};
 
 export function Dashboard() {
   const { data, error, loading } = useLoad(getDashboard);
-  if (loading) return <p className='text-sm text-ink-2'>Loading…</p>;
-  if (error || !data) return <p className='text-sm text-bad'>{error?.message}</p>;
+  if (loading) return <Loading />;
+  if (error || !data)
+    return <ErrorBox>{error?.message ?? 'Could not load the dashboard.'}</ErrorBox>;
 
   const s = data.byStatus;
   return (
-    <div className='space-y-6'>
-      <div>
-        <h1 className='text-2xl font-bold'>Dashboard</h1>
-        <p className='text-sm text-ink-2'>Maha Shivratri · MSR Stalls Program</p>
-      </div>
+    <div>
+      <H1 icon={<Icon name='home' size={18} />} sub='Maha Shivratri · MSR Stalls Program'>
+        Dashboard
+      </H1>
 
-      <section>
-        <h2 className='mb-2 text-sm font-semibold text-ink-2'>Requests</h2>
-        <div className='grid grid-cols-2 gap-3 md:grid-cols-4'>
-          <Tile label='Total requests' value={data.total} to='/m/stalls/all' />
-          {(['VENDOR', 'LOCAL_WELFARE', 'ASHRAM', 'ASHRAM_FOOD'] as const).map((t) => (
-            <Tile
-              key={t}
-              label={TYPE_LABEL[t]}
-              value={data.byType[t] ?? 0}
-              to={`/m/stalls/all?requestType=${t}`}
-            />
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <h2 className='mb-2 text-sm font-semibold text-ink-2'>Selection</h2>
-        <div className='grid grid-cols-2 gap-3 md:grid-cols-5'>
-          {(['SUBMITTED', 'SHORTLISTED', 'SELECTED', 'BACKUP', 'REJECTED'] as const).map((st) => (
-            <Tile
-              key={st}
-              label={STATUS_LABEL[st]}
-              value={s[st] ?? 0}
-              to={`/m/stalls/all?status=${st}`}
-            />
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <h2 className='mb-2 text-sm font-semibold text-ink-2'>Stalls</h2>
-        <div className='grid grid-cols-2 gap-3 md:grid-cols-4'>
-          <Tile label='Planned' value={data.stallsPlanned} to='/m/stalls/planning' />
-          <Tile label='Allocated' value={data.stallsAllocated} />
+      <Group title='Requests'>
+        <Tile
+          label='Total requests'
+          value={data.total}
+          glyph='clipboard-list'
+          tone='info'
+          to='/m/stalls/all'
+        />
+        {(['VENDOR', 'LOCAL_WELFARE', 'ASHRAM', 'ASHRAM_FOOD'] as const).map((t) => (
           <Tile
-            label='Flagged for follow-up'
-            value={data.flagged}
-            to='/m/stalls/all?flagged=true'
+            key={t}
+            label={TYPE_LABEL[t]}
+            value={data.byType[t] ?? 0}
+            glyph={TYPE_GLYPH[t]}
+            // ⚠️ `violet`, matching `TypeBadge`. The type pill and the type tile
+            // are the same fact in two places; a different colour in each is how
+            // a dashboard and a list stop agreeing about what they are counting.
+            tone='violet'
+            to={`/m/stalls/all?requestType=${t}`}
           />
-        </div>
-      </section>
+        ))}
+      </Group>
 
-      <section>
-        <h2 className='mb-2 text-sm font-semibold text-ink-2'>Onboarding · Phase 2 and 3</h2>
-        <div className='grid grid-cols-2 gap-3 md:grid-cols-4'>
-          <Tile label='Pending bank details' value='—' hint='Phase 2' />
-          <Tile label='Pending payment' value='—' hint='Phase 2' />
-          <Tile label='FSSAI pending' value='—' hint='Phase 3' />
-          <Tile label='Not checked in' value='—' hint='Phase 3' />
-        </div>
-      </section>
+      <Group title='Selection'>
+        {(['SUBMITTED', 'SHORTLISTED', 'SELECTED', 'BACKUP', 'REJECTED'] as const).map((st) => (
+          <Tile
+            key={st}
+            label={STATUS_LABEL[st]}
+            value={s[st] ?? 0}
+            glyph={STATUS_GLYPH[st]}
+            tone={requestStatusTone(st)}
+            to={`/m/stalls/all?status=${st}`}
+          />
+        ))}
+      </Group>
+
+      <Group title='Stalls'>
+        <Tile
+          label='Planned'
+          value={data.stallsPlanned}
+          glyph='layers'
+          tone='info'
+          to='/m/stalls/planning'
+        />
+        <Tile label='Allocated' value={data.stallsAllocated} glyph='map-pin' tone='ok' />
+        <Tile
+          label='Flagged for follow-up'
+          value={data.flagged}
+          glyph='alert-triangle'
+          tone='warn'
+          to='/m/stalls/all?flagged=true'
+        />
+      </Group>
+
+      <Group title='Onboarding · Phase 2 and 3'>
+        <Tile label='Pending bank details' value='—' hint='Phase 2' glyph='file-text' />
+        <Tile label='Pending payment' value='—' hint='Phase 2' glyph='ticket' />
+        <Tile label='FSSAI pending' value='—' hint='Phase 3' glyph='shield' />
+        <Tile label='Not checked in' value='—' hint='Phase 3' glyph='log-in' />
+      </Group>
     </div>
   );
 }

@@ -1,6 +1,4 @@
-import { Plus, Trash2 } from 'lucide-react';
-import { Button } from '../../../components/ui/button';
-import { Input } from '../../../components/ui/input';
+import { Btn, Icon, IconBtn, Input, useIsMobile } from '../ui';
 
 export interface ApplianceRow {
   name: string;
@@ -21,15 +19,33 @@ export function ApplianceRows({
   onChange: (rows: ApplianceRow[]) => void;
   max?: number;
 }) {
+  const mobile = useIsMobile();
   const update = (i: number, patch: Partial<ApplianceRow>) =>
     onChange(value.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const remove = (i: number) => onChange(value.filter((_, j) => j !== i));
   const add = () => onChange([...value, { name: '', watts: '' }]);
 
+  // ⚠️ The wattage column collapses below the name on a phone rather than
+  // sitting beside it. A 128px number field next to a name field inside 360px
+  // of form leaves the name eight characters wide, and "Deep freezer" is not
+  // eight characters.
+  const grid = mobile ? '1fr 28px' : '1fr 8rem 28px';
+
   return (
-    <div className='space-y-2' id={id}>
-      {value.length > 0 && (
-        <div className='grid grid-cols-[1fr_8rem_2.5rem] gap-2 text-xs text-ink-2'>
+    <div style={{ display: 'grid', gap: 8 }} id={id}>
+      {value.length > 0 && !mobile && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: grid,
+            gap: 8,
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: '.5px',
+            textTransform: 'uppercase',
+            color: 'var(--mfg)',
+          }}
+        >
           <span>Appliance name</span>
           <span>Wattage</span>
           <span />
@@ -37,34 +53,37 @@ export function ApplianceRows({
       )}
       {value.map((row, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: rows have no identity of their own
-        <div key={i} className='grid grid-cols-[1fr_8rem_2.5rem] gap-2'>
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: grid, gap: 8, rowGap: 6 }}>
           <Input
             aria-label={`Appliance ${i + 1} name`}
             placeholder='e.g. Deep freezer'
             value={row.name}
             onChange={(e) => update(i, { name: e.target.value })}
           />
+          {mobile && <span />}
           <Input
             aria-label={`Appliance ${i + 1} wattage`}
             type='number'
             min={0}
-            placeholder='W'
+            placeholder='Watts'
             value={row.watts}
             onChange={(e) => update(i, { watts: e.target.value })}
           />
-          <Button
-            variant='ghost'
-            size='icon'
-            aria-label={`Remove appliance ${i + 1}`}
-            onClick={() => remove(i)}
-          >
-            <Trash2 className='h-4 w-4' />
-          </Button>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <IconBtn
+              label={`Remove appliance ${i + 1}`}
+              glyph='trash'
+              tone='var(--des)'
+              onClick={() => remove(i)}
+            />
+          </div>
         </div>
       ))}
-      <Button variant='outline' size='sm' onClick={add} disabled={value.length >= max}>
-        <Plus className='h-3.5 w-3.5' /> Add appliance
-      </Button>
+      <div>
+        <Btn onClick={add} disabled={value.length >= max}>
+          <Icon name='plus' size={14} /> Add appliance
+        </Btn>
+      </div>
     </div>
   );
 }

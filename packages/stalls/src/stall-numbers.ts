@@ -1,6 +1,4 @@
-import { ZONE_CODES, type ZoneCode } from './zones';
-
-const ZONE_SET = new Set<string>(ZONE_CODES);
+import { isZoneCode, type ZoneCode } from './zones';
 
 export function formatStallNumber(zone: ZoneCode, n: number): string {
   if (!Number.isInteger(n) || n < 1) {
@@ -15,11 +13,18 @@ export function formatStallNumber(zone: ZoneCode, n: number): string {
  *
  *  Note this deliberately does NOT accept the 2025 legacy shapes (`A-12`,
  *  `F-03`) that appear in a handful of ashram rows. Those predate zone codes;
- *  they are carried as free text on the stall record and are not generated. */
+ *  they are carried as free text on the stall record and are not generated.
+ *
+ *  ⚠️ This checks the SHAPE of the zone code, not that the zone exists. Which
+ *  zones exist is per-edition data an admin edits, so only a database lookup
+ *  can answer it — `selectRequest` does exactly that, and a code that parses
+ *  here but names no zone fails there as an unknown stall. Validating against a
+ *  baked-in list instead would reject every bay added after this file
+ *  shipped. */
 export function parseStallNumber(s: string): { zone: ZoneCode; n: number } | null {
-  const match = /^([A-Z][0-9])-([1-9]\d*)$/.exec(s);
-  if (!match || !ZONE_SET.has(match[1])) return null;
-  return { zone: match[1] as ZoneCode, n: Number(match[2]) };
+  const match = /^([A-Z]{1,2}\d{0,2})-([1-9]\d*)$/.exec(s);
+  if (!match || !isZoneCode(match[1])) return null;
+  return { zone: match[1], n: Number(match[2]) };
 }
 
 export function generateStallNumbers(zone: ZoneCode, count: number): string[] {

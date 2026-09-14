@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 import { type RouteObject, RouterProvider, createMemoryRouter } from 'react-router';
 import { vi } from 'vitest';
 import { MeProvider } from './me';
+import { ToastProvider } from './ui';
 
 export interface Call {
   method: string;
@@ -42,17 +43,29 @@ export function installFetch(routes: ReadonlyArray<readonly [string, RegExp, Han
   return { calls, last: () => calls[calls.length - 1] };
 }
 
-/** Render `routes` inside a memory router positioned at `path`. */
+/**
+ * Render `routes` inside a memory router positioned at `path`.
+ *
+ * ⚠️ `ToastProvider` wraps every render, `me` or not, because `useToast()`
+ * THROWS outside it — that is the component's contract, and it is the right one:
+ * a screen whose confirmations go nowhere should fail at mount rather than
+ * swallow them. It is what `StaffLayout` mounts in the real shell, so this is
+ * the harness matching the app rather than the harness being generous.
+ *
+ * ⚠️ It is OUTSIDE `MeProvider`, matching the shell for the same reason given
+ * there: the gate swaps its whole subtree once the session lands, and a toast
+ * host inside it would unmount on that transition and drop what it was holding.
+ */
 export function renderAt(path: string, routes: RouteObject[], opts: { me?: boolean } = {}) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
-  const tree: ReactElement = opts.me ? (
+  const inner: ReactElement = opts.me ? (
     <MeProvider>
       <RouterProvider router={router} />
     </MeProvider>
   ) : (
     <RouterProvider router={router} />
   );
-  return { ...render(tree), router };
+  return { ...render(<ToastProvider>{inner}</ToastProvider>), router };
 }
 
 export const ME_LEAD = {
@@ -182,6 +195,133 @@ export function detail(over: Record<string, unknown> = {}) {
     appliances: [],
     customValues: [],
     allocations: [],
+    ...over,
+  };
+}
+
+/** A caller who holds everything — the Phase 2 and 3 screens each gate on a
+ *  different action, and most tests are about the screen rather than the gate. */
+export const ME_ADMIN = {
+  personId: 'p-admin',
+  displayName: 'Vikram Sethu',
+  roleKeys: ['stalls_admin'],
+  actions: [
+    'requests:read',
+    'requests:write',
+    'planning:read',
+    'planning:write',
+    'selection:read',
+    'selection:write',
+    'comms:write',
+    'finance:read',
+    'finance:write',
+    'checkin:write',
+    'config:read',
+    'config:write',
+    'users:write',
+  ],
+};
+
+export function recipient(over: Record<string, unknown> = {}) {
+  return {
+    id: '33333333-3333-4333-8333-333333333333',
+    reference: 'VEN-2026-0001',
+    stallName: 'Green Leaf Organics',
+    requesterName: 'Priya Venkat',
+    email: 'priya@greenleaf.example',
+    requestType: 'VENDOR',
+    stallNumbers: ['C1-4'],
+    suggestedTemplate: 'SELECTION_VENDOR',
+    sentAt: null,
+    sentTemplates: [] as Array<{ key: string; sentAt: string }>,
+    ...over,
+  };
+}
+
+export function checkInRow(over: Record<string, unknown> = {}) {
+  return {
+    requestId: '44444444-4444-4444-8444-444444444444',
+    reference: 'VEN-2026-0001',
+    stallName: 'Green Leaf Organics',
+    requesterName: 'Priya Venkat',
+    contactNumber: '9840012345',
+    requestType: 'VENDOR',
+    stallNumbers: ['C1-4'],
+    staffRegistered: 1,
+    staffExpected: 3,
+    passes2w: 2,
+    passes4w: 1,
+    passesStaff: 3,
+    pending: [{ step: 'FSSAI', label: 'FSSAI certificate pending' }],
+    checkedInAt: null,
+    checkedInBy: null,
+    note: null,
+    ...over,
+  };
+}
+
+export function equipmentRow(over: Record<string, unknown> = {}) {
+  return {
+    requestId: '55555555-5555-4555-8555-555555555555',
+    reference: 'VEN-2026-0001',
+    stallName: 'Green Leaf Organics',
+    requesterName: 'Priya Venkat',
+    contactNumber: '9840012345',
+    requestType: 'VENDOR',
+    category: 'VENDOR_FOOD',
+    stallNumbers: ['C1-4'],
+    chairsRequested: 6,
+    tablesRequested: 2,
+    extraChairs: 0,
+    extraTables: 0,
+    extraChargePaise: 0,
+    extraCollectedAt: null,
+    distributedAt: null,
+    collectedAt: null,
+    missingChairs: 0,
+    missingTables: 0,
+    damaged: false,
+    deductionPaise: 0,
+    note: null,
+    flagged: false,
+    ...over,
+  };
+}
+
+export function quote(over: Record<string, unknown> = {}) {
+  return {
+    stallFeePaise: 1_500_000,
+    plugFeePaise: 700_000,
+    equipmentFeePaise: 0,
+    netPaise: 2_200_000,
+    gstPaise: 396_000,
+    feeTotalPaise: 2_596_000,
+    stallDepositPaise: 400_000,
+    equipmentDepositPaise: 0,
+    depositTotalPaise: 400_000,
+    grandTotalPaise: 2_996_000,
+    exempt: false,
+    unpriced: false,
+    ...over,
+  };
+}
+
+export function paymentRow(over: Record<string, unknown> = {}) {
+  return {
+    requestId: '66666666-6666-4666-8666-666666666666',
+    reference: 'VEN-2026-0001',
+    stallName: 'Green Leaf Organics',
+    requesterName: 'Priya Venkat',
+    email: 'priya@greenleaf.example',
+    requestType: 'VENDOR',
+    stallNumbers: ['C1-4'],
+    quote: quote(),
+    bankDetailsReceivedAt: '2026-01-10T10:00:00.000Z',
+    paymentEmailSentAt: null,
+    records: [] as unknown[],
+    receivedRentPaise: 0,
+    receivedDepositPaise: 0,
+    fullySettled: false,
     ...over,
   };
 }

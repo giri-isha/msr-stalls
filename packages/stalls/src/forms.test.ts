@@ -53,10 +53,12 @@ describe('fieldsFor LOCAL_WELFARE', () => {
     expect(byName.has('passesStaff')).toBe(false);
   });
 
-  test('offers A3 and B2, which are closed to vendors but open to local welfare', () => {
-    const zones = byName.get('preferredZoneCode')?.options?.map((o) => o.value) ?? [];
-    expect(zones).toContain('A3');
-    expect(zones).toContain('B2');
+  // The choices are the edition's own zones, resolved at render time — see
+  // `zoneOptions`. The field carries none of its own, so that a bay added for a
+  // future layout appears on the form without a code change.
+  test('takes its locations from the configured zones, not a baked-in list', () => {
+    expect(byName.get('preferredZoneCode')?.type).toBe('zone');
+    expect(byName.get('preferredZoneCode')?.options).toBeUndefined();
   });
 });
 

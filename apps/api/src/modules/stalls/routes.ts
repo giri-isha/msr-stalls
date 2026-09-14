@@ -5,18 +5,30 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
   ChargesInput,
+  CheckInInput,
+  ConfirmPaymentInput,
   CreateEditionInput,
   CustomFieldInput,
   CustomFieldPatch,
+  EquipmentAction,
+  EquipmentPatch,
   FineTypeInput,
   FlagRequestInput,
   FlowInput,
   GrantRoleInput,
   ListRequestsQuery,
+  LogReminderInput,
   type MeResponse,
+  PresignUploadInput,
   RateCardInput,
   RejectRequestInput,
+  ReminderKind,
   SelectRequestInput,
+  SendEmailInput,
+  SubmitRefundInput,
+  TEMPLATE_PLACEHOLDERS,
+  TemplateKeyValue,
+  UpdateTemplateInput,
   ZoneCodeValue,
   ZoneInput,
   ZonePlanInput,
@@ -24,11 +36,19 @@ import {
 } from '@msr/stalls';
 import { prisma } from '../../prisma';
 import type { ZodTypeProvider } from '../../zod-validation';
+import * as checkin from './checkin';
+import * as comms from './comms';
 import * as config from './config';
 import { activateEdition, activeEdition, listEditions } from './editions';
 import type { StallsDeps } from './deps';
+import { electricalSheet } from './electrical';
+import * as equipment from './equipment';
+import * as finance from './finance';
+import * as onboarding from './onboarding';
 import { applyPlan, listAvailableStalls, readPlan, writePlan } from './planning';
+import { presignUpload } from './uploads';
 import { dashboardCounts, flagRequest, getRequest, listRequests, unflagRequest } from './requests';
+import { UnknownRequestError } from './errors';
 import { ROLES, requireAction, requireStaff } from './roles';
 import {
   backupRequest,
@@ -44,8 +64,9 @@ import { grantRole, listStaff, revokeRole, searchPeople } from './staff';
 const IdParams = z.object({ id: z.uuid() });
 const CodeParams = z.object({ code: ZoneCodeValue });
 const RoleParams = z.object({ personRef: z.uuid(), roleKey: z.string() });
+const TemplateParams = z.object({ key: TemplateKeyValue });
 
-export function registerStallsStaffRoutes(app: FastifyInstance, _deps: StallsDeps): void {
+export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps): void {
   const zod = app.withTypeProvider<ZodTypeProvider>();
 
   // ── Me ────────────────────────────────────────────────────────────────────
@@ -332,4 +353,309 @@ export function registerStallsStaffRoutes(app: FastifyInstance, _deps: StallsDep
       reply.status(204);
     },
   );
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PHASE 2 — Communication, onboarding, money
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // ── Uploads ───────────────────────────────────────────────────────────────
+  // A staff-side presign, for the attachment that goes out with a template.
+  // The vendor-facing one is in `public-routes.ts` and is gated by a link.
+  zod.post('/uploads', { schema: { body: PresignUploadInput } }, async (req) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'comms:write');
+    return presignUpload(deps.files, req.body);
+  });
+
+  // ── Communication ─────────────────────────────────────────────────────────
+  zod.get('/comms/templates', async (req) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'comms:write');
+    const edition = await activeEdition(prisma);
+    return {
+      templates: await comms.listTemplates(prisma, edition.id),
+      placeholders: TEMPLATE_PLACEHOLDERS,
+    };
+  });
+
+  zod.put(
+    '/comms/templates/:key',
+    { schema: { params: TemplateParams, body: UpdateTemplateInput } },
+    async (req, reply) => {
+      const caller = await requireStaff(req, prisma);
+      requireAction(caller, 'comms:write');
+      const edition = await activeEdition(prisma);
+      await comms.updateTemplate(prisma, edition.id, req.params.key, req.body, caller.personId);
+      reply.status(204);
+    },
+  );
+
+  zod.put(
+    '/comms/templates/:key/attachment',
+    {
+      schema: {
+        params: TemplateParams,
+        body: z
+          .object({
+            key: z.string().trim().min(1).max(400),
+            name: z.string().trim().min(1).max(300),
+            bytes: z.number().int().min(0),
+          })
+          .nullable(),
+      },
+    },
+    async (req, reply) => {
+      const caller = await requireStaff(req, prisma);
+      requireAction(caller, 'comms:write');
+      const edition = await activeEdition(prisma);
+      await comms.setTemplateAttachment(
+        prisma,
+        edition.id,
+        req.params.key,
+        req.body,
+        caller.personId,
+      );
+      reply.status(204);
+    },
+  );
+
+  zod.get('/comms/recipients', async (req) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'comms:write');
+    const edition = await activeEdition(prisma);
+    return comms.listRecipients(prisma, edition.id);
+  });
+
+  /** Bulk and individual send are ONE route. The screen offers two buttons;
+   *  a list of one is an individual send, and having a second path would be a
+   *  second place for the "already sent" rule to be got wrong. */
+  zod.post('/comms/send', { schema: { body: SendEmailInput } }, async (req) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'comms:write');
+    const edition = await activeEdition(prisma);
+    return comms.sendTemplate(prisma, edition.id, req.body, deps, caller.personId);
+  });
+
+  zod.delete(
+    '/comms/sent/:id/:key',
+    { schema: { params: z.object({ id: z.uuid(), key: TemplateKeyValue }) } },
+    async (req, reply) => {
+      const caller = await requireStaff(req, prisma);
+      // Clearing the send log so a letter can go out again is an admin act.
+      requireAction(caller, 'config:write');
+      await comms.clearSendLog(prisma, req.params.id, req.params.key, caller.personId);
+      reply.status(204);
+    },
+  );
+
+  zod.get(
+    '/comms/reminders',
+    { schema: { querystring: z.object({ kind: ReminderKind }) } },
+    async (req) => {
+      const caller = await requireStaff(req, prisma);
+      requireAction(caller, 'comms:write');
+      const edition = await activeEdition(prisma);
+      return comms.listReminders(prisma, edition.id, req.query.kind);
+    },
+  );
+
+  zod.post(
+    '/requests/:id/reminders',
+    { schema: { params: IdParams, body: LogReminderInput } },
+    async (req, reply) => {
+      const caller = await requireStaff(req, prisma);
+      requireAction(caller, 'comms:write');
+      await comms.logReminder(prisma, req.params.id, req.body, caller.personId);
+      reply.status(204);
+    },
+  );
+
+  // ── Onboarding ────────────────────────────────────────────────────────────
+  zod.get('/onboarding', async (req) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'requests:read');
+    const edition = await activeEdition(prisma);
+    return onboarding.listOnboarding(prisma, edition.id);
+  });
+
+  zod.get('/onboarding/:id', { schema: { params: IdParams } }, async (req) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'requests:read');
+    return onboarding.getOnboarding(prisma, req.params.id, deps.files);
+  });
+
+  zod.post('/onboarding/:id/coupon', { schema: { params: IdParams } }, async (req) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'requests:write');
+    const r = await prisma.stallRequest.findUnique({
+      where: { id: req.params.id },
+      include: { edition: true },
+    });
+    if (!r) throw new UnknownRequestError(req.params.id);
+    const coupon = await onboarding.ensureCoupon(
+      prisma,
+      r.id,
+      r.stallName,
+      r.edition.year,
+      caller.personId,
+    );
+    return { code: coupon.code };
+  });
+
+  zod.post(
+    '/onboarding/:id/fssai/verify',
+    { schema: { params: IdParams, body: z.object({ verified: z.boolean() }) } },
+    async (req, reply) => {
+      const caller = await requireStaff(req, prisma);
+      requireAction(caller, 'requests:write');
+      await onboarding.verifyFssai(prisma, req.params.id, req.body.verified, caller.personId);
+      reply.status(204);
+    },
+  );
+
+  zod.get('/onboarding/:id/staff', { schema: { params: IdParams } }, async (req) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'requests:read');
+    return onboarding.listStaffFor(prisma, req.params.id);
+  });
+
+  zod.delete('/staff-registrations/:id', { schema: { params: IdParams } }, async (req, reply) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'requests:write');
+    await onboarding.removeStaff(prisma, req.params.id, caller.personId);
+    reply.status(204);
+  });
+
+  // ── Finance ───────────────────────────────────────────────────────────────
+  zod.get('/finance/payments', async (req) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'finance:read');
+    const edition = await activeEdition(prisma);
+    return finance.listPayments(prisma, edition.id);
+  });
+
+  zod.post(
+    '/finance/payments/:id',
+    { schema: { params: IdParams, body: ConfirmPaymentInput } },
+    async (req, reply) => {
+      const caller = await requireStaff(req, prisma);
+      requireAction(caller, 'finance:write');
+      await finance.confirmPayment(prisma, req.params.id, req.body, caller.personId);
+      reply.status(204);
+    },
+  );
+
+  zod.delete('/finance/payments/:id', { schema: { params: IdParams } }, async (req, reply) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'finance:write');
+    await finance.deletePayment(prisma, req.params.id, caller.personId);
+    reply.status(204);
+  });
+
+  zod.get('/finance/refunds', async (req) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'finance:read');
+    const edition = await activeEdition(prisma);
+    return finance.listRefunds(prisma, edition.id);
+  });
+
+  zod.post(
+    '/finance/refunds/:id',
+    { schema: { params: IdParams, body: SubmitRefundInput } },
+    async (req) => {
+      const caller = await requireStaff(req, prisma);
+      // The stalls team prepares the refund; Finance pays it. `finance:write`
+      // is what the Lead role does NOT hold, so this is deliberately the
+      // finance action and not `requests:write`.
+      requireAction(caller, 'finance:write');
+      return finance.submitRefund(prisma, req.params.id, req.body, caller.personId);
+    },
+  );
+
+  zod.put(
+    '/finance/refunds/:id/voucher',
+    {
+      schema: {
+        params: IdParams,
+        body: z.object({ voucherRef: z.string().trim().min(1).max(100) }),
+      },
+    },
+    async (req, reply) => {
+      const caller = await requireStaff(req, prisma);
+      requireAction(caller, 'finance:write');
+      await finance.setVoucherRef(prisma, req.params.id, req.body.voucherRef, caller.personId);
+      reply.status(204);
+    },
+  );
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PHASE 3 — Event operations
+  // ══════════════════════════════════════════════════════════════════════════
+
+  zod.get(
+    '/electrical',
+    { schema: { querystring: z.object({ zoneCode: ZoneCodeValue.optional() }) } },
+    async (req) => {
+      const caller = await requireStaff(req, prisma);
+      requireAction(caller, 'planning:read');
+      const edition = await activeEdition(prisma);
+      return electricalSheet(prisma, edition.id, req.query.zoneCode);
+    },
+  );
+
+  zod.get(
+    '/checkin',
+    { schema: { querystring: z.object({ q: z.string().trim().max(200).optional() }) } },
+    async (req) => {
+      const caller = await requireStaff(req, prisma);
+      requireAction(caller, 'requests:read');
+      const edition = await activeEdition(prisma);
+      return checkin.listCheckIns(prisma, edition.id, req.query.q);
+    },
+  );
+
+  zod.post('/checkin/:id', { schema: { params: IdParams, body: CheckInInput } }, async (req) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'checkin:write');
+    return checkin.checkIn(prisma, req.params.id, req.body.note, caller.personId);
+  });
+
+  zod.delete('/checkin/:id', { schema: { params: IdParams } }, async (req) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'checkin:write');
+    return checkin.undoCheckIn(prisma, req.params.id, caller.personId);
+  });
+
+  zod.get('/equipment', async (req) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'requests:read');
+    const edition = await activeEdition(prisma);
+    return equipment.listEquipment(prisma, edition.id);
+  });
+
+  zod.patch(
+    '/equipment/:id',
+    { schema: { params: IdParams, body: EquipmentPatch } },
+    async (req) => {
+      const caller = await requireStaff(req, prisma);
+      requireAction(caller, 'checkin:write');
+      return equipment.patchEquipment(prisma, req.params.id, req.body, caller.personId);
+    },
+  );
+
+  zod.post(
+    '/equipment/:id/action',
+    { schema: { params: IdParams, body: z.object({ action: EquipmentAction }) } },
+    async (req) => {
+      const caller = await requireStaff(req, prisma);
+      requireAction(caller, 'checkin:write');
+      return equipment.actOnEquipment(prisma, req.params.id, req.body.action, caller.personId);
+    },
+  );
+
+  zod.get('/equipment/:id/challan', { schema: { params: IdParams } }, async (req) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'requests:read');
+    return equipment.challan(prisma, req.params.id);
+  });
 }

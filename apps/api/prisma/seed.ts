@@ -4,15 +4,31 @@
 //
 // Refuses to run against a database that already has an edition, so it can
 // never double-seed. Pass --force to wipe the stalls tables first.
-import { STALL_CATEGORIES, SubmitRequestInput, type ZoneCode } from '@msr/stalls';
-import type { StallCategory } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import { SubmitRequestInput, type ZoneCode } from '@msr/stalls';
 import { LogMailer } from '../src/email';
+import { createUnconfiguredSigner } from '../src/modules/stalls/signer';
+import { createLoggingWhatsAppSender } from '../src/modules/stalls/whatsapp';
+import { submitBankDetails } from '../src/modules/stalls/bank';
+import { checkIn } from '../src/modules/stalls/checkin';
+import { logReminder, sendTemplate } from '../src/modules/stalls/comms';
 import { createEdition } from '../src/modules/stalls/config';
+import type { StallsDeps } from '../src/modules/stalls/deps';
+import { actOnEquipment, patchEquipment } from '../src/modules/stalls/equipment';
+import { confirmPayment } from '../src/modules/stalls/finance';
+import {
+  ensureCoupon,
+  registerStaff,
+  submitFssai,
+  verifyFssai,
+} from '../src/modules/stalls/onboarding';
 import { applyPlan, writePlan } from '../src/modules/stalls/planning';
 import { flagRequest } from '../src/modules/stalls/requests';
 import { selectRequest, shortlist } from '../src/modules/stalls/selection';
 import { submitRequest } from '../src/modules/stalls/submit';
 import { prisma } from '../src/prisma';
+import { DiskMediaStore, devMediaDir } from '../src/storage/disk-media-store';
+import type { MediaStore } from '../src/storage/media-namespace';
 
 const SYSTEM = '00000000-0000-0000-0000-000000000000';
 const force = process.argv.includes('--force');
@@ -26,7 +42,10 @@ const STAFF = [
 ];
 
 /** The 2025 planning sheet, per zone × category (from the prototype). */
-const PLAN: Record<ZoneCode, Partial<Record<StallCategory, number>>> = {
+// Keyed by the edition's own category keys — the planning grid's columns are
+// configuration, so the seed names the ones it wants rather than filling a
+// fixed set.
+const PLAN: Record<ZoneCode, Record<string, number>> = {
   A3: { ASHRAM_FOOD: 2, ASHRAM_NON_FOOD: 6 },
   A4: {
     VENDOR_FOOD: 5,
@@ -287,6 +306,42 @@ const REQUESTS: Array<Record<string, unknown>> = [
   },
 ];
 
+/** What the module needs, built the way `app.ts` builds it so the seed drives
+ *  the real seams rather than writing rows behind them. */
+function seedDeps(mail: LogMailer): StallsDeps {
+  const dir = devMediaDir();
+  const files: MediaStore = dir
+    ? new DiskMediaStore(dir, 'stalls/')
+    : {
+        // No media directory configured: presign anyway so the seed can record
+        // that documents arrived. Nothing reads the bytes back.
+        configured: () => true,
+        presignUpload: async (o) => ({ url: `memory://${o.key}`, headers: {}, expiresIn: 900 }),
+        presignView: async (key) => `memory://${key}`,
+        head: async () => null,
+        deleteMany: async () => {},
+      };
+  const origin = 'http://localhost:5173';
+  return {
+    files,
+    mail,
+    statusUrl: (t) => `${origin}/stalls/status/${t}`,
+    bankFormUrl: (t) => `${origin}/stalls/bank/${t}`,
+    fssaiUrl: (t) => `${origin}/stalls/fssai/${t}`,
+    staffRegistrationUrl: (c) => `${origin}/stalls/staff/${c}`,
+    signatureUrl: (t) => `${origin}/stalls/sign/${t}`,
+    whatsapp: createLoggingWhatsAppSender(() => {}),
+    signer: createUnconfiguredSigner(),
+    publicRateLimitMax: 1000,
+  };
+}
+
+/** A key of the shape `presignUpload` mints, so the seeded documents pass the
+ *  same `isOurKey` check a real submission does. */
+async function fakeUpload(_files: MediaStore, folder: string): Promise<string> {
+  return `stalls/${folder}/${randomUUID()}.pdf`;
+}
+
 async function main() {
   const existing = await prisma.stallEdition.count();
   if (existing > 0 && !force) {
@@ -337,9 +392,7 @@ async function main() {
     {
       rows: (Object.keys(PLAN) as ZoneCode[]).map((zoneCode) => ({
         zoneCode,
-        counts: Object.fromEntries(
-          STALL_CATEGORIES.map((c) => [c, PLAN[zoneCode][c] ?? 0]),
-        ) as Record<StallCategory, number>,
+        counts: PLAN[zoneCode],
       })),
     },
     lead,
@@ -374,9 +427,167 @@ async function main() {
   );
   console.log('Pipeline: 2 shortlisted, 4 selected, 1 flagged');
 
+  // ── Phase 2: onboarding and money ─────────────────────────────────────────
+  //
+  // Walks ONE vendor (Green Leaf) the whole way — letter, bank form, payment
+  // email, confirmed credit, certificate, staff — and leaves the others part
+  // way, so every screen has both a finished row and an outstanding one to
+  // look at. Everything below goes through the same seams the routes call; the
+  // seed never writes a state the application could not have produced.
+  const deps = seedDeps(mail);
+  const greenLeaf = ids[0];
+  const publications = ids[11];
+  const healthCamp = ids[7];
+
+  await sendTemplate(
+    prisma,
+    edition.id,
+    { templateKey: 'SELECTION_VENDOR', requestIds: [greenLeaf] },
+    deps,
+    lead,
+  );
+  await sendTemplate(
+    prisma,
+    edition.id,
+    { templateKey: 'SELECTION_ASHRAM', requestIds: [publications] },
+    deps,
+    lead,
+  );
+
+  await submitBankDetails(prisma, greenLeaf, {
+    email: 'priya@greenleaf.example',
+    invoiceName: 'Green Leaf Organics Pvt Ltd',
+    accountHolder: 'Green Leaf Organics Pvt Ltd',
+    mobile: '9840012345',
+    address: '12 Mettupalayam Road, Coimbatore',
+    pincode: '641043',
+    bankName: 'HDFC Bank',
+    branch: 'RS Puram',
+    accountNumber: '50100123456789',
+    ifsc: 'HDFC0001234',
+    micr: '641240002',
+    panNumber: 'ABCDE1234F',
+    gstNumber: '33ABCDE1234F1Z5',
+    chequeKey: await fakeUpload(deps.files, 'bank/cheque'),
+    panKey: await fakeUpload(deps.files, 'bank/pan'),
+    gstKey: '',
+    agreeNeft: true,
+    agreeTerms: true,
+    plugs5a: 4,
+    plugs15a: 5,
+    gasStoves: 1,
+    appliances: [
+      { name: 'Deep fryer', watts: 2500 },
+      { name: 'Freezer', watts: 1500 },
+    ],
+    tablesNeeded: 2,
+    chairsNeeded: 6,
+    passes2w: 1,
+    passes4w: 1,
+    passesStaff: 3,
+    remarks: 'Please place us near a water point if possible.',
+  });
+
+  await sendTemplate(
+    prisma,
+    edition.id,
+    { templateKey: 'PAYMENT_DETAILS', requestIds: [greenLeaf] },
+    deps,
+    lead,
+  );
+
+  const finance = people.get('meena.k@ishafoundation.org') ?? SYSTEM;
+  const plan = await prisma.stallPaymentPlan.findUniqueOrThrow({
+    where: { requestId: greenLeaf },
+  });
+  await confirmPayment(
+    prisma,
+    greenLeaf,
+    {
+      purpose: 'RENT',
+      referenceNo: 'YESBN12026021401',
+      eCollectCode: 'IFCTGE39840012345',
+      amountPaise: plan.feeTotalPaise,
+      receivedOn: '2026-02-14',
+      remitterName: 'GREEN LEAF ORGANICS',
+      mode: 'NEFT',
+    },
+    finance,
+  );
+  await confirmPayment(
+    prisma,
+    greenLeaf,
+    {
+      purpose: 'DEPOSIT',
+      referenceNo: 'YESBN12026021802',
+      amountPaise: plan.depositTotalPaise,
+      receivedOn: '2026-02-18',
+      remitterName: 'GREEN LEAF ORGANICS',
+      mode: 'NEFT',
+    },
+    finance,
+  );
+
+  // Two vendors left mid-flow, with a chasing call logged against each.
+  await logReminder(
+    prisma,
+    healthCamp,
+    { kind: 'BANK', note: 'No answer, will try tomorrow' },
+    lead,
+  );
+  await logReminder(prisma, healthCamp, { kind: 'PAYMENT' }, lead);
+  console.log('Phase 2: 2 letters sent, 1 bank form in, 1 vendor paid in full');
+
+  // ── Phase 3: event operations ─────────────────────────────────────────────
+  await sendTemplate(
+    prisma,
+    edition.id,
+    { templateKey: 'ONBOARDING_FSSAI_STAFF', requestIds: [greenLeaf] },
+    deps,
+    lead,
+  );
+  await submitFssai(prisma, greenLeaf, {
+    stallName: 'Green Leaf Organics',
+    ownerName: 'Priya Venkat',
+    mobile: '9840012345',
+    files: [{ key: await fakeUpload(deps.files, 'fssai'), name: 'fssai-certificate.pdf' }],
+  });
+  await verifyFssai(prisma, greenLeaf, true, lead);
+
+  const coupon = await ensureCoupon(prisma, greenLeaf, 'Green Leaf Organics', edition.year, lead);
+  for (const person of [
+    { name: 'Ravi Kumar', mobile: '9840055551', role: 'Cook' },
+    { name: 'Meena S', mobile: '9840055552', role: 'Cashier' },
+  ]) {
+    await registerStaff(prisma, {
+      couponCode: coupon.code,
+      name: person.name,
+      mobile: person.mobile,
+      idType: 'AADHAAR',
+      idNumber: `1234567890${person.mobile.slice(-2)}`,
+      role: person.role,
+    });
+  }
+
+  const volunteer = people.get('kavya.n@ishafoundation.org') ?? SYSTEM;
+  await actOnEquipment(prisma, greenLeaf, 'DISTRIBUTE', volunteer);
+  await patchEquipment(prisma, greenLeaf, { extraChairs: 2 }, volunteer);
+  await actOnEquipment(prisma, greenLeaf, 'COLLECT_EXTRA_PAYMENT', volunteer);
+  await checkIn(prisma, greenLeaf, undefined, volunteer);
+
+  // A stall that came back short, so the refund screen has something to price.
+  await patchEquipment(
+    prisma,
+    healthCamp,
+    { missingChairs: 1, damaged: true, note: '1 chair broken', flagged: true },
+    volunteer,
+  );
+  console.log(`Phase 3: staff coupon ${coupon.code}, 2 staff registered, 1 stall checked in`);
+
   const first = mail.sent[0];
   if (first)
     console.log(`\nA vendor status link (Green Leaf):\n  ${first.text.match(/http\S+/)?.[0]}`);
+  console.log(`Staff registration: http://localhost:5173/stalls/staff/${coupon.code}`);
   console.log('\nSign in at http://localhost:5173/m/stalls as any of:');
   for (const s of STAFF)
     console.log(`  ${s.displayName.padEnd(18)} ${s.email}  ${s.roles.join(', ') || '(no role)'}`);

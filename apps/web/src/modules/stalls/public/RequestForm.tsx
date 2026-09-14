@@ -8,31 +8,30 @@ import {
 } from '@msr/stalls';
 import { useMemo, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router';
-import { Button } from '../../../components/ui/button';
-import { Card, CardContent } from '../../../components/ui/card';
-import { Checkbox, Field, Input, Select, Textarea } from '../../../components/ui/input';
 import { ApiError, fieldErrorsFrom } from '../../../lib/api-client';
 import { getPublicConfig, submitRequest } from '../api';
 import { type ApplianceRow, ApplianceRows } from '../components/ApplianceRows';
 import { BilingualLabel } from '../components/BilingualLabel';
 import { ZoneSelect } from '../components/ZoneSelect';
 import { useLoad } from '../hooks';
+import {
+  Card,
+  Checkbox,
+  ChoicePlate,
+  FieldError,
+  FieldStack,
+  FormField as Labelled,
+  Icon,
+  Input,
+  Radio,
+  Select,
+  Textarea,
+} from '../ui';
 import { SLUG_TYPE } from './FormPicker';
 
 type Values = Record<string, string | boolean | ApplianceRow[]>;
 
 const ASHRAM_TYPES = new Set<StallRequestType>(['ASHRAM', 'ASHRAM_FOOD']);
-const ASHRAM_BLOCK = new Set([
-  'departmentHead',
-  'departmentHeadContact',
-  'department',
-  'requestedBy',
-  'requesterContact',
-  'creditCardNeeded',
-  'usage',
-  'wantsThembu',
-  'fssaiExpected',
-]);
 const NUMERIC = new Set([
   'numStallsRequested',
   'plugs5a',
@@ -215,60 +214,134 @@ function Form({ type }: { type: StallRequestType }) {
   const isFood = ASHRAM_TYPES.has(type) ? type === 'ASHRAM_FOOD' : values.stallType === 'FOOD';
 
   return (
-    <form onSubmit={onSubmit} noValidate className='space-y-5'>
-      <div>
-        <h1 className='text-2xl font-bold'>{def.title}</h1>
+    <form onSubmit={onSubmit} noValidate>
+      <div style={{ marginBottom: 18 }}>
+        <div
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 24,
+            fontWeight: 600,
+            letterSpacing: '-.5px',
+            lineHeight: 1.15,
+          }}
+        >
+          {def.title}
+        </div>
         {config.data && (
-          <p className='mt-1 text-xs text-ink-3'>
+          <div style={{ fontSize: 12, color: 'var(--mfg)', marginTop: 5 }}>
             {config.data.edition.name}
             {type === 'LOCAL_WELFARE' &&
               ` · Refundable caution deposit ${formatInr(config.data.charges.localWelfareDepositPaise)}`}
-          </p>
+          </div>
         )}
       </div>
 
-      <Card className='border-accent/40 bg-accent-soft/30'>
-        <CardContent className='space-y-2 p-4 text-sm'>
-          <p>{def.disclaimer}</p>
-          {def.disclaimerTa && (
-            <p className='font-tamil' lang='ta'>
-              {def.disclaimerTa}
-            </p>
-          )}
-        </CardContent>
-      </Card>
+      {/* The terms, on the primary tint rather than a warning one. This is the
+          thing a reader agrees to, not a thing that has gone wrong. */}
+      <div
+        style={{
+          padding: '13px 15px',
+          borderRadius: 'var(--r3)',
+          background: 'var(--pri-t)',
+          border: '1px solid var(--pri-t2)',
+          marginBottom: 16,
+        }}
+      >
+        <div style={{ display: 'flex', gap: 10 }}>
+          <span style={{ flex: 'none', color: 'var(--pri)', marginTop: 1 }}>
+            <Icon name='info' size={16} />
+          </span>
+          <div style={{ minWidth: 0, fontSize: 12.5, lineHeight: 1.65 }}>
+            <p style={{ margin: 0 }}>{def.disclaimer}</p>
+            {def.disclaimerTa && (
+              <p className='msrs-tamil' lang='ta' style={{ margin: '7px 0 0' }}>
+                {def.disclaimerTa}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
 
       {topError && (
-        <p
+        <div
           role='alert'
-          className='rounded-md border border-bad/30 bg-bad-soft px-3 py-2 text-sm text-bad'
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 9,
+            padding: '11px 14px',
+            borderRadius: 'var(--r2)',
+            background: 'var(--des-t)',
+            color: 'var(--des-fg)',
+            border: '1px solid var(--des-b)',
+            fontSize: 13,
+            fontWeight: 600,
+            marginBottom: 16,
+          }}
         >
+          <Icon name='alert-triangle' size={16} />
           {topError}
-        </p>
+        </div>
       )}
 
-      <Card>
-        <CardContent className='space-y-5 p-5'>
-          {allFields.map((f) => (
-            <FieldControl
-              key={f.name}
-              field={f}
-              value={values[f.name]}
-              error={errors[f.name]}
-              onChange={(v) => set(f.name, v)}
-              config={config.data}
-              type={type}
-              isFood={isFood}
-            />
-          ))}
-        </CardContent>
-      </Card>
+      <Card pad={0}>
+        <div style={{ padding: 18 }}>
+          <FieldStack>
+            {allFields.map((f) => (
+              <FieldControl
+                key={f.name}
+                field={f}
+                value={values[f.name]}
+                error={errors[f.name]}
+                onChange={(v) => set(f.name, v)}
+                config={config.data}
+                type={type}
+                isFood={isFood}
+              />
+            ))}
+          </FieldStack>
+        </div>
 
-      <div className='flex items-center justify-end gap-3'>
-        <Button type='submit' size='lg' disabled={submitting || values.agreed !== true}>
-          {submitting ? 'Submitting…' : 'Submit request'}
-        </Button>
-      </div>
+        {/* ⚠️ The submit sits INSIDE the card, on its own rail, rather than
+            floating on the page below it. On a phone the form is one long
+            column and the button is the end of it; a detached control after a
+            card edge reads as belonging to the next thing, not this one. */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            padding: '14px 18px',
+            borderTop: '1px solid var(--line)',
+            background: 'var(--rail)',
+            borderRadius: '0 0 var(--r4) var(--r4)',
+          }}
+        >
+          <button
+            type='submit'
+            disabled={submitting || values.agreed !== true}
+            className={submitting || values.agreed !== true ? undefined : 'msrs-lift'}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 7,
+              padding: '11px 20px',
+              borderRadius: 'var(--r2)',
+              border: '1px solid transparent',
+              background: 'var(--pri)',
+              color: 'var(--pfg)',
+              boxShadow: 'var(--sh-pri)',
+              fontSize: 13.5,
+              fontWeight: 700,
+              cursor: submitting || values.agreed !== true ? 'not-allowed' : 'pointer',
+              opacity: submitting || values.agreed !== true ? 0.5 : 1,
+            }}
+          >
+            {submitting ? 'Submitting…' : 'Submit request'}
+            {!submitting && <Icon name='chevron-right' size={15} />}
+          </button>
+        </div>
+      </Card>
     </form>
   );
 }
@@ -298,7 +371,7 @@ function FieldControl({
       {f.helpTa && (
         <>
           {' / '}
-          <span className='font-tamil' lang='ta'>
+          <span className='msrs-tamil' lang='ta'>
             {f.helpTa}
           </span>
         </>
@@ -308,45 +381,49 @@ function FieldControl({
   const invalid = error ? true : undefined;
   const common = {
     id,
+    invalid,
     'aria-invalid': invalid,
-    'aria-describedby': error ? `${id}-error` : undefined,
+    'aria-describedby': error ? `${id}-error` : f.help ? `${id}-help` : undefined,
   };
 
   if (f.type === 'checkbox') {
+    // ⚠️ The consent question is a PLATE, not a bare tick and a line of text.
+    // It is the control that gates submission, and on a phone a 16px box beside
+    // a two-line paragraph is the smallest target on the longest screen.
+    const on = value === true;
     return (
-      <div className='space-y-1.5'>
+      <div>
         {f.help && (
-          <p className='text-sm text-ink-2' id={`${id}-help`}>
+          <div
+            id={`${id}-help`}
+            style={{ fontSize: 12.5, color: 'var(--mfg)', marginBottom: 8, lineHeight: 1.6 }}
+          >
             {help}
-          </p>
+          </div>
         )}
-        <label htmlFor={id} className='flex items-start gap-2 text-sm'>
+        <ChoicePlate htmlFor={id} selected={on}>
           <Checkbox
             {...common}
-            checked={value === true}
+            checked={on}
             onChange={(e) => onChange(e.target.checked)}
-            className='mt-0.5'
+            style={{ marginTop: 1 }}
           />
-          <span>
+          <span style={{ flex: 1, minWidth: 0 }}>
             {label}
             {f.required && (
-              <span className='ml-1 text-bad' aria-hidden>
+              <span aria-hidden style={{ marginLeft: 3, color: 'var(--des-fg)' }}>
                 *
               </span>
             )}
           </span>
-        </label>
-        {error && (
-          <p id={`${id}-error`} role='alert' className='text-xs text-bad'>
-            {error}
-          </p>
-        )}
+        </ChoicePlate>
+        <FieldError of={error} id={`${id}-error`} />
       </div>
     );
   }
 
   return (
-    <Field id={id} label={label} help={help} error={error} required={f.required}>
+    <Labelled id={id} label={label} help={help} error={error} required={f.required}>
       {f.type === 'appliances' ? (
         <ApplianceRows
           id={id}
@@ -366,24 +443,21 @@ function FieldControl({
           invalid={invalid}
         />
       ) : f.type === 'radio' && f.options ? (
-        <div className='space-y-1.5' role='radiogroup'>
+        <div style={{ display: 'grid', gap: 8 }} role='radiogroup'>
           {f.options.map((o) => (
-            <label
-              key={o.value}
-              htmlFor={`${id}-${o.value}`}
-              className='flex items-center gap-2 text-sm'
-            >
-              <input
+            <ChoicePlate key={o.value} htmlFor={`${id}-${o.value}`} selected={value === o.value}>
+              <Radio
                 id={`${id}-${o.value}`}
-                type='radio'
                 name={id}
                 value={o.value}
                 checked={value === o.value}
                 onChange={() => onChange(o.value)}
-                className='accent-accent'
+                style={{ marginTop: 2 }}
               />
-              <BilingualLabel en={o.label} ta={o.labelTa} />
-            </label>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <BilingualLabel en={o.label} ta={o.labelTa} />
+              </span>
+            </ChoicePlate>
           ))}
         </div>
       ) : f.type === 'select' && f.options ? (
@@ -418,6 +492,6 @@ function FieldControl({
           onChange={(e) => onChange(e.target.value)}
         />
       )}
-    </Field>
+    </Labelled>
   );
 }

@@ -12,6 +12,10 @@ export interface OutboundMail {
   subject: string;
   text: string;
   html?: string;
+  /** Presigned URLs, not bytes — see the note on the module's own `Mailer`
+   *  port. A real transport fetches them; this one just records that they were
+   *  there. */
+  attachments?: Array<{ filename: string; url: string }>;
 }
 
 export interface Mailer {

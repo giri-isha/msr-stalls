@@ -14,7 +14,11 @@ import { MODULE_KEY } from './roles';
 const summaryInclude = {
   allocations: {
     where: { releasedAt: null },
-    include: { stall: { include: { zone: { select: { code: true } } } } },
+    include: {
+      stall: {
+        include: { zone: { select: { code: true } }, category: { select: { key: true } } },
+      },
+    },
   },
 } satisfies Prisma.StallRequestInclude;
 
@@ -31,6 +35,7 @@ export function toSummary(r: SummaryRow): RequestSummary {
     email: r.email,
     contactNumber: r.contactNumber,
     preferredZoneCode: r.preferredZoneCode,
+    agreedZoneCode: r.agreedZoneCode,
     numStallsRequested: r.numStallsRequested,
     status: r.status,
     stage: r.stage,
@@ -158,7 +163,7 @@ export async function getRequest(db: Db, id: string): Promise<RequestDetail> {
       id: a.id,
       stallNumber: a.stall.number,
       zoneCode: a.stall.zone.code,
-      category: a.stall.category,
+      category: a.stall.category.key,
       allocatedAt: a.allocatedAt.toISOString(),
     })),
   };

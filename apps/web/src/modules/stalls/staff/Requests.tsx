@@ -1,24 +1,41 @@
 import type { ListRequestsQuery, RequestSummary } from '@msr/stalls';
-import { Flag, LayoutGrid, List, Search } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { Button } from '../../../components/ui/button';
-import { Card, CardContent } from '../../../components/ui/card';
-import { Input, Select } from '../../../components/ui/input';
-import { TBody, TD, TH, THead, TR, Table } from '../../../components/ui/table';
-import { cn } from '../../../lib/cn';
 import { listRequests } from '../api';
 import { STATUS_LABEL, StatusPill, TYPE_LABEL, TypeBadge } from '../components/StatusPill';
 import { formatDate } from '../hooks';
+import {
+  Btn,
+  Card,
+  Empty,
+  ErrorBox,
+  H1,
+  Icon,
+  Loading,
+  Search,
+  Select,
+  TBody,
+  TD,
+  TH,
+  THead,
+  TR,
+  Table,
+  toolBtnStyle,
+  Toolbar,
+  useIsMobile,
+} from '../ui';
 import { RequestDetail } from './RequestDetail';
 
 type Mode = 'triage' | 'all';
+
+const ZONES = ['A3', 'A4', 'B2', 'B3', 'B4', 'C1', 'C2'];
 
 /** "Stall Requests" (triage: what needs a decision, cards or table) and "All
  *  Requests" (the full pipeline table with every filter) are one screen with
  *  two presets — the prototype had both, and they read the same list. */
 export function Requests({ mode }: { mode: Mode }) {
   const [params, setParams] = useSearchParams();
+  const mobile = useIsMobile();
   const q = params.get('q') ?? '';
   const requestType = params.get('requestType') ?? '';
   const status = params.get('status') ?? '';
@@ -78,58 +95,61 @@ export function Requests({ mode }: { mode: Mode }) {
   };
 
   const onChanged = () => void load(false);
+  // A table of eleven columns has no narrow form, so a phone gets the cards
+  // whichever view is chosen. The toggle is still drawn — the choice is
+  // remembered for when the window widens — it simply does not apply here.
+  const asCards = view === 'cards' || mobile;
 
   return (
-    <div className='space-y-4'>
-      <div className='flex flex-wrap items-end justify-between gap-3'>
-        <div>
-          <h1 className='text-2xl font-bold'>
-            {mode === 'triage' ? 'Stall Requests' : 'All Requests'}
-          </h1>
-          <p className='text-sm text-ink-2'>
-            {mode === 'triage'
-              ? 'Review, shortlist and select. Click a request to see its full application.'
-              : 'Every request in the pipeline, with every filter.'}
-          </p>
-        </div>
-        <div className='flex items-center gap-1 rounded-md border border-line bg-surface p-0.5'>
-          <Button
-            variant={view === 'table' ? 'secondary' : 'ghost'}
-            size='sm'
-            onClick={() => setView('table')}
-            aria-pressed={view === 'table'}
-            aria-label='Table view'
+    <div>
+      <H1
+        icon={<Icon name={mode === 'triage' ? 'clipboard-list' : 'list-view'} size={18} />}
+        sub={
+          mode === 'triage'
+            ? 'Review, shortlist and select. Click a request to see its full application.'
+            : 'Every request in the pipeline, with every filter.'
+        }
+        actions={
+          // The two views, as one segmented control on the card plate.
+          <div
+            style={{
+              display: 'flex',
+              gap: 2,
+              padding: 2,
+              borderRadius: 'var(--r2)',
+              border: '1px solid var(--bd)',
+              background: 'var(--card)',
+            }}
           >
-            <List className='h-4 w-4' />
-          </Button>
-          <Button
-            variant={view === 'cards' ? 'secondary' : 'ghost'}
-            size='sm'
-            onClick={() => setView('cards')}
-            aria-pressed={view === 'cards'}
-            aria-label='Card view'
-          >
-            <LayoutGrid className='h-4 w-4' />
-          </Button>
-        </div>
-      </div>
+            <ViewBtn
+              on={view === 'table'}
+              label='Table view'
+              glyph='list-view'
+              onClick={() => setView('table')}
+            />
+            <ViewBtn
+              on={view === 'cards'}
+              label='Card view'
+              glyph='layout-grid'
+              onClick={() => setView('cards')}
+            />
+          </div>
+        }
+      >
+        {mode === 'triage' ? 'Stall Requests' : 'All Requests'}
+      </H1>
 
-      <div className='flex flex-wrap gap-2'>
-        <div className='relative min-w-64 flex-1'>
-          <Search className='pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-ink-3' />
-          <Input
-            aria-label='Search'
-            placeholder='Search by name, reference, email or phone…'
-            className='pl-8'
-            value={q}
-            onChange={(e) => setParam('q', e.target.value)}
-          />
-        </div>
+      <Toolbar>
+        <Search
+          value={q}
+          onChange={(v) => setParam('q', v)}
+          placeholder='Search by name, reference, email or phone…'
+        />
         <Select
           aria-label='Type'
           value={requestType}
           onChange={(e) => setParam('requestType', e.target.value)}
-          className='w-44'
+          style={{ width: 'auto', minWidth: 150 }}
         >
           <option value=''>All types</option>
           {Object.entries(TYPE_LABEL).map(([k, v]) => (
@@ -142,7 +162,7 @@ export function Requests({ mode }: { mode: Mode }) {
           aria-label='Status'
           value={status}
           onChange={(e) => setParam('status', e.target.value)}
-          className='w-40'
+          style={{ width: 'auto', minWidth: 140 }}
         >
           <option value=''>All statuses</option>
           {Object.entries(STATUS_LABEL).map(([k, v]) => (
@@ -157,35 +177,56 @@ export function Requests({ mode }: { mode: Mode }) {
               aria-label='Zone'
               value={zoneCode}
               onChange={(e) => setParam('zoneCode', e.target.value)}
-              className='w-32'
+              style={{ width: 'auto', minWidth: 120 }}
             >
               <option value=''>All zones</option>
-              {['A3', 'A4', 'B2', 'B3', 'B4', 'C1', 'C2'].map((z) => (
+              {ZONES.map((z) => (
                 <option key={z} value={z}>
                   {z}
                 </option>
               ))}
             </Select>
-            <Button
-              variant={flagged ? 'secondary' : 'outline'}
-              size='default'
-              onClick={() => setParam('flagged', flagged ? '' : 'true')}
+            {/* ⚠️ `aria-pressed`, not a variant swap. "Flagged is on" is carried
+                by the primary tint, which is information only a sighted reader
+                gets otherwise — the same reason `Chip` announces its state. */}
+            <button
+              type='button'
               aria-pressed={flagged}
+              onClick={() => setParam('flagged', flagged ? '' : 'true')}
+              style={toolBtnStyle(flagged)}
             >
-              <Flag className='h-4 w-4' /> Flagged
-            </Button>
+              <Icon name='alert-triangle' size={14} />
+              Flagged
+            </button>
           </>
         )}
-      </div>
+      </Toolbar>
 
-      {error && (
-        <p role='alert' className='text-sm text-bad'>
-          {error}
-        </p>
-      )}
+      {error && <ErrorBox>{error}</ErrorBox>}
 
-      {view === 'table' ? (
-        <Card>
+      {loading && items.length === 0 ? (
+        <Loading />
+      ) : items.length === 0 ? (
+        <Empty>No requests match.</Empty>
+      ) : asCards ? (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill,minmax(288px,1fr))',
+            gap: 12,
+          }}
+        >
+          {items.map((r) => (
+            <RequestCard
+              key={r.id}
+              r={r}
+              selected={selected === r.id}
+              onOpen={() => setSelected(r.id)}
+            />
+          ))}
+        </div>
+      ) : (
+        <Card pad={0} style={{ overflow: 'hidden' }}>
           <Table>
             <THead>
               <TR>
@@ -194,7 +235,7 @@ export function Requests({ mode }: { mode: Mode }) {
                 <TH>Type</TH>
                 <TH>Requester</TH>
                 <TH>Zone</TH>
-                <TH className='text-right'>Stalls</TH>
+                <TH align='right'>Stalls</TH>
                 <TH>Status</TH>
                 <TH>Allocated</TH>
                 <TH>Submitted</TH>
@@ -202,98 +243,53 @@ export function Requests({ mode }: { mode: Mode }) {
             </THead>
             <TBody>
               {items.map((r) => (
-                <TR
-                  key={r.id}
-                  className='cursor-pointer'
-                  data-state={selected === r.id ? 'selected' : undefined}
-                  onClick={() => setSelected(r.id)}
-                >
-                  <TD className='font-mono text-xs'>
-                    {r.flagged && (
-                      <Flag className='mr-1 inline h-3 w-3 text-warn' aria-label='Flagged' />
-                    )}
+                <TR key={r.id} selected={selected === r.id} onClick={() => setSelected(r.id)}>
+                  <TD mono style={{ fontSize: 11.5 }}>
+                    {r.flagged && <FlagMark />}
                     {r.reference}
                   </TD>
-                  <TD className='font-medium'>{r.stallName}</TD>
+                  <TD style={{ fontWeight: 600, fontSize: 13 }}>{r.stallName}</TD>
                   <TD>
                     <TypeBadge type={r.requestType} />
                   </TD>
                   <TD>
                     <div>{r.requesterName}</div>
-                    <div className='text-xs text-ink-2'>{r.contactNumber}</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>{r.contactNumber}</div>
                   </TD>
                   <TD>{r.preferredZoneCode}</TD>
-                  <TD className='text-right'>{r.numStallsRequested}</TD>
+                  <TD align='right'>{r.numStallsRequested}</TD>
                   <TD>
                     <StatusPill status={r.status} />
                   </TD>
-                  <TD className='font-mono text-xs'>{r.allocatedStalls.join(', ')}</TD>
-                  <TD className='text-xs text-ink-2'>{formatDate(r.submittedAt)}</TD>
-                </TR>
-              ))}
-              {!loading && items.length === 0 && (
-                <TR>
-                  <TD colSpan={9} className='py-10 text-center text-ink-2'>
-                    No requests match.
+                  <TD mono style={{ fontSize: 11.5, color: 'var(--ok-fg)', fontWeight: 600 }}>
+                    {r.allocatedStalls.join(', ')}
+                  </TD>
+                  <TD muted style={{ fontSize: 11.5, whiteSpace: 'nowrap' }}>
+                    {formatDate(r.submittedAt)}
                   </TD>
                 </TR>
-              )}
+              ))}
             </TBody>
           </Table>
         </Card>
-      ) : (
-        <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-3'>
-          {items.map((r) => (
-            <button
-              type='button'
-              key={r.id}
-              onClick={() => setSelected(r.id)}
-              className={cn('text-left', selected === r.id && '[&>div]:border-accent')}
-            >
-              <Card className='h-full transition-colors hover:border-accent'>
-                <CardContent className='space-y-2 p-4'>
-                  <div className='flex items-start justify-between gap-2'>
-                    <div className='min-w-0'>
-                      <div className='font-mono text-xs text-ink-2'>
-                        {r.flagged && <Flag className='mr-1 inline h-3 w-3 text-warn' />}
-                        {r.reference}
-                      </div>
-                      <div className='truncate font-semibold'>{r.stallName}</div>
-                    </div>
-                    <StatusPill status={r.status} />
-                  </div>
-                  <div className='flex flex-wrap items-center gap-2 text-xs text-ink-2'>
-                    <TypeBadge type={r.requestType} />
-                    <span>{r.stallType === 'FOOD' ? 'Food' : 'Non-food'}</span>
-                    <span>· {r.preferredZoneCode}</span>
-                    <span>
-                      · {r.numStallsRequested} stall{r.numStallsRequested > 1 ? 's' : ''}
-                    </span>
-                  </div>
-                  <div className='text-sm'>
-                    {r.requesterName} <span className='text-ink-2'>· {r.contactNumber}</span>
-                  </div>
-                  {r.allocatedStalls.length > 0 && (
-                    <div className='font-mono text-xs text-good'>
-                      {r.allocatedStalls.join(', ')}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </button>
-          ))}
-          {!loading && items.length === 0 && (
-            <p className='col-span-full py-10 text-center text-sm text-ink-2'>No requests match.</p>
-          )}
-        </div>
       )}
 
-      <div className='flex items-center justify-between text-xs text-ink-2'>
-        <span>{loading ? 'Loading…' : `${items.length} shown`}</span>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          marginTop: 14,
+          fontSize: 12,
+          color: 'var(--mfg)',
+        }}
+      >
+        <span>{loading ? 'Loading…' : `${items.length.toLocaleString('en-IN')} shown`}</span>
+        <div style={{ flex: 1 }} />
         {cursor && (
-          <Button variant='outline' size='sm' onClick={() => load(true)} disabled={loading}>
+          <Btn onClick={() => load(true)} disabled={loading}>
             Load more
-          </Button>
+          </Btn>
         )}
       </div>
 
@@ -301,5 +297,160 @@ export function Requests({ mode }: { mode: Mode }) {
         <RequestDetail id={selected} onClose={() => setSelected(null)} onChanged={onChanged} />
       )}
     </div>
+  );
+}
+
+/**
+ * The marker in front of a flagged reference, in the table and on the card.
+ *
+ * ⚠️ `role='img'`, and it is the reason this is a component rather than the
+ * same eleven lines twice. `aria-label` is only honoured on an element that has
+ * a role to name — a bare `<span>` has none, so the label was dropped and the
+ * marker announced nothing at all, in both copies. The role is what makes the
+ * glyph a graphic with a name; the `Icon` inside stays `aria-hidden`, so it is
+ * announced once.
+ */
+function FlagMark() {
+  return (
+    <span
+      role='img'
+      aria-label='Flagged'
+      style={{
+        display: 'inline-flex',
+        verticalAlign: '-2px',
+        marginRight: 5,
+        color: 'var(--warn)',
+      }}
+    >
+      <Icon name='alert-triangle' size={12} />
+    </span>
+  );
+}
+
+function ViewBtn({
+  on,
+  label,
+  glyph,
+  onClick,
+}: {
+  on: boolean;
+  label: string;
+  glyph: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type='button'
+      onClick={onClick}
+      aria-pressed={on}
+      aria-label={label}
+      title={label}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 32,
+        height: 28,
+        borderRadius: 'var(--r)',
+        border: 0,
+        background: on ? 'var(--pri-t)' : 'transparent',
+        color: on ? 'var(--pri)' : 'var(--mfg)',
+        cursor: 'pointer',
+        padding: 0,
+      }}
+    >
+      <Icon name={glyph} size={15} />
+    </button>
+  );
+}
+
+function RequestCard({
+  r,
+  selected,
+  onOpen,
+}: {
+  r: RequestSummary;
+  selected: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <Card
+      pad={15}
+      onAct={onOpen}
+      label={`${r.stallName}, ${r.reference}`}
+      style={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 9,
+        borderColor: selected ? 'var(--pri)' : undefined,
+        boxShadow: selected ? '0 0 0 1px var(--pri)' : undefined,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div
+            style={{
+              fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace',
+              fontSize: 11,
+              color: 'var(--mfg)',
+            }}
+          >
+            {r.flagged && <FlagMark />}
+            {r.reference}
+          </div>
+          <div
+            style={{
+              fontSize: 14.5,
+              fontWeight: 600,
+              marginTop: 2,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {r.stallName}
+          </div>
+        </div>
+        <StatusPill status={r.status} />
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 7 }}>
+        <TypeBadge type={r.requestType} />
+        <span style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
+          {r.stallType === 'FOOD' ? 'Food' : 'Non-food'} · {r.preferredZoneCode} ·{' '}
+          {r.numStallsRequested} stall{r.numStallsRequested > 1 ? 's' : ''}
+        </span>
+      </div>
+
+      <div style={{ fontSize: 12.5 }}>
+        {r.requesterName}
+        <span style={{ color: 'var(--mfg)' }}> · {r.contactNumber}</span>
+      </div>
+
+      {r.allocatedStalls.length > 0 && (
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            alignSelf: 'flex-start',
+            marginTop: 'auto',
+            padding: '4px 9px',
+            borderRadius: 999,
+            background: 'var(--ok-t)',
+            border: '1px solid var(--ok-b)',
+            color: 'var(--ok-fg)',
+            fontSize: 11.5,
+            fontWeight: 600,
+          }}
+        >
+          <Icon name='map-pin' size={12} />
+          <span style={{ fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace' }}>
+            {r.allocatedStalls.join(', ')}
+          </span>
+        </div>
+      )}
+    </Card>
   );
 }
