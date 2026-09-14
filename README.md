@@ -125,11 +125,31 @@ docs/                         specs, plans, migration checklist
 ## Decisions worth knowing
 
 - **Money is integer paise**, everywhere. Column names end in `Paise`.
-- **Chair and table rates differ by requester type** — the 2025 ashram form
-  quoted ₹50/chair/day, the local welfare form ₹100/chair and ₹300/table. Both
-  are configured; neither is "the" rate.
-- **A3 and B2 are closed to vendors** (no rent quoted) but offered to local
-  welfare stalls as VIP seating. The zone lists differ per form accordingly.
+- **Chair and table rates differ by requester type** — THREE pairs, because
+  2025 quoted three: the ashram form ₹50/chair/day, the local welfare form
+  ₹100/chair and ₹300/table, and the bank-details form a vendor fills ₹100 and
+  ₹400. All three are configured; none is "the" rate. The ashram pair is never
+  billed, because ashram departments are exempt, and it is kept because it is
+  what the form quoted.
+- **Bays and planning columns are per-edition rows, not constants.** The venue
+  is redrawn every season and the planning sheet's columns are a judgement the
+  team makes each year, so both are added and removed from Admin. Nothing in the
+  code may hold its own list of either.
+- **Rent is per bay × food/non-food × requester scope**, and each rate row
+  carries its own refundable advance — the advance is area-wise too, so a bay's
+  rent and its deposit are edited together and cannot drift apart.
+- **Local welfare is its own scope, not a discounted vendor.** The same ground
+  is quoted one figure to a trader and a lower one to a village welfare
+  requester, and the two bays closed to TRADE (A3 and B2) are priced for local
+  welfare — they carry the traders who pay the most of any local welfare stall.
+  "The rent for this zone" cannot be answered without knowing who is asking,
+  which is why the public config takes a scope.
+- **The stall NUMBER is withheld until check-in.** The bay is told early,
+  because the rent depends on it; the number is handed over at the counter,
+  where somebody is standing there to have the conversation it starts.
+- **A coupon's capacity is the coupon's own** — eight by default, raised case by
+  case — and never the vendor's staff-pass answer. A cap of zero admits nobody
+  rather than everybody.
 - **Status and stage are separate axes.** Status is the selection decision;
   stage is how far a selected request has travelled through onboarding.
 - **The whole public API is one file** (`public-routes.ts`). Every route in it

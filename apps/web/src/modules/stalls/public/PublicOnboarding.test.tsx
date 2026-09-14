@@ -79,7 +79,11 @@ describe('the bank details form', () => {
 
   test('an already-submitted form reads back rather than offering a second go', async () => {
     installFetch([
-      ['GET', /\/public\/bank\//, () => ({ ...BANK_VIEW, submittedAt: '2026-01-10T10:00:00.000Z' })],
+      [
+        'GET',
+        /\/public\/bank\//,
+        () => ({ ...BANK_VIEW, submittedAt: '2026-01-10T10:00:00.000Z' }),
+      ],
     ]);
     render();
 
@@ -207,11 +211,7 @@ describe('staff registration', () => {
 
   test('a full coupon refuses rather than silently admitting one more', async () => {
     installFetch([
-      [
-        'GET',
-        /\/public\/staff-registration\//,
-        () => ({ ...COUPON, registered: 3, maxStaff: 3 }),
-      ],
+      ['GET', /\/public\/staff-registration\//, () => ({ ...COUPON, registered: 3, maxStaff: 3 })],
     ]);
     renderWithCode('GRE-2026-K7Q4M2X9');
 

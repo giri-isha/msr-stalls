@@ -302,12 +302,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'config:write');
     const edition = await activeEdition(prisma);
-    return config.replacePlanCategories(
-      prisma,
-      edition.id,
-      req.body.categories,
-      caller.personId,
-    );
+    return config.replacePlanCategories(prisma, edition.id, req.body.categories, caller.personId);
   });
 
   zod.put(

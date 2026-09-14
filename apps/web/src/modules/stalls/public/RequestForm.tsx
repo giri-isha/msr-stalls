@@ -5,7 +5,6 @@ import {
   type RateScope,
   type StallRequestType,
   SubmitRequestInput,
-  formatInr,
   zoneOptions,
 } from '@msr/stalls';
 import { useMemo, useState } from 'react';

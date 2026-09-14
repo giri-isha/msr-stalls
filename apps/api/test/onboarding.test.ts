@@ -1,10 +1,7 @@
 import { DEFAULT_STAFF_COUPON_CAPACITY, RegisterStaffInput } from '@msr/stalls';
 import type { StallEdition } from '@prisma/client';
 import { beforeEach, describe, expect, test } from 'vitest';
-import {
-  CouponFullError,
-  UnknownCouponError,
-} from '../src/modules/stalls/errors';
+import { CouponFullError, UnknownCouponError } from '../src/modules/stalls/errors';
 import {
   ensureCoupon,
   getOnboarding,

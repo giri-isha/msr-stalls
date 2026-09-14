@@ -13,7 +13,11 @@ const routes = [
 
 // The form asks at its own scope; the stub answers at the scope it was asked.
 const config = () =>
-  ['GET', /\/public\/config$/, (url: URL) => publicConfigFor(url.searchParams.get('scope'))] as const;
+  [
+    'GET',
+    /\/public\/config$/,
+    (url: URL) => publicConfigFor(url.searchParams.get('scope')),
+  ] as const;
 
 async function fillVendor(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText(/^Email/), 'priya@greenleaf.example');

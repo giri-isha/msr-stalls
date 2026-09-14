@@ -101,9 +101,7 @@ describe('seeded defaults', () => {
     expect(await prisma.stallZone.count({ where: { editionId: e.id } })).toBe(7);
     // Per bay x food/non-food x scope, not four banded rows: five bays priced
     // for trade and all seven for local welfare, doubled for food and non-food.
-    expect(await prisma.stallRateCard.count({ where: { editionId: e.id } })).toBe(
-      5 * 2 + 7 * 2,
-    );
+    expect(await prisma.stallRateCard.count({ where: { editionId: e.id } })).toBe(5 * 2 + 7 * 2);
   });
 });
 

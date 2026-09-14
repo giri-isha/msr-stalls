@@ -51,7 +51,7 @@ package both sides share.
 | Email template with an attachment | `StallEmailTemplate` (subject, body, one attachment key), Communication → Templates | Built |
 | Different templates for ashram and vendor stalls | `SELECTION_ASHRAM` / `SELECTION_VENDOR` | Built |
 | Bulk send and individual send | One route (`POST /comms/send`); a list of one is an individual send | Built |
-| Once sent, never sent again | `UNIQUE (requestId, templateKey)` on `StallEmailLog` — a constraint, not a flag | Built |
+| Once sent, never sent again | `UNIQUE (requestId, templateKey, channel)` on `StallMessageLog` — a constraint, not a flag. Per channel, so a WhatsApp that failed can be retried without re-sending the email | Built |
 | Who has had a letter, and when | Communication list shows `sentAt` per template | Built |
 
 ## 5. Bank, GST and contract collection
@@ -61,7 +61,7 @@ package both sides share.
 | The selection email carries the bank-form link | `comms.ts` mints a `BANK_FORM` link into `SELECTION_VENDOR` | Built |
 | The 2025 bank form's fields, vendors only | `StallBankDetail`, `/stalls/bank/:token` | Built |
 | Cheque, PAN and GST documents | Presigned straight to object storage; the API never sees the bytes | Built |
-| Contract agreement | Collected as the agreement checkbox the 2025 form used (`agreedTermsAt`, `agreedNeftAt`) | Differs — no signed-document upload and no e-signature |
+| Contract agreement | The agreement checkboxes the 2025 form used (`agreedTermsAt`, `agreedNeftAt`), plus digital signature through a provider port (`signer.ts`, `StallContractSignature`) — `GET/POST /requests/:id/signature` and `POST .../refresh` | Built; no provider is wired up in this repo, and the standalone adapter reports itself unconfigured rather than pretending |
 | Reminder calls for bank details pending | `StallReminderCall(kind: BANK)`, Communication → Reminder calls | Built |
 | A vendor who lost the email can get back to the form | Their status page lists what is outstanding and opens the bank form from there | Built |
 
@@ -71,7 +71,7 @@ package both sides share.
 |---|---|---|
 | Payment email once bank details are in | `PAYMENT_DETAILS` template | Built |
 | The calculation shown on the selected-vendor screen | `quote.ts`, itemised as the 2025 payment sheet itemises it | Built |
-| Who was sent it, with the date | `StallEmailLog` | Built |
+| Who was sent it, with the date | `StallMessageLog`, per channel | Built |
 | The figures frozen at the moment the vendor is told | `StallPaymentPlan` | Built |
 | Finance confirms fee and deposit with reference, amount and date | `StallPaymentRecord`, Finance → Payment confirmation | Built |
 | Payment through the system | Not built. Payment is NEFT to a virtual account, as in 2025, and the Finance screen says so. | Open — deliberate; revisit only if a gateway is introduced |
@@ -135,13 +135,17 @@ package both sides share.
 
 | Requirement | Where | Status |
 |---|---|---|
-| Stall amount (vendor and local welfare) | Admin → Stall rent, per zone and food/non-food | Built |
-| Deposit amount | Admin → Charges (`chairTableDepositPaise`) | Built |
-| Chair and table amount | Admin → Charges, separate ashram and local welfare rates | Built |
-| Security deposit (vendor and local welfare) | Admin → Charges (`vendorDepositPaise`, `localWelfareDepositPaise`) | Built |
+| Stall amount (vendor and local welfare) | Admin → Bays and rent, a row per bay × food/non-food × requester scope (`StallRateCard`) | Built |
+| Refundable advance, area-wise | `StallRateCard.depositPaise` — it rides on the rate row, so a bay's rent and its advance are edited together and cannot drift apart | Built |
+| Furniture deposit | Admin → Charges (`chairTableDepositPaise`), flat and charged once when any furniture is taken, as the 2025 sheet carries it | Built |
+| Chair and table amount | Admin → Charges — three rates, because 2025 quoted three: ashram, local welfare, and the vendor pair the bank-details form carries | Built |
 | Fine categorisation | Admin → Fine types | Built |
 | Access management | Admin → Users, `StallStaffRole` | Built |
-| Zones, number of stalls, stall numbers | Admin → Zones, Planning → Apply | Built |
+| Bays added and removed for a redrawn venue | Admin → Bays (`POST`/`DELETE /config/zones`). A bay holding stalls refuses with a 409 rather than cascading | Built |
+| The planning grid's columns | Admin → Planning columns (`PUT /config/plan-categories`), including the sponsor and Adiyogi columns the 2025 sheet carries | Built |
+| The season's own settings | Admin → Editions (`PATCH /editions/:id/settings`): name, the two virtual-account prefixes, the stalls-per-request cap | Built |
+| Number of stalls, stall numbers | Planning → Apply | Built |
+| What one coupon admits | Onboarding → the coupon block (`PUT /onboarding/:id/coupon/capacity`). Eight by default, raised case by case on the code the vendor already holds | Built |
 
 ## 14. Types of user
 
@@ -199,3 +203,14 @@ transcribed from the 2025 originals. If any of those Google Forms changed for
 2026, the change has to be brought across by hand — `forms.ts` is the place, and
 `packages/stalls/src/forms.test.ts` locks the field lists so a change is visible
 in a diff.
+
+
+## Open questions for the stalls team
+
+Not defects, and not work that can be finished without an answer from outside
+this repository.
+
+| Question | Why it is open | Where |
+|---|---|---|
+| The Tamil for the refundable-advance consent | The 2025 Tamil names a flat Rs.4000. The advance is area-wise now, so that sentence is no longer true — and it is the sentence that tells a requester money will be withheld from them. It needs the team's own revised wording, not a translation invented here. The field renders its English help alone until then, which is correct rather than broken. | `packages/stalls/src/forms.ts`, `depositAcknowledged.helpTa` |
+| Whether the vendor chair and table rates are current | Rs.100 and Rs.400 per day come from the 2025 bank-details form. They are seeded as an edition's defaults and an admin sets them per season, so a stale figure is editable rather than baked in — but nobody has confirmed the 2026 numbers. | Admin → Charges |

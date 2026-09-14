@@ -20,6 +20,9 @@ export function MeProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<'loading' | 'ready'>('loading');
   const [tick, setTick] = useState(0);
 
+  // `tick` is not read in here — it IS the signal. `reload()` bumps it, and
+  // that is what re-runs this effect; nothing else it touches is reactive.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the reload signal
   useEffect(() => {
     let alive = true;
     setStatus('loading');

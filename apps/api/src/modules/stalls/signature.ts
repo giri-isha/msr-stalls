@@ -154,10 +154,10 @@ export async function refreshSignature(
   let handle: Awaited<ReturnType<StallsDeps['signer']['fetch']>>;
   try {
     handle = await deps.signer.fetch(row.documentId);
-  } catch (e) {
-    // ⚠️ The STORED status is returned unchanged. A provider that is briefly
-    // unreachable must not turn a signed agreement back into an unsigned one on
-    // the screen.
+  } catch {
+    // ⚠️ The STORED status is returned unchanged, and the error is deliberately
+    // not read: a provider that is briefly unreachable must not turn a signed
+    // agreement back into an unsigned one on the screen.
     return toSignatureView(row);
   }
 

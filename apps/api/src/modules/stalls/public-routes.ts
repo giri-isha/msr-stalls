@@ -63,10 +63,8 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
    *  without knowing which form is asking. Defaulting silently to VENDOR is
    *  what quoted a village trader the trade rent and told them the two bays
    *  they are most likely to want were unavailable. */
-  zod.get(
-    '/config',
-    { schema: { querystring: PublicConfigQuery } },
-    async (req) => getPublicConfig(prisma, req.query.scope),
+  zod.get('/config', { schema: { querystring: PublicConfigQuery } }, async (req) =>
+    getPublicConfig(prisma, req.query.scope),
   );
 
   /** The one public write. Per-IP rate limit on top of the global one: a

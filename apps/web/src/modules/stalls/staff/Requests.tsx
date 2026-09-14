@@ -61,6 +61,9 @@ export function Requests({ mode }: { mode: Mode }) {
   };
   const key = JSON.stringify(query);
 
+  // `key` is the serialised query, standing in for every field inside it, and
+  // `cursor` is read on the append path. Neither is something the rule can see.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: key serialises the query
   const load = useCallback(
     async (append: boolean) => {
       setLoading(true);
@@ -78,7 +81,6 @@ export function Requests({ mode }: { mode: Mode }) {
         setLoading(false);
       }
     },
-    // biome-ignore lint/correctness/useExhaustiveDependencies: key is the serialised query
     [key, cursor],
   );
 

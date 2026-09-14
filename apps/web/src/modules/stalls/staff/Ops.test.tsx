@@ -1,13 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import {
-  ME_ADMIN,
-  checkInRow,
-  equipmentRow,
-  installFetch,
-  renderAt,
-} from '../test-utils';
+import { ME_ADMIN, checkInRow, equipmentRow, installFetch, renderAt } from '../test-utils';
 import { CheckIn } from './CheckIn';
 import { Electrical } from './Electrical';
 import { Equipment } from './Equipment';
@@ -86,9 +80,7 @@ describe('the electrical sheet', () => {
     await screen.findByText('C1-4');
     await user.click(screen.getByRole('button', { name: 'B4' }));
 
-    await waitFor(() =>
-      expect(fetch.calls.some((c) => c.url.includes('zoneCode=B4'))).toBe(true),
-    );
+    await waitFor(() => expect(fetch.calls.some((c) => c.url.includes('zoneCode=B4'))).toBe(true));
   });
 
   test('totals the load across the sheet', async () => {
@@ -140,10 +132,7 @@ describe('check-in', () => {
     const user = userEvent.setup();
 
     await screen.findByText('Green Leaf Organics');
-    await user.type(
-      screen.getByPlaceholderText(/Note \(optional\)/),
-      'FSSAI shown on paper',
-    );
+    await user.type(screen.getByPlaceholderText(/Note \(optional\)/), 'FSSAI shown on paper');
     await user.click(screen.getByRole('button', { name: 'Check in' }));
 
     await waitFor(() => {
@@ -209,11 +198,7 @@ describe('chairs and tables', () => {
     const fetch = installFetch([
       ['GET', /\/me$/, () => ME_ADMIN],
       ['GET', /\/equipment$/, () => [equipmentRow()]],
-      [
-        'PATCH',
-        /\/equipment\//,
-        () => equipmentRow({ extraChairs: 12, extraChargePaise: 60_000 }),
-      ],
+      ['PATCH', /\/equipment\//, () => equipmentRow({ extraChairs: 12, extraChargePaise: 60_000 })],
     ]);
     render();
     const user = userEvent.setup();
@@ -238,15 +223,14 @@ describe('chairs and tables', () => {
       [
         'GET',
         /\/equipment$/,
-        () =>
-          [
-            equipmentRow({
-              missingChairs: 2,
-              damaged: true,
-              deductionPaise: 105_000,
-              flagged: true,
-            }),
-          ],
+        () => [
+          equipmentRow({
+            missingChairs: 2,
+            damaged: true,
+            deductionPaise: 105_000,
+            flagged: true,
+          }),
+        ],
       ],
     ]);
     render();

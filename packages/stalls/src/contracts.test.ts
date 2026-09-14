@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'vitest';
-import { Gstin, Ifsc, IndianMobile, Pan, SelectRequestInput, SubmitRequestInput } from './contracts';
+import {
+  Gstin,
+  Ifsc,
+  IndianMobile,
+  Pan,
+  SelectRequestInput,
+  SubmitRequestInput,
+} from './contracts';
 
 const valid = {
   requestType: 'VENDOR' as const,

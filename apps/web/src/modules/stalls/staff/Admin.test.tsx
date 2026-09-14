@@ -86,6 +86,15 @@ const CONFIG = {
 const routes = [{ path: '/m/stalls/admin', element: <Admin /> }];
 const render = () => renderAt('/m/stalls/admin', routes, { me: true });
 
+/** The body of the one call matching `method`, asserted to exist first — a
+ *  missing call should fail as "nothing was sent", not as a TypeError several
+ *  lines later. */
+function sentBody<T>(fetch: ReturnType<typeof installFetch>, method: string): T {
+  const call = fetch.calls.find((c) => c.method === method);
+  expect(call, `expected a ${method} to have been sent`).toBeDefined();
+  return call?.body as T;
+}
+
 const base = (extra: ReadonlyArray<readonly [string, RegExp, unknown]> = []) =>
   installFetch([
     ['GET', /\/me$/, () => ME_ADMIN],
@@ -159,12 +168,8 @@ describe('planning columns', () => {
     await user.click(screen.getByRole('button', { name: /save columns/i }));
 
     await waitFor(() => {
-      const call = fetch.calls.find((c) => c.method === 'PUT');
-      expect((call?.body as { categories: Array<{ key: string }> }).categories.map((x) => x.key)).toEqual([
-        'VENDOR_FOOD',
-        'BACKUP',
-        'SPONSOR_FOOD',
-      ]);
+      const body = sentBody<{ categories: Array<{ key: string }> }>(fetch, 'PUT');
+      expect(body.categories.map((x) => x.key)).toEqual(['VENDOR_FOOD', 'BACKUP', 'SPONSOR_FOOD']);
     });
   });
 
@@ -189,10 +194,11 @@ describe('planning columns', () => {
     await user.click(screen.getByRole('button', { name: /save columns/i }));
 
     await waitFor(() => {
-      const call = fetch.calls.find((c) => c.method === 'PUT');
-      const sent = (call?.body as { categories: Array<{ key: string; sortOrder: number }> })
-        .categories;
-      expect(sent).toEqual([
+      const body = sentBody<{ categories: Array<{ key: string; sortOrder: number }> }>(
+        fetch,
+        'PUT',
+      );
+      expect(body.categories).toEqual([
         { key: 'BACKUP', name: 'Backup', isFood: false, sortOrder: 0 },
         { key: 'VENDOR_FOOD', name: 'Vendor food', isFood: true, sortOrder: 1 },
       ]);
@@ -253,9 +259,8 @@ describe('the rent matrix', () => {
     await user.click(screen.getByRole('button', { name: /save rates/i }));
 
     await waitFor(() => {
-      const call = fetch.calls.find((c) => c.method === 'PUT');
-      const sent = (call?.body as { entries: Array<{ zoneCode: string }> }).entries;
-      expect(sent.map((e) => e.zoneCode)).toEqual(['A3']);
+      const body = sentBody<{ entries: Array<{ zoneCode: string }> }>(fetch, 'PUT');
+      expect(body.entries.map((e) => e.zoneCode)).toEqual(['A3']);
     });
   });
 });

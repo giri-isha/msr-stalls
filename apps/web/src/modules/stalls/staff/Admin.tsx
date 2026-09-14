@@ -332,7 +332,7 @@ function Zones({ c, writable, run }: PanelProps) {
             />
           </FormField>
           <FormField id='nz-closed' label='Closed to vendors'>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
               <Checkbox
                 id='nz-closed'
                 checked={closed}
@@ -340,7 +340,7 @@ function Zones({ c, writable, run }: PanelProps) {
                 onChange={(e) => setClosed(e.target.checked)}
               />
               Ashram and local welfare only
-            </label>
+            </span>
           </FormField>
         </Grid>
         <div style={{ marginTop: 12 }}>
@@ -497,7 +497,7 @@ function PlanCategories({ c, writable, run }: PanelProps) {
             />
           </FormField>
           <FormField id='nc-food' label='Food'>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
               <Checkbox
                 id='nc-food'
                 checked={isFood}
@@ -505,7 +505,7 @@ function PlanCategories({ c, writable, run }: PanelProps) {
                 onChange={(e) => setIsFood(e.target.checked)}
               />
               Counts as a food stall
-            </label>
+            </span>
           </FormField>
         </Grid>
         <div style={{ marginTop: 12 }}>
@@ -602,9 +602,7 @@ function EditionSettings({ c, writable, run }: PanelProps) {
             value={v.virtualAccountRentPrefix}
             placeholder='Not issued yet'
             disabled={!writable}
-            onChange={(e) =>
-              setV({ ...v, virtualAccountRentPrefix: e.target.value.toUpperCase() })
-            }
+            onChange={(e) => setV({ ...v, virtualAccountRentPrefix: e.target.value.toUpperCase() })}
           />
         </FormField>
         <FormField id='ed-dep' label='Virtual account prefix — deposit'>
@@ -670,6 +668,9 @@ function ZoneRow({
         />
       </TD>
       <TD>
+        {/* biome-ignore lint/a11y/noLabelWithoutControl: the label WRAPS its control,
+            which associates them implicitly; the rule cannot see the input inside
+            <Checkbox>. */}
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
           <Checkbox
             checked={closed}
@@ -754,10 +755,7 @@ function Rates({ c, writable, run }: PanelProps) {
         next[i] = { ...next[i], ...patch };
         return next;
       }
-      return [
-        ...es,
-        { zoneCode, isFood, scope, amountPaise: 0, depositPaise: 0, ...patch },
-      ];
+      return [...es, { zoneCode, isFood, scope, amountPaise: 0, depositPaise: 0, ...patch }];
     });
 
   // A row left at zero rent is not a free stall — it is a bay this scope does
@@ -770,7 +768,11 @@ function Rates({ c, writable, run }: PanelProps) {
       title='Stall rent and advance'
       note='Per stall, before GST, for each bay. A bay left at zero is not priced at that scope and the form will not offer it. The advance is refundable and is set per bay beside the rent.'
       footer={
-        <Btn kind='primary' disabled={!writable} onClick={() => run('Rates saved', () => api.putRateCard(priced))}>
+        <Btn
+          kind='primary'
+          disabled={!writable}
+          onClick={() => run('Rates saved', () => api.putRateCard(priced))}
+        >
           Save rates
         </Btn>
       }
@@ -1181,6 +1183,9 @@ function CustomFields({ c, writable, run }: PanelProps) {
               </Select>
             </FormField>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, paddingBottom: 1 }}>
+              {/* biome-ignore lint/a11y/noLabelWithoutControl: the label WRAPS its
+                  control, which associates them implicitly; the rule cannot see the
+                  input inside <Checkbox>. */}
               <label
                 style={{
                   display: 'flex',
@@ -1227,6 +1232,9 @@ function Flow({ c, writable, run }: PanelProps) {
   useEffect(() => setV(c.flow), [c.flow]);
 
   const Step = ({ k, label, help }: { k: keyof typeof v; label: string; help: string }) => (
+    // The label WRAPS its control, which associates them implicitly; the rule
+    // cannot see the input inside <Checkbox>.
+    // biome-ignore lint/a11y/noLabelWithoutControl: implicit association by wrapping
     <label
       style={{
         display: 'flex',

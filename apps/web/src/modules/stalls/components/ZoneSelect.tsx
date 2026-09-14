@@ -78,7 +78,9 @@ export function ZoneSelect({
                     ? 'Not available this year'
                     : rent !== null
                       ? `${formatInr(rent)} + GST${
-                          z?.depositPaise ? ` · ${formatInr(z.depositPaise)} refundable advance` : ''
+                          z?.depositPaise
+                            ? ` · ${formatInr(z.depositPaise)} refundable advance`
+                            : ''
                         }`
                       : ''}
                 </span>

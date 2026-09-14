@@ -171,7 +171,11 @@ describe('the bank form', () => {
   test('a key the module never issued is refused', async () => {
     const { requestId } = await selected(['C1-1']);
     await expect(
-      submitBankDetails(prisma, requestId, await body({ chequeKey: 'stalls/bank/cheque/../x.jpg' })),
+      submitBankDetails(
+        prisma,
+        requestId,
+        await body({ chequeKey: 'stalls/bank/cheque/../x.jpg' }),
+      ),
     ).rejects.toBeInstanceOf(StepNotOpenError);
   });
 

@@ -246,9 +246,7 @@ describe('refunds', () => {
 
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText(/frozen/)).toBeInTheDocument();
-    expect(
-      within(dialog).queryByLabelText(/Chairs and tables deduction/),
-    ).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText(/Chairs and tables deduction/)).not.toBeInTheDocument();
     expect(within(dialog).getByLabelText('Voucher number')).toBeInTheDocument();
   });
 

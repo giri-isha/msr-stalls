@@ -62,7 +62,11 @@ export function fakeSigner(): Signer & { sent: SignatureRequest[]; complete(): v
     configured: () => true,
     async send(request) {
       sent.push(request);
-      return { documentId: `doc-${sent.length}`, signUrl: `https://sign.test/${sent.length}`, status };
+      return {
+        documentId: `doc-${sent.length}`,
+        signUrl: `https://sign.test/${sent.length}`,
+        status,
+      };
     },
     async fetch(documentId) {
       return { documentId, signUrl: `https://sign.test/${documentId}`, status };
@@ -76,7 +80,13 @@ export interface TestDeps extends StallsDeps {
   files: MediaStore & { presigned: string[] };
   /** The links the module handed out, by kind, so a test can follow one the way
    *  a vendor would rather than reaching into the database for a token. */
-  links: { status: string[]; bank: string[]; fssai: string[]; staff: string[]; signature: string[] };
+  links: {
+    status: string[];
+    bank: string[];
+    fssai: string[];
+    staff: string[];
+    signature: string[];
+  };
 }
 
 export function testDeps(overrides: Partial<TestDeps> = {}): TestDeps {

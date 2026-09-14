@@ -5,14 +5,7 @@ import type { StallEdition } from '@prisma/client';
 import { buildApp } from '../src/app';
 import { mintAccessLink } from '../src/modules/stalls/accounts';
 import { ensureCoupon, setCouponCapacity } from '../src/modules/stalls/onboarding';
-import {
-  LogMailer,
-  type Staff,
-  prisma,
-  resetDatabase,
-  seedEdition,
-  seedStaff,
-} from './helpers/db';
+import { LogMailer, type Staff, prisma, resetDatabase, seedEdition, seedStaff } from './helpers/db';
 import { fakeStore, selected } from './helpers/onboarding';
 import { makeStalls } from './helpers/plan';
 

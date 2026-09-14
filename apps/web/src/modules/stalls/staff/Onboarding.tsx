@@ -548,11 +548,7 @@ function CouponCapacity({
         style={{ width: 72, padding: '5px 8px', fontSize: 12.5, textAlign: 'right' }}
       />
       <span>people</span>
-      {tooLow && (
-        <span style={{ color: 'var(--warn-fg)' }}>
-          {registered} already registered
-        </span>
-      )}
+      {tooLow && <span style={{ color: 'var(--warn-fg)' }}>{registered} already registered</span>}
       <Btn disabled={!writable || !dirty || saving} onClick={save}>
         Save
       </Btn>

@@ -73,9 +73,7 @@ export function pricingZone(r: {
   agreedZoneCode?: string | null;
   allocations: Array<{ stall: { zone: { code: string } } }>;
 }): ZoneCode {
-  return (r.allocations[0]?.stall.zone.code ??
-    r.agreedZoneCode ??
-    r.preferredZoneCode) as ZoneCode;
+  return (r.allocations[0]?.stall.zone.code ?? r.agreedZoneCode ?? r.preferredZoneCode) as ZoneCode;
 }
 
 export function quoteFor(r: RequestForQuote, ctx: QuoteContext): Quote | null {

@@ -1,5 +1,9 @@
 # MSR Stalls Phase 1 (Intake & Selection) Implementation Plan
 
+> **DELIVERED.** Phase 1 shipped in commits `f402f6f`…`3b85be5`. The unticked
+> boxes below were never ticked as the work went in; they are not outstanding
+> work. Kept as the record of how it was built.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the four MSR stall-request Google Forms and their spreadsheets with a web application covering intake, the request pipeline, zone planning, and stall selection/allocation.

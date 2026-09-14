@@ -91,7 +91,10 @@ describe('the onboarding table', () => {
       [
         'GET',
         /\/onboarding$/,
-        () => [row(), row({ requestId: 'other', stallName: 'Coastal Spice', stallNumbers: ['B4-2'] })],
+        () => [
+          row(),
+          row({ requestId: 'other', stallName: 'Coastal Spice', stallNumbers: ['B4-2'] }),
+        ],
       ],
     ]);
     render();
@@ -163,9 +166,7 @@ describe('the vendor detail', () => {
         () =>
           detail({
             fssai: 'UPLOADED',
-            fssaiFiles: [
-              { name: 'cert.pdf', uploadedAt: '2026-01-20T10:00:00.000Z', url: null },
-            ],
+            fssaiFiles: [{ name: 'cert.pdf', uploadedAt: '2026-01-20T10:00:00.000Z', url: null }],
           }),
       ],
       ['POST', /\/fssai\/verify$/, () => [204, null]],
@@ -258,8 +259,7 @@ describe('the vendor detail', () => {
       [
         'GET',
         /\/onboarding\/.+$/,
-        () =>
-          detail({ couponCode: 'GRE-2026-K7Q4M2X9', couponCapacity: 8, staffRegistered: 5 }),
+        () => detail({ couponCode: 'GRE-2026-K7Q4M2X9', couponCapacity: 8, staffRegistered: 5 }),
       ],
     ]);
     render();

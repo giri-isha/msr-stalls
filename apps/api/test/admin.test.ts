@@ -159,9 +159,7 @@ describe('rate card', () => {
 
   test('the advance rides on the row, so it is set per bay too', async () => {
     const card = await rateCardFor(prisma, edition.id);
-    const entries = card.map((e) =>
-      e.zoneCode === 'C1' ? { ...e, depositPaise: 200_000 } : e,
-    );
+    const entries = card.map((e) => (e.zoneCode === 'C1' ? { ...e, depositPaise: 200_000 } : e));
     expect((await putCard(entries)).statusCode).toBe(200);
 
     const pub = await app.inject({ method: 'GET', url: '/api/m/stalls/public/config' });
@@ -410,7 +408,12 @@ describe('the planning grid’s columns', () => {
   test('an admin adds a column the 2025 sheet carried and the enum never had', async () => {
     const current = await planCategoriesFor(prisma, edition.id);
     const res = await put([
-      ...current.map((c) => ({ key: c.key, name: c.name, isFood: c.isFood, sortOrder: c.sortOrder })),
+      ...current.map((c) => ({
+        key: c.key,
+        name: c.name,
+        isFood: c.isFood,
+        sortOrder: c.sortOrder,
+      })),
       { key: 'VIP_LOUNGE', name: 'VIP lounge', isFood: false, sortOrder: 90 },
     ]);
     expect(res.statusCode).toBe(200);

@@ -2,10 +2,7 @@ import { rupeesToPaise } from '@msr/stalls';
 import type { StallEdition } from '@prisma/client';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { sendTemplate } from '../src/modules/stalls/comms';
-import {
-  DuplicatePaymentError,
-  RefundAlreadySubmittedError,
-} from '../src/modules/stalls/errors';
+import { DuplicatePaymentError, RefundAlreadySubmittedError } from '../src/modules/stalls/errors';
 import {
   confirmPayment,
   deletePayment,

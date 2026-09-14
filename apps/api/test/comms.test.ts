@@ -109,7 +109,10 @@ describe('sending', () => {
 
   test('two senders racing on one request deliver exactly one letter', async () => {
     const { requestId } = await selected(['C1-1']);
-    await Promise.all([send('SELECTION_VENDOR', [requestId]), send('SELECTION_VENDOR', [requestId])]);
+    await Promise.all([
+      send('SELECTION_VENDOR', [requestId]),
+      send('SELECTION_VENDOR', [requestId]),
+    ]);
     expect(deps.mail.sent).toHaveLength(1);
     expect(await prisma.stallMessageLog.count({ where: { requestId, channel: 'EMAIL' } })).toBe(1);
   });
@@ -168,9 +171,9 @@ describe('sending', () => {
     expect(partial.skipped[0].reason).toBe('sent, but email failed');
     expect(deps.whatsapp.sent).toHaveLength(1);
     expect(await prisma.stallMessageLog.count({ where: { requestId, channel: 'EMAIL' } })).toBe(0);
-    expect(
-      await prisma.stallMessageLog.count({ where: { requestId, channel: 'WHATSAPP' } }),
-    ).toBe(1);
+    expect(await prisma.stallMessageLog.count({ where: { requestId, channel: 'WHATSAPP' } })).toBe(
+      1,
+    );
   });
 
   test('when every channel fails the letter is not counted as sent at all', async () => {
