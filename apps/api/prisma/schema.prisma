@@ -67,24 +67,10 @@ enum StallRequestType {
   @@schema("stalls")
 }
 
-/// What a stall SELLS. Distinct from StallCategory, which is who OCCUPIES it.
+/// What a stall SELLS. Distinct from StallPlanCategory, which is who OCCUPIES it.
 enum StallType {
   FOOD
   NON_FOOD
-
-  @@schema("stalls")
-}
-
-/// Every kind of thing that can occupy a stall position — the Planning grid's
-/// columns. BACKUP is a real planned category, not a status.
-enum StallCategory {
-  VENDOR_FOOD
-  ASHRAM_FOOD
-  LW_FOOD
-  VENDOR_NON_FOOD
-  ASHRAM_NON_FOOD
-  HELP_DESK
-  BACKUP
 
   @@schema("stalls")
 }
@@ -125,10 +111,33 @@ enum StallStatus {
   @@schema("stalls")
 }
 
-enum StallZoneGroup {
-  AB
-  C
-  CLOSED
+/// Which rate card column a requester is quoted from. A local welfare stall is
+/// its own price for the same ground, not a discounted vendor stall.
+enum StallRateScope {
+  VENDOR
+  LOCAL_WELFARE
+
+  @@schema("stalls")
+}
+
+/// How a letter reached a requester. WhatsApp is the channel a village trader
+/// actually reads; email is the only one that can carry an attachment.
+enum StallMessageChannel {
+  EMAIL
+  WHATSAPP
+
+  @@schema("stalls")
+}
+
+/// The module's own signature vocabulary. The provider's states are mapped into
+/// this set by the adapter, so swapping providers never reaches a screen.
+enum StallSignatureStatus {
+  NOT_SENT
+  SENT
+  SIGNED
+  DECLINED
+  EXPIRED
+  FAILED
 
   @@schema("stalls")
 }
@@ -173,33 +182,56 @@ model StallEdition {
   isActive  Boolean  @default(false) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  zones        StallZone[]
-  rateCard     StallRateCard[]
-  charges      StallChargeConfig?
-  fineTypes    StallFineType[]
-  customFields StallCustomField[]
-  flow         StallFlowConfig?
-  requests     StallRequest[]
-  sequences    StallReferenceSequence[]
-  links        StallEditionLinks?
-  templates    StallEmailTemplate[]
+  /// The virtual-account prefixes Finance issues for this season. The account a
+  /// requester pays into is the prefix followed by their mobile number, and that
+  /// string is the only link between a credit on a bank statement and a request
+  /// here. Rent and the refundable advance go to DIFFERENT accounts because the
+  /// advance comes back at the end of the season and the rent does not.
+  ///
+  /// Null until Finance issues them — a new edition has none, and a payment
+  /// letter must not print half an account number.
+  virtualAccountRentPrefix    String? @map("virtual_account_rent_prefix")
+  virtualAccountDepositPrefix String? @map("virtual_account_deposit_prefix")
+
+  /// How many stalls one request may ask for in a single bay. Ground in a
+  /// second bay is a second request, so the team can accept one and decline the
+  /// other — "it will be easier for us to individually accept one and reject
+  /// one".
+  maxStallsPerRequest Int @default(2) @map("max_stalls_per_request")
+
+  zones          StallZone[]
+  planCategories StallPlanCategory[]
+  rateCard       StallRateCard[]
+  charges        StallChargeConfig?
+  fineTypes      StallFineType[]
+  customFields   StallCustomField[]
+  flow           StallFlowConfig?
+  requests       StallRequest[]
+  sequences      StallReferenceSequence[]
+  templates      StallEmailTemplate[]
 
   @@map("stall_edition")
   @@schema("stalls")
 }
 
+/// A bay. Created, renamed and removed from the Admin screen: the venue layout
+/// is redrawn every year, so the set of bays is an edition's own data and never
+/// a list baked into the code.
 model StallZone {
-  id                 String  @id @default(uuid()) @db.Uuid
-  editionId          String  @map("edition_id") @db.Uuid
-  code               String
-  name               String
-  expectedCrowd      Int     @default(0) @map("expected_crowd")
-  /// Closed to VENDORS (no rent quoted). Ashram and local welfare stalls may
-  /// still stand here — 2025's A3 and B2.
-  isClosedToVendors  Boolean @default(false) @map("is_closed_to_vendors")
-  sortOrder          Int     @map("sort_order")
+  id                String  @id @default(uuid()) @db.Uuid
+  editionId         String  @map("edition_id") @db.Uuid
+  code              String
+  name              String
+  expectedCrowd     Int     @default(0) @map("expected_crowd")
+  /// Closed to VENDORS, and to vendors only. Ashram and local welfare stalls
+  /// stand in these — 2025's A3 and B2 held the VAP traders, who pay the most
+  /// of any local welfare stall. This suppresses the vendor rent and the vendor
+  /// form's option; it does NOT mean the bay cannot be priced, and the rate card
+  /// carries local welfare rows for exactly these bays.
+  isClosedToVendors Boolean @default(false) @map("is_closed_to_vendors")
+  sortOrder         Int     @map("sort_order")
 
-  edition StallEdition   @relation(fields: [editionId], references: [id], onDelete: Cascade)
+  edition StallEdition    @relation(fields: [editionId], references: [id], onDelete: Cascade)
   plan    StallZonePlan[]
   stalls  Stall[]
 
@@ -208,50 +240,88 @@ model StallZone {
   @@schema("stalls")
 }
 
+/// The Planning grid's columns, as data.
+///
+/// The planning sheet is redrawn every season and which columns it carries is a
+/// judgement the stall team makes each year, not a fact about the software. A
+/// sponsor stall and an Adiyogi food stall are ashram stalls operationally, but
+/// the whole point of the grid is to see how many of each are standing in a
+/// bay, and a column that cannot be counted separately cannot be planned
+/// against.
+model StallPlanCategory {
+  id        String  @id @default(uuid()) @db.Uuid
+  editionId String  @map("edition_id") @db.Uuid
+  key       String
+  name      String
+  isFood    Boolean @map("is_food")
+  sortOrder Int     @map("sort_order")
+
+  edition StallEdition    @relation(fields: [editionId], references: [id], onDelete: Cascade)
+  plans   StallZonePlan[]
+  stalls  Stall[]
+
+  @@unique([editionId, key])
+  @@map("stall_plan_category")
+  @@schema("stalls")
+}
+
 /// The Planning grid: one row per zone × category.
 model StallZonePlan {
-  id           String        @id @default(uuid()) @db.Uuid
-  zoneId       String        @map("zone_id") @db.Uuid
-  category     StallCategory
-  plannedCount Int           @default(0) @map("planned_count")
+  id           String @id @default(uuid()) @db.Uuid
+  zoneId       String @map("zone_id") @db.Uuid
+  categoryId   String @map("category_id") @db.Uuid
+  plannedCount Int    @default(0) @map("planned_count")
 
-  zone StallZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  zone     StallZone         @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  category StallPlanCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
-  @@unique([zoneId, category])
+  @@unique([zoneId, categoryId])
   @@map("stall_zone_plan")
   @@schema("stalls")
 }
 
 /// The allocatable unit. Generated from the zone plan; editable by an admin.
 model Stall {
-  id       String        @id @default(uuid()) @db.Uuid
-  zoneId   String        @map("zone_id") @db.Uuid
+  id         String      @id @default(uuid()) @db.Uuid
+  zoneId     String      @map("zone_id") @db.Uuid
   /// `A4-17`. Unique within a zone.
-  number   String
-  category StallCategory
-  status   StallStatus   @default(AVAILABLE)
-  /// Electrical cluster within the zone — the 2025 sheet's "cluster" column.
-  cluster  String?
+  number     String
+  categoryId String      @map("category_id") @db.Uuid
+  status     StallStatus @default(AVAILABLE)
 
-  zone              StallZone         @relation(fields: [zoneId], references: [id], onDelete: Cascade)
-  allocations       StallAllocation[] @relation("StallAllocationHistory")
-  activeAllocation  StallAllocation?  @relation("StallActiveAllocation")
+  category         StallPlanCategory @relation(fields: [categoryId], references: [id])
+  zone             StallZone         @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  allocations      StallAllocation[] @relation("StallAllocationHistory")
+  activeAllocation StallAllocation?  @relation("StallActiveAllocation")
 
   @@unique([zoneId, number])
   @@map("stall")
   @@schema("stalls")
 }
 
+/// One rent per bay × food/non-food × requester scope, and the refundable
+/// advance for that same combination.
+///
+/// Priced per BAY rather than per band of bays: the rent genuinely differs bay
+/// by bay — a VIP bay behind Adiyogi against a general-seating bay is a
+/// different proposition — and banding them meant two bays that happened to
+/// share a letter could never be priced apart.
+///
+/// The advance rides here rather than in the charge config so that it is
+/// area-wise too, and so a bay's rent and its advance are edited together
+/// instead of drifting apart in two screens.
 model StallRateCard {
-  id          String         @id @default(uuid()) @db.Uuid
-  editionId   String         @map("edition_id") @db.Uuid
-  zoneGroup   StallZoneGroup @map("zone_group")
-  isFood      Boolean        @map("is_food")
-  amountPaise Int            @map("amount_paise")
+  id           String         @id @default(uuid()) @db.Uuid
+  editionId    String         @map("edition_id") @db.Uuid
+  zoneCode     String         @map("zone_code")
+  isFood       Boolean        @map("is_food")
+  scope        StallRateScope
+  amountPaise  Int            @map("amount_paise")
+  depositPaise Int            @map("deposit_paise")
 
   edition StallEdition @relation(fields: [editionId], references: [id], onDelete: Cascade)
 
-  @@unique([editionId, zoneGroup, isFood])
+  @@unique([editionId, zoneCode, isFood, scope])
   @@map("stall_rate_card")
   @@schema("stalls")
 }
@@ -260,28 +330,29 @@ model StallRateCard {
 /// 2025 forms (ashram: chair Rs.50/day; local welfare: chair Rs.100, table
 /// Rs.300) — both are kept, neither is "the" rate.
 model StallChargeConfig {
-  id                       String @id @default(uuid()) @db.Uuid
-  editionId                String @unique @map("edition_id") @db.Uuid
-  chairRatePaise           Int    @map("chair_rate_paise")
-  tableRatePaise           Int    @map("table_rate_paise")
-  lwChairRatePaise         Int    @map("lw_chair_rate_paise")
-  lwTableRatePaise         Int    @map("lw_table_rate_paise")
-  vendorDepositPaise       Int    @map("vendor_deposit_paise")
-  localWelfareDepositPaise Int    @map("local_welfare_deposit_paise")
-  plug5aRatePaise          Int    @map("plug_5a_rate_paise")
-  plug15aRatePaise         Int    @map("plug_15a_rate_paise")
-  /// The 2025 bank-details form quotes vendors Rs.100/chair and Rs.400/table
-  /// per day — a THIRD pair, distinct from the ashram and local welfare rates.
-  vendorChairRatePaise     Int    @default(10000) @map("vendor_chair_rate_paise")
-  vendorTableRatePaise     Int    @default(40000) @map("vendor_table_rate_paise")
-  /// Deducted from the deposit per missing or damaged item (Phase 3).
-  chairReplacementPaise    Int    @default(50000) @map("chair_replacement_paise")
-  tableReplacementPaise    Int    @default(150000) @map("table_replacement_paise")
-  /// Chairs and tables are priced per day; this is how many days a stall runs.
-  eventDays                Int    @default(2) @map("event_days")
-  gstPercent               Int    @default(18) @map("gst_percent")
+  id               String @id @default(uuid()) @db.Uuid
+  editionId        String @unique @map("edition_id") @db.Uuid
+  chairRatePaise   Int    @map("chair_rate_paise")
+  tableRatePaise   Int    @map("table_rate_paise")
+  lwChairRatePaise Int    @map("lw_chair_rate_paise")
+  lwTableRatePaise Int    @map("lw_table_rate_paise")
+  plug5aRatePaise  Int    @map("plug_5a_rate_paise")
+  plug15aRatePaise Int    @map("plug_15a_rate_paise")
+  gstPercent       Int    @default(18) @map("gst_percent")
   /// The Planning screen's divisor: expected crowd ÷ this = suggested stalls.
-  crowdPerStall            Int    @default(1000) @map("crowd_per_stall")
+  crowdPerStall    Int    @default(1000) @map("crowd_per_stall")
+
+  /// A flat refundable deposit against the furniture, charged once when any is
+  /// taken. The 2025 payment sheet carries one figure per vendor in its
+  /// "Chair and table Deposit" column, not a per-chair amount.
+  chairTableDepositPaise Int @default(400000) @map("chair_table_deposit_paise")
+  /// How many days the chairs and tables are held. The forms quote per-day
+  /// rates; this is what they are multiplied by.
+  equipmentDays          Int @default(1) @map("equipment_days")
+  /// Charged against the deposit for furniture that does not come back.
+  chairReplacementPaise  Int @default(40000) @map("chair_replacement_paise")
+  tableReplacementPaise  Int @default(90000) @map("table_replacement_paise")
+  damagePenaltyPaise     Int @default(25000) @map("damage_penalty_paise")
 
   edition StallEdition @relation(fields: [editionId], references: [id], onDelete: Cascade)
 
@@ -298,7 +369,6 @@ model StallFineType {
   isActive           Boolean @default(true) @map("is_active")
 
   edition StallEdition @relation(fields: [editionId], references: [id], onDelete: Cascade)
-  fines   StallFine[]
 
   @@unique([editionId, reason])
   @@map("stall_fine_type")
@@ -414,10 +484,10 @@ model StallReferenceSequence {
 /// One table for all four forms. They overlap by ~70%, and the pipeline,
 /// search and export screens all read one list.
 model StallRequest {
-  id        String           @id @default(uuid()) @db.Uuid
-  editionId String           @map("edition_id") @db.Uuid
-  accountId String           @map("account_id") @db.Uuid
-  reference String           @unique
+  id        String @id @default(uuid()) @db.Uuid
+  editionId String @map("edition_id") @db.Uuid
+  accountId String @map("account_id") @db.Uuid
+  reference String @unique
 
   requestType StallRequestType @map("request_type")
   stallType   StallType        @map("stall_type")
@@ -431,6 +501,16 @@ model StallRequest {
   itemsSelling       String  @map("items_selling")
   numStallsRequested Int     @map("num_stalls_requested")
   preferredZoneCode  String  @map("preferred_zone_code")
+  /// The bay the team and the requester settled on, which is not always the one
+  /// that was asked for: "we may have to talk to them saying that side is
+  /// already filled up, why don't you look at this side".
+  ///
+  /// ⚠️ This is what the stall is PRICED at once it is set. The sequence on the
+  /// ground is: agree the bay, send the payment letter, allocate a number later
+  /// — so between selection and allocation this is the only record of where the
+  /// stall will stand, and pricing the requested bay instead is how a vendor
+  /// gets billed for ground they were never given.
+  agreedZoneCode     String? @map("agreed_zone_code")
   remarks            String?
 
   plugs5a   Int @default(0) @map("plugs_5a")
@@ -454,22 +534,27 @@ model StallRequest {
   flagReason   String?            @map("flag_reason")
   rejectReason String?            @map("reject_reason")
 
-  edition      StallEdition             @relation(fields: [editionId], references: [id], onDelete: Cascade)
-  account      StallAccount             @relation(fields: [accountId], references: [id])
+  edition      StallEdition              @relation(fields: [editionId], references: [id], onDelete: Cascade)
+  account      StallAccount              @relation(fields: [accountId], references: [id])
   ashramDetail StallRequestAshramDetail?
   appliances   StallRequestAppliance[]
   customValues StallCustomFieldValue[]
   allocations  StallAllocation[]
   accessLinks  StallAccessLink[]
-  emailLogs    StallEmailLog[]
-  bankDetails  StallBankDetails?
-  payment      StallPayment?
-  staffCoupon  StallStaffCoupon?
-  fssai        StallFssai?
-  checkIn      StallCheckIn?
-  furniture    StallFurnitureLedger?
-  fines        StallFine[]
-  refund       StallRefund?
+
+  messages    StallMessageLog[]
+  bankDetail  StallBankDetail?
+  reminders   StallReminderCall[]
+  paymentPlan StallPaymentPlan?
+  payments    StallPaymentRecord[]
+  fines       StallFine[]
+  refund      StallRefund?
+  coupon      StallStaffCoupon?
+  staff       StallVendorStaff[]
+  fssai       StallFssaiCertificate?
+  checkIn     StallCheckIn?
+  equipment   StallEquipmentIssue?
+  signature   StallContractSignature?
 
   @@index([editionId, status, stage])
   @@index([editionId, requestType])
@@ -555,54 +640,74 @@ model StallAllocation {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PHASE 2 — Onboarding & Money
+// PHASE 2 — Onboarding & money
 // ═══════════════════════════════════════════════════════════════════════════
 
-enum StallEmailTemplateKey {
+enum StallTemplateKey {
   SELECTION_VENDOR
   SELECTION_ASHRAM
-  SELECTION_LOCAL_WELFARE
   PAYMENT_DETAILS
-  BANK_REMINDER
-  PAYMENT_REMINDER
-  POST_PAYMENT
+  ONBOARDING_FSSAI_STAFF
 
   @@schema("stalls")
 }
 
-enum StallEmailStatus {
-  SENT
-  FAILED
+enum StallPaymentPurpose {
+  RENT
+  DEPOSIT
 
   @@schema("stalls")
 }
 
-/// Per-edition links and texts the emails and public pages carry.
-model StallEditionLinks {
-  id                   String  @id @default(uuid()) @db.Uuid
-  editionId            String  @unique @map("edition_id") @db.Uuid
-  staffRegistrationUrl String? @map("staff_registration_url")
-  fssaiProcessUrl      String? @map("fssai_process_url")
-  termsUrl             String? @map("terms_url")
-  financeEmail         String? @map("finance_email")
-  /// Isha's NEFT account details, as sent in the payment email.
-  bankInstructions     String? @map("bank_instructions")
+enum StallPaymentMode {
+  NEFT
+  CASH
+  CHEQUE
+  UPI
+  OTHER
 
-  edition StallEdition @relation(fields: [editionId], references: [id], onDelete: Cascade)
-
-  @@map("stall_edition_links")
   @@schema("stalls")
 }
 
+enum StallReminderKind {
+  BANK
+  PAYMENT
+
+  @@schema("stalls")
+}
+
+enum StallIdType {
+  AADHAAR
+  VOTER_ID
+  DRIVING_LICENCE
+  PASSPORT
+  OTHER
+
+  @@schema("stalls")
+}
+
+/// The editable body of each outbound letter. Seeded per edition from
+/// `DEFAULT_TEMPLATES` so an admin edits text rather than asking for a deploy,
+/// and so 2027's wording can differ from 2026's without rewriting history.
 model StallEmailTemplate {
-  id            String                @id @default(uuid()) @db.Uuid
-  editionId     String                @map("edition_id") @db.Uuid
-  key           StallEmailTemplateKey
-  subject       String
-  body          String
-  attachmentKey String?               @map("attachment_key")
-  updatedAt     DateTime              @updatedAt @map("updated_at") @db.Timestamptz
-  updatedBy     String?               @map("updated_by")
+  id              String           @id @default(uuid()) @db.Uuid
+  editionId       String           @map("edition_id") @db.Uuid
+  key             StallTemplateKey
+  subject         String
+  body            String
+  /// The WhatsApp wording. Short, no attachment, written to be read on a phone
+  /// — a letter pasted into WhatsApp whole is a wall of text nobody scrolls.
+  /// Empty means this template is email-only, which the send path treats as an
+  /// absence rather than a failure.
+  whatsappBody    String           @default("") @map("whatsapp_body")
+  /// The zone map or contract that goes out with the letter. A media-store key,
+  /// not bytes — the module never holds a file in a column.
+  attachmentKey   String?          @map("attachment_key")
+  attachmentName  String?          @map("attachment_name")
+  attachmentBytes Int?             @map("attachment_bytes")
+  /// Null while the seeded wording has never been touched.
+  updatedAt       DateTime?        @map("updated_at") @db.Timestamptz
+  updatedBy       String?          @map("updated_by")
 
   edition StallEdition @relation(fields: [editionId], references: [id], onDelete: Cascade)
 
@@ -611,108 +716,230 @@ model StallEmailTemplate {
   @@schema("stalls")
 }
 
-/// Every email the module sent, or tried to. A selection confirmation is
-/// refused when a SENT row exists for the request and key — "once the email is
-/// sent it should not be sent again".
-model StallEmailLog {
-  id          String                @id @default(uuid()) @db.Uuid
-  requestId   String                @map("request_id") @db.Uuid
-  templateKey StallEmailTemplateKey @map("template_key")
-  toEmail     String                @map("to_email")
+/// One row per letter actually sent. The UNIQUE is the requirement — "once the
+/// email is sent it should not be sent again" — enforced by the database rather
+/// than by a flag the bulk sender could race against.
+/// One row per letter actually sent, per channel.
+///
+/// ⚠️ The uniqueness that stops a requester getting the same letter twice is now
+/// per CHANNEL: a WhatsApp message that failed must not block the email, and a
+/// team that sent the email in January must still be able to send the WhatsApp
+/// in February. "Has this person been told" is therefore a question about a
+/// channel, and every screen that asks it says which.
+model StallMessageLog {
+  id          String              @id @default(uuid()) @db.Uuid
+  requestId   String              @map("request_id") @db.Uuid
+  templateKey StallTemplateKey    @map("template_key")
+  channel     StallMessageChannel @default(EMAIL)
+  /// The address or number it went to, as it was at the moment of sending. Kept
+  /// verbatim rather than re-read from the request, because "where did this
+  /// actually go" is the question asked when a requester says they never got it
+  /// — and by then the request may carry a corrected address.
+  sentTo      String              @map("sent_to")
   subject     String
-  status      StallEmailStatus
-  error       String?
-  sentAt      DateTime              @default(now()) @map("sent_at") @db.Timestamptz
-  sentBy      String                @map("sent_by")
+  sentAt      DateTime            @default(now()) @map("sent_at") @db.Timestamptz
+  sentBy      String              @map("sent_by")
 
   request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
-  @@index([requestId, templateKey, status])
-  @@map("stall_email_log")
+  @@unique([requestId, templateKey, channel])
+  @@index([templateKey, sentAt])
+  @@map("stall_message_log")
   @@schema("stalls")
 }
 
-/// The 2025 "MSR stalls bank details and requirements" form, field for field.
-/// The electrical and logistics block on the same form writes to StallRequest.
-model StallBankDetails {
-  requestId          String    @id @map("request_id") @db.Uuid
-  invoiceName        String    @map("invoice_name")
-  accountHolder      String    @map("account_holder")
-  mobile             String
-  address            String
-  pincode            String
-  bankName           String    @map("bank_name")
-  branch             String
-  accountNumber      String    @map("account_number")
-  ifsc               String
-  micr               String?
-  chequeMediaKey     String?   @map("cheque_media_key")
-  advanceReturnAck   Boolean   @map("advance_return_ack")
-  panNumber          String    @map("pan_number")
-  panMediaKey        String?   @map("pan_media_key")
-  /// "None" when the vendor has no GST registration.
-  gstNumber          String    @map("gst_number")
-  gstMediaKey        String?   @map("gst_media_key")
-  neftAgreed         Boolean   @map("neft_agreed")
-  tncAgreed          Boolean   @map("tnc_agreed")
-  submittedAt        DateTime  @default(now()) @map("submitted_at") @db.Timestamptz
-  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+/// The stall agreement, sent for digital signature.
+///
+/// The terms used to be a tick-box on the request form. The legal team now
+/// sends the agreement out through a signature provider, and the ask was that
+/// it happen inside this application rather than in a parallel mailbox. A
+/// tick-box and a signature are not the same artefact: one says a person saw a
+/// paragraph, the other is a document with an audit trail that can be produced
+/// if a stall is ever in dispute.
+///
+/// ⚠️ No document bytes here, and no provider credentials. `documentId` is the
+/// provider's own handle, kept so a dispute can be traced into their audit
+/// trail without going through this application at all.
+model StallContractSignature {
+  requestId  String               @id @map("request_id") @db.Uuid
+  status     StallSignatureStatus @default(NOT_SENT)
+  provider   String
+  documentId String?              @map("document_id")
+  /// Short-lived and reissued on demand rather than relied on: a signing URL
+  /// that has expired is worse than none, because a requester will try it.
+  signUrl    String?              @map("sign_url")
+  sentAt     DateTime?            @map("sent_at") @db.Timestamptz
+  sentBy     String?              @map("sent_by")
+  signedAt   DateTime?            @map("signed_at") @db.Timestamptz
+  /// Why the provider refused, when it did — shown to the team verbatim.
+  error      String?
+  updatedAt  DateTime             @updatedAt @map("updated_at") @db.Timestamptz
 
   request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
-  @@map("stall_bank_details")
+  @@index([status])
+  @@map("stall_contract_signature")
   @@schema("stalls")
 }
 
-/// The computed bill and, later, finance's confirmation. Columns mirror the
-/// 2025 payment workbook ("Rent Final", "Advance - Final", "Credit details").
-model StallPayment {
-  requestId             String    @id @map("request_id") @db.Uuid
-  stallFeePaise         Int       @map("stall_fee_paise")
-  plugPointsFeePaise    Int       @map("plug_points_fee_paise")
-  furnitureFeePaise     Int       @map("furniture_fee_paise")
-  netPaise              Int       @map("net_paise")
-  gstPercent            Int       @map("gst_percent")
-  gstPaise              Int       @map("gst_paise")
-  grossPaise            Int       @map("gross_paise")
-  stallDepositPaise     Int       @map("stall_deposit_paise")
-  furnitureDepositPaise Int       @map("furniture_deposit_paise")
-  depositTotalPaise     Int       @map("deposit_total_paise")
-  totalPayablePaise     Int       @map("total_payable_paise")
-  quotedAt              DateTime  @default(now()) @map("quoted_at") @db.Timestamptz
-  quotedBy              String    @map("quoted_by")
-  emailSentAt           DateTime? @map("email_sent_at") @db.Timestamptz
+/// What the vendor typed on the Bank Details and Requirements form, 1:1 with
+/// the request.
+///
+/// This is the module's most sensitive table: it is where the refund goes. It
+/// holds no card data and no file bytes — the cancelled cheque, PAN and GST
+/// certificate are media-store KEYS, presigned for a few minutes when a staff
+/// member opens one, so the objects are never public and never in a backup of
+/// this database.
+model StallBankDetail {
+  requestId     String  @id @map("request_id") @db.Uuid
+  email         String
+  invoiceName   String  @map("invoice_name")
+  accountHolder String  @map("account_holder")
+  mobile        String
+  address       String
+  pincode       String
+  bankName      String  @map("bank_name")
+  branch        String
+  accountNumber String  @map("account_number")
+  ifsc          String
+  micr          String?
+  panNumber     String  @map("pan_number")
+  /// Stored as typed, including the literal "NONE" the 2025 form asks for.
+  gstNumber     String  @map("gst_number")
 
-  confirmedAt         DateTime? @map("confirmed_at") @db.Timestamptz
-  confirmedBy         String?   @map("confirmed_by")
-  creditDate          DateTime? @map("credit_date") @db.Date
-  referenceNo         String?   @map("reference_no")
-  ecollectCode        String?   @map("ecollect_code")
-  remitterName        String?   @map("remitter_name")
-  mode                String?
-  amountReceivedPaise Int?      @map("amount_received_paise")
-  notes               String?
+  chequeKey String  @map("cheque_key")
+  panKey    String  @map("pan_key")
+  gstKey    String? @map("gst_key")
+
+  agreedNeftAt  DateTime @map("agreed_neft_at") @db.Timestamptz
+  agreedTermsAt DateTime @map("agreed_terms_at") @db.Timestamptz
+  remarks       String?
+  submittedAt   DateTime @default(now()) @map("submitted_at") @db.Timestamptz
 
   request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
-  @@map("stall_payment")
+  @@map("stall_bank_detail")
+  @@schema("stalls")
+}
+
+/// "Reminder call for people pending entry for bank details" — a log, not a
+/// counter, because the team's question is when someone was last called and by
+/// whom, not how many times in total.
+model StallReminderCall {
+  id        String            @id @default(uuid()) @db.Uuid
+  requestId String            @map("request_id") @db.Uuid
+  kind      StallReminderKind
+  note      String?
+  calledAt  DateTime          @default(now()) @map("called_at") @db.Timestamptz
+  calledBy  String            @map("called_by")
+
+  request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, kind])
+  @@map("stall_reminder_call")
+  @@schema("stalls")
+}
+
+/// The amount the vendor was actually TOLD to pay, frozen when the payment
+/// email went out.
+///
+/// The live quote is computed from the rate card, so it moves when an admin
+/// edits a rate. Finance reconciles a bank credit against the figure in the
+/// vendor's inbox, which does not move. Keeping only the live quote is how a
+/// rate correction in February turns every February payment into a mismatch.
+model StallPaymentPlan {
+  requestId             String   @id @map("request_id") @db.Uuid
+  stallFeePaise         Int      @map("stall_fee_paise")
+  plugFeePaise          Int      @map("plug_fee_paise")
+  equipmentFeePaise     Int      @map("equipment_fee_paise")
+  netPaise              Int      @map("net_paise")
+  gstPaise              Int      @map("gst_paise")
+  feeTotalPaise         Int      @map("fee_total_paise")
+  stallDepositPaise     Int      @map("stall_deposit_paise")
+  equipmentDepositPaise Int      @map("equipment_deposit_paise")
+  depositTotalPaise     Int      @map("deposit_total_paise")
+  quotedAt              DateTime @default(now()) @map("quoted_at") @db.Timestamptz
+
+  /// What was actually agreed, where the team agreed something other than the
+  /// quote.
+  ///
+  /// 🔴 A local welfare stall is priced off the rate card and then settled at
+  /// whatever the local welfare team judged the trader could give: "for A3 the
+  /// cost is 10,000 — for the coconut wala, probably we will give that stall at
+  /// 5,000". The call is theirs, per stall, and made after the quote exists.
+  /// With nowhere to record it, the quoted figure is the only figure the system
+  /// knows and a stall that paid the agreed amount never counts as settled.
+  ///
+  /// `feeTotalPaise` above is never rewritten — it is what the requester was
+  /// told. This is what is owed. The gap between them is the concession, and
+  /// the team is entitled to see it.
+  ///
+  /// ⚠️ Replaces the FEE only. The deposit comes back in full, so discounting it
+  /// would mean refunding money that was never taken.
+  discretionaryFeePaise Int?      @map("discretionary_fee_paise")
+  /// Required whenever the figure above is set: an amount below the card rate
+  /// with nothing beside it is indistinguishable from a typo six months later.
+  discretionaryReason   String?   @map("discretionary_reason")
+  discretionarySetAt    DateTime? @map("discretionary_set_at") @db.Timestamptz
+  discretionarySetBy    String?   @map("discretionary_set_by")
+
+  request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@map("stall_payment_plan")
+  @@schema("stalls")
+}
+
+/// A credit Finance has confirmed. Several per request: the 2025 sheet settles
+/// rent and deposit as separate transfers, sometimes on different days.
+model StallPaymentRecord {
+  id           String              @id @default(uuid()) @db.Uuid
+  requestId    String              @map("request_id") @db.Uuid
+  purpose      StallPaymentPurpose
+  referenceNo  String              @map("reference_no")
+  /// The virtual-account code the credit landed on, where there is one.
+  eCollectCode String?             @map("e_collect_code")
+  amountPaise  Int                 @map("amount_paise")
+  /// A banking date, not an instant — the credit date on the statement.
+  receivedOn   DateTime            @map("received_on") @db.Date
+  remitterName String?             @map("remitter_name")
+  mode         StallPaymentMode    @default(NEFT)
+  note         String?
+  confirmedAt  DateTime            @default(now()) @map("confirmed_at") @db.Timestamptz
+  confirmedBy  String              @map("confirmed_by")
+
+  request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  /// One reference number is one credit. Entering it twice — the same NEFT
+  /// pasted into two rows on a busy afternoon — would double-count what the
+  /// vendor paid and shrink their refund.
+  @@unique([requestId, referenceNo])
+  @@index([requestId])
+  @@map("stall_payment_record")
   @@schema("stalls")
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PHASE 3 — Event Ops
+// PHASE 3 — Event operations
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// The secure key a vendor enters in the external Sewadhar registration so
-/// only that vendor's staff register against that stall.
+/// The secure coupon a vendor's own staff register with. See `coupons.ts` for
+/// what the code is made of and why.
 model StallStaffCoupon {
-  requestId       String    @id @map("request_id") @db.Uuid
-  code            String    @unique
-  maxStaff        Int       @map("max_staff")
-  registeredCount Int       @default(0) @map("registered_count")
-  issuedAt        DateTime  @default(now()) @map("issued_at") @db.Timestamptz
-  issuedBy        String    @map("issued_by")
-  revokedAt       DateTime? @map("revoked_at") @db.Timestamptz
+  requestId String    @id @map("request_id") @db.Uuid
+  code      String    @unique
+  /// How many people this coupon may register. Eight by default — the team's
+  /// own figure — and raised case by case by the stall team.
+  ///
+  /// ⚠️ A property of the COUPON, not of the request, and deliberately not the
+  /// vendor's own "staff passes" answer: that is what they asked for on a form
+  /// months earlier, this is what the stall team has agreed to let through the
+  /// gate, and the gate enforces the second. It is also always a real cap —
+  /// never zero meaning unlimited, which is how a stall with eight passes ends
+  /// up registering eighty.
+  capacity  Int       @default(8)
+  issuedAt  DateTime  @default(now()) @map("issued_at") @db.Timestamptz
+  issuedBy  String    @map("issued_by")
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz
 
   request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
@@ -720,32 +947,66 @@ model StallStaffCoupon {
   @@schema("stalls")
 }
 
-model StallFssai {
-  requestId      String    @id @map("request_id") @db.Uuid
-  mediaKey       String    @map("media_key")
-  fileName       String    @map("file_name")
-  licenseNumber  String?   @map("license_number")
-  validTill      DateTime? @map("valid_till") @db.Date
-  uploadedAt     DateTime  @default(now()) @map("uploaded_at") @db.Timestamptz
-  verifiedAt     DateTime? @map("verified_at") @db.Timestamptz
-  verifiedBy     String?   @map("verified_by")
-  rejectedReason String?   @map("rejected_reason")
+/// A person who will work on a stall. Not a host `Person` and never becomes
+/// one: they are a visitor for one event, recorded by the vendor, and the
+/// directory is for people the organisation has a relationship with.
+model StallVendorStaff {
+  id           String      @id @default(uuid()) @db.Uuid
+  requestId    String      @map("request_id") @db.Uuid
+  name         String
+  mobile       String
+  idType       StallIdType @map("id_type")
+  /// For an Aadhaar this is the last four digits only — enough to match the
+  /// card at the gate, not enough to be a copy of it.
+  idNumber     String      @map("id_number")
+  role         String?
+  registeredAt DateTime    @default(now()) @map("registered_at") @db.Timestamptz
 
   request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
-  @@map("stall_fssai")
+  /// One phone number, one registration per stall. Re-submitting the same
+  /// person — the common case when a form is refreshed — must not inflate the
+  /// count the check-in counter reads.
+  @@unique([requestId, mobile])
+  @@index([requestId])
+  @@map("stall_vendor_staff")
+  @@schema("stalls")
+}
+
+model StallFssaiCertificate {
+  requestId   String    @id @map("request_id") @db.Uuid
+  ownerName   String?   @map("owner_name")
+  mobile      String?
+  submittedAt DateTime  @default(now()) @map("submitted_at") @db.Timestamptz
+  verifiedAt  DateTime? @map("verified_at") @db.Timestamptz
+  verifiedBy  String?   @map("verified_by")
+
+  request StallRequest     @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  files   StallFssaiFile[]
+
+  @@map("stall_fssai_certificate")
+  @@schema("stalls")
+}
+
+model StallFssaiFile {
+  id         String   @id @default(uuid()) @db.Uuid
+  requestId  String   @map("request_id") @db.Uuid
+  fileKey    String   @map("file_key")
+  fileName   String   @map("file_name")
+  uploadedAt DateTime @default(now()) @map("uploaded_at") @db.Timestamptz
+
+  certificate StallFssaiCertificate @relation(fields: [requestId], references: [requestId], onDelete: Cascade)
+
+  @@index([requestId])
+  @@map("stall_fssai_file")
   @@schema("stalls")
 }
 
 model StallCheckIn {
-  requestId         String   @id @map("request_id") @db.Uuid
-  checkedInAt       DateTime @default(now()) @map("checked_in_at") @db.Timestamptz
-  checkedInBy       String   @map("checked_in_by")
-  staffPresent      Int      @default(0) @map("staff_present")
-  passes2wIssued    Int      @default(0) @map("passes_2w_issued")
-  passes4wIssued    Int      @default(0) @map("passes_4w_issued")
-  passesStaffIssued Int      @default(0) @map("passes_staff_issued")
-  notes             String?
+  requestId   String   @id @map("request_id") @db.Uuid
+  checkedInAt DateTime @default(now()) @map("checked_in_at") @db.Timestamptz
+  checkedInBy String   @map("checked_in_by")
+  note        String?
 
   request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
@@ -753,70 +1014,72 @@ model StallCheckIn {
   @@schema("stalls")
 }
 
-/// The counter's chairs-and-tables challan, both halves: what went out, and
-/// what came back the next day.
-model StallFurnitureLedger {
-  requestId          String    @id @map("request_id") @db.Uuid
-  chairsOrdered      Int       @map("chairs_ordered")
-  tablesOrdered      Int       @map("tables_ordered")
-  chairsIssued       Int       @default(0) @map("chairs_issued")
-  tablesIssued       Int       @default(0) @map("tables_issued")
-  extraChairs        Int       @default(0) @map("extra_chairs")
-  extraTables        Int       @default(0) @map("extra_tables")
-  extraChargePaise   Int       @default(0) @map("extra_charge_paise")
-  cashCollectedPaise Int       @default(0) @map("cash_collected_paise")
-  issuedAt           DateTime? @map("issued_at") @db.Timestamptz
-  issuedBy           String?   @map("issued_by")
-  chairsReturned     Int?      @map("chairs_returned")
-  tablesReturned     Int?      @map("tables_returned")
-  chairsMissing      Int       @default(0) @map("chairs_missing")
-  tablesMissing      Int       @default(0) @map("tables_missing")
-  chairsDamaged      Int       @default(0) @map("chairs_damaged")
-  tablesDamaged      Int       @default(0) @map("tables_damaged")
-  returnedAt         DateTime? @map("returned_at") @db.Timestamptz
-  returnedBy         String?   @map("returned_by")
-  flagged            Boolean   @default(false)
-  notes              String?
+/// The chairs-and-tables counter, one row per stall.
+///
+/// `chairsRequested` and `tablesRequested` are COPIED from the request when the
+/// row is opened rather than read through it. The counter hands out what the
+/// challan says; if the request were edited afterwards the paper slip and the
+/// screen would disagree, and the vendor is holding the paper.
+model StallEquipmentIssue {
+  requestId        String    @id @map("request_id") @db.Uuid
+  chairsRequested  Int       @map("chairs_requested")
+  tablesRequested  Int       @map("tables_requested")
+  extraChairs      Int       @default(0) @map("extra_chairs")
+  extraTables      Int       @default(0) @map("extra_tables")
+  /// Cash taken at the counter for the extras, at this requester type's rate.
+  extraChargePaise Int       @default(0) @map("extra_charge_paise")
+  extraCollectedAt DateTime? @map("extra_collected_at") @db.Timestamptz
+  distributedAt    DateTime? @map("distributed_at") @db.Timestamptz
+  distributedBy    String?   @map("distributed_by")
+  collectedAt      DateTime? @map("collected_at") @db.Timestamptz
+  collectedBy      String?   @map("collected_by")
+  missingChairs    Int       @default(0) @map("missing_chairs")
+  missingTables    Int       @default(0) @map("missing_tables")
+  damaged          Boolean   @default(false)
+  note             String?
+  flagged          Boolean   @default(false)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
   request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
-  @@map("stall_furniture_ledger")
+  @@map("stall_equipment_issue")
   @@schema("stalls")
 }
 
+/// A deduction from the deposit. Separate rows rather than one summed column so
+/// the refund voucher can itemise what was withheld — a vendor disputing a
+/// deduction is owed the list, not the total.
 model StallFine {
-  id          String    @id @default(uuid()) @db.Uuid
-  requestId   String    @map("request_id") @db.Uuid
-  fineTypeId  String?   @map("fine_type_id") @db.Uuid
+  id          String   @id @default(uuid()) @db.Uuid
+  requestId   String   @map("request_id") @db.Uuid
+  /// Null for a one-off fine with no configured category.
+  fineTypeId  String?  @map("fine_type_id") @db.Uuid
   reason      String
-  amountPaise Int       @map("amount_paise")
-  leviedAt    DateTime  @default(now()) @map("levied_at") @db.Timestamptz
-  leviedBy    String    @map("levied_by")
-  waivedAt    DateTime? @map("waived_at") @db.Timestamptz
-  waivedBy    String?   @map("waived_by")
+  amountPaise Int      @map("amount_paise")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  createdBy   String   @map("created_by")
 
-  request  StallRequest   @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  fineType StallFineType? @relation(fields: [fineTypeId], references: [id])
+  request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@index([requestId])
   @@map("stall_fine")
   @@schema("stalls")
 }
 
-/// The voucher the stalls team hands finance: deposit less deductions.
+/// What the stalls team hands Finance. Written once, when the team submits the
+/// row; the figures are frozen at that moment because Finance pays against them.
 model StallRefund {
-  requestId               String    @id @map("request_id") @db.Uuid
-  depositTotalPaise       Int       @map("deposit_total_paise")
-  furnitureDeductionPaise Int       @map("furniture_deduction_paise")
-  finesPaise              Int       @map("fines_paise")
-  refundablePaise         Int       @map("refundable_paise")
-  shortfallPaise          Int       @default(0) @map("shortfall_paise")
-  preparedAt              DateTime  @default(now()) @map("prepared_at") @db.Timestamptz
-  preparedBy              String    @map("prepared_by")
-  sentToFinanceAt         DateTime? @map("sent_to_finance_at") @db.Timestamptz
-  paidAt                  DateTime? @map("paid_at") @db.Timestamptz
-  paidBy                  String?   @map("paid_by")
-  referenceNo             String?   @map("reference_no")
+  requestId               String   @id @map("request_id") @db.Uuid
+  depositHeldPaise        Int      @map("deposit_held_paise")
+  equipmentDeductionPaise Int      @map("equipment_deduction_paise")
+  fineDeductionPaise      Int      @map("fine_deduction_paise")
+  refundDuePaise          Int      @map("refund_due_paise")
+  /// Deductions beyond the deposit. Chased separately; never a negative refund.
+  shortfallPaise          Int      @default(0) @map("shortfall_paise")
+  note                    String?
+  voucherRef              String?  @map("voucher_ref")
+  submittedAt             DateTime @default(now()) @map("submitted_at") @db.Timestamptz
+  submittedBy             String   @map("submitted_by")
 
   request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 

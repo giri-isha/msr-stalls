@@ -1,6 +1,4 @@
-import { Btn } from '../ui/ui';
-import { IconBtn } from '../ui/components/IconBtn';
-import { NumberInput, TextInput } from './FormControls';
+import { Btn, Icon, IconBtn, Input, useIsMobile } from '../ui';
 
 export interface ApplianceRow {
   name: string;
@@ -9,7 +7,7 @@ export interface ApplianceRow {
 
 /** The 2025 form had four fixed "Appliance N + wattage" pairs. The 2025 data
  *  shows stalls listing more, so this is a growable list — the API stores child
- *  rows and the electrical sheet sums them. */
+ *  rows and Phase 3's load sheet sums them. */
 export function ApplianceRows({
   id,
   value,
@@ -21,20 +19,27 @@ export function ApplianceRows({
   onChange: (rows: ApplianceRow[]) => void;
   max?: number;
 }) {
+  const mobile = useIsMobile();
   const update = (i: number, patch: Partial<ApplianceRow>) =>
     onChange(value.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const remove = (i: number) => onChange(value.filter((_, j) => j !== i));
   const add = () => onChange([...value, { name: '', watts: '' }]);
 
+  // ⚠️ The wattage column collapses below the name on a phone rather than
+  // sitting beside it. A 128px number field next to a name field inside 360px
+  // of form leaves the name eight characters wide, and "Deep freezer" is not
+  // eight characters.
+  const grid = mobile ? '1fr 28px' : '1fr 8rem 28px';
+
   return (
-    <div id={id} style={{ display: 'grid', gap: 8 }}>
-      {value.length > 0 && (
+    <div style={{ display: 'grid', gap: 8 }} id={id}>
+      {value.length > 0 && !mobile && (
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '1fr 7rem 28px',
+            gridTemplateColumns: grid,
             gap: 8,
-            fontSize: 10.5,
+            fontSize: 11,
             fontWeight: 700,
             letterSpacing: '.5px',
             textTransform: 'uppercase',
@@ -48,25 +53,35 @@ export function ApplianceRows({
       )}
       {value.map((row, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: rows have no identity of their own
-        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 7rem 28px', gap: 8, alignItems: 'center' }}>
-          <TextInput
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: grid, gap: 8, rowGap: 6 }}>
+          <Input
             aria-label={`Appliance ${i + 1} name`}
             placeholder='e.g. Deep freezer'
             value={row.name}
             onChange={(e) => update(i, { name: e.target.value })}
           />
-          <NumberInput
+          {mobile && <span />}
+          <Input
             aria-label={`Appliance ${i + 1} wattage`}
-            placeholder='W'
+            type='number'
+            min={0}
+            placeholder='Watts'
             value={row.watts}
             onChange={(e) => update(i, { watts: e.target.value })}
           />
-          <IconBtn label={`Remove appliance ${i + 1}`} glyph='trash' tone='var(--des)' onClick={() => remove(i)} />
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <IconBtn
+              label={`Remove appliance ${i + 1}`}
+              glyph='trash'
+              tone='var(--des)'
+              onClick={() => remove(i)}
+            />
+          </div>
         </div>
       ))}
       <div>
         <Btn onClick={add} disabled={value.length >= max}>
-          + Add appliance
+          <Icon name='plus' size={14} /> Add appliance
         </Btn>
       </div>
     </div>

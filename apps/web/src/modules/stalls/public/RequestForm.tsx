@@ -12,19 +12,21 @@ import { ApiError, fieldErrorsFrom } from '../api-client';
 import { getPublicConfig, submitRequest } from '../api';
 import { type ApplianceRow, ApplianceRows } from '../components/ApplianceRows';
 import { BilingualLabel } from '../components/BilingualLabel';
-import {
-  CheckRow,
-  Field,
-  HelpLine,
-  NumberInput,
-  RadioList,
-  SelectInput,
-  TextArea,
-  TextInput,
-} from '../components/FormControls';
 import { ZoneSelect } from '../components/ZoneSelect';
 import { useLoad } from '../hooks';
-import { Btn, Card, ErrorBox, H1 } from '../ui/ui';
+import {
+  Card,
+  Checkbox,
+  ChoicePlate,
+  FieldError,
+  FieldStack,
+  FormField as Labelled,
+  Icon,
+  Input,
+  Radio,
+  Select,
+  Textarea,
+} from '../ui';
 import { SLUG_TYPE } from './FormPicker';
 
 type Values = Record<string, string | boolean | ApplianceRow[]>;
@@ -50,7 +52,11 @@ const yes = (v: unknown) => v === 'YES';
  *  field names and the contract's keys differ in a few known places — the
  *  ashram forms nest a department block and have no vendor name of their own —
  *  and this is the one function that knows about them. */
-export function buildInput(type: StallRequestType, values: Values, customFieldIds: string[]): Record<string, unknown> {
+function buildInput(
+  type: StallRequestType,
+  values: Values,
+  customFieldIds: string[],
+): Record<string, unknown> {
   const ashram = ASHRAM_TYPES.has(type);
   const appliances = (Array.isArray(values.appliances) ? values.appliances : [])
     .filter((a) => a.name.trim() !== '')
@@ -78,7 +84,8 @@ export function buildInput(type: StallRequestType, values: Values, customFieldId
     appliances: appliances.length ? appliances : undefined,
     customFields,
   };
-  for (const k of NUMERIC) if (k !== 'numStallsRequested' && k in values) base[k] = num(values[k]) ?? 0;
+  for (const k of NUMERIC)
+    if (k !== 'numStallsRequested' && k in values) base[k] = num(values[k]) ?? 0;
   if (ashram) {
     base.ashram = {
       departmentHead: str(values.departmentHead),
@@ -97,7 +104,7 @@ export function buildInput(type: StallRequestType, values: Values, customFieldId
 
 /** The inverse of the renames above, for putting a server or Zod error back on
  *  the input that caused it. */
-export function fieldNameFor(path: string, type: StallRequestType): string {
+function fieldNameFor(path: string, type: StallRequestType): string {
   const ashram = ASHRAM_TYPES.has(type);
   if (path.startsWith('ashram.')) return path.slice('ashram.'.length);
   if (path === 'ashram') return 'departmentHead';
@@ -155,13 +162,18 @@ function Form({ type }: { type: StallRequestType }) {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setTopError(null);
+    // Required-ness comes from the form definition; shape from the contract.
     const missing: Record<string, string> = {};
     for (const f of allFields) {
       if (f.required && isEmpty(values[f.name])) {
         missing[f.name] = f.type === 'checkbox' ? 'Please tick to continue' : 'Required';
       }
     }
-    const built = buildInput(type, values, customFields.map((f) => f.id));
+    const built = buildInput(
+      type,
+      values,
+      customFields.map((f) => f.id),
+    );
     const parsed = SubmitRequestInput.safeParse(built);
     if (!parsed.success) {
       for (const issue of parsed.error.issues) {
@@ -183,7 +195,9 @@ function Form({ type }: { type: StallRequestType }) {
       navigate('/stalls/submitted', { state: { ...r, type }, replace: true });
     } catch (err) {
       const fe = fieldErrorsFrom(err);
-      const mapped = Object.fromEntries(Object.entries(fe).map(([k, v]) => [fieldNameFor(k, type), v]));
+      const mapped = Object.fromEntries(
+        Object.entries(fe).map(([k, v]) => [fieldNameFor(k, type), v]),
+      );
       setErrors(mapped);
       setTopError(
         err instanceof ApiError && err.status === 503
@@ -201,75 +215,133 @@ function Form({ type }: { type: StallRequestType }) {
 
   return (
     <form onSubmit={onSubmit} noValidate>
-      <H1
-        sub={
-          config.data
-            ? `${config.data.edition.name}${
-                type === 'LOCAL_WELFARE'
-                  ? ` · Refundable caution deposit ${formatInr(config.data.charges.localWelfareDepositPaise)}`
-                  : ''
-              }`
-            : undefined
-        }
-      >
-        {def.title}
-      </H1>
-
-      <Card style={{ marginBottom: 14, background: 'var(--pri-t)', borderColor: 'var(--pri-t2)' }}>
-        <div style={{ fontSize: 13, lineHeight: 1.55 }}>
-          <div>{def.disclaimer}</div>
-          {def.disclaimerTa && (
-            <div className='msrs-ta' lang='ta' style={{ marginTop: 6 }}>
-              {def.disclaimerTa}
-            </div>
-          )}
+      <div style={{ marginBottom: 18 }}>
+        <div
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 24,
+            fontWeight: 600,
+            letterSpacing: '-.5px',
+            lineHeight: 1.15,
+          }}
+        >
+          {def.title}
         </div>
-      </Card>
+        {config.data && (
+          <div style={{ fontSize: 12, color: 'var(--mfg)', marginTop: 5 }}>
+            {config.data.edition.name}
+            {type === 'LOCAL_WELFARE' &&
+              ` · Refundable caution deposit ${formatInr(config.data.charges.localWelfareDepositPaise)}`}
+          </div>
+        )}
+      </div>
+
+      {/* The terms, on the primary tint rather than a warning one. This is the
+          thing a reader agrees to, not a thing that has gone wrong. */}
+      <div
+        style={{
+          padding: '13px 15px',
+          borderRadius: 'var(--r3)',
+          background: 'var(--pri-t)',
+          border: '1px solid var(--pri-t2)',
+          marginBottom: 16,
+        }}
+      >
+        <div style={{ display: 'flex', gap: 10 }}>
+          <span style={{ flex: 'none', color: 'var(--pri)', marginTop: 1 }}>
+            <Icon name='info' size={16} />
+          </span>
+          <div style={{ minWidth: 0, fontSize: 12.5, lineHeight: 1.65 }}>
+            <p style={{ margin: 0 }}>{def.disclaimer}</p>
+            {def.disclaimerTa && (
+              <p className='msrs-tamil' lang='ta' style={{ margin: '7px 0 0' }}>
+                {def.disclaimerTa}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
 
       {topError && (
-        <div style={{ marginBottom: 14 }}>
-          <ErrorBox>
-            <span role='alert'>{topError}</span>
-          </ErrorBox>
+        <div
+          role='alert'
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 9,
+            padding: '11px 14px',
+            borderRadius: 'var(--r2)',
+            background: 'var(--des-t)',
+            color: 'var(--des-fg)',
+            border: '1px solid var(--des-b)',
+            fontSize: 13,
+            fontWeight: 600,
+            marginBottom: 16,
+          }}
+        >
+          <Icon name='alert-triangle' size={16} />
+          {topError}
         </div>
       )}
 
-      <Card>
-        {allFields.map((f) => (
-          <FieldControl
-            key={f.name}
-            field={f}
-            value={values[f.name]}
-            error={errors[f.name]}
-            onChange={(v) => set(f.name, v)}
-            config={config.data}
-            type={type}
-            isFood={isFood}
-          />
-        ))}
-      </Card>
+      <Card pad={0}>
+        <div style={{ padding: 18 }}>
+          <FieldStack>
+            {allFields.map((f) => (
+              <FieldControl
+                key={f.name}
+                field={f}
+                value={values[f.name]}
+                error={errors[f.name]}
+                onChange={(v) => set(f.name, v)}
+                config={config.data}
+                type={type}
+                isFood={isFood}
+              />
+            ))}
+          </FieldStack>
+        </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-        <button
-          type='submit'
-          disabled={submitting || values.agreed !== true}
-          className={submitting || values.agreed !== true ? undefined : 'msrs-lift'}
+        {/* ⚠️ The submit sits INSIDE the card, on its own rail, rather than
+            floating on the page below it. On a phone the form is one long
+            column and the button is the end of it; a detached control after a
+            card edge reads as belonging to the next thing, not this one. */}
+        <div
           style={{
-            padding: '10px 18px',
-            borderRadius: 'var(--r2)',
-            border: '1px solid transparent',
-            background: 'var(--pri)',
-            color: 'var(--pfg)',
-            fontSize: 13.5,
-            fontWeight: 700,
-            cursor: submitting || values.agreed !== true ? 'not-allowed' : 'pointer',
-            opacity: submitting || values.agreed !== true ? 0.5 : 1,
-            boxShadow: 'var(--sh-pri)',
+            display: 'flex',
+            justifyContent: 'flex-end',
+            padding: '14px 18px',
+            borderTop: '1px solid var(--line)',
+            background: 'var(--rail)',
+            borderRadius: '0 0 var(--r4) var(--r4)',
           }}
         >
-          {submitting ? 'Submitting…' : 'Submit request'}
-        </button>
-      </div>
+          <button
+            type='submit'
+            disabled={submitting || values.agreed !== true}
+            className={submitting || values.agreed !== true ? undefined : 'msrs-lift'}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 7,
+              padding: '11px 20px',
+              borderRadius: 'var(--r2)',
+              border: '1px solid transparent',
+              background: 'var(--pri)',
+              color: 'var(--pfg)',
+              boxShadow: 'var(--sh-pri)',
+              fontSize: 13.5,
+              fontWeight: 700,
+              cursor: submitting || values.agreed !== true ? 'not-allowed' : 'pointer',
+              opacity: submitting || values.agreed !== true ? 0.5 : 1,
+            }}
+          >
+            {submitting ? 'Submitting…' : 'Submit request'}
+            {!submitting && <Icon name='chevron-right' size={15} />}
+          </button>
+        </div>
+      </Card>
     </form>
   );
 }
@@ -292,29 +364,73 @@ function FieldControl({
   isFood: boolean;
 }) {
   const id = f.name;
+  const label = <BilingualLabel en={f.label} ta={f.labelTa} />;
+  const help = f.help ? (
+    <>
+      {f.help}
+      {f.helpTa && (
+        <>
+          {' / '}
+          <span className='msrs-tamil' lang='ta'>
+            {f.helpTa}
+          </span>
+        </>
+      )}
+    </>
+  ) : undefined;
   const invalid = error ? true : undefined;
-  const common = { id, invalid, 'aria-describedby': error ? `${id}-error` : undefined };
+  const common = {
+    id,
+    invalid,
+    'aria-invalid': invalid,
+    'aria-describedby': error ? `${id}-error` : f.help ? `${id}-help` : undefined,
+  };
 
   if (f.type === 'checkbox') {
+    // ⚠️ The consent question is a PLATE, not a bare tick and a line of text.
+    // It is the control that gates submission, and on a phone a 16px box beside
+    // a two-line paragraph is the smallest target on the longest screen.
+    const on = value === true;
     return (
-      <CheckRow
-        id={id}
-        checked={value === true}
-        onChange={onChange}
-        label={f.label}
-        labelTa={f.labelTa}
-        help={f.help}
-        helpTa={f.helpTa ?? null}
-        error={error}
-        required={f.required}
-      />
+      <div>
+        {f.help && (
+          <div
+            id={`${id}-help`}
+            style={{ fontSize: 12.5, color: 'var(--mfg)', marginBottom: 8, lineHeight: 1.6 }}
+          >
+            {help}
+          </div>
+        )}
+        <ChoicePlate htmlFor={id} selected={on}>
+          <Checkbox
+            {...common}
+            checked={on}
+            onChange={(e) => onChange(e.target.checked)}
+            style={{ marginTop: 1 }}
+          />
+          <span style={{ flex: 1, minWidth: 0 }}>
+            {label}
+            {f.required && (
+              <span aria-hidden style={{ marginLeft: 3, color: 'var(--des-fg)' }}>
+                *
+              </span>
+            )}
+          </span>
+        </ChoicePlate>
+        <FieldError of={error} id={`${id}-error`} />
+      </div>
     );
   }
 
   return (
-    <Field id={id} label={f.label} labelTa={f.labelTa} help={f.help} helpTa={f.helpTa ?? null} error={error} required={f.required}>
+    <Labelled id={id} label={label} help={help} error={error} required={f.required}>
       {f.type === 'appliances' ? (
-        <ApplianceRows id={id} value={Array.isArray(value) ? value : []} onChange={onChange} max={f.max} />
+        <ApplianceRows
+          id={id}
+          value={Array.isArray(value) ? value : []}
+          onChange={onChange}
+          max={f.max}
+        />
       ) : f.name === 'preferredZoneCode' && f.options ? (
         <ZoneSelect
           name={id}
@@ -327,15 +443,25 @@ function FieldControl({
           invalid={invalid}
         />
       ) : f.type === 'radio' && f.options ? (
-        <RadioList
-          name={id}
-          value={str(value)}
-          onChange={onChange}
-          invalid={invalid}
-          options={f.options.map((o) => ({ value: o.value, label: o.label, labelTa: o.labelTa }))}
-        />
+        <div style={{ display: 'grid', gap: 8 }} role='radiogroup'>
+          {f.options.map((o) => (
+            <ChoicePlate key={o.value} htmlFor={`${id}-${o.value}`} selected={value === o.value}>
+              <Radio
+                id={`${id}-${o.value}`}
+                name={id}
+                value={o.value}
+                checked={value === o.value}
+                onChange={() => onChange(o.value)}
+                style={{ marginTop: 2 }}
+              />
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <BilingualLabel en={o.label} ta={o.labelTa} />
+              </span>
+            </ChoicePlate>
+          ))}
+        </div>
       ) : f.type === 'select' && f.options ? (
-        <SelectInput {...common} value={str(value)} onChange={(e) => onChange(e.target.value)}>
+        <Select {...common} value={str(value)} onChange={(e) => onChange(e.target.value)}>
           <option value=''>Choose…</option>
           {f.options.map((o) => (
             <option key={o.value} value={o.value}>
@@ -343,13 +469,21 @@ function FieldControl({
               {o.labelTa ? ` / ${o.labelTa}` : ''}
             </option>
           ))}
-        </SelectInput>
+        </Select>
       ) : f.type === 'textarea' ? (
-        <TextArea {...common} value={str(value)} onChange={(e) => onChange(e.target.value)} />
+        <Textarea {...common} value={str(value)} onChange={(e) => onChange(e.target.value)} />
       ) : f.type === 'number' ? (
-        <NumberInput {...common} value={str(value)} onChange={(e) => onChange(e.target.value)} />
+        <Input
+          {...common}
+          type='number'
+          inputMode='numeric'
+          min={f.min}
+          max={f.max}
+          value={str(value)}
+          onChange={(e) => onChange(e.target.value)}
+        />
       ) : (
-        <TextInput
+        <Input
           {...common}
           type={f.type === 'email' ? 'email' : f.type === 'tel' ? 'tel' : 'text'}
           inputMode={f.type === 'tel' ? 'tel' : undefined}
@@ -358,8 +492,6 @@ function FieldControl({
           onChange={(e) => onChange(e.target.value)}
         />
       )}
-    </Field>
+    </Labelled>
   );
 }
-
-export { BilingualLabel, HelpLine };

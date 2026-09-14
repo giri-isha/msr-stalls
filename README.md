@@ -1,7 +1,7 @@
 # MSR Stalls
 
-Stall intake, planning and selection for Maha Shivratri — replacing the four
-Google Forms and the spreadsheets around them.
+Stalls for Maha Shivratri, from request to refund — replacing the four Google
+Forms and the spreadsheets around them.
 
 Built standalone, designed to move: every line under `apps/*/src/modules/stalls/`
 and `packages/stalls/` is written to be copied into
@@ -9,24 +9,60 @@ and `packages/stalls/` is written to be copied into
 module. Everything else here is a shell that stands in for that host. See
 [`docs/migration-to-host.md`](docs/migration-to-host.md).
 
-## Phase 1 — what this does today
+## What this does
+
+The whole requirement, from stall request to check-in and refund.
+
+**Intake & selection**
 
 - **Four public request forms** (Vendor, Local Welfare, Ashram, Ashram Food),
   transcribed from the 2025 PDFs with the Tamil labels intact, plus
   admin-appended custom fields.
 - **Vendor capture**: a submission creates an account keyed on email, mints a
   private status link, and emails a receipt. No password, no OTP.
+- **Getting back in**: the status page is the vendor's portal — what is
+  outstanding, and the bank form or FSSAI upload opened straight from it. Lost
+  the email? An address or a mobile number gets the link sent back to the
+  account's own address, which is the whole of "login" here.
 - **Staff pipeline**: dashboard, request list with filters/search/cards,
   full application detail, flag for follow-up.
 - **Planning & Zones**: crowd-driven stall suggestions per zone, a category
   grid, and stall-number generation that never removes an allocated stall.
 - **Selection**: shortlist → select onto specific stalls, with a
   database-enforced single occupant per stall.
-- **Admin**: zones, rate card, charges and deposits, fine types, custom fields,
-  onboarding flow toggles, staff roles, editions.
 
-Phases 2 (onboarding & money) and 3 (event-day ops) are specified in
-[`docs/superpowers/specs/`](docs/superpowers/specs/) and not yet built.
+**Onboarding & money**
+
+- **Communication**: editable letters per edition, bulk or individual send with
+  an attachment, and a log of the calls chasing what has not come back. A letter
+  goes out once — enforced by a unique constraint, not a flag.
+- **Bank, GST and contract**: the vendor's own form, reached from the selection
+  email. Documents are presigned and uploaded straight to object storage; the
+  API never sees the bytes.
+- **Payment details**: the fee itemised exactly as the 2025 payment sheet
+  itemises it, frozen at the moment the vendor is told what to pay.
+- **Finance**: confirm a credit with its reference, amount and date; prepare a
+  refund with the chairs-and-tables deduction and any penalties; record the
+  voucher. No money is collected in the app — payment is NEFT, as in 2025.
+
+**Event operations**
+
+- **Electrical & Venue**: the stall-wise plug and appliance sheet, per bay,
+  printable on A4.
+- **Check-in**: who is here, how many staff registered, how many passes, and
+  what is still outstanding. Nothing blocks a check-in.
+- **Chairs & tables**: distribute, charge for extras at the counter, print a
+  two-part challan, collect, and note what came back broken or short.
+- **Staff registration**: a secure per-stall coupon the vendor forwards to their
+  own team. Only the last four digits of an Aadhaar are ever stored.
+- **FSSAI**: the vendor uploads, the team verifies; a re-upload clears the tick.
+
+Both phases are specified in
+[`docs/superpowers/specs/`](docs/superpowers/specs/), and every line of the
+requirement is tracked against the code in
+[`docs/requirements-traceability.md`](docs/requirements-traceability.md) —
+including the four places where what was built differs from what was asked, and
+why.
 
 ## Run it
 
@@ -38,10 +74,12 @@ createdb msr_stalls_dev && createdb msr_stalls_test
 
 cp apps/api/.env.example apps/api/.env            # edit DATABASE_URL
 cp apps/api/.env.test.example apps/api/.env.test  # edit DATABASE_URL
+# .env sets MSR_DEV_MEDIA_DIR — without it, document uploads are off and the
+# bank and FSSAI forms say so rather than failing silently.
 
 npm run db:migrate                                # dev database
 npm run db:test:deploy --workspace=apps/api       # test database
-npm run db:seed                                   # 2026 edition, staff, requests
+npm run db:seed                                   # 2026 edition, staff, a full pipeline
 
 npm run dev                                       # api :3000, web :5173
 ```
@@ -51,6 +89,18 @@ Then:
 - Public forms: <http://localhost:5173/stalls/apply>
 - Staff: <http://localhost:5173/m/stalls> — pick a seeded staff member to sign
   in (the dev stand-in for Isha SSO). The seed prints who has which role.
+- The manual: <http://localhost:5173/m/stalls/docs> — the process end to end, a
+  flow chart per stage (including how a stage is derived and which steps apply
+  to whom), the vendor's journey, every staff screen and how it is used, and the
+  reference tables for statuses, stages, roles and money. It is a nav item like any other
+  and needs no role, so a volunteer who can only reach the check-in counter can
+  still read where that counter sits in the whole thing.
+
+The seed walks one vendor the whole way — letter sent, bank form in, payment
+confirmed, certificate verified, staff registered, checked in — and leaves the
+others part way, so every screen has both a finished row and an outstanding one.
+It prints that vendor's status link and the staff-registration link; the vendor
+pages are reachable only through links like those.
 
 ## Check it
 
@@ -82,5 +132,21 @@ docs/                         specs, plans, migration checklist
   welfare stalls as VIP seating. The zone lists differ per form accordingly.
 - **Status and stage are separate axes.** Status is the selection decision;
   stage is how far a selected request has travelled through onboarding.
-- **The public API is three routes in one file** (`public-routes.ts`). It is
-  the whole unauthenticated surface.
+- **The whole public API is one file** (`public-routes.ts`). Every route in it
+  is gated by a signed link or a staff coupon, except the form's own config and
+  the one open write. The credential names the request; nothing in a body ever
+  does, which is why no public handler takes a request id.
+- **GST applies to the fee, never to the deposit**, and the amount a vendor was
+  told to pay is frozen when the payment email goes out. Finance reconciles
+  against the figure in the vendor's inbox, not against a live quote.
+- **The first 5A plug point is free.** The request form asks for plugs
+  *excluding* it; the electrical sheet prints the total *including* it. One
+  function owns that conversion.
+- **One function decides what is outstanding** for a stall (`pendingSteps`), and
+  the vendor's page, the onboarding table and the check-in counter all call it.
+- **A vendor's link is their login.** There is no password to reset, so
+  "I lost my link" is answered by the account, not by the caller: the address or
+  number names an account, and the link goes to the address already on it.
+- **Files never pass through the API.** The browser presigns and PUTs at the
+  store; keys are minted from a UUID, never from what the vendor called the
+  file.

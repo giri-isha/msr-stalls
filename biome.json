@@ -28,6 +28,23 @@
     {
       "includes": ["apps/web/src/components/ui/**"],
       "linter": { "enabled": false }
+    },
+    {
+      "includes": ["apps/web/src/modules/stalls/ui/**"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "useKeyWithClickEvents": "off",
+            "noStaticElementInteractions": "off",
+            "useFocusableInteractive": "off",
+            "useSemanticElements": "off",
+            "noAutofocus": "off"
+          },
+          "style": {
+            "noNonNullAssertion": "off"
+          }
+        }
+      }
     }
   ]
 }

@@ -8,13 +8,23 @@ describe('MODULE_KEY', () => {
 });
 
 describe('ROLES', () => {
-  test('declares the four staff roles from the requirements', () => {
+  test('declares the staff roles from the requirements', () => {
     expect(ROLES.map((r) => r.roleKey).sort()).toEqual([
       'stalls_admin',
       'stalls_finance',
       'stalls_lead',
+      'stalls_local_welfare',
       'stalls_volunteer',
     ]);
+  });
+
+  // The local welfare team files requests inside this application, because the
+  // traders they file for mostly have no email address. That makes them staff —
+  // it does not give them a commercial vendor's bank details.
+  test('only the local welfare role is scoped, and only to its own requests', () => {
+    const scoped = ROLES.filter((r) => r.requestTypeScope !== null);
+    expect(scoped.map((r) => r.roleKey)).toEqual(['stalls_local_welfare']);
+    expect(scoped[0].requestTypeScope).toEqual(['LOCAL_WELFARE']);
   });
 
   test('every role carries a human label for the admin screen', () => {

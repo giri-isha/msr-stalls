@@ -1,9 +1,9 @@
 // SHELL — the standalone stand-in for Isha SSO. Lists the seeded staff and
-// signs in as one of them with a click. Discarded at migration; the API route
-// it calls exists only outside production.
+// signs in as one of them with a single click. Discarded at migration; the
+// API route it calls exists only outside production.
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/modules/stalls/api-client';
-import { Card, ErrorBox, H1 } from '@/modules/stalls/ui/ui';
+import { Card, ErrorBox, Icon, Loading } from '@/modules/stalls/ui';
 
 interface Person {
   personId: string;
@@ -12,14 +12,17 @@ interface Person {
 }
 
 export function DevSignIn({ onSignedIn }: { onSignedIn: () => void }) {
-  const [people, setPeople] = useState<Person[]>([]);
+  const [people, setPeople] = useState<Person[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch<Person[]>('/api/dev/people')
       .then(setPeople)
-      .catch((e) => setError((e as Error).message));
+      .catch((e) => {
+        setPeople([]);
+        setError((e as Error).message);
+      });
   }, []);
 
   const signIn = async (email: string) => {
@@ -36,46 +39,99 @@ export function DevSignIn({ onSignedIn }: { onSignedIn: () => void }) {
   };
 
   return (
-    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ width: '100%', maxWidth: 440 }}>
-        <H1 sub='In the host this is Isha SSO. Here, pick a seeded staff member.'>Sign in — development</H1>
-        <Card pad={10}>
-          <div style={{ display: 'grid', gap: 6 }}>
-            {people.map((p) => (
-              <button
-                type='button'
-                key={p.personId}
-                disabled={busy !== null}
-                onClick={() => signIn(p.email)}
-                className='msrs-lift'
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '10px 12px',
-                  borderRadius: 'var(--r2)',
-                  border: '1px solid var(--bd)',
-                  background: 'var(--card)',
-                  color: 'var(--fg)',
-                  cursor: 'pointer',
-                  fontSize: 13,
-                  textAlign: 'left',
-                }}
-              >
-                <span style={{ fontWeight: 600 }}>{p.displayName}</span>
-                <span style={{ fontSize: 12, color: 'var(--mfg)' }}>{p.email}</span>
-              </button>
-            ))}
-            {people.length === 0 && !error && (
-              <div style={{ fontSize: 13, color: 'var(--mfg)', padding: 8 }}>
-                No staff seeded yet — run <code>npm run db:seed</code>.
-              </div>
-            )}
-            {error && <ErrorBox>{error}</ErrorBox>}
+    <div
+      style={{
+        minHeight: '100svh',
+        background: 'var(--bg)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <Card pad={0} style={{ width: '100%', maxWidth: 420, overflow: 'hidden' }}>
+        <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--line)' }}>
+          <div
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 'var(--r3)',
+              background: 'var(--pri-t)',
+              color: 'var(--pri)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 12,
+            }}
+          >
+            <Icon name='key' size={18} />
           </div>
-        </Card>
-      </div>
+          <div
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 20,
+              fontWeight: 600,
+              letterSpacing: '-.4px',
+            }}
+          >
+            Sign in — development
+          </div>
+          <div style={{ fontSize: 12.5, color: 'var(--mfg)', marginTop: 4, lineHeight: 1.5 }}>
+            In the host this is Isha SSO. Here, pick a seeded staff member. Run{' '}
+            <code
+              style={{
+                fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace',
+                background: 'var(--mut)',
+                borderRadius: 'var(--r)',
+                padding: '1px 5px',
+              }}
+            >
+              npm run db:seed
+            </code>{' '}
+            if the list is empty.
+          </div>
+        </div>
+
+        <div style={{ padding: 14, display: 'grid', gap: 8 }}>
+          {people === null && <Loading />}
+          {people?.map((p) => (
+            <button
+              key={p.personId}
+              type='button'
+              className='msrs-lift'
+              disabled={busy !== null}
+              onClick={() => signIn(p.email)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                width: '100%',
+                padding: '11px 13px',
+                borderRadius: 'var(--r2)',
+                border: '1px solid var(--bd)',
+                background: 'var(--card)',
+                color: 'var(--fg)',
+                cursor: busy ? 'wait' : 'pointer',
+                opacity: busy && busy !== p.email ? 0.5 : 1,
+                textAlign: 'left',
+                fontSize: 13,
+              }}
+            >
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: 'block', fontWeight: 600 }}>{p.displayName}</span>
+                <span style={{ display: 'block', fontSize: 11.5, color: 'var(--mfg)' }}>
+                  {p.email}
+                </span>
+              </span>
+              <Icon name='chevron-right' size={15} />
+            </button>
+          ))}
+          {people?.length === 0 && !error && (
+            <div style={{ fontSize: 13, color: 'var(--mfg)' }}>No staff seeded yet.</div>
+          )}
+          {error && <ErrorBox>{error}</ErrorBox>}
+        </div>
+      </Card>
     </div>
   );
 }

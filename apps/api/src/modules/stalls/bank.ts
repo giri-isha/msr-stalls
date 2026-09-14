@@ -1,61 +1,37 @@
 import type { PrismaClient } from '@prisma/client';
-import type {
-  BankDetailsInput,
-  PresignUploadInput,
-  PresignedUploadResponse,
-  PublicBankView,
-} from '@msr/stalls';
+import type { BankFormView, SubmitBankDetailsInput } from '@msr/stalls';
 import { recordActivity } from '../../activity';
-import type { MediaStore } from '../../storage/media-namespace';
-import { resolveAccessLink } from './accounts';
-import { chargesFor, linksFor } from './config';
+import { flowFor } from './config';
 import type { Db } from './editions';
-import { UploadsUnavailableError } from './errors';
-import { ensureQuote } from './payments';
+import { BankDetailsLockedError, StepNotOpenError, UnknownRequestError } from './errors';
+import { allocatedNumbers, allocatedZone, factsInclude, refreshStage } from './facts';
 import { MODULE_KEY } from './roles';
-import { advanceStage } from './stage';
+import { isOurKey } from './uploads';
 
-const mask = (n: string) =>
-  n.length <= 4 ? n : `${'•'.repeat(Math.max(0, n.length - 4))}${n.slice(-4)}`;
+/** The Bank Details and Requirements form — the one Phase 2 surface a vendor
+ *  fills in themselves.
+ *
+ *  Reached only through a `BANK_FORM` access link, which the selection letter
+ *  carries. The link identifies the request; nothing in the body does. A body
+ *  that named its own request id would let anyone holding one link write bank
+ *  details onto any request in the system.
+ */
 
-/** What the bank form page needs: who this is for, what they already told us,
- *  and a read-only summary if it was already submitted. */
-export async function bankView(db: Db, token: string): Promise<PublicBankView> {
-  const link = await resolveAccessLink(db, token, 'BANK_FORM');
-  const r = await db.stallRequest.findUniqueOrThrow({
-    where: { id: link.requestId ?? '' },
-    include: {
-      allocations: { where: { releasedAt: null }, include: { stall: true } },
-      edition: true,
-      bankDetails: true,
-      appliances: { orderBy: { sortOrder: 'asc' } },
-    },
+export async function getBankForm(db: Db, requestId: string): Promise<BankFormView> {
+  const r = await db.stallRequest.findUnique({
+    where: { id: requestId },
+    include: { ...factsInclude, edition: true, appliances: { orderBy: { sortOrder: 'asc' } } },
   });
-  const [links, charges] = await Promise.all([
-    linksFor(db, r.editionId),
-    chargesFor(db, r.editionId),
-  ]);
+  if (!r) throw new UnknownRequestError(requestId);
   return {
     reference: r.reference,
     stallName: r.stallName,
-    requestType: r.requestType,
-    stallNumbers: r.allocations.map((a) => a.stall.number),
+    requesterName: r.requesterName,
+    email: r.email,
+    stallNumbers: allocatedNumbers(r),
+    zoneCode: allocatedZone(r),
     editionName: r.edition.name,
-    termsUrl: links.termsUrl,
-    depositPaise:
-      r.requestType === 'LOCAL_WELFARE'
-        ? charges.localWelfareDepositPaise
-        : charges.vendorDepositPaise,
-    submitted: r.bankDetails
-      ? {
-          submittedAt: r.bankDetails.submittedAt.toISOString(),
-          invoiceName: r.bankDetails.invoiceName,
-          accountHolder: r.bankDetails.accountHolder,
-          bankName: r.bankDetails.bankName,
-          accountNumberMasked: mask(r.bankDetails.accountNumber),
-        }
-      : null,
-    prefill: {
+    current: {
       plugs5a: r.plugs5a,
       plugs15a: r.plugs15a,
       gasStoves: r.gasStoves,
@@ -65,28 +41,48 @@ export async function bankView(db: Db, token: string): Promise<PublicBankView> {
       passes4w: r.passes4w,
       passesStaff: r.passesStaff,
       appliances: r.appliances.map((a) => ({ name: a.name, watts: a.watts })),
-      mobile: r.bankDetails?.mobile ?? r.contactNumber,
-      address: r.bankDetails?.address ?? r.address,
     },
+    submittedAt: r.bankDetail?.submittedAt.toISOString() ?? null,
   };
 }
 
-/** The vendor's one write after selection. Bank details, and the electrical
- *  and logistics block, in one transaction; then the stage moves and a
- *  payment quote is computed so staff can send the payment email at once. */
-export async function submitBank(
+/** Writes the bank details AND the vendor's final requirements.
+ *
+ *  The second half matters as much as the first: a request made in November is
+ *  stale by February, and the 2025 form asks for plug points, chairs, tables
+ *  and passes again for that reason. Those answers overwrite the request's, so
+ *  the electrical sheet, the quote and the chairs counter all read one set of
+ *  numbers — the latest ones the vendor stands behind.
+ */
+export async function submitBankDetails(
   db: PrismaClient,
-  token: string,
-  input: BankDetailsInput,
-): Promise<{ reference: string }> {
-  const link = await resolveAccessLink(db, token, 'BANK_FORM');
-  const requestId = link.requestId ?? '';
-  const reference = await db.$transaction(async (tx) => {
-    const r = await tx.stallRequest.findUniqueOrThrow({ where: { id: requestId } });
-    await tx.stallBankDetails.upsert({
-      where: { requestId },
-      create: {
+  requestId: string,
+  input: SubmitBankDetailsInput,
+): Promise<void> {
+  const r = await db.stallRequest.findUnique({
+    where: { id: requestId },
+    include: { bankDetail: true },
+  });
+  if (!r) throw new UnknownRequestError(requestId);
+  if (r.bankDetail) throw new BankDetailsLockedError();
+  if (r.status !== 'SELECTED') throw new StepNotOpenError('bank details');
+
+  const flow = await flowFor(db, r.editionId);
+  if (!flow.bankStepEnabled) throw new StepNotOpenError('bank details');
+  if (r.requestType !== 'VENDOR') throw new StepNotOpenError('bank details');
+
+  // Keys the browser sends back must be ones this module handed out, for this
+  // purpose. See `isOurKey`.
+  if (!isOurKey(input.chequeKey, 'BANK_CHEQUE')) throw new StepNotOpenError('cheque upload');
+  if (!isOurKey(input.panKey, 'BANK_PAN')) throw new StepNotOpenError('PAN upload');
+  if (input.gstKey && !isOurKey(input.gstKey, 'BANK_GST')) throw new StepNotOpenError('GST upload');
+
+  const now = new Date();
+  await db.$transaction(async (tx) => {
+    await tx.stallBankDetail.create({
+      data: {
         requestId,
+        email: input.email.trim().toLowerCase(),
         invoiceName: input.invoiceName,
         accountHolder: input.accountHolder,
         mobile: input.mobile,
@@ -97,33 +93,17 @@ export async function submitBank(
         accountNumber: input.accountNumber,
         ifsc: input.ifsc,
         micr: input.micr || null,
-        chequeMediaKey: input.chequeMediaKey ?? null,
-        advanceReturnAck: input.advanceReturnAck,
         panNumber: input.panNumber,
-        panMediaKey: input.panMediaKey ?? null,
         gstNumber: input.gstNumber,
-        gstMediaKey: input.gstMediaKey ?? null,
-        neftAgreed: input.neftAgreed,
-        tncAgreed: input.tncAgreed,
-      },
-      update: {
-        invoiceName: input.invoiceName,
-        accountHolder: input.accountHolder,
-        mobile: input.mobile,
-        address: input.address,
-        pincode: input.pincode,
-        bankName: input.bankName,
-        branch: input.branch,
-        accountNumber: input.accountNumber,
-        ifsc: input.ifsc,
-        micr: input.micr || null,
-        chequeMediaKey: input.chequeMediaKey ?? undefined,
-        panNumber: input.panNumber,
-        panMediaKey: input.panMediaKey ?? undefined,
-        gstNumber: input.gstNumber,
-        gstMediaKey: input.gstMediaKey ?? undefined,
+        chequeKey: input.chequeKey,
+        panKey: input.panKey,
+        gstKey: input.gstKey || null,
+        agreedNeftAt: now,
+        agreedTermsAt: now,
+        remarks: input.remarks ?? null,
       },
     });
+
     await tx.stallRequest.update({
       where: { id: requestId },
       data: {
@@ -135,53 +115,34 @@ export async function submitBank(
         passes2w: input.passes2w,
         passes4w: input.passes4w,
         passesStaff: input.passesStaff,
-        remarks: input.remarks ?? r.remarks,
-        appliances: {
-          deleteMany: {},
-          create: input.appliances.map((a, i) => ({ name: a.name, watts: a.watts, sortOrder: i })),
-        },
       },
     });
-    await tx.stallAccessLink.update({ where: { id: link.id }, data: { usedAt: new Date() } });
+
+    // Appliances are replaced wholesale rather than merged: the vendor is
+    // restating the list, and a merge would leave a fryer they dropped on the
+    // electrical load sheet.
+    await tx.stallRequestAppliance.deleteMany({ where: { requestId } });
+    if (input.appliances.length > 0) {
+      await tx.stallRequestAppliance.createMany({
+        data: input.appliances.map((a, i) => ({
+          requestId,
+          name: a.name,
+          watts: a.watts,
+          sortOrder: i,
+        })),
+      });
+    }
+
     await recordActivity(tx, {
-      actorRef: 'vendor',
+      // The vendor acted, not a staff member. The trail records the request as
+      // its own actor rather than attributing this to whoever looks at it next.
+      actorRef: requestId,
       moduleKey: MODULE_KEY,
-      action: 'stall_bank_details.submitted',
+      action: 'stall_bank_detail.submitted',
       subjectRef: requestId,
+      detail: { gst: input.gstNumber.toUpperCase() !== 'NONE' },
     });
-    return r.reference;
   });
-  await advanceStage(db, requestId, 'BANK_SUBMITTED');
-  await ensureQuote(db, requestId, 'vendor');
-  return { reference };
-}
 
-/** Full bank details for staff. */
-export async function bankDetailsFor(db: Db, requestId: string) {
-  return db.stallBankDetails.findUnique({ where: { requestId } });
-}
-
-const SAFE = /[^a-zA-Z0-9._-]+/g;
-
-/** An upload slot for a cheque, PAN, GST certificate or FSSAI certificate,
- *  under this request's own prefix. The token decides which purposes are
- *  allowed: a bank-form link may not upload an FSSAI certificate and vice
- *  versa. */
-export async function presignUpload(
-  db: Db,
-  token: string,
-  input: PresignUploadInput,
-  files: MediaStore,
-): Promise<PresignedUploadResponse> {
-  if (!files.configured()) throw new UploadsUnavailableError();
-  const purpose = input.purpose === 'FSSAI' ? 'FSSAI_UPLOAD' : 'BANK_FORM';
-  const link = await resolveAccessLink(db, token, purpose);
-  const r = await db.stallRequest.findUniqueOrThrow({
-    where: { id: link.requestId ?? '' },
-    include: { edition: { select: { year: true } } },
-  });
-  const name = input.fileName.replace(SAFE, '_').slice(0, 80);
-  const key = `stalls/${r.edition.year}/${r.id}/${input.purpose.toLowerCase()}-${Date.now()}-${name}`;
-  const p = await files.presignUpload({ key, contentType: input.contentType, bytes: input.bytes });
-  return { key, url: p.url, headers: p.headers };
+  await refreshStage(db, requestId);
 }

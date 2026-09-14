@@ -12,6 +12,8 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { SESSION_COOKIE, devLogin, getCurrentPerson } from './auth';
 import { LogMailer, type Mailer } from './email';
+import { type Signer, createUnconfiguredSigner } from './modules/stalls/signer';
+import { type WhatsAppSender, createLoggingWhatsAppSender } from './modules/stalls/whatsapp';
 import { registerStallsModule } from './modules/stalls';
 import { prisma } from './prisma';
 import { DEV_MEDIA_ROUTE, DiskMediaStore, devMediaDir } from './storage/disk-media-store';
@@ -20,6 +22,10 @@ import { type ZodTypeProvider, useZodValidation } from './zod-validation';
 
 export interface BuildOptions {
   mail?: Mailer;
+  /** Injectable like the mailer, so a test can assert what went out on each
+   *  channel without a provider. */
+  whatsapp?: WhatsAppSender;
+  signer?: Signer;
   files?: MediaStore;
   /** Where the web app is served from; used for CORS and status links. */
   webOrigin?: string;
@@ -121,16 +127,17 @@ export async function buildApp(opts: BuildOptions = {}): Promise<FastifyInstance
   registerStallsModule(app, {
     files,
     mail,
+    // Standalone adapters. The host supplies real ones through the same ports;
+    // see `whatsapp.ts` and `signer.ts` for why each behaves as it does when
+    // nothing is wired up — the WhatsApp one succeeds and logs, the signature
+    // one reports itself unconfigured rather than pretending to have sent.
+    whatsapp: opts.whatsapp ?? createLoggingWhatsAppSender((m) => app.log.info(m, 'whatsapp')),
+    signer: opts.signer ?? createUnconfiguredSigner(),
     statusUrl: (token) => `${webOrigin}/stalls/status/${token}`,
-    linkUrl: (purpose, token) => {
-      const path = {
-        STATUS: 'status',
-        BANK_FORM: 'bank',
-        FSSAI_UPLOAD: 'fssai',
-        STAFF_REGISTRATION: 'staff',
-      }[purpose];
-      return `${webOrigin}/stalls/${path}/${token}`;
-    },
+    bankFormUrl: (token) => `${webOrigin}/stalls/bank/${token}`,
+    fssaiUrl: (token) => `${webOrigin}/stalls/fssai/${token}`,
+    staffRegistrationUrl: (code) => `${webOrigin}/stalls/staff/${encodeURIComponent(code)}`,
+    signatureUrl: (token) => `${webOrigin}/stalls/sign/${token}`,
     publicRateLimitMax: Number(process.env.STALLS_PUBLIC_RATE_LIMIT ?? 20),
   });
 

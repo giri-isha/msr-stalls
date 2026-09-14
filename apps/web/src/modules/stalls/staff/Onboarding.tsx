@@ -1,288 +1,466 @@
-import { type OnboardingRow, STAGE_LABEL, formatInr } from '@msr/stalls';
-import { useState } from 'react';
-import * as api from '../api';
-import { Grid, Mono, Sub } from '../components/Grid';
-import { StagePill, TypeTag } from '../components/StatusPill';
+import type { OnboardingRow } from '@msr/stalls';
+import { formatInr } from '@msr/stalls';
+import { useMemo, useState } from 'react';
+import { getOnboarding, issueCoupon, removeVendorStaff, verifyFssai } from '../api';
+import { TypeBadge } from '../components/StatusPill';
 import { formatDate, formatDateTime, useLoad } from '../hooks';
+import { listOnboarding } from '../api';
 import { useMe } from '../me';
-import { Dialog } from '../ui/components/Dialog';
-import { StatTiles } from '../ui/components/StatTiles';
-import { useToast } from '../ui/components/Toast';
-import { Icon } from '../ui/icons';
-import { Btn, ErrorBox, H1, KV, Loading, Tag, Toolbar, toolBtnStyle } from '../ui/ui';
+import {
+  Btn,
+  Card,
+  Dialog,
+  Empty,
+  ErrorBox,
+  Facts,
+  H1,
+  Icon,
+  Loading,
+  Search,
+  Section,
+  Tag,
+  TBody,
+  TD,
+  TH,
+  THead,
+  TR,
+  Table,
+  type Tone,
+  useIsMobile,
+  useToast,
+} from '../ui';
 
-/** Requirements 4–5, 7–8: every selected vendor and where they stand — bank
- *  details in, payment quoted and sent, confirmed, FSSAI, coupon. The place a
- *  coordinator works from between selection and the event. */
+/**
+ * Who is holding the team up, and what is outstanding for each of them.
+ *
+ * The four status columns read `RECEIVED / PENDING / NOT_APPLICABLE`, and the
+ * third value is the one that matters: a local welfare stall is not *pending* a
+ * bank form, it is never asked for one. Collapsing "not applicable" into
+ * "pending" is what turns this table into a list of things that will never be
+ * ticked off.
+ */
 export function Onboarding() {
-  const { can } = useMe();
-  const toast = useToast();
-  const rows = useLoad(api.onboardingRows);
-  const [stage, setStage] = useState<string>('All');
-  const [open, setOpen] = useState<OnboardingRow | null>(null);
-  const [busy, setBusy] = useState(false);
-  const canComms = can('comms:write');
-  const canWrite = can('requests:write');
+  const { data, error, loading, reload } = useLoad(listOnboarding);
+  const [open, setOpen] = useState<string | null>(null);
+  const [q, setQ] = useState('');
+  const mobile = useIsMobile();
 
-  if (rows.loading) return <Loading />;
-  if (rows.error || !rows.data) return <ErrorBox>{rows.error?.message}</ErrorBox>;
-  const all = rows.data;
-  const shown = stage === 'All' ? all : all.filter((r) => STAGE_LABEL[r.stage] === stage);
-  const counts = new Map<string, number>();
-  for (const r of all) counts.set(STAGE_LABEL[r.stage], (counts.get(STAGE_LABEL[r.stage]) ?? 0) + 1);
-
-  const run = async (label: string, fn: () => Promise<unknown>) => {
-    setBusy(true);
-    try {
-      await fn();
-      toast.ok(label);
-      rows.reload();
-      setOpen(null);
-    } catch (e) {
-      toast.fail(e);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const rows = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    return (data ?? []).filter(
+      (r) =>
+        !term ||
+        r.stallName.toLowerCase().includes(term) ||
+        r.requesterName.toLowerCase().includes(term) ||
+        r.reference.toLowerCase().includes(term) ||
+        r.stallNumbers.some((n) => n.toLowerCase().includes(term)),
+    );
+  }, [data, q]);
 
   return (
     <div>
-      <H1 icon={<Icon name='users' size={20} />} sub='Selected vendors, from confirmation through payment to FSSAI and staff coupons.'>
+      <H1
+        icon={<Icon name='clipboard-list' size={18} />}
+        sub='Bank details, payment, FSSAI and staff registration for every selected stall.'
+      >
         Vendor Onboarding
       </H1>
-      <StatTiles
-        noun='vendor'
-        tiles={[{ label: 'All', count: all.length }, ...[...counts.entries()].map(([label, count]) => ({ label, count }))]}
-        active={stage}
-        onPick={setStage}
-      />
-      <Toolbar>
-        {['All', ...Object.values(STAGE_LABEL)].map((s) => (
-          <button type='button' key={s} onClick={() => setStage(s)} aria-pressed={stage === s} style={toolBtnStyle(stage === s)}>
-            {s}
-            {s !== 'All' && counts.get(s) ? ` · ${counts.get(s)}` : ''}
-          </button>
-        ))}
-      </Toolbar>
-      <Grid
-        rows={shown}
-        rowKey={(r) => r.id}
-        onRow={setOpen}
-        selectedKey={open?.id ?? null}
-        empty='No selected vendors at this stage.'
-        columns={[
-          {
-            key: 'stall',
-            header: 'Stall',
-            width: '1.6fr',
-            mobile: 'title',
-            render: (r) => (
-              <>
-                <b>{r.stallName}</b>
-                <Sub>
-                  <Mono>{r.reference}</Mono> · {r.requesterName} · {r.contactNumber}
-                </Sub>
-              </>
-            ),
-          },
-          { key: 'type', header: 'Type', width: '110px', render: (r) => <TypeTag type={r.requestType} size='sm' /> },
-          { key: 'alloc', header: 'Stalls', width: '100px', render: (r) => <Mono>{r.allocatedStalls.join(', ')}</Mono> },
-          { key: 'stage', header: 'Stage', width: '150px', render: (r) => <StagePill stage={r.stage} size='sm' /> },
-          {
-            key: 'bank',
-            header: 'Bank',
-            width: '110px',
-            render: (r) => (r.bankSubmittedAt ? <Tag tone='ok' size='sm'>{formatDate(r.bankSubmittedAt)}</Tag> : r.lastSent.SELECTION_VENDOR || r.lastSent.SELECTION_LOCAL_WELFARE ? <Tag tone='warn' size='sm'>Awaited</Tag> : <Tag size='sm'>—</Tag>),
-          },
-          {
-            key: 'pay',
-            header: 'Payment',
-            width: '150px',
-            render: (r) =>
-              r.payment ? (
-                <>
-                  <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatInr(r.payment.totalPayablePaise)}</span>
-                  <Sub>{r.payment.confirmedAt ? 'Confirmed' : r.payment.emailSentAt ? 'Sent, awaiting' : 'Quoted'}</Sub>
-                </>
-              ) : (
-                <span style={{ color: 'var(--mfg)' }}>—</span>
-              ),
-          },
-          {
-            key: 'fssai',
-            header: 'FSSAI',
-            width: '100px',
-            render: (r) => (r.fssai ? <Tag tone={r.fssai.verifiedAt ? 'ok' : 'warn'} size='sm'>{r.fssai.verifiedAt ? 'Verified' : 'Uploaded'}</Tag> : <span style={{ color: 'var(--mfg)' }}>—</span>),
-          },
-          { key: 'coupon', header: 'Staff', width: '90px', render: (r) => (r.coupon ? <span>{r.coupon.registeredCount}/{r.coupon.maxStaff}</span> : <span style={{ color: 'var(--mfg)' }}>—</span>) },
-        ]}
-      />
+
+      <div style={{ marginBottom: 12 }}>
+        <Search value={q} onChange={setQ} placeholder='Search stall, vendor or stall number…' />
+      </div>
+
+      {error && <ErrorBox>{error.message}</ErrorBox>}
+      {loading && !data ? (
+        <Loading />
+      ) : rows.length === 0 ? (
+        <Empty>No selected stalls to onboard yet.</Empty>
+      ) : mobile ? (
+        <div style={{ display: 'grid', gap: 10 }}>
+          {rows.map((r) => (
+            <Card
+              key={r.requestId}
+              pad={14}
+              onAct={() => setOpen(r.requestId)}
+              label={`${r.stallName}, onboarding`}
+              style={{ display: 'grid', gap: 8 }}
+            >
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{r.stallName}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
+                    {r.stallNumbers.join(', ') || '—'}
+                  </div>
+                </div>
+                <TypeBadge type={r.requestType} />
+              </div>
+              <PendingChips row={r} />
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <Card pad={0} style={{ overflow: 'hidden' }}>
+          <Table>
+            <THead>
+              <TR>
+                <TH>Vendor</TH>
+                <TH>Stall</TH>
+                <TH>Bank</TH>
+                <TH>GST</TH>
+                <TH>Payment</TH>
+                <TH>FSSAI</TH>
+                <TH align='right'>Staff</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {rows.map((r) => (
+                <TR key={r.requestId} onClick={() => setOpen(r.requestId)}>
+                  <TD>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{r.stallName}</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>{r.requesterName}</div>
+                  </TD>
+                  <TD mono style={{ fontSize: 11.5 }}>
+                    {r.stallNumbers.join(', ') || '—'}
+                  </TD>
+                  <TD>
+                    <StatusTag value={r.bankDetails} />
+                  </TD>
+                  <TD>
+                    <StatusTag value={r.gst} />
+                  </TD>
+                  <TD>
+                    <StatusTag value={r.payment} />
+                  </TD>
+                  <TD>
+                    <StatusTag value={r.fssai} />
+                  </TD>
+                  <TD align='right'>
+                    <StaffCount row={r} />
+                  </TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        </Card>
+      )}
 
       {open && (
-        <Dialog width={620} title={open.stallName} note={`${open.reference} · ${open.allocatedStalls.join(', ') || 'no stall yet'}`} onClose={() => setOpen(null)}>
-          <Detail r={open} canComms={canComms} canWrite={canWrite} busy={busy} run={run} />
-        </Dialog>
+        <OnboardingDetailDialog id={open} onClose={() => setOpen(null)} onChanged={reload} />
       )}
     </div>
   );
 }
 
-function Detail({ r, canComms, canWrite, busy, run }: { r: OnboardingRow; canComms: boolean; canWrite: boolean; busy: boolean; run: (l: string, f: () => Promise<unknown>) => Promise<void> }) {
-  const pay = useLoad(() => api.payment(r.id), [r.id]);
-  const bank = useLoad(() => api.bankDetails(r.id), [r.id]);
-  const fssai = useLoad(() => api.fssaiFor(r.id), [r.id]);
-  const isAshram = r.requestType === 'ASHRAM' || r.requestType === 'ASHRAM_FOOD';
-  const selectionKey = r.requestType === 'VENDOR' ? 'SELECTION_VENDOR' : r.requestType === 'LOCAL_WELFARE' ? 'SELECTION_LOCAL_WELFARE' : 'SELECTION_ASHRAM';
+const TONE_FOR: Record<string, Tone> = {
+  RECEIVED: 'ok',
+  CONFIRMED: 'ok',
+  VERIFIED: 'ok',
+  UPLOADED: 'info',
+  PENDING: 'warn',
+  NOT_APPLICABLE: 'neutral',
+};
+
+const LABEL_FOR: Record<string, string> = {
+  RECEIVED: 'Received',
+  CONFIRMED: 'Confirmed',
+  VERIFIED: 'Verified',
+  UPLOADED: 'Uploaded',
+  PENDING: 'Pending',
+  // Not "—": a dash reads as missing data. This says the question was never
+  // asked of this vendor.
+  NOT_APPLICABLE: 'N/A',
+};
+
+function StatusTag({ value }: { value: string }) {
+  return (
+    <Tag tone={TONE_FOR[value] ?? 'neutral'} size='sm'>
+      {LABEL_FOR[value] ?? value}
+    </Tag>
+  );
+}
+
+function StaffCount({ row }: { row: OnboardingRow }) {
+  if (row.staffExpected === 0) return <span style={{ color: 'var(--mfg)' }}>—</span>;
+  const done = row.staffRegistered >= row.staffExpected;
+  return (
+    <Tag tone={done ? 'ok' : 'warn'} size='sm'>
+      {row.staffRegistered} of {row.staffExpected}
+    </Tag>
+  );
+}
+
+function PendingChips({ row }: { row: OnboardingRow }) {
+  if (row.pending.length === 0) {
+    return (
+      <Tag tone='ok' size='sm'>
+        All clear
+      </Tag>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {row.pending.map((p) => (
+        <Tag key={p.step} tone='warn' size='sm'>
+          {p.label}
+        </Tag>
+      ))}
+    </div>
+  );
+}
+
+// ── Detail ──────────────────────────────────────────────────────────────────
+
+function OnboardingDetailDialog({
+  id,
+  onClose,
+  onChanged,
+}: {
+  id: string;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const toast = useToast();
+  const { can } = useMe();
+  const { data, error, loading, reload } = useLoad(() => getOnboarding(id), [id]);
+
+  const refresh = () => {
+    reload();
+    onChanged();
+  };
 
   return (
-    <div style={{ display: 'grid', gap: 4 }}>
-      <KV k='Stage' v={<StagePill stage={r.stage} size='sm' />} />
-      <KV
-        k='Confirmation email'
-        v={
-          <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            {r.lastSent[selectionKey] ? `Sent ${formatDateTime(r.lastSent[selectionKey]!)}` : 'Not sent'}
-            {canComms && !r.lastSent[selectionKey] && (
-              <Btn disabled={busy} onClick={() => run('Confirmation sent', () => api.sendEmails({ requestIds: [r.id], templateKey: selectionKey, force: false }))}>
-                Send now
-              </Btn>
+    <Dialog title={data?.stallName ?? 'Onboarding'} onClose={onClose} width={680}>
+      {loading && !data ? (
+        <Loading />
+      ) : error ? (
+        <ErrorBox>{error.message}</ErrorBox>
+      ) : !data ? null : (
+        <div style={{ display: 'grid', gap: 16 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <TypeBadge type={data.requestType} />
+            <Tag size='sm'>{data.reference}</Tag>
+            {data.stallNumbers.length > 0 && (
+              <Tag tone='ok' size='sm'>
+                <Icon name='map-pin' size={11} /> {data.stallNumbers.join(', ')}
+              </Tag>
             )}
-          </span>
-        }
-      />
-      {!isAshram && (
-        <KV
-          k='Bank details'
-          v={
-            bank.data ? (
-              <span>
-                {bank.data.accountHolder}, {bank.data.bankName} {bank.data.branch} · A/c ••••{bank.data.accountNumber.slice(-4)} · {bank.data.ifsc} · PAN {bank.data.panNumber} · GST {bank.data.gstNumber}
-                <Sub>Received {formatDateTime(bank.data.submittedAt)}</Sub>
-              </span>
-            ) : (
-              <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                Awaited
-                {canComms && r.lastSent[selectionKey] && (
-                  <Btn disabled={busy} onClick={() => run('Reminder sent', () => api.sendEmails({ requestIds: [r.id], templateKey: 'BANK_REMINDER', force: true }))}>
-                    Send reminder
-                  </Btn>
-                )}
-              </span>
-            )
-          }
-        />
-      )}
-      {!isAshram && (
-        <KV
-          k='Payment'
-          v={
-            pay.data ? (
-              <div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '2px 16px', fontSize: 12.5 }}>
-                  {pay.data.lines.map((l) => (
-                    <div key={l.label} style={{ display: 'contents' }}>
-                      <span style={{ color: 'var(--mfg)' }}>{l.label}</span>
-                      <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{formatInr(l.amountPaise)}</span>
-                    </div>
-                  ))}
-                  <span style={{ fontWeight: 700 }}>Total payable</span>
-                  <span style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{formatInr(pay.data.totalPayablePaise)}</span>
-                </div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                  {pay.data.confirmedAt ? (
-                    <Tag tone='ok'>Confirmed {formatDate(pay.data.confirmedAt)} · {pay.data.referenceNo}</Tag>
-                  ) : (
-                    <>
-                      {pay.data.emailSentAt ? <Tag tone='info'>Payment email sent {formatDateTime(pay.data.emailSentAt)}</Tag> : <Tag>Quoted, not yet sent</Tag>}
-                      {canComms && (
-                        <Btn kind={pay.data.emailSentAt ? 'ghost' : 'primary'} disabled={busy} onClick={() => run('Payment details sent', () => api.sendPaymentEmail(r.id))}>
-                          {pay.data.emailSentAt ? 'Re-send payment email' : 'Send payment email'}
-                        </Btn>
-                      )}
-                      {canComms && pay.data.emailSentAt && (
-                        <Btn disabled={busy} onClick={() => run('Reminder sent', () => api.sendEmails({ requestIds: [r.id], templateKey: 'PAYMENT_REMINDER', force: true }))}>
-                          Send reminder
-                        </Btn>
-                      )}
-                      {canComms && (
-                        <Btn disabled={busy} onClick={() => run('Re-quoted', () => api.requote(r.id))}>
-                          Re-quote
-                        </Btn>
-                      )}
-                    </>
+          </div>
+
+          <PendingChips row={data} />
+
+          {data.quote && !data.quote.exempt && !data.quote.unpriced && (
+            <Section title='Amount'>
+              <Facts
+                items={[
+                  ['Fee, incl. GST', formatInr(data.quote.feeTotalPaise)],
+                  ['Refundable deposit', formatInr(data.quote.depositTotalPaise)],
+                  ['Total', formatInr(data.quote.grandTotalPaise)],
+                ]}
+              />
+            </Section>
+          )}
+
+          <Section title='Bank details'>
+            {data.bank ? (
+              <div style={{ display: 'grid', gap: 10 }}>
+                <Facts
+                  items={[
+                    ['Invoice name', data.bank.invoiceName],
+                    ['Account holder', data.bank.accountHolder],
+                    ['Bank', `${data.bank.bankName} — ${data.bank.branch}`],
+                    ['Account number', data.bank.accountNumber],
+                    ['IFSC', data.bank.ifsc],
+                    ['MICR', data.bank.micr ?? '—'],
+                    ['PAN', data.bank.panNumber],
+                    ['GST', data.bank.gstNumber],
+                    ['Submitted', formatDateTime(data.bank.submittedAt)],
+                  ]}
+                />
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {data.bank.files.map((f) =>
+                    // The URL is presigned and short-lived, so it is rendered as
+                    // a link and never stored anywhere.
+                    f.url ? (
+                      <a
+                        key={f.label}
+                        href={f.url}
+                        target='_blank'
+                        rel='noreferrer'
+                        style={{ textDecoration: 'none' }}
+                      >
+                        <Tag tone='info' size='sm'>
+                          <Icon name='eye' size={11} /> {f.label}
+                        </Tag>
+                      </a>
+                    ) : (
+                      <Tag key={f.label} size='sm'>
+                        {f.label} (unavailable)
+                      </Tag>
+                    ),
                   )}
                 </div>
               </div>
-            ) : pay.error ? (
-              <span style={{ color: 'var(--des-fg)' }}>{pay.error.message}</span>
             ) : (
-              'Loading…'
-            )
-          }
-        />
-      )}
-      <KV
-        k='FSSAI'
-        v={
-          fssai.data ? (
-            <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              {fssai.data.viewUrl ? (
-                <a href={fssai.data.viewUrl} target='_blank' rel='noreferrer'>
-                  {fssai.data.fileName}
-                </a>
-              ) : (
-                fssai.data.fileName
-              )}
-              {fssai.data.licenseNumber && <Mono>{fssai.data.licenseNumber}</Mono>}
-              {fssai.data.verifiedAt ? (
-                <Tag tone='ok' size='sm'>Verified</Tag>
-              ) : fssai.data.rejectedReason ? (
-                <Tag tone='des' size='sm'>Rejected: {fssai.data.rejectedReason}</Tag>
-              ) : (
-                <Tag tone='warn' size='sm'>Awaiting review</Tag>
-              )}
-              {canWrite && !fssai.data.verifiedAt && (
-                <>
-                  <Btn kind='primary' disabled={busy} onClick={() => run('FSSAI verified', () => api.reviewFssai(r.id, 'VERIFY'))}>
-                    Verify
+              <Empty>
+                {data.bankDetails === 'NOT_APPLICABLE'
+                  ? 'This requester type is not asked for bank details.'
+                  : 'Not submitted yet.'}
+              </Empty>
+            )}
+          </Section>
+
+          <Section title='FSSAI certificate'>
+            {data.fssaiFiles.length > 0 ? (
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {data.fssaiFiles.map((f) =>
+                    f.url ? (
+                      <a
+                        key={f.name}
+                        href={f.url}
+                        target='_blank'
+                        rel='noreferrer'
+                        style={{ textDecoration: 'none' }}
+                      >
+                        <Tag tone='info' size='sm'>
+                          <Icon name='file-text' size={11} /> {f.name}
+                        </Tag>
+                      </a>
+                    ) : (
+                      <Tag key={f.name} size='sm'>
+                        {f.name}
+                      </Tag>
+                    ),
+                  )}
+                </div>
+                {can('requests:write') && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Btn
+                      kind={data.fssai === 'VERIFIED' ? 'ghost' : 'primary'}
+                      onClick={async () => {
+                        try {
+                          await verifyFssai(id, data.fssai !== 'VERIFIED');
+                          toast.ok(
+                            data.fssai === 'VERIFIED'
+                              ? 'Verification removed.'
+                              : 'FSSAI marked verified.',
+                          );
+                          refresh();
+                        } catch (e) {
+                          toast.fail(e);
+                        }
+                      }}
+                    >
+                      {data.fssai === 'VERIFIED' ? 'Remove verification' : 'Mark verified'}
+                    </Btn>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Empty>
+                {data.fssai === 'NOT_APPLICABLE'
+                  ? 'A non-food stall does not need an FSSAI certificate.'
+                  : 'Not uploaded yet.'}
+              </Empty>
+            )}
+          </Section>
+
+          <Section title='Staff registration' count={data.staff.length}>
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 10,
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  fontSize: 12.5,
+                  color: 'var(--mfg)',
+                }}
+              >
+                {data.couponCode ? (
+                  <span>
+                    Coupon{' '}
+                    <strong style={{ fontFamily: 'ui-monospace,Menlo,monospace' }}>
+                      {data.couponCode}
+                    </strong>{' '}
+                    — registrations made with it are recorded against this stall.
+                  </span>
+                ) : (
+                  <span>
+                    No coupon issued yet. One is created automatically when the FSSAI and staff
+                    letter goes out.
+                  </span>
+                )}
+                {can('requests:write') && !data.couponCode && (
+                  <Btn
+                    onClick={async () => {
+                      try {
+                        const { code } = await issueCoupon(id);
+                        toast.ok(`Coupon ${code} issued.`);
+                        refresh();
+                      } catch (e) {
+                        toast.fail(e);
+                      }
+                    }}
+                  >
+                    <Icon name='key' size={13} />
+                    Issue coupon
                   </Btn>
-                  <Btn kind='danger' disabled={busy} onClick={() => run('FSSAI rejected', () => api.reviewFssai(r.id, 'REJECT', 'Certificate not acceptable — please upload a valid one'))}>
-                    Reject
-                  </Btn>
-                </>
+                )}
+              </div>
+              {data.staff.length === 0 ? (
+                <Empty>Nobody registered yet.</Empty>
+              ) : (
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>Name</TH>
+                      <TH>Mobile</TH>
+                      <TH>ID</TH>
+                      <TH>Registered</TH>
+                      <TH> </TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {data.staff.map((s) => (
+                      <TR key={s.id}>
+                        <TD>{s.name}</TD>
+                        <TD mono style={{ fontSize: 12 }}>
+                          {s.mobile}
+                        </TD>
+                        <TD muted style={{ fontSize: 11.5 }}>
+                          {s.idType.replace('_', ' ').toLowerCase()} ···{s.idNumber}
+                        </TD>
+                        <TD muted style={{ fontSize: 11.5 }}>
+                          {formatDate(s.registeredAt)}
+                        </TD>
+                        <TD align='right'>
+                          {can('requests:write') && (
+                            <Btn
+                              kind='danger'
+                              onClick={async () => {
+                                try {
+                                  await removeVendorStaff(s.id);
+                                  toast.ok(`${s.name} removed.`);
+                                  refresh();
+                                } catch (e) {
+                                  toast.fail(e);
+                                }
+                              }}
+                            >
+                              Remove
+                            </Btn>
+                          )}
+                        </TD>
+                      </TR>
+                    ))}
+                  </TBody>
+                </Table>
               )}
-            </span>
-          ) : (
-            <span style={{ color: 'var(--mfg)' }}>Not uploaded</span>
-          )
-        }
-      />
-      <KV
-        k='Staff coupon'
-        v={
-          r.coupon ? (
-            <span>
-              <Mono>{r.coupon.code}</Mono> · {r.coupon.registeredCount} of {r.coupon.maxStaff} registered
-            </span>
-          ) : (
-            <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              Not issued
-              {canWrite && (
-                <Btn disabled={busy} onClick={() => run('Coupon issued', () => api.issueCoupon(r.id))}>
-                  Issue now
-                </Btn>
-              )}
-            </span>
-          )
-        }
-      />
-      {canComms && r.coupon && !r.lastSent.POST_PAYMENT && (
-        <div style={{ marginTop: 8 }}>
-          <Btn disabled={busy} onClick={() => run('Post-payment mail sent', () => api.sendEmails({ requestIds: [r.id], templateKey: 'POST_PAYMENT', force: false }))}>
-            Send FSSAI & staff-registration mail
-          </Btn>
+            </div>
+          </Section>
         </div>
       )}
-    </div>
+    </Dialog>
   );
 }

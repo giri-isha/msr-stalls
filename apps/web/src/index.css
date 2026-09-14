@@ -1,4 +1,51 @@
-/* The shell's only stylesheet. Everything visual lives in the module's own
-   scoped tokens (src/modules/stalls/ui/tokens.css), applied by <Frame>. */
-html, body, #root { height: 100%; margin: 0; }
-#root { display: flex; flex-direction: column; min-height: 100vh; }
+/* The app entry sheet, and deliberately almost empty.
+ *
+ * ⚠️ The palette, the type, the shape and elevation ramps and every component
+ * style live in `modules/stalls/ui/tokens.css`, SCOPED to `.msrs` — the class
+ * `Frame` puts around anything the module renders. That scoping is the whole
+ * design (see `ui/frame.tsx`), and it only holds if this file does not quietly
+ * declare a second, competing set on `:root`. It used to: a Tailwind `@theme`
+ * block of stone-and-amber tokens plus bare `html`/`body` rules, which is what
+ * the module was painted with before it took the shared system.
+ *
+ * What is left here is what genuinely belongs to the DOCUMENT rather than to a
+ * module: the canvas behind the app, and the two things that must be right
+ * before any `.msrs` element exists.
+ */
+
+/* ⚠️ Both themes, because this is the colour BEHIND the module — visible for
+ * the frame before React mounts, behind a rubber-band overscroll on iOS, and
+ * under a page shorter than the viewport. Left at the browser default it is
+ * white, which in dark mode is a white flash on every load and a white band at
+ * the bottom of every short page. The values are `--bg`'s from `tokens.css`,
+ * repeated rather than referenced: a `var()` here would resolve against
+ * `:root`, where the module's tokens deliberately do not live.
+ *
+ * `color-scheme` on top of the colour, so form controls, scrollbars and the
+ * caret the browser draws itself follow the theme too. */
+:root {
+  color-scheme: light;
+  background: oklch(0.985 0.003 277.366);
+}
+
+:root.dark {
+  color-scheme: dark;
+  background: oklch(0.265 0.008 285.8);
+}
+
+body {
+  margin: 0;
+  /* A fallback stack only. The real face arrives with the module's sheet,
+     scoped to `.msrs`; this is what the browser paints in the gap. */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* Text selection follows the theme like everything else. Without this the
+   browser's default blue lands on top of an indigo palette. */
+::selection {
+  background: oklch(0.885 0.055 277.366);
+}
+
+:root.dark ::selection {
+  background: oklch(0.47 0.1 277.4);
+}

@@ -1,5 +1,6 @@
 import type { StallRequestType } from './reference';
-import type { ZoneCode } from './zones';
+import { ZONE_BLURB_2025 } from './zones';
+import type { PublicZone } from './contracts';
 
 /** The four 2025 request forms, transcribed from the PDFs in `stalls_forms/`.
  *
@@ -28,7 +29,10 @@ export type FieldType =
   | 'select'
   | 'radio'
   | 'checkbox'
-  | 'appliances';
+  | 'appliances'
+  /** The preferred-location radio list. Its choices are the edition's zones,
+   *  resolved at render time rather than stored here. */
+  | 'zone';
 
 export interface FieldOption {
   value: string;
@@ -81,35 +85,27 @@ const ASHRAM_DISCLAIMER =
   'Stalls will be allocated based on availability. Please note that stalls are ' +
   'not near the seating area. Please refer to Map and choose based on need.';
 
-/** The zone list as the public forms present it — with what each area faces and
- *  which seating it serves, because that is what a vendor is actually choosing
- *  between. A3 and B2 appear here: they are closed to *vendors* (no rent is
- *  quoted for them) but local welfare stalls really do stand in them. */
-const ZONE_OPTIONS: Array<FieldOption & { value: ZoneCode }> = [
-  {
-    value: 'A3',
-    label: 'Category A3 Behind Adiyogi - Snake side : For VIP Seating',
-    labelTa: null,
-  },
-  {
-    value: 'B2',
-    label: 'Category B2 Behind Adiyogi - Moon side : For VIP Seating',
-    labelTa: null,
-  },
-  { value: 'A4', label: 'Category A4 - Snake side : For Paid Seating', labelTa: null },
-  {
-    value: 'B3',
-    label: 'Category B3 Behind Adiyogi - Moon Side : For Paid Seating',
-    labelTa: null,
-  },
-  { value: 'B4', label: 'Category B4 - Moon Side : For Paid Seating', labelTa: null },
-  { value: 'C1', label: 'Category C1 - Moon side : For General Seating', labelTa: null },
-  { value: 'C2', label: 'Category C2 - Moon side : For General Seating', labelTa: null },
-];
-
-/** Vendors are not offered A3 or B2 — page 3 of the 2025 vendor form lists them
- *  as "Closed" and quotes no rent for them. */
-const VENDOR_ZONE_OPTIONS = ZONE_OPTIONS.filter((z) => z.value !== 'A3' && z.value !== 'B2');
+/** The preferred-location choices, built from the edition's OWN zones.
+ *
+ *  ⚠️ Not a constant. The venue is redrawn each year — a bay is added, another
+ *  dropped — and a baked-in list would mean a form that silently cannot offer
+ *  a bay the team had already configured and priced. The 2025 seating blurbs
+ *  are kept in `ZONE_BLURB_2025` and used where the code still matches;
+ *  anything added since shows its own configured name, which is what an admin
+ *  typed for exactly this purpose.
+ *
+ *  `forVendor` drops the bays closed to trade. A3 and B2 are the standing case:
+ *  closed on the vendor form, offered on the local welfare one, because that is
+ *  who actually stands in them. */
+export function zoneOptions(zones: PublicZone[], forVendor: boolean): FieldOption[] {
+  return zones
+    .filter((z) => !(forVendor && z.isClosedToVendors))
+    .map((z) => ({
+      value: z.code,
+      label: z.blurb ?? ZONE_BLURB_2025[z.code] ?? z.name,
+      labelTa: null,
+    }));
+}
 
 const YES_NO: FieldOption[] = [
   { value: 'YES', label: 'Yes', labelTa: null },
@@ -209,9 +205,9 @@ const VENDOR_FIELDS: FormField[] = [
     name: 'preferredZoneCode',
     label: 'Preferred Location',
     labelTa: null,
-    type: 'radio',
+    // Options come from the edition's zones at render time — see `zoneOptions`.
+    type: 'zone',
     required: true,
-    options: VENDOR_ZONE_OPTIONS,
   },
   {
     name: 'itemsSelling',
@@ -268,9 +264,8 @@ const LOCAL_WELFARE_FIELDS: FormField[] = [
     name: 'preferredZoneCode',
     label: 'Preferred Location',
     labelTa: null,
-    type: 'radio',
+    type: 'zone',
     required: true,
-    options: ZONE_OPTIONS,
   },
   {
     name: 'itemsSelling',
@@ -333,8 +328,11 @@ const LOCAL_WELFARE_FIELDS: FormField[] = [
     name: 'depositAcknowledged',
     label: 'Refundable Caution Deposit',
     labelTa: 'திரும்பப்பெறக்கூடிய எச்சரிக்கை வைப்பு',
-    help: 'Rs.4000 : (Money will be deducted for any damage, loss or cleaning charges)',
-    helpTa: '(எந்தவொரு சேதம், இழப்பு அல்லது துப்புரவு கட்டணங்களுக்கும் பணம் கழிக்கப்படும்)',
+    help: 'Money will be deducted for any damage, loss or cleaning charges. The amount depends on the area you choose and is shown with it above.',
+    // TO-VERIFY: the 2025 Tamil named the flat Rs.4000 figure, which is now
+    // area-wise. Ask the stalls team for the revised string rather than
+    // editing a printed one — it is the sentence that says money is withheld.
+    helpTa: null,
     type: 'checkbox',
     required: true,
   },
@@ -411,9 +409,8 @@ const ashramFields = (food: boolean): FormField[] => [
     label: 'Preferred Location',
     labelTa: null,
     help: 'If you need stalls in multiple areas, please create a separate entry for each area',
-    type: 'select',
+    type: 'zone',
     required: true,
-    options: ZONE_OPTIONS,
   },
   {
     name: 'numStallsRequested',

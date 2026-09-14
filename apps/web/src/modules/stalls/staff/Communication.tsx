@@ -1,87 +1,193 @@
-import { PLACEHOLDERS, TEMPLATE_KEYS, TEMPLATE_LABEL, type TemplateKey } from '@msr/stalls';
-import { useEffect, useMemo, useState } from 'react';
-import * as api from '../api';
-import { Field, SelectInput, TextArea, TextInput } from '../components/FormControls';
-import { Grid, Mono, Sub } from '../components/Grid';
-import { StagePill, TYPE_LABEL, TypeTag } from '../components/StatusPill';
+import type { CommRecipient, ReminderKind, TemplateKeyValue } from '@msr/stalls';
+import { unknownPlaceholders } from '@msr/stalls';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  clearSent,
+  getTemplates,
+  listRecipients,
+  listReminders,
+  logReminder,
+  putTemplate,
+  putTemplateAttachment,
+  presignStaffUpload,
+  sendEmails,
+  type TemplatesResponse,
+  uploadFile,
+} from '../api';
+import { TYPE_LABEL, TypeBadge } from '../components/StatusPill';
 import { formatDateTime, useLoad } from '../hooks';
 import { useMe } from '../me';
-import { Dialog } from '../ui/components/Dialog';
-import { useToast } from '../ui/components/Toast';
-import { Icon } from '../ui/icons';
-import { Btn, Card, ErrorBox, H1, Loading, Tag, Toolbar } from '../ui/ui';
+import {
+  Btn,
+  Card,
+  Checkbox,
+  Empty,
+  ErrorBox,
+  H1,
+  Icon,
+  Input,
+  Loading,
+  Search,
+  Select,
+  Tag,
+  TBody,
+  TD,
+  TH,
+  THead,
+  TR,
+  Table,
+  Textarea,
+  toolBtnStyle,
+  useIsMobile,
+  useToast,
+} from '../ui';
 
-/** Requirement 3: one template per audience, bulk or individual send, and a
- *  confirmation that is never sent twice. Two tabs — Send, and Templates. */
+/**
+ * Vendor communication — the selection letter, and chasing the people who have
+ * not answered it.
+ *
+ * ⚠️ **Bulk and individual send are the same button.** The requirement asks for
+ * both, and the tempting shape is two code paths; this screen ticks boxes and
+ * sends the ticked set, and a set of one is an individual send. The "once sent,
+ * never again" rule then lives in exactly one place — a unique constraint in
+ * the database — instead of in two call sites that drift.
+ */
 export function Communication() {
+  const [tab, setTab] = useState<'send' | 'templates' | 'reminders'>('send');
   const { can } = useMe();
-  const [tab, setTab] = useState<'send' | 'templates'>('send');
+
+  if (!can('comms:write')) {
+    return (
+      <div>
+        <H1 icon={<Icon name='megaphone' size={18} />}>Communication</H1>
+        <Empty>You do not have access to send vendor communication.</Empty>
+      </div>
+    );
+  }
+
   return (
     <div>
       <H1
-        icon={<Icon name='megaphone' size={20} />}
-        sub='Selection confirmations, payment details and reminders. A confirmation goes out once; the log is the proof.'
-        actions={
-          <div style={{ display: 'inline-flex', gap: 4, padding: 4, background: 'var(--mut)', borderRadius: 'calc(var(--r4) - 4px)' }}>
-            {(['send', 'templates'] as const).map((t) => (
-              <button
-                type='button'
-                key={t}
-                onClick={() => setTab(t)}
-                style={{ padding: '7px 14px', borderRadius: 'calc(var(--r4) - 8px)', border: 0, cursor: 'pointer', fontSize: 12.5, fontWeight: tab === t ? 700 : 500, background: tab === t ? 'var(--card)' : 'transparent', color: tab === t ? 'var(--fg)' : 'var(--mfg)', boxShadow: tab === t ? 'var(--ring)' : 'none' }}
-              >
-                {t === 'send' ? 'Send' : 'Templates'}
-              </button>
-            ))}
-          </div>
-        }
+        icon={<Icon name='megaphone' size={18} />}
+        sub='Send the selection letter, edit what it says, and log the calls chasing what has not come back.'
       >
         Communication
       </H1>
-      {tab === 'send' ? <SendTab canSend={can('comms:write')} /> : <TemplatesTab writable={can('comms:write')} />}
+      <Tabs
+        tabs={[
+          ['send', 'Send letters'],
+          ['templates', 'Templates'],
+          ['reminders', 'Reminder calls'],
+        ]}
+        active={tab}
+        onPick={(t) => setTab(t as typeof tab)}
+      />
+      {tab === 'send' && <SendPanel />}
+      {tab === 'templates' && <TemplatePanel />}
+      {tab === 'reminders' && <ReminderPanel />}
     </div>
   );
 }
 
-const SELECTION_FOR: Record<string, TemplateKey> = {
-  VENDOR: 'SELECTION_VENDOR',
-  LOCAL_WELFARE: 'SELECTION_LOCAL_WELFARE',
-  ASHRAM: 'SELECTION_ASHRAM',
-  ASHRAM_FOOD: 'SELECTION_ASHRAM',
+/** The segmented control the money and communication screens share. Local to
+ *  these two screens rather than in `ui/` — the kit's `Chip` is a filter, and
+ *  these are page sections. */
+export function Tabs({
+  tabs,
+  active,
+  onPick,
+}: {
+  tabs: [string, string][];
+  active: string;
+  onPick: (key: string) => void;
+}) {
+  return (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+      {tabs.map(([key, label]) => (
+        <button
+          key={key}
+          type='button'
+          aria-pressed={key === active}
+          onClick={() => onPick(key)}
+          style={toolBtnStyle(key === active)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Send ────────────────────────────────────────────────────────────────────
+
+const TEMPLATE_LABEL: Record<string, string> = {
+  SELECTION_VENDOR: 'Vendor selection confirmation',
+  SELECTION_ASHRAM: 'Ashram selection confirmation',
+  PAYMENT_DETAILS: 'Payment details',
+  ONBOARDING_FSSAI_STAFF: 'FSSAI and staff registration',
 };
 
-function SendTab({ canSend }: { canSend: boolean }) {
+function SendPanel() {
   const toast = useToast();
-  const [requestType, setRequestType] = useState('VENDOR');
-  const [templateKey, setTemplateKey] = useState<TemplateKey>('SELECTION_VENDOR');
-  const [onlyUnsent, setOnlyUnsent] = useState(true);
+  const { data, error, loading, reload } = useLoad(listRecipients);
+  const [templateKey, setTemplateKey] = useState<TemplateKeyValue>('SELECTION_VENDOR');
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [force, setForce] = useState(false);
-  const [preview, setPreview] = useState<{ id: string; subject: string; body: string; missing: string[] } | null>(null);
+  const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
-  const rows = useLoad(() => api.commsRows(requestType || undefined), [requestType]);
+  const mobile = useIsMobile();
 
-  // Choosing an audience picks its confirmation template, and clears the picks.
-  useEffect(() => {
-    setTemplateKey(SELECTION_FOR[requestType] ?? 'PAYMENT_DETAILS');
-    setPicked(new Set());
-  }, [requestType]);
+  const rows = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    return (data ?? []).filter(
+      (r) =>
+        !term ||
+        r.stallName.toLowerCase().includes(term) ||
+        r.requesterName.toLowerCase().includes(term) ||
+        r.reference.toLowerCase().includes(term),
+    );
+  }, [data, q]);
 
-  const shown = useMemo(() => (rows.data ?? []).filter((r) => !onlyUnsent || !r.lastSent[templateKey]), [rows.data, onlyUnsent, templateKey]);
-  const allPicked = shown.length > 0 && shown.every((r) => picked.has(r.id));
+  const sentAt = useCallback(
+    (r: CommRecipient) => r.sentTemplates.find((t) => t.key === templateKey)?.sentAt ?? null,
+    [templateKey],
+  );
 
-  const send = async () => {
+  // A row already sent this letter cannot be ticked — the send would skip it,
+  // and offering the tick would make the result read as a failure.
+  const sendable = rows.filter((r) => sentAt(r) === null);
+
+  // Clearing the ticks when the letter changes: the set that made sense for the
+  // vendor letter is the wrong set for the payment letter.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on letter change
+  useEffect(() => setPicked(new Set()), [templateKey]);
+
+  const toggle = (id: string) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const send = async (ids: string[]) => {
+    if (ids.length === 0) return;
     setBusy(true);
     try {
-      const res = await api.sendEmails({ requestIds: [...picked], templateKey, force });
-      const bits = [`${res.sent.length} sent`];
-      if (res.skipped.length) bits.push(`${res.skipped.length} skipped`);
-      if (res.failed.length) bits.push(`${res.failed.length} failed`);
-      if (res.failed.length) toast.fail(new Error(bits.join(', ')));
-      else toast.ok(bits.join(', '));
-      if (res.skipped.length) toast.info(res.skipped.map((s) => s.reason).filter((v, i, a) => a.indexOf(v) === i).join(' · '));
+      const result = await sendEmails(templateKey, ids);
+      if (result.sent.length > 0) {
+        toast.ok(`Sent ${result.sent.length} ${result.sent.length === 1 ? 'letter' : 'letters'}.`);
+      }
+      // Every skip is reported, never swallowed: a bulk send that silently drops
+      // a vendor is the failure this screen exists to prevent.
+      for (const s of result.skipped.slice(0, 5)) {
+        const row = (data ?? []).find((r) => r.id === s.requestId);
+        toast.info(`${row?.stallName ?? s.requestId}: ${s.reason}`);
+      }
+      if (result.skipped.length > 5) {
+        toast.info(`…and ${result.skipped.length - 5} more skipped.`);
+      }
       setPicked(new Set());
-      rows.reload();
+      reload();
     } catch (e) {
       toast.fail(e);
     } finally {
@@ -89,173 +195,496 @@ function SendTab({ canSend }: { canSend: boolean }) {
     }
   };
 
-  const doPreview = async (id: string) => {
+  if (loading && !data) return <Loading />;
+  if (error) return <ErrorBox>{error.message}</ErrorBox>;
+
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      <div
+        style={{
+          display: 'flex',
+          gap: 10,
+          alignItems: 'center',
+          flexWrap: 'wrap',
+        }}
+      >
+        <Select
+          aria-label='Letter'
+          value={templateKey}
+          onChange={(e) => setTemplateKey(e.target.value as TemplateKeyValue)}
+          style={{ width: 'auto', minWidth: 240 }}
+        >
+          {Object.entries(TEMPLATE_LABEL).map(([k, v]) => (
+            <option key={k} value={k}>
+              {v}
+            </option>
+          ))}
+        </Select>
+        <Search value={q} onChange={setQ} placeholder='Search vendors…' />
+        <div style={{ flex: 1 }} />
+        <Btn
+          onClick={() => setPicked(new Set(sendable.map((r) => r.id)))}
+          disabled={sendable.length === 0}
+        >
+          Select all {sendable.length > 0 ? `(${sendable.length})` : ''}
+        </Btn>
+        {/* Named "Send selected", not "Send": the row buttons are also called
+            Send, and two controls sharing an accessible name in one toolbar is
+            ambiguous to a screen reader before it is ambiguous to a test. */}
+        <Btn kind='primary' onClick={() => send([...picked])} disabled={busy || picked.size === 0}>
+          <Icon name='megaphone' size={14} />
+          {picked.size > 0 ? `Send ${picked.size} selected` : 'Send selected'}
+        </Btn>
+      </div>
+
+      {rows.length === 0 ? (
+        <Empty>No selected vendors yet. Letters go out once a request is selected.</Empty>
+      ) : mobile ? (
+        <div style={{ display: 'grid', gap: 10 }}>
+          {rows.map((r) => (
+            <RecipientCard
+              key={r.id}
+              r={r}
+              sentAt={sentAt(r)}
+              checked={picked.has(r.id)}
+              onToggle={() => toggle(r.id)}
+              onSend={() => send([r.id])}
+              busy={busy}
+            />
+          ))}
+        </div>
+      ) : (
+        <Card pad={0} style={{ overflow: 'hidden' }}>
+          <Table>
+            <THead>
+              <TR>
+                <TH> </TH>
+                <TH>Vendor</TH>
+                <TH>Type</TH>
+                <TH>Stall</TH>
+                <TH>Email status</TH>
+                <TH> </TH>
+              </TR>
+            </THead>
+            <TBody>
+              {rows.map((r) => {
+                const sent = sentAt(r);
+                return (
+                  <TR key={r.id}>
+                    <TD>
+                      <Checkbox
+                        checked={picked.has(r.id)}
+                        disabled={sent !== null}
+                        aria-label={`Select ${r.stallName}`}
+                        onChange={() => toggle(r.id)}
+                      />
+                    </TD>
+                    <TD>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{r.stallName}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>{r.email}</div>
+                    </TD>
+                    <TD>
+                      <TypeBadge type={r.requestType} />
+                    </TD>
+                    <TD mono style={{ fontSize: 11.5 }}>
+                      {r.stallNumbers.join(', ') || '—'}
+                    </TD>
+                    <TD>
+                      {sent ? (
+                        <Tag tone='ok' size='sm'>
+                          Sent {formatDateTime(sent)}
+                        </Tag>
+                      ) : (
+                        <Tag tone='warn' size='sm'>
+                          Not sent
+                        </Tag>
+                      )}
+                    </TD>
+                    <TD align='right'>
+                      {sent ? (
+                        <ResendButton row={r} templateKey={templateKey} onDone={reload} />
+                      ) : (
+                        <Btn onClick={() => send([r.id])} disabled={busy}>
+                          Send
+                        </Btn>
+                      )}
+                    </TD>
+                  </TR>
+                );
+              })}
+            </TBody>
+          </Table>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/** Re-sending is deliberately two steps and admin-only. "Once sent it should
+ *  not be sent again" is the rule; this is the escape hatch for the day a
+ *  vendor's address was wrong, not a second Send button. */
+function ResendButton({
+  row,
+  templateKey,
+  onDone,
+}: {
+  row: CommRecipient;
+  templateKey: TemplateKeyValue;
+  onDone: () => void;
+}) {
+  const { can } = useMe();
+  const toast = useToast();
+  const [armed, setArmed] = useState(false);
+  if (!can('config:write')) return null;
+
+  return armed ? (
+    <Btn
+      kind='danger'
+      onClick={async () => {
+        try {
+          await clearSent(row.id, templateKey);
+          toast.ok('Cleared — this letter can be sent again.');
+          onDone();
+        } catch (e) {
+          toast.fail(e);
+        } finally {
+          setArmed(false);
+        }
+      }}
+    >
+      Confirm
+    </Btn>
+  ) : (
+    <Btn onClick={() => setArmed(true)}>Allow re-send</Btn>
+  );
+}
+
+function RecipientCard({
+  r,
+  sentAt,
+  checked,
+  onToggle,
+  onSend,
+  busy,
+}: {
+  r: CommRecipient;
+  sentAt: string | null;
+  checked: boolean;
+  onToggle: () => void;
+  onSend: () => void;
+  busy: boolean;
+}) {
+  return (
+    <Card pad={14} style={{ display: 'grid', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <Checkbox
+          checked={checked}
+          disabled={sentAt !== null}
+          aria-label={`Select ${r.stallName}`}
+          onChange={onToggle}
+        />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>{r.stallName}</div>
+          <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>{r.email}</div>
+        </div>
+        <TypeBadge type={r.requestType} />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {sentAt ? (
+          <Tag tone='ok' size='sm'>
+            Sent {formatDateTime(sentAt)}
+          </Tag>
+        ) : (
+          <Btn onClick={onSend} disabled={busy}>
+            Send
+          </Btn>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+// ── Templates ───────────────────────────────────────────────────────────────
+
+function TemplatePanel() {
+  const toast = useToast();
+  const { data, error, loading, reload } = useLoad<TemplatesResponse>(getTemplates);
+  const [key, setKey] = useState<TemplateKeyValue>('SELECTION_VENDOR');
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [dirty, setDirty] = useState(false);
+
+  const current = data?.templates.find((t) => t.key === key);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: load the picked letter
+  useEffect(() => {
+    if (!current) return;
+    setSubject(current.subject);
+    setBody(current.body);
+    setDirty(false);
+  }, [current?.key, current?.subject, current?.body]);
+
+  const unknown = useMemo(() => unknownPlaceholders(`${subject}\n${body}`), [subject, body]);
+
+  if (loading && !data) return <Loading />;
+  if (error) return <ErrorBox>{error.message}</ErrorBox>;
+  if (!data || !current) return <Empty>No templates.</Empty>;
+
+  const save = async () => {
     try {
-      const p = await api.previewTemplate(templateKey, id);
-      setPreview({ id, ...p });
+      await putTemplate(key, { subject, body });
+      toast.ok('Template saved.');
+      setDirty(false);
+      reload();
     } catch (e) {
       toast.fail(e);
     }
   };
 
   return (
-    <>
-      <Toolbar>
-        <SelectInput aria-label='Audience' value={requestType} onChange={(e) => setRequestType(e.target.value)} style={{ width: 180 }}>
-          {Object.entries(TYPE_LABEL).map(([k, v]) => (
-            <option key={k} value={k}>
-              {v}
-            </option>
+    <div style={{ display: 'grid', gap: 14, gridTemplateColumns: 'minmax(0,1fr)' }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {data.templates.map((t) => (
+          <button
+            key={t.key}
+            type='button'
+            aria-pressed={t.key === key}
+            onClick={() => setKey(t.key)}
+            style={toolBtnStyle(t.key === key)}
+          >
+            {t.name}
+          </button>
+        ))}
+      </div>
+
+      <Card pad={16} style={{ display: 'grid', gap: 12 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--mfg)' }}>{current.description}</div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {current.appliesTo.map((t) => (
+            <Tag key={t} size='sm'>
+              {TYPE_LABEL[t] ?? t}
+            </Tag>
           ))}
-        </SelectInput>
-        <SelectInput aria-label='Template' value={templateKey} onChange={(e) => setTemplateKey(e.target.value as TemplateKey)} style={{ width: 300 }}>
-          {TEMPLATE_KEYS.map((k) => (
-            <option key={k} value={k}>
-              {TEMPLATE_LABEL[k]}
-            </option>
-          ))}
-        </SelectInput>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}>
-          <input type='checkbox' checked={onlyUnsent} onChange={(e) => setOnlyUnsent(e.target.checked)} style={{ accentColor: 'var(--pri)' }} /> Not yet sent this template
+        </div>
+
+        <label htmlFor='template-subject' style={{ display: 'grid', gap: 5 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 600 }}>Subject</span>
+          <Input
+            id='template-subject'
+            value={subject}
+            onChange={(e) => {
+              setSubject(e.target.value);
+              setDirty(true);
+            }}
+          />
         </label>
-        <div style={{ flex: 1 }} />
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--mfg)' }}>
-          <input type='checkbox' checked={force} onChange={(e) => setForce(e.target.checked)} style={{ accentColor: 'var(--des)' }} /> Allow re-send
+
+        <label htmlFor='template-body' style={{ display: 'grid', gap: 5 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 600 }}>Body</span>
+          <Textarea
+            id='template-body'
+            rows={16}
+            value={body}
+            onChange={(e) => {
+              setBody(e.target.value);
+              setDirty(true);
+            }}
+            style={{ fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 12.5 }}
+          />
         </label>
-        <Btn kind='primary' disabled={!canSend || busy || picked.size === 0} onClick={send}>
-          {busy ? 'Sending…' : `Send to ${picked.size || ''}`.trim()}
-        </Btn>
-      </Toolbar>
-      {rows.error && <ErrorBox>{rows.error.message}</ErrorBox>}
-      {rows.loading ? (
-        <Loading />
-      ) : (
-        <Grid
-          rows={shown}
-          rowKey={(r) => r.id}
-          empty={onlyUnsent ? 'Everyone here has already had this template.' : 'No selected requests of this type.'}
-          columns={[
-            {
-              key: 'pick',
-              header: (
-                <input
-                  type='checkbox'
-                  aria-label='Select all'
-                  checked={allPicked}
-                  onChange={(e) => setPicked(e.target.checked ? new Set(shown.map((r) => r.id)) : new Set())}
-                  style={{ accentColor: 'var(--pri)' }}
-                />
-              ),
-              width: '36px',
-              mobile: 'hide',
-              render: (r) => (
-                <input
-                  type='checkbox'
-                  aria-label={`Select ${r.stallName}`}
-                  checked={picked.has(r.id)}
-                  onChange={(e) =>
-                    setPicked((p) => {
-                      const n = new Set(p);
-                      e.target.checked ? n.add(r.id) : n.delete(r.id);
-                      return n;
-                    })
-                  }
-                  style={{ accentColor: 'var(--pri)' }}
-                />
-              ),
-            },
-            {
-              key: 'stall',
-              header: 'Stall',
-              width: '1.5fr',
-              mobile: 'title',
-              render: (r) => (
-                <>
-                  <b>{r.stallName}</b>
-                  <Sub>
-                    <Mono>{r.reference}</Mono> · {r.email}
-                  </Sub>
-                </>
-              ),
-            },
-            { key: 'type', header: 'Type', width: '110px', render: (r) => <TypeTag type={r.requestType} size='sm' /> },
-            { key: 'alloc', header: 'Stalls', width: '110px', render: (r) => <Mono>{r.allocatedStalls.join(', ')}</Mono> },
-            { key: 'stage', header: 'Stage', width: '140px', render: (r) => <StagePill stage={r.stage} size='sm' /> },
-            {
-              key: 'last',
-              header: 'Last sent',
-              width: '160px',
-              render: (r) => (r.lastSent[templateKey] ? <Tag tone='ok' size='sm'>{formatDateTime(r.lastSent[templateKey]!)}</Tag> : <Tag size='sm'>Not sent</Tag>),
-            },
-          ]}
-          actions={(r) => <Btn onClick={() => doPreview(r.id)}>Preview</Btn>}
-        />
-      )}
-      {preview && (
-        <Dialog width={640} title={preview.subject} note={preview.missing.length ? `Blank placeholders: ${preview.missing.join(', ')}` : undefined} onClose={() => setPreview(null)} footer={<Btn onClick={() => setPreview(null)}>Close</Btn>}>
-          <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.55, margin: 0 }}>{preview.body}</pre>
-        </Dialog>
-      )}
-    </>
+
+        {/* A typo in a placeholder renders as an empty gap in a vendor's inbox,
+            which is invisible here and obvious there. Named while typing. */}
+        {unknown.length > 0 && (
+          <ErrorBox>
+            {`Unknown placeholder${unknown.length > 1 ? 's' : ''}: ${unknown.join(', ')}. These will be left blank in the email.`}
+          </ErrorBox>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Btn kind='primary' onClick={save} disabled={!dirty}>
+            Save template
+          </Btn>
+          <span style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
+            {current.updatedAt ? `Edited ${formatDateTime(current.updatedAt)}` : 'Default wording'}
+          </span>
+          <div style={{ flex: 1 }} />
+          <AttachmentControl template={current} onDone={reload} />
+        </div>
+
+        <details>
+          <summary style={{ fontSize: 12.5, cursor: 'pointer', color: 'var(--mfg)' }}>
+            Placeholders you can use
+          </summary>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill,minmax(240px,1fr))',
+              gap: 6,
+              marginTop: 10,
+            }}
+          >
+            {data.placeholders.map((p) => (
+              <div key={p.key} style={{ fontSize: 11.5 }}>
+                <code style={{ color: 'var(--pri)' }}>{`{{${p.key}}}`}</code>
+                <span style={{ color: 'var(--mfg)' }}> — {p.description}</span>
+              </div>
+            ))}
+          </div>
+        </details>
+      </Card>
+    </div>
   );
 }
 
-function TemplatesTab({ writable }: { writable: boolean }) {
+function AttachmentControl({
+  template,
+  onDone,
+}: {
+  template: TemplatesResponse['templates'][number];
+  onDone: () => void;
+}) {
   const toast = useToast();
-  const list = useLoad(api.listTemplates);
-  const [key, setKey] = useState<TemplateKey>('SELECTION_VENDOR');
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
-  const current = list.data?.find((t) => t.key === key);
-  useEffect(() => {
-    if (current) {
-      setSubject(current.subject);
-      setBody(current.body);
-    }
-  }, [current]);
-  if (list.loading) return <Loading />;
-  if (list.error) return <ErrorBox>{list.error.message}</ErrorBox>;
-  const dirty = current && (subject !== current.subject || body !== current.body);
+  const [busy, setBusy] = useState(false);
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 260px) 1fr', gap: 14, alignItems: 'start' }}>
-      <Card pad={6}>
-        {TEMPLATE_KEYS.map((k) => (
-          <button
-            type='button'
-            key={k}
-            onClick={() => setKey(k)}
-            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', borderRadius: 'var(--r2)', border: 0, cursor: 'pointer', fontSize: 13, fontWeight: key === k ? 700 : 500, background: key === k ? 'var(--pri-t)' : 'transparent', color: key === k ? 'var(--pri)' : 'var(--fg)' }}
-          >
-            {TEMPLATE_LABEL[k]}
-          </button>
-        ))}
-      </Card>
-      <Card>
-        <Field id='t-subject' label='Subject'>
-          <TextInput id='t-subject' value={subject} disabled={!writable} onChange={(e) => setSubject(e.target.value)} />
-        </Field>
-        <Field id='t-body' label='Body' help={`Placeholders: ${PLACEHOLDERS[key].map((p) => `{{${p}}}`).join(' ')}`}>
-          <TextArea id='t-body' rows={16} value={body} disabled={!writable} onChange={(e) => setBody(e.target.value)} style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12.5 }} />
-        </Field>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Btn
-            kind='primary'
-            disabled={!writable || !dirty}
-            onClick={async () => {
-              try {
-                await api.putTemplate(key, { subject, body });
-                toast.ok('Template saved');
-                list.reload();
-              } catch (e) {
-                toast.fail(e);
-              }
-            }}
-          >
-            Save
-          </Btn>
-          {current?.updatedAt && <span style={{ fontSize: 12, color: 'var(--mfg)' }}>Last edited {formatDateTime(current.updatedAt)}</span>}
-        </div>
-      </Card>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      {template.attachment && (
+        <Tag size='sm'>
+          <Icon name='file-text' size={12} /> {template.attachment.name}
+        </Tag>
+      )}
+      <label htmlFor='template-attachment' style={{ cursor: busy ? 'progress' : 'pointer' }}>
+        <input
+          id='template-attachment'
+          type='file'
+          accept='application/pdf,image/*'
+          style={{ display: 'none' }}
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            setBusy(true);
+            try {
+              const up = await uploadFile(presignStaffUpload, file, 'TEMPLATE_ATTACHMENT');
+              await putTemplateAttachment(template.key, {
+                key: up.key,
+                name: up.name,
+                bytes: file.size,
+              });
+              toast.ok('Attachment added.');
+              onDone();
+            } catch (err) {
+              toast.fail(err);
+            } finally {
+              setBusy(false);
+              e.target.value = '';
+            }
+          }}
+        />
+        <span style={{ ...toolBtnStyle(false), display: 'inline-flex' }}>
+          <Icon name='plus' size={13} />
+          {template.attachment ? 'Replace attachment' : 'Add attachment'}
+        </span>
+      </label>
+      {template.attachment && (
+        <Btn
+          onClick={async () => {
+            try {
+              await putTemplateAttachment(template.key, null);
+              toast.ok('Attachment removed.');
+              onDone();
+            } catch (e) {
+              toast.fail(e);
+            }
+          }}
+        >
+          Remove
+        </Btn>
+      )}
+    </div>
+  );
+}
+
+// ── Reminder calls ──────────────────────────────────────────────────────────
+
+function ReminderPanel() {
+  const toast = useToast();
+  const [kind, setKind] = useState<ReminderKind>('BANK');
+  const { data, error, loading, reload } = useLoad(() => listReminders(kind), [kind]);
+
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <Tabs
+        tabs={[
+          ['BANK', 'Pending bank details'],
+          ['PAYMENT', 'Pending payment'],
+        ]}
+        active={kind}
+        onPick={(k) => setKind(k as ReminderKind)}
+      />
+      <div style={{ fontSize: 12.5, color: 'var(--mfg)', maxWidth: 640 }}>
+        {kind === 'BANK'
+          ? 'Vendors whose bank details have not arrived. Log a call each time you follow one up.'
+          : 'Selected vendors with no payment recorded yet.'}
+      </div>
+
+      {error && <ErrorBox>{error.message}</ErrorBox>}
+      {loading && !data ? (
+        <Loading />
+      ) : (data?.length ?? 0) === 0 ? (
+        <Empty>
+          {kind === 'BANK'
+            ? 'Every vendor has submitted their bank details.'
+            : 'Every vendor has a payment recorded.'}
+        </Empty>
+      ) : (
+        <Card pad={0} style={{ overflow: 'hidden' }}>
+          <Table>
+            <THead>
+              <TR>
+                <TH>Vendor</TH>
+                <TH>Contact</TH>
+                <TH align='right'>Calls logged</TH>
+                <TH>Last call</TH>
+                <TH> </TH>
+              </TR>
+            </THead>
+            <TBody>
+              {(data ?? []).map((r) => (
+                <TR key={r.requestId}>
+                  <TD>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{r.stallName}</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>{r.requesterName}</div>
+                  </TD>
+                  <TD mono style={{ fontSize: 12 }}>
+                    {r.contactNumber}
+                  </TD>
+                  <TD align='right'>{r.callCount}</TD>
+                  <TD muted style={{ fontSize: 11.5, whiteSpace: 'nowrap' }}>
+                    {r.lastCalledAt ? formatDateTime(r.lastCalledAt) : '—'}
+                  </TD>
+                  <TD align='right'>
+                    <Btn
+                      onClick={async () => {
+                        try {
+                          await logReminder(r.requestId, kind);
+                          toast.ok(`Call logged for ${r.stallName}.`);
+                          reload();
+                        } catch (e) {
+                          toast.fail(e);
+                        }
+                      }}
+                    >
+                      <Icon name='phone-call' size={13} />
+                      Log call
+                    </Btn>
+                  </TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        </Card>
+      )}
     </div>
   );
 }

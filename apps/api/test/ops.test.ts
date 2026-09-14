@@ -1,340 +1,215 @@
-import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
-import { SubmitRequestInput, rupeesToPaise as r } from '@msr/stalls';
+import { rupeesToPaise } from '@msr/stalls';
 import type { StallEdition } from '@prisma/client';
-import { buildApp } from '../src/app';
-import { mintAccessLink } from '../src/modules/stalls/accounts';
-import { confirmPayment, ensureQuote } from '../src/modules/stalls/payments';
-import { selectRequest } from '../src/modules/stalls/selection';
-import { submitRequest } from '../src/modules/stalls/submit';
+import { beforeEach, describe, expect, test } from 'vitest';
+import { checkIn, listCheckIns, undoCheckIn } from '../src/modules/stalls/checkin';
+import { electricalSheet } from '../src/modules/stalls/electrical';
 import {
-  LogMailer,
-  SYSTEM,
-  type Staff,
-  prisma,
-  resetDatabase,
-  seedEdition,
-  seedStaff,
-  vendorBody,
-} from './helpers/db';
+  actOnEquipment,
+  challan,
+  listEquipment,
+  patchEquipment,
+} from '../src/modules/stalls/equipment';
+import { SYSTEM, prisma, resetDatabase, seedEdition } from './helpers/db';
+import { selected } from './helpers/onboarding';
 import { makeStalls } from './helpers/plan';
 
-let app: FastifyInstance;
 let edition: StallEdition;
-let lead: Staff;
-let volunteer: Staff;
-let finance: Staff;
 
-beforeAll(async () => {
-  app = await buildApp({ logger: false, mail: new LogMailer() });
-});
-afterAll(() => app.close());
 beforeEach(async () => {
   await resetDatabase();
   edition = await seedEdition();
-  await makeStalls(edition.id, 'A4', { VENDOR_FOOD: 3 });
-  lead = await seedStaff(['stalls_lead']);
-  volunteer = await seedStaff(['stalls_volunteer']);
-  finance = await seedStaff(['stalls_finance']);
+  await makeStalls(edition.id, 'C1', { VENDOR_FOOD: 12, LW_FOOD: 5 });
+  await makeStalls(edition.id, 'B4', { VENDOR_FOOD: 5 });
 });
 
-/** A paid-up food vendor on A4-1 with 2 chairs and 1 table ordered. */
-async function paidVendor() {
-  const v = await submitRequest(
-    prisma,
-    SubmitRequestInput.parse(
-      vendorBody({
-        chairsNeeded: 2,
-        tablesNeeded: 1,
-        passesStaff: 2,
-        appliances: [
-          { name: 'Fridge', watts: 1000 },
-          { name: 'Mixie', watts: 500 },
-        ],
-      }),
-    ),
-    { mail: new LogMailer(), statusUrl: (t) => t },
-  );
-  await selectRequest(prisma, { requestId: v.requestId, stallNumbers: ['A4-1'] }, SYSTEM);
-  await ensureQuote(prisma, v.requestId, SYSTEM);
-  await confirmPayment(
-    prisma,
-    v.requestId,
-    { creditDate: '2026-09-10', referenceNo: 'X', mode: 'NEFT', amountReceivedPaise: 0 },
-    SYSTEM,
-  );
-  const row = await prisma.stallRequest.findUniqueOrThrow({ where: { id: v.requestId } });
-  return { id: v.requestId, accountId: row.accountId };
-}
-
-const post = (staff: Staff, url: string, payload?: Record<string, unknown>) =>
-  app.inject({ method: 'POST', url: `/api/m/stalls${url}`, headers: staff.headers, payload });
-const get = (staff: Staff, url: string) =>
-  app.inject({ method: 'GET', url: `/api/m/stalls${url}`, headers: staff.headers });
-
-describe('FSSAI', () => {
-  test('the vendor uploads by signed link; a lead verifies; the stage moves to READY', async () => {
-    const { id, accountId } = await paidVendor();
-    const { token } = await mintAccessLink(prisma, {
-      accountId,
-      requestId: id,
-      purpose: 'FSSAI_UPLOAD',
-      ttlDays: 30,
-    });
-
-    const view = await app.inject({ method: 'GET', url: `/api/m/stalls/public/fssai/${token}` });
-    expect(view.statusCode).toBe(200);
-    expect(view.json().current).toBeNull();
-
-    const up = await app.inject({
-      method: 'POST',
-      url: `/api/m/stalls/public/fssai/${token}`,
-      payload: {
-        mediaKey: 'stalls/2026/x/fssai-1.pdf',
-        fileName: 'fssai.pdf',
-        licenseNumber: '12345678901234',
-      },
-    });
-    expect(up.statusCode).toBe(200);
-    expect((await prisma.stallRequest.findUniqueOrThrow({ where: { id } })).stage).toBe(
-      'FSSAI_PENDING',
-    );
-
-    const asVolunteer = await post(volunteer, `/requests/${id}/fssai/review`, {
-      verdict: 'VERIFY',
-    });
-    expect(asVolunteer.statusCode).toBe(403);
-    const ok = await post(lead, `/requests/${id}/fssai/review`, { verdict: 'VERIFY' });
-    expect(ok.statusCode).toBe(200);
-    expect((await prisma.stallRequest.findUniqueOrThrow({ where: { id } })).stage).toBe('READY');
+describe('the electrical sheet', () => {
+  test('prints the 5A total including the free plug', async () => {
+    await selected(['C1-1'], { plugs5a: 4, plugs15a: 5 });
+    const sheet = await electricalSheet(prisma, edition.id);
+    // The form asked for 4 "excluding default"; the sheet says 5.
+    expect(sheet.rows[0].plugs5aTotal).toBe(5);
+    expect(sheet.rows[0].plugs15a).toBe(5);
   });
 
-  test('a rejection is shown to the vendor and cleared by a new upload', async () => {
-    const { id, accountId } = await paidVendor();
-    const { token } = await mintAccessLink(prisma, {
-      accountId,
-      requestId: id,
-      purpose: 'FSSAI_UPLOAD',
-      ttlDays: 30,
+  test('sums appliance wattage per stall and across the sheet', async () => {
+    await selected(['C1-1'], {
+      appliances: [
+        { name: 'Deep fryer', watts: 2500 },
+        { name: 'Freezer', watts: 1500 },
+      ],
     });
-    await app.inject({
-      method: 'POST',
-      url: `/api/m/stalls/public/fssai/${token}`,
-      payload: { mediaKey: 'k1', fileName: 'a.pdf' },
-    });
-    await post(lead, `/requests/${id}/fssai/review`, {
-      verdict: 'REJECT',
-      reason: 'expired certificate',
-    });
-    let view = await app.inject({ method: 'GET', url: `/api/m/stalls/public/fssai/${token}` });
-    expect(view.json().current.rejectedReason).toBe('expired certificate');
-    await app.inject({
-      method: 'POST',
-      url: `/api/m/stalls/public/fssai/${token}`,
-      payload: { mediaKey: 'k2', fileName: 'b.pdf' },
-    });
-    view = await app.inject({ method: 'GET', url: `/api/m/stalls/public/fssai/${token}` });
-    expect(view.json().current.rejectedReason).toBeNull();
-    expect(view.json().current.fileName).toBe('b.pdf');
-  });
-});
-
-describe('staff coupon', () => {
-  test('is issued on payment, opens by signed link, and the registered count is tracked', async () => {
-    const { id, accountId } = await paidVendor();
-    const issued = await post(lead, `/requests/${id}/coupon`, {});
-    expect(issued.statusCode).toBe(200);
-    expect(issued.json().code).toMatch(/^MSR26-A4-1-/);
-    expect(issued.json().maxStaff).toBe(2);
-
-    const { token } = await mintAccessLink(prisma, {
-      accountId,
-      requestId: id,
-      purpose: 'STAFF_REGISTRATION',
-      ttlDays: 30,
-    });
-    const view = await app.inject({ method: 'GET', url: `/api/m/stalls/public/staff/${token}` });
-    expect(view.json().couponCode).toBe(issued.json().code);
-
-    const counted = await app.inject({
-      method: 'PUT',
-      url: `/api/m/stalls/requests/${id}/coupon/registered`,
-      headers: volunteer.headers,
-      payload: { registeredCount: 2 },
-    });
-    expect(counted.statusCode).toBe(200);
-    expect(counted.json().registeredCount).toBe(2);
+    const sheet = await electricalSheet(prisma, edition.id);
+    expect(sheet.rows[0].totalWatts).toBe(4000);
+    expect(sheet.totals.watts).toBe(4000);
   });
 
-  test('re-issuing keeps the same code', async () => {
-    const { id } = await paidVendor();
-    const a = (await post(lead, `/requests/${id}/coupon`, {})).json().code;
-    const b = (await post(lead, `/requests/${id}/coupon`, { maxStaff: 5 })).json();
-    expect(b.code).toBe(a);
-    expect(b.maxStaff).toBe(5);
+  test('walks a bay in stall-number order, not string order', async () => {
+    await selected(['C1-9'], { email: 'a@x.example' });
+    await selected(['C1-10'], { email: 'b@x.example' });
+    await selected(['C1-2'], { email: 'c@x.example' });
+    const sheet = await electricalSheet(prisma, edition.id, 'C1');
+    expect(sheet.rows.map((r) => r.stallNumber)).toEqual(['C1-2', 'C1-9', 'C1-10']);
   });
-});
 
-describe('electrical & venue sheet', () => {
-  test('one row per stall, occupied or empty, with the appliance load; clusters are settable', async () => {
-    const { id } = await paidVendor();
-    const res = await get(lead, '/electrical?zoneCode=A4');
-    expect(res.statusCode).toBe(200);
-    const rows = res.json();
-    expect(rows).toHaveLength(3);
-    expect(rows[0]).toMatchObject({
-      stallNumber: 'A4-1',
-      stallName: 'Green Leaf Organics',
-      totalWatts: 1500,
-    });
-    expect(rows[1]).toMatchObject({ stallNumber: 'A4-2', stallName: null, totalWatts: 0 });
-    void id;
+  test('filters to one cluster for the printed A4 page', async () => {
+    await selected(['C1-1'], { email: 'a@x.example' });
+    await selected(['B4-1'], { email: 'b@x.example', preferredZoneCode: 'B4' });
 
-    expect(
-      (
-        await app.inject({
-          method: 'PUT',
-          url: '/api/m/stalls/stalls/A4-1/cluster',
-          headers: volunteer.headers,
-          payload: { cluster: 'P1' },
-        })
-      ).statusCode,
-    ).toBe(403);
-    const set = await app.inject({
-      method: 'PUT',
-      url: '/api/m/stalls/stalls/A4-1/cluster',
-      headers: lead.headers,
-      payload: { cluster: 'P1' },
+    const all = await electricalSheet(prisma, edition.id);
+    const b4 = await electricalSheet(prisma, edition.id, 'B4');
+    expect(all.rows).toHaveLength(2);
+    expect(b4.rows.map((r) => r.stallNumber)).toEqual(['B4-1']);
+    expect(b4.zoneCode).toBe('B4');
+  });
+
+  test('a released stall leaves the sheet with its old occupant', async () => {
+    const { requestId } = await selected(['C1-1']);
+    expect((await electricalSheet(prisma, edition.id)).rows).toHaveLength(1);
+
+    await prisma.stallAllocation.updateMany({
+      where: { requestId },
+      data: { activeStallId: null, releasedAt: new Date(), releasedBy: SYSTEM },
     });
-    expect(set.statusCode).toBe(200);
-    expect((await get(lead, '/electrical?zoneCode=A4')).json()[0].cluster).toBe('P1');
+    expect((await electricalSheet(prisma, edition.id)).rows).toEqual([]);
   });
 });
 
 describe('check-in', () => {
-  test('lists what is pending, and a volunteer checks the stall in', async () => {
-    const { id } = await paidVendor();
-    const list = await get(volunteer, '/checkin?q=A4-1');
-    expect(list.statusCode).toBe(200);
-    expect(list.json()).toHaveLength(1);
-    // Paid through the seams without the bank form; food stall with no FSSAI
-    // yet; 2 staff passes, none registered. Everything outstanding is listed.
-    expect(list.json()[0].pending).toEqual([
-      'Bank details',
-      'FSSAI certificate',
-      'Staff registered 0/2',
-    ]);
-
-    const res = await post(volunteer, `/requests/${id}/checkin`, {
-      staffPresent: 2,
-      passes2wIssued: 1,
-      passes4wIssued: 0,
-      passesStaffIssued: 2,
+  test('shows the counter what it needs without a second lookup', async () => {
+    const { requestId } = await selected(['C1-1'], {
+      passes2w: 2,
+      passes4w: 1,
+      passesStaff: 3,
     });
-    expect(res.statusCode).toBe(200);
-    expect((await prisma.stallRequest.findUniqueOrThrow({ where: { id } })).stage).toBe(
+    const [row] = await listCheckIns(prisma, edition.id);
+    expect(row.requestId).toBe(requestId);
+    expect(row.stallNumbers).toEqual(['C1-1']);
+    expect(row.passes2w).toBe(2);
+    expect(row.staffRegistered).toBe(0);
+    expect(row.staffExpected).toBe(3);
+    expect(row.pending.map((p) => p.step)).toContain('STAFF_REGISTRATION');
+  });
+
+  test('finds a stall by its number as well as by name', async () => {
+    await selected(['C1-3'], { stallName: 'Coastal Spice Kitchen' });
+    expect(await listCheckIns(prisma, edition.id, 'C1-3')).toHaveLength(1);
+    expect(await listCheckIns(prisma, edition.id, 'coastal')).toHaveLength(1);
+    expect(await listCheckIns(prisma, edition.id, 'nothing')).toHaveLength(0);
+  });
+
+  test('lets a stall in with an outstanding item and a note', async () => {
+    const { requestId } = await selected(['C1-1'], { passesStaff: 3 });
+    const row = await checkIn(prisma, requestId, 'FSSAI shown on paper', SYSTEM);
+    expect(row.checkedInAt).not.toBeNull();
+    expect(row.note).toBe('FSSAI shown on paper');
+    // Still honest about what is outstanding.
+    expect(row.pending.length).toBeGreaterThan(0);
+    expect((await prisma.stallRequest.findUniqueOrThrow({ where: { id: requestId } })).stage).toBe(
       'CHECKED_IN',
     );
-    expect((await get(volunteer, '/checkin')).json()[0].checkedInAt).not.toBeNull();
+  });
+
+  test('a checked-in stall keeps its stage through later updates', async () => {
+    const { requestId } = await selected(['C1-1']);
+    await checkIn(prisma, requestId, undefined, SYSTEM);
+    await prisma.stallFssaiCertificate.create({ data: { requestId } });
+    // A fact changing must not quietly un-check-in the stall.
+    expect((await prisma.stallRequest.findUniqueOrThrow({ where: { id: requestId } })).stage).toBe(
+      'CHECKED_IN',
+    );
+  });
+
+  test('the wrong stall ticked can be undone, and the stage falls back', async () => {
+    const { requestId } = await selected(['C1-1'], { passesStaff: 2 });
+    await checkIn(prisma, requestId, undefined, SYSTEM);
+    const row = await undoCheckIn(prisma, requestId, SYSTEM);
+    expect(row.checkedInAt).toBeNull();
+    expect((await prisma.stallRequest.findUniqueOrThrow({ where: { id: requestId } })).stage).toBe(
+      'NEW',
+    );
   });
 });
 
-describe('chairs & tables', () => {
-  test('issue charges extras at the vendor rate for the event days; return computes missing and flags', async () => {
-    const { id } = await paidVendor();
-    const issue = await post(volunteer, `/requests/${id}/furniture/issue`, {
-      chairsIssued: 2,
-      tablesIssued: 1,
-      extraChairs: 2,
-      extraTables: 0,
-      cashCollectedPaise: r(400),
-    });
-    expect(issue.statusCode).toBe(200);
-    // 2 extra chairs × ₹100 × 2 days
-    expect(issue.json().extraChargePaise).toBe(r(400));
+describe('chairs and tables', () => {
+  test('opens a counter row snapshotting what was ordered', async () => {
+    const { requestId } = await selected(['C1-1'], { chairsNeeded: 6, tablesNeeded: 2 });
+    const [row] = await listEquipment(prisma, edition.id);
+    expect(row.chairsRequested).toBe(6);
+    expect(row.tablesRequested).toBe(2);
 
-    const early = await post(volunteer, `/requests/${id}/furniture/return`, {
-      chairsReturned: 3,
-      tablesReturned: 1,
-      chairsDamaged: 0,
-      tablesDamaged: 0,
-    });
-    expect(early.statusCode).toBe(200);
-    expect(early.json().chairsMissing).toBe(1); // 2 + 2 issued, 3 back
-    expect(early.json().tablesMissing).toBe(0);
-    expect(early.json().flagged).toBe(true);
-
-    const rows = await get(volunteer, '/furniture');
-    expect(rows.json()[0].ledger.chairsMissing).toBe(1);
+    // Editing the request afterwards does not move what the challan promised.
+    await prisma.stallRequest.update({ where: { id: requestId }, data: { chairsNeeded: 99 } });
+    expect((await listEquipment(prisma, edition.id))[0].chairsRequested).toBe(6);
   });
 
-  test('a return before any issue is refused', async () => {
-    const { id } = await paidVendor();
-    const res = await post(volunteer, `/requests/${id}/furniture/return`, {
-      chairsReturned: 0,
-      tablesReturned: 0,
-      chairsDamaged: 0,
-      tablesDamaged: 0,
-    });
-    expect(res.statusCode).toBe(409);
+  test('a stall that ordered nothing is absent until it takes something', async () => {
+    const { requestId } = await selected(['C1-1'], { chairsNeeded: 0, tablesNeeded: 0 });
+    expect(await listEquipment(prisma, edition.id)).toEqual([]);
+
+    await patchEquipment(prisma, requestId, { extraChairs: 2 }, SYSTEM);
+    const rows = await listEquipment(prisma, edition.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].extraChairs).toBe(2);
   });
-});
 
-describe('fines and refunds', () => {
-  test('deposit − replacements − active fines = refundable; finance marks it paid', async () => {
-    const { id } = await paidVendor();
-    await post(volunteer, `/requests/${id}/furniture/issue`, {
-      chairsIssued: 2,
-      tablesIssued: 1,
-      extraChairs: 0,
-      extraTables: 0,
-      cashCollectedPaise: 0,
-    });
-    await post(volunteer, `/requests/${id}/furniture/return`, {
-      chairsReturned: 1,
-      tablesReturned: 1,
-      chairsDamaged: 0,
-      tablesDamaged: 0,
+  test('prices the extras at the requester type’s own rate', async () => {
+    const vendor = await selected(['C1-1'], { chairsNeeded: 2, email: 'v@x.example' });
+    const lw = await selected(['C1-13'], {
+      chairsNeeded: 2,
+      email: 'lw@x.example',
+      requestType: 'LOCAL_WELFARE',
+      depositAcknowledged: true,
     });
 
-    expect(
-      (
-        await post(volunteer, `/requests/${id}/fines`, {
-          reason: 'Unclean stall',
-          amountPaise: r(500),
-        })
-      ).statusCode,
-    ).toBe(403);
-    const fine = await post(lead, `/requests/${id}/fines`, {
-      reason: 'Unclean stall',
-      amountPaise: r(500),
-    });
-    expect(fine.statusCode).toBe(201);
-    const waived = await post(lead, `/requests/${id}/fines`, {
-      reason: 'Late setup',
-      amountPaise: r(300),
-    });
-    await post(lead, `/fines/${waived.json().id}/waive`);
+    const v = await patchEquipment(prisma, vendor.requestId, { extraChairs: 2 }, SYSTEM);
+    const l = await patchEquipment(prisma, lw.requestId, { extraChairs: 2 }, SYSTEM);
+    expect(v.extraChargePaise).toBe(rupeesToPaise(100)); // 2 × Rs.50
+    expect(l.extraChargePaise).toBe(rupeesToPaise(200)); // 2 × Rs.100
+  });
 
-    const prep = await post(lead, `/requests/${id}/refund/prepare`);
-    expect(prep.statusCode).toBe(200);
-    const payment = await prisma.stallPayment.findUniqueOrThrow({ where: { requestId: id } });
-    // 1 chair missing × ₹500 + ₹500 fine (the ₹300 was waived)
-    expect(prep.json().furnitureDeductionPaise).toBe(r(500));
-    expect(prep.json().finesPaise).toBe(r(500));
-    expect(prep.json().refundablePaise).toBe(payment.depositTotalPaise - r(1000));
+  test('walks the two days: distribute, take cash, collect', async () => {
+    const { requestId } = await selected(['C1-1'], { chairsNeeded: 4, tablesNeeded: 2 });
+    let row = await actOnEquipment(prisma, requestId, 'DISTRIBUTE', SYSTEM);
+    expect(row.distributedAt).not.toBeNull();
 
-    const sent = await post(lead, '/refunds/send', { requestIds: [id] });
-    expect(sent.json().sent).toBe(1);
-    const rows = await get(finance, '/refunds');
-    expect(rows.json()[0].sentToFinanceAt).not.toBeNull();
-    expect(rows.json()[0].ledgerFlagged).toBe(true);
+    row = await patchEquipment(prisma, requestId, { extraChairs: 2 }, SYSTEM);
+    row = await actOnEquipment(prisma, requestId, 'COLLECT_EXTRA_PAYMENT', SYSTEM);
+    expect(row.extraCollectedAt).not.toBeNull();
 
-    expect(
-      (await post(lead, `/requests/${id}/refund/paid`, { referenceNo: 'RF1' })).statusCode,
-    ).toBe(403);
-    const paid = await post(finance, `/requests/${id}/refund/paid`, { referenceNo: 'RF1' });
-    expect(paid.statusCode).toBe(200);
-    expect(paid.json().referenceNo).toBe('RF1');
+    row = await actOnEquipment(prisma, requestId, 'COLLECT', SYSTEM);
+    expect(row.collectedAt).not.toBeNull();
+  });
+
+  test('missing and damaged furniture is priced for the refund screen', async () => {
+    const { requestId } = await selected(['C1-1'], { chairsNeeded: 6 });
+    const row = await patchEquipment(
+      prisma,
+      requestId,
+      { missingChairs: 1, missingTables: 1, damaged: true, note: '1 chair broken', flagged: true },
+      SYSTEM,
+    );
+    expect(row.deductionPaise).toBe(rupeesToPaise(400 + 900 + 250));
+    expect(row.flagged).toBe(true);
+    expect(row.note).toBe('1 chair broken');
+  });
+
+  test('the challan carries both what was ordered and what was taken at the counter', async () => {
+    const { requestId } = await selected(['C1-1'], { chairsNeeded: 4, tablesNeeded: 2 });
+    await patchEquipment(prisma, requestId, { extraChairs: 2, extraTables: 1 }, SYSTEM);
+
+    const slip = await challan(prisma, requestId);
+    expect(slip.stallNumber).toBe('C1-1');
+    expect(slip.chairsOnline).toBe(4);
+    expect(slip.tablesOnline).toBe(2);
+    expect(slip.extraChairs).toBe(2);
+    expect(slip.extraChargePaise).toBe(rupeesToPaise(2 * 50 + 150));
+    expect(slip.editionName).toBe('MSR 2026');
+  });
+
+  test('an undo puts the counter back where it was', async () => {
+    const { requestId } = await selected(['C1-1'], { chairsNeeded: 4 });
+    await actOnEquipment(prisma, requestId, 'DISTRIBUTE', SYSTEM);
+    const row = await actOnEquipment(prisma, requestId, 'UNDISTRIBUTE', SYSTEM);
+    expect(row.distributedAt).toBeNull();
   });
 });

@@ -2,17 +2,24 @@ import type { AvailableStall, RequestDetail } from '@msr/stalls';
 import { useMemo, useState } from 'react';
 import { ApiError } from '../api-client';
 import { availableStalls, select } from '../api';
-import { SelectInput } from '../components/FormControls';
 import { useLoad } from '../hooks';
-import { Dialog } from '../ui/components/Dialog';
-import { useToast } from '../ui/components/Toast';
-import { Btn, Empty } from '../ui/ui';
+import { Btn, Dialog, Empty, Loading, Select, useToast } from '../ui';
+
+const ZONES = ['A3', 'A4', 'B2', 'B3', 'B4', 'C1', 'C2'];
 
 /** Pick free stalls for a request. Shows only AVAILABLE stalls, opens on the
  *  vendor's preferred zone, and caps the pick at what the request asked for
  *  minus what it already holds. A 409 means someone took a stall between the
  *  list loading and the click — the list reloads and the toast says so. */
-export function SelectDialog({ request: r, onClose, onDone }: { request: RequestDetail; onClose: () => void; onDone: () => void }) {
+export function SelectDialog({
+  request: r,
+  onClose,
+  onDone,
+}: {
+  request: RequestDetail;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const toast = useToast();
   const [zone, setZone] = useState<string>(r.preferredZoneCode);
   const { data, loading, reload } = useLoad(() => availableStalls(zone || undefined), [zone]);
@@ -27,7 +34,10 @@ export function SelectDialog({ request: r, onClose, onDone }: { request: Request
     return m;
   }, [stalls]);
 
-  const toggle = (n: string) => setPicked((p) => (p.includes(n) ? p.filter((x) => x !== n) : p.length < remaining ? [...p, n] : p));
+  const toggle = (n: string) =>
+    setPicked((p) =>
+      p.includes(n) ? p.filter((x) => x !== n) : p.length < remaining ? [...p, n] : p,
+    );
 
   const confirm = async () => {
     setBusy(true);
@@ -40,7 +50,9 @@ export function SelectDialog({ request: r, onClose, onDone }: { request: Request
         toast.fail(new Error(`${e.message}. The list has been refreshed.`));
         setPicked([]);
         reload();
-      } else toast.fail(e);
+      } else {
+        toast.fail(e instanceof ApiError ? e : new Error('Something went wrong'));
+      }
     } finally {
       setBusy(false);
     }
@@ -48,7 +60,6 @@ export function SelectDialog({ request: r, onClose, onDone }: { request: Request
 
   return (
     <Dialog
-      width={640}
       title={`Select ${r.stallName}`}
       note={
         remaining === 0
@@ -56,62 +67,99 @@ export function SelectDialog({ request: r, onClose, onDone }: { request: Request
           : `Pick up to ${remaining} stall${remaining > 1 ? 's' : ''} — the request asked for ${r.numStallsRequested}, preferred ${r.preferredZoneCode}.`
       }
       onClose={onClose}
+      width={640}
       footer={
         <>
           <Btn onClick={onClose}>Cancel</Btn>
           <Btn kind='primary' disabled={busy || picked.length === 0} onClick={confirm}>
-            {busy ? 'Allocating…' : `Allocate${picked.length ? ` ${picked.length}` : ''}`}
+            {busy ? 'Allocating…' : `Allocate ${picked.length || ''}`.trim()}
           </Btn>
         </>
       }
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-        <SelectInput aria-label='Zone' value={zone} onChange={(e) => setZone(e.target.value)} style={{ width: 150 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <Select
+          aria-label='Zone'
+          value={zone}
+          onChange={(e) => setZone(e.target.value)}
+          style={{ width: 'auto', minWidth: 150 }}
+        >
           <option value=''>All zones</option>
-          {['A3', 'A4', 'B2', 'B3', 'B4', 'C1', 'C2'].map((z) => (
-            <option key={z}>{z}</option>
+          {ZONES.map((z) => (
+            <option key={z} value={z}>
+              {z}
+            </option>
           ))}
-        </SelectInput>
-        <span style={{ fontSize: 12, color: 'var(--mfg)' }}>{loading ? 'Loading…' : `${stalls.length} available`}</span>
+        </Select>
+        <span style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
+          {loading ? 'Loading…' : `${stalls.length} available`}
+        </span>
       </div>
-      <div style={{ maxHeight: 320, overflowY: 'auto', display: 'grid', gap: 12 }}>
-        {[...byZone.entries()].map(([z, list]) => (
-          <div key={z}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.6px', textTransform: 'uppercase', color: 'var(--mfg)', marginBottom: 6 }}>Zone {z}</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {list.map((s) => {
-                const on = picked.includes(s.number);
-                const dead = !on && picked.length >= remaining;
-                return (
-                  <button
-                    type='button'
-                    key={s.id}
-                    onClick={() => toggle(s.number)}
-                    aria-pressed={on}
-                    disabled={dead}
-                    title={s.category.replace(/_/g, ' ').toLowerCase()}
-                    style={{
-                      padding: '6px 10px',
-                      borderRadius: 'var(--r2)',
-                      border: `1px solid ${on ? 'var(--pri)' : 'var(--bd)'}`,
-                      background: on ? 'var(--pri)' : 'var(--card)',
-                      color: on ? 'var(--pfg)' : 'var(--fg)',
-                      fontFamily: 'ui-monospace, monospace',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: dead ? 'not-allowed' : 'pointer',
-                      opacity: dead ? 0.4 : 1,
-                    }}
-                  >
-                    {s.number}
-                  </button>
-                );
-              })}
+
+      {loading && stalls.length === 0 ? (
+        <Loading />
+      ) : stalls.length === 0 ? (
+        <Empty>
+          No available stalls{zone ? ` in ${zone}` : ''}. Apply a plan under Planning &amp; Zones.
+        </Empty>
+      ) : (
+        <div style={{ display: 'grid', gap: 14 }}>
+          {[...byZone.entries()].map(([z, list]) => (
+            <div key={z}>
+              <div
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  letterSpacing: '.7px',
+                  textTransform: 'uppercase',
+                  color: 'var(--mfg)',
+                  marginBottom: 7,
+                }}
+              >
+                Zone {z}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {list.map((s) => {
+                  const on = picked.includes(s.number);
+                  const full = !on && picked.length >= remaining;
+                  return (
+                    <button
+                      type='button'
+                      key={s.id}
+                      onClick={() => toggle(s.number)}
+                      aria-pressed={on}
+                      disabled={full}
+                      title={s.category.replace(/_/g, ' ').toLowerCase()}
+                      style={{
+                        // ⚠️ 34px tall, not the 26px a dense chip wants. These
+                        // are the tap targets on the one screen that assigns a
+                        // physical stall to a paying vendor, and they sit six to
+                        // a row — a mis-tap here is a wrong allocation somebody
+                        // has to release.
+                        minWidth: 58,
+                        height: 34,
+                        padding: '0 10px',
+                        borderRadius: 'var(--r2)',
+                        border: `1px solid ${on ? 'transparent' : 'var(--bd)'}`,
+                        background: on ? 'var(--pri)' : 'var(--card)',
+                        color: on ? 'var(--pfg)' : 'var(--fg)',
+                        boxShadow: on ? 'var(--sh-pri)' : undefined,
+                        fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: full ? 'not-allowed' : 'pointer',
+                        opacity: full ? 0.4 : 1,
+                      }}
+                    >
+                      {s.number}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))}
-        {!loading && stalls.length === 0 && <Empty>No available stalls{zone ? ` in ${zone}` : ''}. Apply a plan under Planning &amp; Zones.</Empty>}
-      </div>
+          ))}
+        </div>
+      )}
     </Dialog>
   );
 }

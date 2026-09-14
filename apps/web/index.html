@@ -4,6 +4,27 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MSR Stalls</title>
+
+    <script>
+      // Apply the saved (or system) theme before paint to avoid a flash.
+      //
+      // The module's tokens follow `.dark` on <html> (see ui/tokens.css) rather
+      // than keeping a theme of their own, so this one line drives the whole
+      // palette — and it has to run before the bundle, or every visitor in dark
+      // mode gets one white frame.
+      //
+      // The key is the one the host uses, so a module mounted inside it inherits
+      // the choice instead of arguing with it.
+      (function () {
+        try {
+          var stored = localStorage.getItem('msr-theme');
+          var dark = stored
+            ? stored === 'dark'
+            : window.matchMedia('(prefers-color-scheme: dark)').matches;
+          document.documentElement.classList.toggle('dark', dark);
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

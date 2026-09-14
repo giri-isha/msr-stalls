@@ -1,4 +1,4 @@
-import { DEFAULT_PAGE_SIZE, PAGE_SIZES, rangeLabel } from './paging';
+import { DEFAULT_PAGE_SIZE, PAGE_SIZES, rangeLabel } from '../paging';
 import { Icon } from '../icons';
 
 /**

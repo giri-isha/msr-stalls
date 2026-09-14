@@ -402,40 +402,59 @@ export function statusTone(label: string): Tone {
 }
 
 const STATUS_TONE: Record<string, Tone> = {
-  // ── Request status ──
-  Submitted: 'neutral',
-  Shortlisted: 'info',
-  Selected: 'ok',
-  Backup: 'warn',
-  Rejected: 'des',
-  Cancelled: 'des',
-  // ── Onboarding stage ──
+  // ── Registration / volunteer status ──
   New: 'neutral',
-  'Bank Form Sent': 'info',
-  'Bank Form Filled': 'teal',
-  'Payment Sent': 'info',
-  'Payment Confirmed': 'ok',
-  'FSSAI Pending': 'warn',
-  Ready: 'ok',
-  'Checked In': 'teal',
-  // ── Money / ops ──
-  Pending: 'warn',
+  'In Progress': 'info',
   Confirmed: 'ok',
-  Paid: 'ok',
-  Verified: 'ok',
-  Issued: 'teal',
-  Returned: 'ok',
-  Flagged: 'des',
-  Sent: 'ok',
-  Failed: 'des',
-  'Not Sent': 'neutral',
-  Available: 'ok',
-  Allocated: 'info',
+  'Checked In': 'teal',
+  'Checked Out': 'violet',
   Blocked: 'des',
+  Cancelled: 'des',
+  Withdrawn: 'neutral',
+
+  // ── Calling status ──
+  'Not Called': 'neutral',
+  Called: 'teal',
+  'Call Completed': 'ok',
+  'Callback Requested': 'warn',
+  'Not Answered': 'warn',
+  Declined: 'des',
+  Busy: 'warn',
+  'No Answer': 'warn',
+  'Wrong Number': 'des',
+  'Not Reachable': 'des',
+  'Requested Not to Call': 'des',
+  'Will Not Attend': 'des',
+  'Confirmed via Call': 'ok',
+
+  // ── Flag / medical ──
+  Medical: 'violet',
+  Alert: 'des',
+
+  // ── Requirement status ──
+  Open: 'info',
+  'Partially Filled': 'warn',
+  Filled: 'ok',
+  Closed: 'neutral',
+
+  // ── Attendance ──
+  Present: 'ok',
+  Absent: 'des',
+  Leave: 'warn',
+  'Not Marked': 'neutral',
+
+  // ── Allocation kind ──
+  Primary: 'info',
+  Secondary: 'teal',
+  'Since removed': 'neutral',
+
+  // ── Announcements ──
+  Info: 'info',
+  Warning: 'warn',
+  Urgent: 'des',
   Active: 'ok',
-  Inactive: 'neutral',
-  Food: 'violet',
-  'Non-food': 'neutral',
+  Draft: 'neutral',
+  Archived: 'neutral',
 };
 
 export function Pill({ children, size = 'md' }: { children: string; size?: PillSize }) {
@@ -481,6 +500,16 @@ export function Btn({
       className={disabled ? undefined : 'msrs-lift'}
       style={{
         ...skin,
+        // ⚠️ Added for this module, and it is the one change to this file. In
+        // the module this was copied from every caller passes a bare word, so
+        // an inline box was enough. Here half the buttons carry a glyph before
+        // the label — Add appliance, Flag, Export — and inline layout drops the
+        // 14px icon onto the text baseline with no gap, a couple of pixels low.
+        // Harmless where there is no icon.
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
         padding: '8px 14px',
         // 🔴 Was `calc(var(--r4) - 6px)` — reasonable when the sheet had only
         // two steps and a control had nothing between them to name, but it tied
@@ -630,16 +659,32 @@ export function Search({
   value,
   onChange,
   placeholder,
+  label = 'Search',
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  /**
+   * The accessible name.
+   *
+   * ⚠️ Added for this module, and it is the second of two changes to this file.
+   * Upstream this input has no label at all — only a placeholder, which is a
+   * HINT and not a name: it is announced by some readers and not others, and it
+   * disappears the moment anything is typed. Every toolbar in that module has
+   * exactly one search box, so nothing broke; here the same box sits above a
+   * pipeline a reader navigates by landmark, and the suite reaches it by name.
+   *
+   * Defaulted rather than required, so it is a name every caller gets for free
+   * and only a screen with two search boxes has to think about.
+   */
+  label?: string;
 }) {
   return (
     <input
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder ?? 'Search…'}
+      aria-label={label}
       style={{
         padding: '8px 12px',
         borderRadius: 'var(--r2)',

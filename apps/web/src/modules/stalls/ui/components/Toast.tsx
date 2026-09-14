@@ -89,7 +89,7 @@ function ToastHost({ toasts, onDrop }: { toasts: Toast[]; onDrop: (id: number) =
     // clear of the offline banner and the header. Above the dialog layer (201)
     // so a save failure raised from inside a sheet is not hidden behind it.
     //
-    // 🔴 `msrv` is on this element, and it is the only reason the coloured
+    // 🔴 `msrs` is on this element, and it is the only reason the coloured
     // plates below resolve to anything. The module's tokens are scoped to
     // `.msrs` (`tokens.css`), which `Frame` puts around the ROUTE — but
     // `ToastProvider` sits ABOVE the router on purpose, so a confirmation

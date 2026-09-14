@@ -1,99 +1,201 @@
-import { useNavigate } from 'react-router';
+import type { RequestStatus } from '@msr/stalls';
+import { Link } from 'react-router';
 import { getDashboard } from '../api';
-import { STATUS_LABEL, TYPE_LABEL } from '../components/StatusPill';
+import { requestStatusTone, STATUS_LABEL, TYPE_LABEL } from '../components/StatusPill';
 import { useLoad } from '../hooks';
-import { Icon } from '../ui/icons';
-import { StatTiles } from '../ui/components/StatTiles';
-import { Card, ErrorBox, H1, Loading } from '../ui/ui';
+import { card, ErrorBox, H1, Icon, Loading, TONE, type Tone, useIsMobile } from '../ui';
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/**
+ * One reading.
+ *
+ * ⚠️ The shape is `StatTiles`' — a tinted glyph chip, the number at 22px/700
+ * with a −.6px track, the caption at 11.5px on `--mfg` — drawn here rather than
+ * imported because that component's tiles are a view FILTER whose labels are
+ * the filter values it sends back. These tiles navigate. Reusing it would mean
+ * an `onPick` that is really a router push and a `statusTone` that has never
+ * heard of "Backup"; the twenty lines below are the smaller cost, and they
+ * follow the same tokens, so a retune still moves both.
+ */
+function Tile({
+  label,
+  value,
+  hint,
+  glyph,
+  tone = 'neutral',
+  to,
+}: {
+  label: string;
+  value: string | number;
+  hint?: string;
+  glyph: string;
+  tone?: Tone;
+  to?: string;
+}) {
+  const mobile = useIsMobile();
+  const [tint, fg] = TONE[tone];
+  const face = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: mobile ? 10 : 12 }}>
+      <div
+        style={{
+          width: mobile ? 30 : 36,
+          height: mobile ? 30 : 36,
+          borderRadius: 'var(--r3)',
+          background: tint,
+          color: fg,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flex: 'none',
+        }}
+      >
+        <Icon name={glyph} size={mobile ? 15 : 17} />
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: mobile ? 18 : 22, fontWeight: 700, letterSpacing: '-.6px' }}>
+          {typeof value === 'number' ? value.toLocaleString('en-IN') : value}
+        </div>
+        <div
+          style={{
+            fontSize: 11.5,
+            color: 'var(--mfg)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {label}
+        </div>
+        {hint && <div style={{ fontSize: 10.5, color: 'var(--mfg)', marginTop: 1 }}>{hint}</div>}
+      </div>
+    </div>
+  );
+
+  const box: React.CSSProperties = { ...card, padding: mobile ? 12 : 14 };
+  if (!to) return <div style={box}>{face}</div>;
   return (
-    <section style={{ marginBottom: 8 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.6px', textTransform: 'uppercase', color: 'var(--mfg)', margin: '0 0 8px' }}>
+    <Link to={to} className='msrs-lift' style={{ ...box, display: 'block', color: 'inherit' }}>
+      {face}
+    </Link>
+  );
+}
+
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section style={{ marginBottom: 22 }}>
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: '.9px',
+          textTransform: 'uppercase',
+          color: 'var(--mfg)',
+          marginBottom: 9,
+        }}
+      >
         {title}
       </div>
-      {children}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))',
+          gap: 12,
+        }}
+      >
+        {children}
+      </div>
     </section>
   );
 }
 
+const TYPE_GLYPH: Record<string, string> = {
+  VENDOR: 'ticket',
+  LOCAL_WELFARE: 'users',
+  ASHRAM: 'layout-grid',
+  ASHRAM_FOOD: 'layers',
+};
+
+const STATUS_GLYPH: Record<RequestStatus, string> = {
+  SUBMITTED: 'clipboard-list',
+  SHORTLISTED: 'clock',
+  SELECTED: 'circle-check',
+  BACKUP: 'refresh',
+  REJECTED: 'ban',
+  CANCELLED: 'ban',
+};
+
 export function Dashboard() {
   const { data, error, loading } = useLoad(getDashboard);
-  const navigate = useNavigate();
   if (loading) return <Loading />;
-  if (error || !data) return <ErrorBox>{error?.message}</ErrorBox>;
-  const s = data.byStatus;
+  if (error || !data)
+    return <ErrorBox>{error?.message ?? 'Could not load the dashboard.'}</ErrorBox>;
 
+  const s = data.byStatus;
   return (
     <div>
-      <H1 icon={<Icon name='home' size={20} />} sub='Maha Shivratri · MSR Stalls Program'>
+      <H1 icon={<Icon name='home' size={18} />} sub='Maha Shivratri · MSR Stalls Program'>
         Dashboard
       </H1>
 
-      <Section title='Requests'>
-        <StatTiles
-          noun='request'
-          tiles={[
-            { label: 'All', count: data.total },
-            ...(['VENDOR', 'LOCAL_WELFARE', 'ASHRAM', 'ASHRAM_FOOD'] as const).map((t) => ({
-              label: TYPE_LABEL[t],
-              count: data.byType[t] ?? 0,
-            })),
-          ]}
-          onPick={(label) => {
-            const type = Object.entries(TYPE_LABEL).find(([, v]) => v === label)?.[0];
-            navigate(type ? `/m/stalls/all?requestType=${type}` : '/m/stalls/all');
-          }}
+      <Group title='Requests'>
+        <Tile
+          label='Total requests'
+          value={data.total}
+          glyph='clipboard-list'
+          tone='info'
+          to='/m/stalls/all'
         />
-      </Section>
+        {(['VENDOR', 'LOCAL_WELFARE', 'ASHRAM', 'ASHRAM_FOOD'] as const).map((t) => (
+          <Tile
+            key={t}
+            label={TYPE_LABEL[t]}
+            value={data.byType[t] ?? 0}
+            glyph={TYPE_GLYPH[t]}
+            // ⚠️ `violet`, matching `TypeBadge`. The type pill and the type tile
+            // are the same fact in two places; a different colour in each is how
+            // a dashboard and a list stop agreeing about what they are counting.
+            tone='violet'
+            to={`/m/stalls/all?requestType=${t}`}
+          />
+        ))}
+      </Group>
 
-      <Section title='Selection'>
-        <StatTiles
-          noun='request'
-          tiles={(['SUBMITTED', 'SHORTLISTED', 'SELECTED', 'BACKUP', 'REJECTED'] as const).map((st) => ({
-            label: STATUS_LABEL[st],
-            count: s[st] ?? 0,
-          }))}
-          onPick={(label) => {
-            const st = Object.entries(STATUS_LABEL).find(([, v]) => v === label)?.[0];
-            navigate(`/m/stalls/all?status=${st}`);
-          }}
+      <Group title='Selection'>
+        {(['SUBMITTED', 'SHORTLISTED', 'SELECTED', 'BACKUP', 'REJECTED'] as const).map((st) => (
+          <Tile
+            key={st}
+            label={STATUS_LABEL[st]}
+            value={s[st] ?? 0}
+            glyph={STATUS_GLYPH[st]}
+            tone={requestStatusTone(st)}
+            to={`/m/stalls/all?status=${st}`}
+          />
+        ))}
+      </Group>
+
+      <Group title='Stalls'>
+        <Tile
+          label='Planned'
+          value={data.stallsPlanned}
+          glyph='layers'
+          tone='info'
+          to='/m/stalls/planning'
         />
-      </Section>
+        <Tile label='Allocated' value={data.stallsAllocated} glyph='map-pin' tone='ok' />
+        <Tile
+          label='Flagged for follow-up'
+          value={data.flagged}
+          glyph='alert-triangle'
+          tone='warn'
+          to='/m/stalls/all?flagged=true'
+        />
+      </Group>
 
-      <Section title='Stalls'>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12, marginBottom: 16 }}>
-          <Card onAct={() => navigate('/m/stalls/planning')} label='Planned stalls'>
-            <div style={{ fontSize: 22, fontWeight: 700 }}>{data.stallsPlanned}</div>
-            <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>Planned stalls</div>
-          </Card>
-          <Card>
-            <div style={{ fontSize: 22, fontWeight: 700 }}>{data.stallsAllocated}</div>
-            <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>Allocated</div>
-          </Card>
-          <Card onAct={() => navigate('/m/stalls/all?flagged=true')} label='Flagged for follow-up'>
-            <div style={{ fontSize: 22, fontWeight: 700 }}>{data.flagged}</div>
-            <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>Flagged for follow-up</div>
-          </Card>
-        </div>
-      </Section>
-
-      <Section title='Onboarding'>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 12 }}>
-          <Card onAct={() => navigate('/m/stalls/onboarding')} label='Vendor onboarding'>
-            <div style={{ fontWeight: 700 }}>Vendor onboarding</div>
-            <div style={{ fontSize: 12, color: 'var(--mfg)' }}>Bank details, payment quotes, FSSAI, coupons</div>
-          </Card>
-          <Card onAct={() => navigate('/m/stalls/finance')} label='Finance'>
-            <div style={{ fontWeight: 700 }}>Finance</div>
-            <div style={{ fontSize: 12, color: 'var(--mfg)' }}>Confirm payments received outside the system</div>
-          </Card>
-          <Card onAct={() => navigate('/m/stalls/checkin')} label='Check-in'>
-            <div style={{ fontWeight: 700 }}>Check-in</div>
-            <div style={{ fontSize: 12, color: 'var(--mfg)' }}>Event day: arrivals, passes, what is still pending</div>
-          </Card>
-        </div>
-      </Section>
+      <Group title='Onboarding · Phase 2 and 3'>
+        <Tile label='Pending bank details' value='—' hint='Phase 2' glyph='file-text' />
+        <Tile label='Pending payment' value='—' hint='Phase 2' glyph='ticket' />
+        <Tile label='FSSAI pending' value='—' hint='Phase 3' glyph='shield' />
+        <Tile label='Not checked in' value='—' hint='Phase 3' glyph='log-in' />
+      </Group>
     </div>
   );
 }

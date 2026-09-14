@@ -1,24 +1,27 @@
 import type { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { NotAuthorizedError, ValidationFailedError } from '../../errors';
 import {
-  AlreadyConfirmedError,
-  AlreadySentError,
+  BankDetailsLockedError,
+  CouponFullError,
   CustomFieldInUseError,
+  DuplicatePaymentError,
   InvalidTransitionError,
   LastAdminError,
   NoActiveEditionError,
-  NoPaymentError,
-  NotIssuedError,
-  NotSelectedError,
   StallAlreadyAllocatedError,
   StallBlockedError,
+  RefundAlreadySubmittedError,
+  StepNotOpenError,
   TooManyStallsError,
   UnknownAccessLinkError,
+  UnknownCouponError,
   UnknownPersonError,
   UnknownRequestError,
   UnknownStallError,
+  UnknownTemplateError,
   UnknownZoneError,
   UploadsUnavailableError,
+  WrongTemplateError,
 } from './errors';
 import { NotSignedInError } from './roles';
 
@@ -33,7 +36,9 @@ function statusFor(err: unknown): number | null {
     err instanceof UnknownRequestError ||
     err instanceof UnknownStallError ||
     err instanceof UnknownZoneError ||
-    err instanceof UnknownPersonError
+    err instanceof UnknownPersonError ||
+    err instanceof UnknownCouponError ||
+    err instanceof UnknownTemplateError
   ) {
     return 404;
   }
@@ -43,11 +48,12 @@ function statusFor(err: unknown): number | null {
     err instanceof InvalidTransitionError ||
     err instanceof LastAdminError ||
     err instanceof CustomFieldInUseError ||
-    err instanceof AlreadySentError ||
-    err instanceof NotSelectedError ||
-    err instanceof NoPaymentError ||
-    err instanceof AlreadyConfirmedError ||
-    err instanceof NotIssuedError
+    err instanceof WrongTemplateError ||
+    err instanceof CouponFullError ||
+    err instanceof BankDetailsLockedError ||
+    err instanceof StepNotOpenError ||
+    err instanceof RefundAlreadySubmittedError ||
+    err instanceof DuplicatePaymentError
   ) {
     return 409;
   }

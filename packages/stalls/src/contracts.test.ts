@@ -94,6 +94,14 @@ describe('SelectRequestInput', () => {
   test('accepts real stall numbers and refuses junk', () => {
     expect(SelectRequestInput.safeParse({ stallNumbers: ['A4-17', 'C2-1'] }).success).toBe(true);
     expect(SelectRequestInput.safeParse({ stallNumbers: ['A4-0'] }).success).toBe(false);
-    expect(SelectRequestInput.safeParse({ stallNumbers: [] }).success).toBe(false);
+  });
+
+  // The team's sequence is: agree the bay, send the payment letter, allocate a
+  // number later. Requiring a number here would force the two decisions into
+  // one moment and pin a vendor to a pitch nobody has walked yet.
+  test('accepts a selection that settles the bay and leaves the number open', () => {
+    const r = SelectRequestInput.safeParse({ agreedZoneCode: 'B3' });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.stallNumbers).toEqual([]);
   });
 });

@@ -1,172 +1,205 @@
-import { type ElectricalRow, ZONE_CODES } from '@msr/stalls';
+import { ZONE_CODES } from '@msr/stalls';
 import { useMemo, useState } from 'react';
-import * as api from '../api';
-import { TextInput } from '../components/FormControls';
-import { Mono } from '../components/Grid';
+import { getElectrical } from '../api';
 import { useLoad } from '../hooks';
-import { useMe } from '../me';
-import { useToast } from '../ui/components/Toast';
-import { Icon } from '../ui/icons';
-import { Btn, Card, Empty, ErrorBox, H1, Loading, Toolbar, toolBtnStyle } from '../ui/ui';
+import {
+  Btn,
+  Card,
+  Empty,
+  ErrorBox,
+  H1,
+  Icon,
+  Loading,
+  Search,
+  TBody,
+  TD,
+  TH,
+  THead,
+  TR,
+  Table,
+  toolBtnStyle,
+} from '../ui';
 
-/** Requirement 9: the stall layout and electrical load, per zone, in a shape
- *  the venue and electrical teams can print on A4 — the 2025 "Electrical data
- *  Stall_bay wise" sheet, generated rather than typed. */
+/**
+ * The stall-wise electrical layout the electrical and venue-prep teams walk the
+ * bays with.
+ *
+ * ⚠️ **This screen exists to be printed.** The 2025 original is one spreadsheet
+ * tab per bay, carried on paper; the requirement asks for "the format which is
+ * printable in A4 sheet". So the print stylesheet below is not a nicety — it is
+ * the deliverable, and everything chrome (nav, toolbar, buttons) is hidden from
+ * it while the table keeps its rules and header.
+ *
+ * The 5A column says *including the one free plug*, which is not what the
+ * request form asked for. That conversion happens server-side
+ * (`plugs5aIncludingDefault`) so the screen and the sheet can never disagree
+ * about it.
+ */
 export function Electrical() {
-  const { can } = useMe();
-  const toast = useToast();
-  const [zone, setZone] = useState<string>('A4');
-  const rows = useLoad(() => api.electricalRows(zone || undefined), [zone]);
-  const [editing, setEditing] = useState<string | null>(null);
-  const [cluster, setCluster] = useState('');
-  const canEdit = can('planning:write');
+  const [zone, setZone] = useState<string>('');
+  const [q, setQ] = useState('');
+  const { data, error, loading } = useLoad(() => getElectrical(zone || undefined), [zone]);
 
-  const data = rows.data ?? [];
-  const byCluster = useMemo(() => {
-    const m = new Map<string, ElectricalRow[]>();
-    for (const r of data) {
-      const k = r.cluster ?? '—';
-      m.set(k, [...(m.get(k) ?? []), r]);
-    }
-    return [...m.entries()].sort(([a], [b]) => (a === '—' ? 1 : b === '—' ? -1 : a.localeCompare(b)));
-  }, [data]);
-  const totals = {
-    stalls: data.length,
-    occupied: data.filter((r) => r.stallName).length,
-    p5: data.reduce((n, r) => n + r.plugs5a, 0),
-    p15: data.reduce((n, r) => n + r.plugs15a, 0),
-    gas: data.reduce((n, r) => n + r.gasStoves, 0),
-    watts: data.reduce((n, r) => n + r.totalWatts, 0),
-  };
-
-  const saveCluster = async (stallNumber: string) => {
-    try {
-      await api.setCluster(stallNumber, cluster.trim() || null);
-      toast.ok(`${stallNumber} → cluster ${cluster.trim() || '—'}`);
-      setEditing(null);
-      rows.reload();
-    } catch (e) {
-      toast.fail(e);
-    }
-  };
-
-  const cellHead: React.CSSProperties = { padding: '8px 10px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: 'var(--rail-fg)', background: 'var(--rail)', borderBottom: '1px solid var(--line)' };
-  const cell: React.CSSProperties = { padding: '8px 10px', borderBottom: '1px solid var(--line)', fontSize: 12.5, verticalAlign: 'top' };
-  const num: React.CSSProperties = { ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
+  const rows = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    return (data?.rows ?? []).filter(
+      (r) =>
+        !term ||
+        r.stallNumber.toLowerCase().includes(term) ||
+        r.stallName.toLowerCase().includes(term),
+    );
+  }, [data, q]);
 
   return (
     <div>
+      <style>{PRINT_CSS}</style>
+
       <div className='msrs-noprint'>
         <H1
-          icon={<Icon name='layers' size={20} />}
-          sub='Per zone: every stall, who is in it, plug points, gas stoves and appliance load. Group stalls into electrical clusters for the panel layout.'
+          icon={<Icon name='sliders' size={18} />}
+          sub='Stall-wise plug points and appliance load, shared with the electrical and venue prep teams. Pick a cluster, then print.'
           actions={
-            <Btn onClick={() => window.print()}>
-              <Icon name='download' size={14} /> Print A4
+            <Btn kind='primary' onClick={() => window.print()} disabled={rows.length === 0}>
+              <Icon name='download' size={14} />
+              Print A4 {zone ? `(${zone})` : '(all)'}
             </Btn>
           }
         >
           Electrical &amp; Venue
         </H1>
-        <Toolbar>
-          <button type='button' onClick={() => setZone('')} aria-pressed={zone === ''} style={toolBtnStyle(zone === '')}>
-            All zones
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+          <button
+            type='button'
+            aria-pressed={zone === ''}
+            onClick={() => setZone('')}
+            style={toolBtnStyle(zone === '')}
+          >
+            All clusters
           </button>
           {ZONE_CODES.map((z) => (
-            <button type='button' key={z} onClick={() => setZone(z)} aria-pressed={zone === z} style={toolBtnStyle(zone === z)}>
+            <button
+              key={z}
+              type='button'
+              aria-pressed={zone === z}
+              onClick={() => setZone(z)}
+              style={toolBtnStyle(zone === z)}
+            >
               {z}
             </button>
           ))}
-          <div style={{ flex: 1 }} />
-          <span style={{ fontSize: 12.5, color: 'var(--mfg)' }}>
-            {totals.occupied}/{totals.stalls} occupied · {totals.p5} × 5 A · {totals.p15} × 15 A · {totals.gas} gas · {totals.watts.toLocaleString('en-IN')} W
-          </span>
-        </Toolbar>
+          <Search value={q} onChange={setQ} placeholder='Search stall number or name…' />
+        </div>
       </div>
 
-      <div style={{ display: 'none' }} className='msrs-print-title'>
-        MSR Stalls — Electrical sheet {zone || 'all zones'}
-      </div>
-
-      {rows.loading && !rows.data ? (
+      {error && <ErrorBox>{error.message}</ErrorBox>}
+      {loading && !data ? (
         <Loading />
-      ) : rows.error ? (
-        <ErrorBox>{rows.error.message}</ErrorBox>
-      ) : data.length === 0 ? (
-        <Card>
-          <Empty>No stalls in this zone yet. Apply a plan under Planning &amp; Zones.</Empty>
-        </Card>
+      ) : rows.length === 0 ? (
+        <div className='msrs-noprint'>
+          <Empty>
+            No allocated stalls in this cluster yet. The sheet is built from stall allocations, so
+            it fills up as selection proceeds.
+          </Empty>
+        </div>
       ) : (
-        byCluster.map(([k, list]) => (
-          <Card key={k} pad={0} style={{ overflow: 'hidden', marginBottom: 14, breakInside: 'avoid' }}>
-            <div style={{ padding: '10px 14px', fontWeight: 700, fontSize: 13, borderBottom: '1px solid var(--line)', display: 'flex', gap: 10, alignItems: 'baseline' }}>
-              {zone || 'All zones'} {k !== '—' ? `· Cluster ${k}` : '· No cluster'}
-              <span style={{ fontSize: 11.5, color: 'var(--mfg)', fontWeight: 500 }}>
-                {list.length} stall{list.length > 1 ? 's' : ''} · {list.reduce((n, r) => n + r.totalWatts, 0).toLocaleString('en-IN')} W
-              </span>
-            </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
-                <thead>
-                  <tr>
-                    <th style={cellHead}>Stall no</th>
-                    <th style={cellHead}>Stall name</th>
-                    <th style={cellHead}>Category</th>
-                    <th style={{ ...cellHead, textAlign: 'right' }}>5 A (incl. 1)</th>
-                    <th style={{ ...cellHead, textAlign: 'right' }}>15 A</th>
-                    <th style={{ ...cellHead, textAlign: 'right' }}>Gas</th>
-                    <th style={cellHead}>Appliances and wattage</th>
-                    <th style={{ ...cellHead, textAlign: 'right' }}>Total W</th>
-                    {canEdit && <th style={cellHead} className='msrs-noprint'>Cluster</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {list.map((r) => (
-                    <tr key={r.stallNumber}>
-                      <td style={cell}>
-                        <b>
-                          <Mono>{r.stallNumber}</Mono>
-                        </b>
-                      </td>
-                      <td style={cell}>
-                        {r.stallName ?? <span style={{ color: 'var(--mfg)' }}>— empty —</span>}
-                        {r.reference && <div style={{ fontSize: 11, color: 'var(--mfg)' }}>{r.reference}</div>}
-                      </td>
-                      <td style={{ ...cell, color: 'var(--mfg)' }}>{r.category.replace(/_/g, ' ').toLowerCase()}</td>
-                      <td style={num}>{r.stallName ? Math.max(1, r.plugs5a) : ''}</td>
-                      <td style={num}>{r.stallName ? r.plugs15a : ''}</td>
-                      <td style={num}>{r.stallName ? r.gasStoves : ''}</td>
-                      <td style={cell}>{r.appliances.map((a) => `${a.name} ${a.watts}W`).join(', ')}</td>
-                      <td style={{ ...num, fontWeight: 600 }}>{r.totalWatts ? r.totalWatts.toLocaleString('en-IN') : ''}</td>
-                      {canEdit && (
-                        <td style={cell} className='msrs-noprint'>
-                          {editing === r.stallNumber ? (
-                            <span style={{ display: 'flex', gap: 6 }}>
-                              <TextInput aria-label={`${r.stallNumber} cluster`} value={cluster} onChange={(e) => setCluster(e.target.value)} style={{ width: 70, padding: '4px 8px' }} autoFocus onKeyDown={(e) => e.key === 'Enter' && saveCluster(r.stallNumber)} />
-                              <Btn onClick={() => saveCluster(r.stallNumber)}>Save</Btn>
-                            </span>
-                          ) : (
-                            <button
-                              type='button'
-                              onClick={() => {
-                                setEditing(r.stallNumber);
-                                setCluster(r.cluster ?? '');
-                              }}
-                              style={{ border: '1px dashed var(--bd)', background: 'none', borderRadius: 'var(--r)', padding: '2px 8px', cursor: 'pointer', fontSize: 12, color: r.cluster ? 'var(--fg)' : 'var(--mfg)' }}
-                            >
-                              {r.cluster ?? 'set'}
-                            </button>
-                          )}
-                        </td>
-                      )}
-                    </tr>
+        <>
+          {/* Only visible on paper: a sheet handed to another team has to say
+              what it is and which bay it covers without anyone writing on it. */}
+          <div className='msrs-printonly msrs-printhead'>
+            <span>Electrical &amp; Venue Prep — {zone ? `Cluster ${zone}` : 'All clusters'}</span>
+            <span>{data?.editionName}</span>
+          </div>
+
+          <div className='msrs-sheet'>
+            <Card pad={0} style={{ overflow: 'hidden' }}>
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>Stall No</TH>
+                    <TH>Stall Name</TH>
+                    <TH>Category</TH>
+                    <TH align='right'>5A (incl. 1 default)</TH>
+                    <TH align='right'>15A</TH>
+                    <TH align='right'>Gas</TH>
+                    <TH>Appliances &amp; wattage</TH>
+                    <TH align='right'>Total W</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {rows.map((r) => (
+                    <TR key={r.stallNumber}>
+                      <TD mono style={{ fontWeight: 600, fontSize: 12 }}>
+                        {r.stallNumber}
+                      </TD>
+                      <TD style={{ fontSize: 12.5 }}>{r.stallName}</TD>
+                      <TD muted style={{ fontSize: 11.5 }}>
+                        {r.category.replace(/_/g, ' ').toLowerCase()}
+                      </TD>
+                      <TD align='right'>{r.plugs5aTotal}</TD>
+                      <TD align='right'>{r.plugs15a}</TD>
+                      <TD align='right'>{r.gasStoves || '—'}</TD>
+                      <TD style={{ fontSize: 11.5 }}>
+                        {r.appliances.length === 0
+                          ? '—'
+                          : r.appliances.map((a) => `${a.name} ${a.watts}W`).join(', ')}
+                      </TD>
+                      <TD align='right' style={{ fontWeight: 600 }}>
+                        {r.totalWatts.toLocaleString('en-IN')}
+                      </TD>
+                    </TR>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        ))
+                </TBody>
+              </Table>
+            </Card>
+          </div>
+
+          <div
+            className='msrs-noprint'
+            style={{
+              display: 'flex',
+              gap: 18,
+              marginTop: 12,
+              fontSize: 12,
+              color: 'var(--mfg)',
+              flexWrap: 'wrap',
+            }}
+          >
+            <span>{rows.length} stalls</span>
+            <span>{data?.totals.plugs5a.toLocaleString('en-IN')} × 5A</span>
+            <span>{data?.totals.plugs15a.toLocaleString('en-IN')} × 15A</span>
+            <span>{data?.totals.watts.toLocaleString('en-IN')} W total load</span>
+          </div>
+        </>
       )}
     </div>
   );
 }
+
+/**
+ * The A4 rules.
+ *
+ * Scoped to `@media print` and injected by this screen rather than added to
+ * `index.css`, because it hides the app shell — a global rule doing that would
+ * silently break printing on every other screen. `msrs-noprint` on the chrome,
+ * `msrs-printonly` on the paper header, and the table forced back to visible
+ * borders because the screen's colour tokens print as nothing on white.
+ */
+const PRINT_CSS = `
+.msrs-printonly { display: none; }
+@media print {
+  @page { size: A4 landscape; margin: 12mm; }
+  body { background: #fff !important; }
+  .msrs-noprint, nav, header, aside, [data-app-chrome] { display: none !important; }
+  .msrs-printonly { display: flex !important; justify-content: space-between;
+    font-size: 12px; font-weight: 700; margin-bottom: 8px; }
+  .msrs-sheet { border: 0 !important; box-shadow: none !important; }
+  .msrs-sheet table { font-size: 10px !important; width: 100%; }
+  .msrs-sheet th, .msrs-sheet td {
+    border: 1px solid #999 !important; padding: 3px 5px !important;
+    color: #000 !important; background: #fff !important;
+    white-space: normal !important; position: static !important;
+  }
+  .msrs-sheet tr { break-inside: avoid; }
+}
+`;

@@ -1,45 +1,69 @@
-// The module's ENTIRE unauthenticated surface. Anything a person without a
-// session can reach lives in this file and nowhere else, so the boundary is
-// one screen to review.
+// The module's ENTIRE unauthenticated surface. Everything a person without a
+// session can reach lives in this file and nowhere else, so the boundary is one
+// screen to review.
 //
-// Two kinds of route: the open ones (config, submit) and the signed-link ones
-// (status, bank, FSSAI, staff, upload). A signed-link route resolves the token
-// FIRST and refuses with the same 404 for unknown, expired, revoked and
-// wrong-purpose, so the response never says which.
+// Every route here is gated by one of exactly two credentials:
+//
+//   • a signed access LINK  — status page, bank form, FSSAI upload. The token
+//     names the request; nothing in a body ever does, so holding one link can
+//     never write to another vendor's record.
+//   • a staff COUPON        — staff registration. Same rule: the coupon names
+//     the stall.
+//
+// Three routes take no credential: `GET /config`, which is the public form's
+// own configuration and contains no vendor data; `POST /requests`, the one open
+// write in the system; and `POST /access-link`, which reads nothing back to the
+// caller and can only ever send a link to the address already on the account.
+// All three are rate-limited per IP.
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
-  BankDetailsInput,
-  FssaiUploadInput,
+  type BankFormView,
+  type ContinueStepResponse,
+  type CouponView,
+  type FssaiFormView,
+  type PublicStatusResponse,
+  type RequestAccessLinkResponse,
+  ContinueStepInput,
   PresignUploadInput,
+  RegisterStaffInput,
+  RequestAccessLinkInput,
   type SubmitRequestResponse,
+  SubmitBankDetailsInput,
+  SubmitFssaiInput,
   SubmitRequestInput,
 } from '@msr/stalls';
 import { prisma } from '../../prisma';
 import type { ZodTypeProvider } from '../../zod-validation';
-import { bankView, presignUpload, submitBank } from './bank';
+import { resolveAccessLink } from './accounts';
+import { getBankForm, submitBankDetails } from './bank';
 import { getPublicConfig } from './config';
 import type { StallsDeps } from './deps';
-import { fssaiView, staffView, submitFssai } from './ops';
-import { statusView } from './status';
+import { UnknownAccessLinkError } from './errors';
+import { registerStaff, resolveCoupon, submitFssai, toCouponView } from './onboarding';
+import { sendAccessLink, statusView, stepLink } from './portal';
 import { submitRequest } from './submit';
+import { isOurKey, presignUpload } from './uploads';
 
 const TokenParams = z.object({ token: z.string().min(16).max(128) });
 
 export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDeps): void {
   const zod = app.withTypeProvider<ZodTypeProvider>();
-  const limited = { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } };
 
-  // ── Open ──────────────────────────────────────────────────────────────────
-
-  /** What the request form needs to render. No staff data. */
+  /** What the form needs to render. No staff data. */
   zod.get('/config', async () => getPublicConfig(prisma));
 
-  /** The one open write. Per-IP rate limit on top of the global one. Strict
-   *  Zod; nothing in the body reaches status, stage or money. */
+  /** The one public write. Per-IP rate limit on top of the global one: a
+   *  script cannot fill the pipeline with junk, and a real vendor never hits
+   *  the cap. Strict Zod; nothing in the body reaches status, stage or money. */
   zod.post(
     '/requests',
-    { schema: { body: SubmitRequestInput }, config: limited },
+    {
+      schema: { body: SubmitRequestInput },
+      config: {
+        rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' },
+      },
+    },
     async (req, reply): Promise<SubmitRequestResponse> => {
       const { reference, statusToken } = await submitRequest(prisma, req.body, {
         mail: deps.mail,
@@ -50,44 +74,168 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
     },
   );
 
-  // ── Signed links ──────────────────────────────────────────────────────────
-
-  /** That vendor's own requests with their onboarding steps and whichever
-   *  links are open now. A wrong token is a 404 — never a 403. */
-  zod.get('/status/:token', { schema: { params: TokenParams } }, async (req) =>
-    statusView(prisma, req.params.token, deps),
+  /** That vendor's own requests, and nothing else. A wrong token is a 404 —
+   *  never a 403, which would confirm the token exists. Fields staff use
+   *  internally (flag reason, reject reason, notes) are not here. */
+  zod.get(
+    '/status/:token',
+    { schema: { params: TokenParams } },
+    async (req): Promise<PublicStatusResponse> => {
+      const link = await resolveAccessLink(prisma, req.params.token, 'STATUS');
+      return statusView(prisma, link);
+    },
   );
 
-  /** The bank / GST / contract form. */
-  zod.get('/bank/:token', { schema: { params: TokenParams } }, async (req) =>
-    bankView(prisma, req.params.token),
+  /** "I applied but I cannot find the email." The requirement's register-and-
+   *  login by email or phone number, in a module that has no passwords: the
+   *  link goes to the account, never to the caller.
+   *
+   *  Always 202 with the same body — a different response for an unknown
+   *  contact would make this a way to ask whether somebody applied. */
+  zod.post(
+    '/access-link',
+    {
+      schema: { body: RequestAccessLinkInput },
+      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
+    },
+    async (req, reply): Promise<RequestAccessLinkResponse> => {
+      await sendAccessLink(prisma, deps, req.body.contact);
+      reply.status(202);
+      return { ok: true };
+    },
   );
+
+  /** Opens an outstanding step from the vendor's own portal — the way back to
+   *  the bank form or the FSSAI upload for a vendor who no longer has the
+   *  letter that first carried it. The status link is the credential; the
+   *  reference only picks which of that account's requests is meant. */
+  zod.post(
+    '/status/:token/continue',
+    {
+      schema: { params: TokenParams, body: ContinueStepInput },
+      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
+    },
+    async (req): Promise<ContinueStepResponse> => {
+      const link = await resolveAccessLink(prisma, req.params.token, 'STATUS');
+      return stepLink(prisma, deps, link, req.body);
+    },
+  );
+
+  // ── Uploads ───────────────────────────────────────────────────────────────
+
+  /** Presigns a PUT for a vendor holding a live bank-form or FSSAI link.
+   *
+   *  The link is what authorises the upload, and the purpose must match what
+   *  that link is for — a FSSAI link cannot presign a cheque. Keys are minted
+   *  by `presignUpload` from a UUID, never from the vendor's filename, so
+   *  nothing a person types reaches a path. */
+  zod.post(
+    '/uploads/:token',
+    {
+      schema: { params: TokenParams, body: PresignUploadInput },
+      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
+    },
+    async (req) => {
+      const purpose = req.body.purpose;
+      if (purpose === 'TEMPLATE_ATTACHMENT') throw new UnknownAccessLinkError();
+      const linkPurpose = purpose === 'FSSAI' ? 'FSSAI_UPLOAD' : 'BANK_FORM';
+      await resolveAccessLink(prisma, req.params.token, linkPurpose);
+      return presignUpload(deps.files, req.body);
+    },
+  );
+
+  // ── Bank details and requirements (vendors only) ──────────────────────────
+
+  zod.get(
+    '/bank/:token',
+    { schema: { params: TokenParams } },
+    async (req): Promise<BankFormView> => {
+      const link = await resolveAccessLink(prisma, req.params.token, 'BANK_FORM');
+      if (!link.requestId) throw new UnknownAccessLinkError();
+      return getBankForm(prisma, link.requestId);
+    },
+  );
+
   zod.post(
     '/bank/:token',
-    { schema: { params: TokenParams, body: BankDetailsInput }, config: limited },
-    async (req) => submitBank(prisma, req.params.token, req.body),
+    {
+      schema: { params: TokenParams, body: SubmitBankDetailsInput },
+      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
+    },
+    async (req, reply) => {
+      const link = await resolveAccessLink(prisma, req.params.token, 'BANK_FORM');
+      if (!link.requestId) throw new UnknownAccessLinkError();
+      await submitBankDetails(prisma, link.requestId, req.body);
+      reply.status(204);
+    },
   );
 
-  /** An upload slot for a cheque, PAN, GST or FSSAI file. The token's purpose
-   *  decides which of those it may ask for. */
-  zod.post(
-    '/upload/:token',
-    { schema: { params: TokenParams, body: PresignUploadInput }, config: limited },
-    async (req) => presignUpload(prisma, req.params.token, req.body, deps.files),
+  // ── FSSAI certificate ─────────────────────────────────────────────────────
+
+  zod.get(
+    '/fssai/:token',
+    { schema: { params: TokenParams } },
+    async (req): Promise<FssaiFormView> => {
+      const link = await resolveAccessLink(prisma, req.params.token, 'FSSAI_UPLOAD');
+      if (!link.requestId) throw new UnknownAccessLinkError();
+      const r = await prisma.stallRequest.findUnique({
+        where: { id: link.requestId },
+        include: { fssai: { include: { files: true } } },
+      });
+      if (!r) throw new UnknownAccessLinkError();
+      return {
+        reference: r.reference,
+        stallName: r.stallName,
+        requesterName: r.requesterName,
+        uploadedAt: r.fssai?.submittedAt.toISOString() ?? null,
+        verifiedAt: r.fssai?.verifiedAt?.toISOString() ?? null,
+        files: (r.fssai?.files ?? []).map((f) => ({
+          name: f.fileName,
+          uploadedAt: f.uploadedAt.toISOString(),
+        })),
+      };
+    },
   );
 
-  /** FSSAI certificate. */
-  zod.get('/fssai/:token', { schema: { params: TokenParams } }, async (req) =>
-    fssaiView(prisma, req.params.token),
-  );
   zod.post(
     '/fssai/:token',
-    { schema: { params: TokenParams, body: FssaiUploadInput }, config: limited },
-    async (req) => submitFssai(prisma, req.params.token, req.body),
+    {
+      schema: { params: TokenParams, body: SubmitFssaiInput },
+      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
+    },
+    async (req, reply) => {
+      const link = await resolveAccessLink(prisma, req.params.token, 'FSSAI_UPLOAD');
+      if (!link.requestId) throw new UnknownAccessLinkError();
+      // Same rule as the bank form: a key the browser sends back must be one
+      // this module handed out, for this purpose.
+      if (!req.body.files.every((f) => isOurKey(f.key, 'FSSAI'))) {
+        throw new UnknownAccessLinkError();
+      }
+      await submitFssai(prisma, link.requestId, req.body);
+      reply.status(204);
+    },
   );
 
-  /** The staff-registration coupon and where to use it. */
-  zod.get('/staff/:token', { schema: { params: TokenParams } }, async (req) =>
-    staffView(prisma, req.params.token),
+  // ── Staff registration (coupon-gated) ─────────────────────────────────────
+
+  zod.get(
+    '/staff-registration/:code',
+    { schema: { params: z.object({ code: z.string().trim().min(6).max(40) }) } },
+    async (req): Promise<CouponView> => {
+      const request = await resolveCoupon(prisma, req.params.code);
+      return toCouponView(request);
+    },
+  );
+
+  zod.post(
+    '/staff-registration',
+    {
+      schema: { body: RegisterStaffInput },
+      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
+    },
+    async (req, reply): Promise<CouponView> => {
+      reply.status(201);
+      return registerStaff(prisma, req.body);
+    },
   );
 }

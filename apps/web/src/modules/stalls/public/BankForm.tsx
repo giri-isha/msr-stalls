@@ -1,302 +1,440 @@
-import { BANK_FORM_FIELDS, BankDetailsInput, type FormField, formatInr } from '@msr/stalls';
-import { useEffect, useState } from 'react';
+import type { SubmitBankDetailsInput } from '@msr/stalls';
+import { useState } from 'react';
 import { useParams } from 'react-router';
-import { ApiError, fieldErrorsFrom } from '../api-client';
-import { getBankView, submitBank, uploadFile } from '../api';
+import { fieldErrorsFrom } from '../api-client';
+import { getBankForm, presignPublicUpload, submitBankDetails, uploadFile } from '../api';
 import { type ApplianceRow, ApplianceRows } from '../components/ApplianceRows';
-import { CheckRow, Field, NumberInput, SectionTitle, TextArea, TextInput } from '../components/FormControls';
+import { BilingualLabel } from '../components/BilingualLabel';
 import { useLoad } from '../hooks';
-import { Card, Empty, ErrorBox, H1, Loading, Tag } from '../ui/ui';
-import { Icon } from '../ui/icons';
+import {
+  Btn,
+  Card,
+  Checkbox,
+  ErrorBox,
+  FieldError,
+  FormField,
+  H1,
+  Icon,
+  Input,
+  Loading,
+  Tag,
+  Textarea,
+  useToast,
+} from '../ui';
 
-type Values = Record<string, string | boolean | ApplianceRow[]>;
-const str = (v: unknown) => (typeof v === 'string' ? v : '');
-const num = (v: unknown) => (str(v).trim() === '' ? 0 : Number(str(v)));
+/**
+ * "MSR Stalls Bank Details and Requirements" — the vendor's own Phase 2 form.
+ *
+ * Reached only from the link in the selection email. The link is what says
+ * which request this is; nothing the browser sends does. That is why there is
+ * no request id anywhere in this file.
+ *
+ * The Tamil beside each label is copied from the 2025 form's own column
+ * headings (`Vendor Stall Payment Details - 2025`), not translated. Where the
+ * 2025 sheet had no Tamil for a field, there is none here.
+ */
 
-const UPLOADS: Record<string, 'CHEQUE' | 'PAN' | 'GST'> = {
-  chequeMediaKey: 'CHEQUE',
-  panMediaKey: 'PAN',
-  gstMediaKey: 'GST',
-};
+interface TextField {
+  name: keyof SubmitBankDetailsInput;
+  label: string;
+  labelTa: string | null;
+  required?: boolean;
+  type?: string;
+  help?: string;
+}
 
-/** The 2025 "MSR stalls bank details and requirements" form, reached only by
- *  the signed link in the selection email. One screen for a vendor and a local
- *  welfare stall alike; the API decides the deposit. */
+const FIELDS: TextField[] = [
+  { name: 'email', label: 'Email', labelTa: null, required: true, type: 'email' },
+  {
+    name: 'invoiceName',
+    label: 'Name as required on invoice',
+    labelTa: 'விலைப்பட்டியலில் குறிப்பிடப்பட வேண்டிய பெயர்',
+    required: true,
+  },
+  {
+    name: 'accountHolder',
+    label: 'Name of the bank account holder',
+    labelTa: 'வங்கி கணக்கு வைத்திருப்பவரின் பெயர்',
+    required: true,
+  },
+  { name: 'mobile', label: 'Mobile number', labelTa: 'கைபேசி எண்', required: true, type: 'tel' },
+  { name: 'address', label: 'Address', labelTa: 'முகவரி', required: true },
+  { name: 'pincode', label: 'Pincode', labelTa: 'பின்கோடு', required: true },
+  { name: 'bankName', label: 'Bank name', labelTa: 'வங்கி பெயர்', required: true },
+  { name: 'branch', label: 'Bank branch', labelTa: 'வங்கிக்கிளை', required: true },
+  {
+    name: 'accountNumber',
+    label: 'Account number',
+    labelTa: 'வங்கி கணக்கு எண்',
+    required: true,
+  },
+  { name: 'ifsc', label: 'IFSC code', labelTa: null, required: true },
+  { name: 'micr', label: 'MICR code', labelTa: null },
+  { name: 'panNumber', label: 'PAN card number', labelTa: 'பான் கார்டு எண்', required: true },
+  {
+    name: 'gstNumber',
+    label: 'GST number',
+    labelTa: 'ஜிஎஸ்டி எண்',
+    required: true,
+    help: "Enter 'None' if not applicable.",
+  },
+];
+
+const COUNTS: Array<{ name: keyof SubmitBankDetailsInput; label: string; labelTa: string | null }> =
+  [
+    { name: 'plugs5a', label: '5 Amp plug points needed', labelTa: null },
+    { name: 'plugs15a', label: '15 Amp plug points needed', labelTa: null },
+    { name: 'gasStoves', label: 'Number of gas stoves', labelTa: null },
+    { name: 'tablesNeeded', label: 'Tables needed', labelTa: null },
+    { name: 'chairsNeeded', label: 'Chairs needed', labelTa: null },
+    { name: 'passes2w', label: '2-wheeler passes', labelTa: null },
+    { name: 'passes4w', label: '4-wheeler passes', labelTa: null },
+    { name: 'passesStaff', label: 'Staff passes', labelTa: null },
+  ];
+
+type Values = Record<string, string>;
+
 export function BankForm() {
   const { token = '' } = useParams();
-  const view = useLoad(() => getBankView(token), [token]);
-  const [values, setValues] = useState<Values>({ appliances: [] });
+  const toast = useToast();
+  const { data, error, loading, reload } = useLoad(() => getBankForm(token), [token]);
+
+  const [values, setValues] = useState<Values>({});
+  const [appliances, setAppliances] = useState<ApplianceRow[]>([{ name: '', watts: '' }]);
+  const [files, setFiles] = useState<Record<string, { key: string; name: string }>>({});
+  const [agreeNeft, setAgreeNeft] = useState(false);
+  const [agreeTerms, setAgreeTerms] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [uploading, setUploading] = useState<string | null>(null);
-  const [uploaded, setUploaded] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
-  const [top, setTop] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
 
-  useEffect(() => {
-    const p = view.data?.prefill;
-    if (!p) return;
-    setValues((v) => ({
-      ...v,
-      mobile: p.mobile,
-      address: p.address ?? '',
-      plugs5a: String(p.plugs5a),
-      plugs15a: String(p.plugs15a),
-      gasStoves: String(p.gasStoves),
-      tablesNeeded: String(p.tablesNeeded),
-      chairsNeeded: String(p.chairsNeeded),
-      passes2w: String(p.passes2w),
-      passes4w: String(p.passes4w),
-      passesStaff: String(p.passesStaff),
-      appliances: p.appliances.map((a) => ({ name: a.name, watts: String(a.watts) })),
-    }));
-  }, [view.data]);
+  const presign = presignPublicUpload(token);
 
-  if (view.loading) return <Loading />;
-  if (view.error || !view.data) {
-    const nf = view.error instanceof ApiError && view.error.status === 404;
+  // Prefill the requirements block from what was asked for at request time. The
+  // vendor is confirming or correcting November's answers, not retyping them.
+  //
+  // ⚠️ Done DURING render rather than in an effect. An effect would paint a
+  // form full of zeros first and fill it a frame later, which on a slow phone
+  // reads as "they lost what I told them" — and a vendor who starts typing into
+  // that frame has their answer overwritten. `loadedFor` is the guard that makes
+  // this a one-shot adjustment rather than a loop.
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  if (data && data.reference !== loadedFor) {
+    setLoadedFor(data.reference);
+    setValues({
+      email: data.email,
+      plugs5a: String(data.current.plugs5a),
+      plugs15a: String(data.current.plugs15a),
+      gasStoves: String(data.current.gasStoves),
+      tablesNeeded: String(data.current.tablesNeeded),
+      chairsNeeded: String(data.current.chairsNeeded),
+      passes2w: String(data.current.passes2w),
+      passes4w: String(data.current.passes4w),
+      passesStaff: String(data.current.passesStaff),
+    });
+    if (data.current.appliances.length > 0) {
+      setAppliances(data.current.appliances.map((a) => ({ name: a.name, watts: String(a.watts) })));
+    }
+  }
+
+  if (loading && !data) return <Loading />;
+  if (error) {
     return (
-      <Card>
-        <Empty>{nf ? 'This link is not valid. Please use the link from your confirmation email.' : 'Something went wrong. Please try again.'}</Empty>
+      <ErrorBox>
+        This link is not valid. It may have expired, or it may already have been used. Please ask
+        the stalls team for a new one.
+      </ErrorBox>
+    );
+  }
+  if (!data) return null;
+
+  if (done || data.submittedAt) {
+    return (
+      <Card pad={24} style={{ display: 'grid', gap: 12, justifyItems: 'start' }}>
+        <Tag tone='ok'>
+          <Icon name='check' size={12} /> Received
+        </Tag>
+        <h2 style={{ margin: 0, fontSize: 20 }}>Thank you — we have your details</h2>
+        <p style={{ margin: 0, fontSize: 13.5, color: 'var(--mfg)', maxWidth: 560 }}>
+          We will email you the payment details and the Isha Foundation bank account to transfer to.
+          If anything in your bank details needs to change, please call the stalls team rather than
+          filling this form again.
+        </p>
       </Card>
     );
   }
-  const v = view.data;
 
-  const set = (name: string, val: Values[string]) => {
-    setValues((s) => ({ ...s, [name]: val }));
-    if (errors[name]) setErrors(({ [name]: _, ...rest }) => rest);
-  };
+  const set = (name: string, v: string) => setValues((prev) => ({ ...prev, [name]: v }));
+  const num = (name: string) => Number(values[name] ?? 0) || 0;
 
-  const onFile = async (name: string, file: File | undefined) => {
-    if (!file) return;
-    setUploading(name);
+  const pick = async (purpose: 'BANK_CHEQUE' | 'BANK_PAN' | 'BANK_GST', file: File) => {
     try {
-      const key = await uploadFile(token, UPLOADS[name]!, file);
-      setUploaded((u) => ({ ...u, [name]: file.name }));
-      set(name, key);
+      const up = await uploadFile(presign, file, purpose);
+      setFiles((prev) => ({ ...prev, [purpose]: up }));
+      toast.ok(`${file.name} uploaded.`);
     } catch (e) {
-      setErrors((er) => ({ ...er, [name]: (e as Error).message }));
-    } finally {
-      setUploading(null);
+      toast.fail(e);
     }
   };
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setTop(null);
-    const built: Record<string, unknown> = {
-      invoiceName: str(values.invoiceName),
-      accountHolder: str(values.accountHolder),
-      mobile: str(values.mobile),
-      address: str(values.address),
-      pincode: str(values.pincode),
-      bankName: str(values.bankName),
-      branch: str(values.branch),
-      accountNumber: str(values.accountNumber),
-      ifsc: str(values.ifsc),
-      micr: str(values.micr),
-      chequeMediaKey: str(values.chequeMediaKey) || undefined,
-      advanceReturnAck: values.advanceReturnAck === true,
-      panNumber: str(values.panNumber),
-      panMediaKey: str(values.panMediaKey) || undefined,
-      gstNumber: str(values.gstNumber) || 'NONE',
-      gstMediaKey: str(values.gstMediaKey) || undefined,
-      neftAgreed: values.neftAgreed === true,
-      tncAgreed: values.tncAgreed === true,
-      plugs5a: num(values.plugs5a),
-      plugs15a: num(values.plugs15a),
-      gasStoves: num(values.gasStoves),
-      appliances: (Array.isArray(values.appliances) ? values.appliances : [])
-        .filter((a) => a.name.trim())
-        .map((a) => ({ name: a.name.trim(), watts: num(a.watts) })),
-      tablesNeeded: num(values.tablesNeeded),
-      chairsNeeded: num(values.chairsNeeded),
-      passes2w: num(values.passes2w),
-      passes4w: num(values.passes4w),
-      passesStaff: num(values.passesStaff),
-      remarks: str(values.remarks) || undefined,
-    };
-    const missing: Record<string, string> = {};
-    for (const f of BANK_FORM_FIELDS) {
-      const val = values[f.name];
-      const empty = val === undefined || val === '' || val === false;
-      if (f.required && empty) missing[f.name] = f.type === 'checkbox' ? 'Please tick to continue' : 'Required';
-    }
-    const parsed = BankDetailsInput.safeParse(built);
-    if (!parsed.success) {
-      for (const i of parsed.error.issues) {
-        const name = i.path.join('.');
-        if (!missing[name]) missing[name] = i.message.replace(/^Invalid input:\s*/, '');
-      }
-    }
-    if (Object.keys(missing).length) {
-      setErrors(missing);
-      setTop('Please fix the highlighted fields.');
-      document.getElementById(Object.keys(missing)[0])?.scrollIntoView?.({ block: 'center' });
-      return;
-    }
-    if (!parsed.success) return;
+  const submit = async () => {
+    setErrors({});
     setBusy(true);
     try {
-      const r = await submitBank(token, parsed.data);
-      setDone(r.reference);
-    } catch (err) {
-      const fe = fieldErrorsFrom(err);
-      setErrors(fe);
-      setTop(Object.keys(fe).length ? 'Please fix the highlighted fields.' : (err as Error).message);
+      await submitBankDetails(token, {
+        email: values.email ?? '',
+        invoiceName: values.invoiceName ?? '',
+        accountHolder: values.accountHolder ?? '',
+        mobile: values.mobile ?? '',
+        address: values.address ?? '',
+        pincode: values.pincode ?? '',
+        bankName: values.bankName ?? '',
+        branch: values.branch ?? '',
+        accountNumber: values.accountNumber ?? '',
+        ifsc: values.ifsc ?? '',
+        micr: values.micr ?? '',
+        panNumber: values.panNumber ?? '',
+        gstNumber: values.gstNumber ?? '',
+        chequeKey: files.BANK_CHEQUE?.key ?? '',
+        panKey: files.BANK_PAN?.key ?? '',
+        gstKey: files.BANK_GST?.key ?? '',
+        agreeNeft: true,
+        agreeTerms: true,
+        plugs5a: num('plugs5a'),
+        plugs15a: num('plugs15a'),
+        gasStoves: num('gasStoves'),
+        appliances: appliances
+          .filter((a) => a.name.trim() !== '')
+          .map((a) => ({ name: a.name.trim(), watts: Number(a.watts) || 0 })),
+        tablesNeeded: num('tablesNeeded'),
+        chairsNeeded: num('chairsNeeded'),
+        passes2w: num('passes2w'),
+        passes4w: num('passes4w'),
+        passesStaff: num('passesStaff'),
+        remarks: values.remarks ?? '',
+      } as SubmitBankDetailsInput);
+      setDone(true);
+    } catch (e) {
+      const fields = fieldErrorsFrom(e);
+      setErrors(fields);
+      toast.fail(e);
+      if (Object.keys(fields).length === 0) reload();
     } finally {
       setBusy(false);
     }
   };
 
-  if (done) {
-    return (
-      <div style={{ maxWidth: 560, margin: '0 auto', textAlign: 'center' }}>
-        <div style={{ color: 'var(--ok)', margin: '12px 0' }}>
-          <Icon name='circle-check' size={44} strokeWidth={1.6} />
-        </div>
-        <H1 sub={`Reference ${done}. The stall team will send your payment details by email.`}>Details received</H1>
-      </div>
-    );
-  }
-
-  const byName = new Map(BANK_FORM_FIELDS.map((f) => [f.name, f]));
-  const F = (name: string) => byName.get(name)!;
-
-  const text = (f: FormField, type = 'text') => (
-    <Field key={f.name} id={f.name} label={f.label} labelTa={f.labelTa} help={f.help} helpTa={f.helpTa ?? null} error={errors[f.name]} required={f.required}>
-      <TextInput id={f.name} type={type} invalid={!!errors[f.name]} value={str(values[f.name])} onChange={(e) => set(f.name, e.target.value)} />
-    </Field>
-  );
-  const number = (f: FormField) => (
-    <Field key={f.name} id={f.name} label={f.label} labelTa={f.labelTa} help={f.help} helpTa={f.helpTa ?? null} error={errors[f.name]} required={f.required}>
-      <NumberInput id={f.name} invalid={!!errors[f.name]} value={str(values[f.name])} onChange={(e) => set(f.name, e.target.value)} />
-    </Field>
-  );
-  const upload = (f: FormField) => (
-    <Field key={f.name} id={f.name} label={f.label} labelTa={f.labelTa} help={f.help} helpTa={f.helpTa ?? null} error={errors[f.name]} required={f.required}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <input
-          id={f.name}
-          type='file'
-          accept='image/jpeg,image/png,application/pdf'
-          disabled={uploading !== null}
-          onChange={(e) => onFile(f.name, e.target.files?.[0])}
-          style={{ fontSize: 13 }}
-        />
-        {uploading === f.name && <span style={{ fontSize: 12, color: 'var(--mfg)' }}>Uploading…</span>}
-        {uploaded[f.name] && <Tag tone='ok'>{uploaded[f.name]}</Tag>}
-      </div>
-    </Field>
-  );
-  const check = (f: FormField) => (
-    <CheckRow key={f.name} id={f.name} checked={values[f.name] === true} onChange={(b) => set(f.name, b)} label={f.label} labelTa={f.labelTa} help={f.help} helpTa={f.helpTa ?? null} error={errors[f.name]} required={f.required} />
-  );
+  const ready = agreeNeft && agreeTerms && files.BANK_CHEQUE && files.BANK_PAN;
 
   return (
-    <form onSubmit={onSubmit} noValidate>
-      <H1 sub={`${v.stallName} · ${v.reference}${v.stallNumbers.length ? ` · Stall ${v.stallNumbers.join(', ')}` : ''}`}>
-        Bank details and requirements
+    <div style={{ display: 'grid', gap: 16, maxWidth: 760 }}>
+      <H1
+        icon={<Icon name='file-text' size={18} />}
+        sub={`${data.stallName} · ${data.reference}${data.stallNumbers.length ? ` · stall ${data.stallNumbers.join(', ')}` : ''}`}
+      >
+        Bank Details &amp; Requirements
       </H1>
-      <Card style={{ marginBottom: 14, background: 'var(--pri-t)', borderColor: 'var(--pri-t2)' }}>
-        <div style={{ fontSize: 13, lineHeight: 1.55 }}>
-          Please provide the below details to share the payment details.{' '}
-          <span className='msrs-ta' lang='ta'>
-            கட்டணம் செலுத்துவதற்கான விவரங்களை பகிர, கீழே உள்ள விவரங்களை வழங்கவும்.
-          </span>
-          <div style={{ marginTop: 6 }}>
-            Refundable deposit for this stall: <b>{formatInr(v.depositPaise)}</b>
-            {v.termsUrl && (
-              <>
-                {' · '}
-                <a href={v.termsUrl} target='_blank' rel='noreferrer'>
-                  Terms and conditions
-                </a>
-              </>
-            )}
-          </div>
-        </div>
+
+      <Card pad={18} style={{ display: 'grid', gap: 6 }}>
+        <p style={{ margin: 0, fontSize: 13.5 }}>
+          For selected vendors only. Please give us the details below so your refund and invoice can
+          be processed. <strong>No payment is collected on this form.</strong>
+        </p>
+        <p style={{ margin: 0, fontSize: 12.5, color: 'var(--mfg)' }}>
+          Fields marked * are required.
+        </p>
       </Card>
-      {v.submitted && (
-        <Card style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 13 }}>
-            <b>Already submitted</b> on {new Date(v.submitted.submittedAt).toLocaleDateString('en-IN')} — {v.submitted.accountHolder},{' '}
-            {v.submitted.bankName} {v.submitted.accountNumberMasked}. Submitting again replaces it.
-          </div>
-        </Card>
-      )}
-      {top && (
-        <div style={{ marginBottom: 14 }}>
-          <ErrorBox>
-            <span role='alert'>{top}</span>
-          </ErrorBox>
-        </div>
-      )}
-      <Card>
-        <SectionTitle>Invoice and bank account</SectionTitle>
-        {text(F('invoiceName'))}
-        {text(F('accountHolder'))}
-        {text(F('mobile'), 'tel')}
-        <Field id='address' label={F('address').label} labelTa={F('address').labelTa} error={errors.address} required>
-          <TextArea id='address' invalid={!!errors.address} value={str(values.address)} onChange={(e) => set('address', e.target.value)} />
-        </Field>
-        {text(F('pincode'))}
-        {text(F('bankName'))}
-        {text(F('branch'))}
-        {text(F('accountNumber'))}
-        {text(F('ifsc'))}
-        {text(F('micr'))}
-        {upload(F('chequeMediaKey'))}
-        {check(F('advanceReturnAck'))}
 
-        <SectionTitle>PAN and GST</SectionTitle>
-        {text(F('panNumber'))}
-        {upload(F('panMediaKey'))}
-        {text(F('gstNumber'))}
-        {upload(F('gstMediaKey'))}
-        {check(F('neftAgreed'))}
-
-        <SectionTitle>Electrical and logistics</SectionTitle>
-        {number(F('plugs5a'))}
-        {number(F('plugs15a'))}
-        {number(F('gasStoves'))}
-        <Field id='appliances' label={F('appliances').label} labelTa={F('appliances').labelTa}>
-          <ApplianceRows id='appliances' value={Array.isArray(values.appliances) ? values.appliances : []} onChange={(rows) => set('appliances', rows)} />
-        </Field>
-        {number(F('tablesNeeded'))}
-        {number(F('chairsNeeded'))}
-        {number(F('passes2w'))}
-        {number(F('passes4w'))}
-        {number(F('passesStaff'))}
-        <Field id='remarks' label={F('remarks').label} labelTa={F('remarks').labelTa}>
-          <TextArea id='remarks' value={str(values.remarks)} onChange={(e) => set('remarks', e.target.value)} />
-        </Field>
-
-        <SectionTitle>Terms</SectionTitle>
-        {check(F('tncAgreed'))}
+      <Card pad={18} style={{ display: 'grid', gap: 14 }}>
+        {FIELDS.map((f) => {
+          const id = `bank-${String(f.name)}`;
+          return (
+            <FormField
+              key={String(f.name)}
+              id={id}
+              label={<BilingualLabel en={f.label} ta={f.labelTa} />}
+              help={f.help}
+              required={f.required}
+              error={errors[String(f.name)]}
+            >
+              <Input
+                id={id}
+                type={f.type ?? 'text'}
+                invalid={!!errors[String(f.name)]}
+                aria-describedby={errors[String(f.name)] ? `${id}-error` : undefined}
+                value={values[String(f.name)] ?? ''}
+                onChange={(e) => set(String(f.name), e.target.value)}
+              />
+            </FormField>
+          );
+        })}
       </Card>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-        <button
-          type='submit'
-          disabled={busy || uploading !== null}
-          className={busy || uploading !== null ? undefined : 'msrs-lift'}
+
+      <Card pad={18} style={{ display: 'grid', gap: 14 }}>
+        <div style={{ fontSize: 14, fontWeight: 700 }}>Documents</div>
+        <FileField
+          label='Cancelled cheque or bank passbook front page *'
+          labelTa='ரத்து செய்யப்பட்ட காசோலை அல்லது வங்கி பாஸ்புக் முதல் பக்கம்'
+          chosen={files.BANK_CHEQUE?.name}
+          onPick={(file) => pick('BANK_CHEQUE', file)}
+        />
+        <FileField
+          label='PAN card *'
+          labelTa='பான் கார்டு'
+          chosen={files.BANK_PAN?.name}
+          onPick={(file) => pick('BANK_PAN', file)}
+        />
+        <FileField
+          label='GST certificate (if applicable)'
+          labelTa={null}
+          chosen={files.BANK_GST?.name}
+          onPick={(file) => pick('BANK_GST', file)}
+        />
+      </Card>
+
+      <Card pad={18} style={{ display: 'grid', gap: 14 }}>
+        <div style={{ fontSize: 14, fontWeight: 700 }}>Final stall requirements</div>
+        <p style={{ margin: 0, fontSize: 12.5, color: 'var(--mfg)' }}>
+          These replace what you asked for when you applied, so please check them. The first 5 Amp
+          plug point is free; anything beyond it is charged.
+        </p>
+        <div
           style={{
-            padding: '10px 18px',
-            borderRadius: 'var(--r2)',
-            border: '1px solid transparent',
-            background: 'var(--pri)',
-            color: 'var(--pfg)',
-            fontSize: 13.5,
-            fontWeight: 700,
-            cursor: busy || uploading !== null ? 'not-allowed' : 'pointer',
-            opacity: busy || uploading !== null ? 0.5 : 1,
-            boxShadow: 'var(--sh-pri)',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))',
+            gap: 12,
           }}
         >
-          {busy ? 'Submitting…' : 'Submit details'}
-        </button>
-      </div>
-    </form>
+          {COUNTS.map((c) => {
+            const id = `bank-${String(c.name)}`;
+            return (
+              <FormField
+                key={String(c.name)}
+                id={id}
+                label={<BilingualLabel en={c.label} ta={c.labelTa} />}
+                error={errors[String(c.name)]}
+              >
+                <Input
+                  id={id}
+                  type='number'
+                  inputMode='numeric'
+                  min={0}
+                  value={values[String(c.name)] ?? '0'}
+                  onChange={(e) => set(String(c.name), e.target.value)}
+                />
+              </FormField>
+            );
+          })}
+        </div>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+            Electrical appliances &amp; wattage
+          </div>
+          <ApplianceRows id='bank-appliances' value={appliances} onChange={setAppliances} />
+        </div>
+        <FormField id='bank-remarks' label='Additional remarks' error={errors.remarks}>
+          <Textarea
+            id='bank-remarks'
+            rows={3}
+            value={values.remarks ?? ''}
+            onChange={(e) => set('remarks', e.target.value)}
+          />
+        </FormField>
+      </Card>
+
+      <Card pad={18} style={{ display: 'grid', gap: 12 }}>
+        <label
+          htmlFor='agree-neft'
+          style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13 }}
+        >
+          <Checkbox
+            id='agree-neft'
+            checked={agreeNeft}
+            onChange={(e) => setAgreeNeft(e.target.checked)}
+          />
+          <span>
+            I agree — Isha Foundation's bank account details will be sent to me by email or SMS, and
+            I will transfer the amount online using NEFT. *
+          </span>
+        </label>
+        <label
+          htmlFor='agree-terms'
+          style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13 }}
+        >
+          <Checkbox
+            id='agree-terms'
+            checked={agreeTerms}
+            onChange={(e) => setAgreeTerms(e.target.checked)}
+          />
+          <span>
+            I agree that the deposit will be returned only to the bank account given above, and that
+            deductions may be made for unreturned or damaged chairs and tables or for an unclean
+            stall. *
+          </span>
+        </label>
+        <FieldError of={errors.agreeNeft ?? errors.agreeTerms} />
+        <div>
+          <Btn kind='primary' onClick={submit} disabled={!ready || busy}>
+            {busy ? 'Submitting…' : 'Submit'}
+          </Btn>
+          {!ready && (
+            <div style={{ fontSize: 11.5, color: 'var(--mfg)', marginTop: 8 }}>
+              Upload the cancelled cheque and PAN card, and tick both agreements, to submit.
+            </div>
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function FileField({
+  label,
+  labelTa,
+  chosen,
+  onPick,
+}: {
+  label: string;
+  labelTa: string | null;
+  chosen?: string;
+  onPick: (file: File) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <div style={{ display: 'grid', gap: 6 }}>
+      <BilingualLabel en={label} ta={labelTa} />
+      <label
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '10px 14px',
+          border: '1px dashed var(--bd)',
+          borderRadius: 'var(--r2)',
+          cursor: busy ? 'progress' : 'pointer',
+          fontSize: 13,
+          color: chosen ? 'var(--ok-fg)' : 'var(--mfg)',
+        }}
+      >
+        <input
+          type='file'
+          accept='application/pdf,image/*'
+          style={{ display: 'none' }}
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            setBusy(true);
+            try {
+              await onPick(file);
+            } finally {
+              setBusy(false);
+              e.target.value = '';
+            }
+          }}
+        />
+        <Icon name={chosen ? 'check' : 'plus'} size={14} />
+        {chosen ?? 'Choose a file (PDF or photo, up to 20 MB)'}
+      </label>
+    </div>
   );
 }

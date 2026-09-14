@@ -1,5 +1,15 @@
 /* MSR Stalls — the module's design tokens, SCOPED.
  *
+ * ⚠️ COPIED from the MSR Volunteering module so the two read as one product.
+ * The values are unchanged; the scope class is `.msrs` rather than `.msrv`, and
+ * `--font-tamil` is added for the bilingual public forms. See `frame.tsx` for
+ * why each module owns its own scope. The header below is the original's and
+ * still describes why these are scoped at all.
+ *
+ * ── original header ──
+ *
+ * MSR Volunteering — the module's design tokens, SCOPED.
+ *
  * Lifted from the standalone app's `styles/tokens.css`. Every value is
  * unchanged; what changed is the SELECTOR each one sits on, and that is not
  * cosmetic.
@@ -21,7 +31,7 @@
  * own outermost element, and they inherit down from there. Nothing leaks up.
  *
  * ⚠️ The dark block is `.dark .msrs`, not `.msrs.dark`. The platform owns the
- * theme and stamps `.dark` on `<html>` (`lib/use-theme.ts`), so the module
+ * theme and stamps `.dark` on `<html>` (`use-theme.ts`), so the module
  * follows the platform's theme rather than keeping a second one. Specificity
  * works out: `.dark .msrs` (0,2,0) beats `.msrs` (0,1,0).
  *
@@ -166,6 +176,21 @@
      * The fallback stack is not decoration: if the file fails, a bare family
      * name drops every heading to the browser's default serif. */
     --font-display:'Outfit Variable','Outfit','Geist Variable','Geist',-apple-system,Segoe UI,sans-serif;
+    /* ── The Tamil face ──
+     *
+     * ⚠️ Stalls-only, and it has no counterpart in the module this sheet was
+     * copied from. The 2025 request forms are BILINGUAL — every public label,
+     * option and disclaimer prints English then Tamil — and neither Geist nor
+     * Outfit carries a single Tamil glyph. Without its own stack those lines
+     * fall through to whatever the machine happens to have, which on a Windows
+     * desktop is Latha at a different optical size beside the Latin, and on a
+     * machine with nothing is a row of boxes on the one label the reader needed.
+     *
+     * Not self-hosted, unlike the two Latin faces: the stack names families the
+     * platform is likely to ship rather than shipping a 400K Tamil webfont for
+     * the four screens that print it. Worn through `.msrs-tamil`, never as the
+     * body face — the two do not share a baseline. */
+    --font-tamil:'Noto Sans Tamil','Latha','Nirmala UI',ui-sans-serif,system-ui,sans-serif;
     /* 🔴 The overlay backdrop was a RAW `oklch(0.24 0.006 277.366/.45)` written
        into `Overlay.tsx` — the one thing this codebase's styling rule forbids,
        because a literal cannot follow the theme. And it did exactly what the
@@ -302,6 +327,11 @@
 .msrs input,.msrs select,.msrs textarea,.msrs button{font-family:inherit;font-size:15px;color:inherit}
 .msrs a{color:var(--pri);text-decoration:none}
 
+/* The Tamil half of a bilingual label. A class rather than an inline style
+   because it is worn by spans inside text the screens build with `<>`, where
+   there is no element of our own to hang a style object on. */
+.msrs .msrs-tamil{font-family:var(--font-tamil)}
+
 /* ── The hover lift ──
  *
  * ⚠️ A CLASS rather than an inline style, and that is forced rather than
@@ -410,18 +440,4 @@
 @media (prefers-reduced-motion: reduce){
   .msrs *{animation-duration:.01ms !important;animation-iteration-count:1 !important;
     transition-duration:.01ms !important}
-}
-
-/* ── Stalls additions ──
- * Tamil beside English on the public forms: a font stack with Tamil glyphs,
- * scoped like everything else here. */
-.msrs .msrs-ta{font-family:'Noto Sans Tamil','Latha','Nirmala UI','Geist Variable','Geist',sans-serif}
-/* A clickable grid row answers the pointer the way a lifted card does. */
-.msrs .msrs-row{transition:background .12s ease}
-.msrs .msrs-row:focus-visible{outline:2px solid var(--pri);outline-offset:-2px}
-@media (hover: hover) and (pointer: fine){ .msrs .msrs-row:hover{background:var(--hov)} }
-/* Print: the electrical sheet is handed to the venue team on A4. */
-@media print{
-  .msrs .msrs-noprint{display:none !important}
-  .msrs{background:#fff;color:#000}
 }
