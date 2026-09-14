@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { type RateCardEntry, SubmitRequestInput } from '@msr/stalls';
 import { buildApp } from '../src/app';
-import { rateCardFor } from '../src/modules/stalls/config';
+import { planCategoriesFor, rateCardFor } from '../src/modules/stalls/config';
 import { submitRequest } from '../src/modules/stalls/submit';
 import {
   LogMailer,
@@ -15,6 +15,7 @@ import {
   seedStaff,
   vendorBody,
 } from './helpers/db';
+import { makeStalls } from './helpers/plan';
 
 let app: FastifyInstance;
 let admin: Staff;
@@ -306,5 +307,167 @@ describe('editions', () => {
     const pub = await app.inject({ method: 'GET', url: '/api/m/stalls/public/config' });
     expect(pub.json().edition.year).toBe(2027);
     expect(pub.json().zones).toHaveLength(7);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// The write paths that had no door
+//
+// The services, their guards and their contracts all existed; nothing routed
+// to them, so a bay could be added only by a migration and the whole signature
+// flow was unreachable over HTTP.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('bays are added and removed from the screen', () => {
+  test('an admin adds a bay for a redrawn venue', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/m/stalls/config/zones',
+      headers: admin.headers,
+      payload: { code: 'D1', name: 'D1 — new lawn', expectedCrowd: 8000 },
+    });
+    expect(res.statusCode).toBe(201);
+
+    const cfg = await app.inject({
+      method: 'GET',
+      url: '/api/m/stalls/config',
+      headers: admin.headers,
+    });
+    expect(cfg.json().zones.map((z: { code: string }) => z.code)).toContain('D1');
+  });
+
+  test('a duplicate bay code is refused rather than silently merged', async () => {
+    const body = { code: 'D1', name: 'D1', expectedCrowd: 0 };
+    await app.inject({
+      method: 'POST',
+      url: '/api/m/stalls/config/zones',
+      headers: admin.headers,
+      payload: body,
+    });
+    const again = await app.inject({
+      method: 'POST',
+      url: '/api/m/stalls/config/zones',
+      headers: admin.headers,
+      payload: body,
+    });
+    expect(again.statusCode).toBe(409);
+  });
+
+  test('an empty bay is deleted', async () => {
+    await app.inject({
+      method: 'POST',
+      url: '/api/m/stalls/config/zones',
+      headers: admin.headers,
+      payload: { code: 'D1', name: 'D1', expectedCrowd: 0 },
+    });
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/m/stalls/config/zones/D1',
+      headers: admin.headers,
+    });
+    expect(res.statusCode).toBe(204);
+  });
+
+  // ⚠️ 409, not 500. The screen has to be able to say "this bay has stalls
+  // standing in it" rather than showing a vendor-facing error page.
+  test('a bay with stalls in it refuses deletion with a 409 the screen explains', async () => {
+    await makeStalls(edition.id, 'C1', { VENDOR_FOOD: 2 });
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/m/stalls/config/zones/C1',
+      headers: admin.headers,
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toContain('C1');
+  });
+
+  test('a lead may not add or remove a bay', async () => {
+    const post = await app.inject({
+      method: 'POST',
+      url: '/api/m/stalls/config/zones',
+      headers: lead.headers,
+      payload: { code: 'D2', name: 'D2', expectedCrowd: 0 },
+    });
+    const del = await app.inject({
+      method: 'DELETE',
+      url: '/api/m/stalls/config/zones/C1',
+      headers: lead.headers,
+    });
+    expect(post.statusCode).toBe(403);
+    expect(del.statusCode).toBe(403);
+  });
+});
+
+describe('the planning grid’s columns', () => {
+  const put = (categories: Array<Record<string, unknown>>, who = admin) =>
+    app.inject({
+      method: 'PUT',
+      url: '/api/m/stalls/config/plan-categories',
+      headers: who.headers,
+      payload: { categories },
+    });
+
+  test('an admin adds a column the 2025 sheet carried and the enum never had', async () => {
+    const current = await planCategoriesFor(prisma, edition.id);
+    const res = await put([
+      ...current.map((c) => ({ key: c.key, name: c.name, isFood: c.isFood, sortOrder: c.sortOrder })),
+      { key: 'VIP_LOUNGE', name: 'VIP lounge', isFood: false, sortOrder: 90 },
+    ]);
+    expect(res.statusCode).toBe(200);
+    expect((await planCategoriesFor(prisma, edition.id)).map((c) => c.key)).toContain('VIP_LOUNGE');
+  });
+
+  test('a column with stalls planned against it cannot be dropped', async () => {
+    await makeStalls(edition.id, 'C1', { VENDOR_FOOD: 2 });
+    const current = await planCategoriesFor(prisma, edition.id);
+    const res = await put(
+      current
+        .filter((c) => c.key !== 'VENDOR_FOOD')
+        .map((c) => ({ key: c.key, name: c.name, isFood: c.isFood, sortOrder: c.sortOrder })),
+    );
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toContain('VENDOR_FOOD');
+  });
+
+  test('a lead may not redraw the grid', async () => {
+    expect((await put([], lead)).statusCode).toBe(403);
+  });
+});
+
+describe('the season’s own settings', () => {
+  test('an admin sets the name, the account prefixes and the stall cap', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/m/stalls/editions/${edition.id}/settings`,
+      headers: admin.headers,
+      payload: {
+        name: 'Maha Shivratri 2026',
+        virtualAccountRentPrefix: 'MSRRENT',
+        virtualAccountDepositPrefix: 'MSRDEP',
+        maxStallsPerRequest: 2,
+      },
+    });
+    expect(res.statusCode).toBe(200);
+
+    // The cap reaches the public form, which is the only place it is enforced
+    // against a requester.
+    const pub = await app.inject({ method: 'GET', url: '/api/m/stalls/public/config' });
+    expect(pub.json().maxStallsPerRequest).toBe(2);
+    expect(pub.json().edition.name).toBe('Maha Shivratri 2026');
+  });
+
+  test('a lead may not change them', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/m/stalls/editions/${edition.id}/settings`,
+      headers: lead.headers,
+      payload: {
+        name: 'x',
+        virtualAccountRentPrefix: null,
+        virtualAccountDepositPrefix: null,
+        maxStallsPerRequest: 1,
+      },
+    });
+    expect(res.statusCode).toBe(403);
   });
 });

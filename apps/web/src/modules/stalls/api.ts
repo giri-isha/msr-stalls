@@ -28,6 +28,7 @@ import type {
   PublicStatusResponse,
   RateCardEntry,
   RateScope,
+  SignatureView,
   RequestAccessLinkResponse,
   RefundRow,
   RegisterStaffInput,
@@ -184,6 +185,31 @@ export const updateZone = (
   code: string,
   input: { name: string; expectedCrowd: number; isClosedToVendors: boolean },
 ) => apiFetch<unknown>(`${BASE}/config/zones/${code}`, { method: 'PUT', json: input });
+/** The venue is redrawn every year, so adding a bay is configuration rather
+ *  than a migration. */
+export const createZone = (input: {
+  code: string;
+  name: string;
+  expectedCrowd: number;
+  isClosedToVendors: boolean;
+}) => apiFetch<unknown>(`${BASE}/config/zones`, { method: 'POST', json: input });
+/** 409 while the bay holds stalls — the caller shows that, it does not force. */
+export const deleteZone = (code: string) =>
+  apiFetch<void>(`${BASE}/config/zones/${code}`, { method: 'DELETE' });
+/** The planning grid's columns, sent whole. A column left out is dropped, and
+ *  one that is planned or allocated against refuses with a 409. */
+export const putPlanCategories = (
+  categories: Array<{ key: string; name: string; isFood: boolean; sortOrder: number }>,
+) => apiFetch<unknown>(`${BASE}/config/plan-categories`, { method: 'PUT', json: { categories } });
+export const updateEditionSettings = (
+  id: string,
+  input: {
+    name: string;
+    virtualAccountRentPrefix: string | null;
+    virtualAccountDepositPrefix: string | null;
+    maxStallsPerRequest: number;
+  },
+) => apiFetch<unknown>(`${BASE}/editions/${id}/settings`, { method: 'PATCH', json: input });
 export const putRateCard = (entries: RateCardEntry[]) =>
   apiFetch<unknown>(`${BASE}/config/rate-card`, { method: 'PUT', json: { entries } });
 export const putCharges = (input: ChargesInput) =>
@@ -321,6 +347,13 @@ export const listOnboarding = () => apiFetch<OnboardingRow[]>(`${BASE}/onboardin
 export const getOnboarding = (id: string) => apiFetch<OnboardingDetail>(`${BASE}/onboarding/${id}`);
 export const issueCoupon = (id: string) =>
   apiFetch<{ code: string }>(`${BASE}/onboarding/${id}/coupon`, { method: 'POST' });
+/** Eight by default, raised case by case. Takes effect on the coupon the vendor
+ *  already holds, so nobody has to be sent a new code. */
+export const setCouponCapacity = (id: string, capacity: number) =>
+  apiFetch<{ code: string; capacity: number }>(`${BASE}/onboarding/${id}/coupon/capacity`, {
+    method: 'PUT',
+    json: { capacity },
+  });
 export const verifyFssai = (id: string, verified: boolean) =>
   apiFetch<void>(`${BASE}/onboarding/${id}/fssai/verify`, {
     method: 'POST',
@@ -330,6 +363,18 @@ export const listVendorStaff = (id: string) =>
   apiFetch<VendorStaffView[]>(`${BASE}/onboarding/${id}/staff`);
 export const removeVendorStaff = (id: string) =>
   apiFetch<void>(`${BASE}/staff-registrations/${id}`, { method: 'DELETE' });
+
+// ── Staff: the contract signature ───────────────────────────────────────────
+
+export const getSignature = (id: string) =>
+  apiFetch<SignatureView>(`${BASE}/requests/${id}/signature`);
+/** Idempotent: re-sending returns the agreement already open rather than
+ *  opening a second one against the same stall. */
+export const sendForSignature = (id: string) =>
+  apiFetch<SignatureView>(`${BASE}/requests/${id}/signature`, { method: 'POST' });
+/** Signing happens later and elsewhere, so the state has to be pulled. */
+export const refreshSignature = (id: string) =>
+  apiFetch<SignatureView>(`${BASE}/requests/${id}/signature/refresh`, { method: 'POST' });
 
 // ── Staff: finance ──────────────────────────────────────────────────────────
 

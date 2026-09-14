@@ -251,12 +251,13 @@ describe('FSSAI upload, reached with nothing but a link', () => {
   });
 });
 
-describe('staff registration, reached with nothing but a coupon', () => {
-  const coupon = async (requestId: string) => {
-    const r = await prisma.stallRequest.findUniqueOrThrow({ where: { id: requestId } });
-    return (await ensureCoupon(prisma, requestId, r.stallName, edition.year, admin.personId)).code;
-  };
+/** A coupon for this request, the way the onboarding letter mints one. */
+const coupon = async (requestId: string) => {
+  const r = await prisma.stallRequest.findUniqueOrThrow({ where: { id: requestId } });
+  return (await ensureCoupon(prisma, requestId, r.stallName, edition.year, admin.personId)).code;
+};
 
+describe('staff registration, reached with nothing but a coupon', () => {
   test('shows the stall and accepts a registration', async () => {
     const { requestId } = await selected(['C1-1'], { passesStaff: 2 });
     const code = await coupon(requestId);
@@ -338,5 +339,97 @@ describe('the ops surfaces over HTTP', () => {
     );
     expect(second.json().sent).toEqual([b.requestId]);
     expect(second.json().skipped[0].reason).toBe('already sent');
+  });
+});
+
+describe('the coupon capacity, raised from the back office', () => {
+  test('a lead raises a coupon already in the vendor’s hands', async () => {
+    const { requestId } = await selected(['C1-1']);
+    const code = await coupon(requestId);
+    await setCouponCapacity(prisma, requestId, 1, 'system');
+
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/api/m/stalls/onboarding/${requestId}/coupon/capacity`,
+      headers: lead.headers,
+      payload: { capacity: 12 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().capacity).toBe(12);
+
+    // Same code, more room — nobody has to be sent a new one.
+    const view = await pub('GET', `/staff-registration/${code}`);
+    expect(view.json().maxStaff).toBe(12);
+  });
+
+  test('a capacity beyond the ceiling is refused, so a typo cannot open a stall', async () => {
+    const { requestId } = await selected(['C1-1']);
+    await coupon(requestId);
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/api/m/stalls/onboarding/${requestId}/coupon/capacity`,
+      headers: lead.headers,
+      payload: { capacity: 100_000 },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  test('a request with no coupon yet is a 404, not a silently created one', async () => {
+    const { requestId } = await selected(['C1-2']);
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/api/m/stalls/onboarding/${requestId}/coupon/capacity`,
+      headers: lead.headers,
+      payload: { capacity: 10 },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+describe('the contract signature, over HTTP', () => {
+  test('reads as not sent while no provider is configured', async () => {
+    const { requestId } = await selected(['C1-1']);
+    const res = await get(`/requests/${requestId}/signature`, lead);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe('NOT_SENT');
+    expect(res.json().signedAt).toBeNull();
+  });
+
+  // ⚠️ Reports rather than pretends, and leaves nothing behind. The standalone
+  // shell boots an unconfigured signer; a 503 says "nobody has wired this up
+  // yet", which is true and retryable, where a 500 would read as a bug and a
+  // fake success would show a signed agreement that does not exist.
+  test('sending with no provider configured is a 503 and half-builds nothing', async () => {
+    const { requestId } = await selected(['C1-1']);
+    const res = await post(`/requests/${requestId}/signature`, {}, lead);
+    expect(res.statusCode).toBe(503);
+    expect(await prisma.stallContractSignature.count({ where: { requestId } })).toBe(0);
+  });
+
+  // Only vendors sign. A local welfare stall is filed by the welfare team on a
+  // trader's behalf and an ashram department is internal — neither has a
+  // counterparty, and sending one would ask a colleague to countersign their
+  // own department's requisition.
+  test('a local welfare request is refused rather than sent an agreement', async () => {
+    await makeStalls(edition.id, 'A3', { LW_FOOD: 2 });
+    const { requestId } = await selected(['A3-1'], {
+      requestType: 'LOCAL_WELFARE',
+      depositAcknowledged: true,
+      preferredZoneCode: 'A3',
+    });
+    expect((await post(`/requests/${requestId}/signature`, {}, lead)).statusCode).toBe(409);
+  });
+
+  test('a volunteer may read the state but not send the agreement', async () => {
+    const { requestId } = await selected(['C1-1']);
+    expect((await get(`/requests/${requestId}/signature`, volunteer)).statusCode).toBe(200);
+    expect((await post(`/requests/${requestId}/signature`, {}, volunteer)).statusCode).toBe(403);
+  });
+
+  test('refreshing a request that was never sent stays not-sent rather than erroring', async () => {
+    const { requestId } = await selected(['C1-1']);
+    const res = await post(`/requests/${requestId}/signature/refresh`, {}, lead);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe('NOT_SENT');
   });
 });

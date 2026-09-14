@@ -2,6 +2,7 @@ import type { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from
 import { NotAuthorizedError, ValidationFailedError } from '../../errors';
 import {
   BankDetailsLockedError,
+  CategoryInUseError,
   CouponFullError,
   CustomFieldInUseError,
   DuplicatePaymentError,
@@ -19,9 +20,12 @@ import {
   UnknownRequestError,
   UnknownStallError,
   UnknownTemplateError,
+  SignatureProviderError,
   UnknownZoneError,
   UploadsUnavailableError,
   WrongTemplateError,
+  ZoneExistsError,
+  ZoneInUseError,
 } from './errors';
 import { NotSignedInError } from './roles';
 
@@ -53,12 +57,27 @@ function statusFor(err: unknown): number | null {
     err instanceof BankDetailsLockedError ||
     err instanceof StepNotOpenError ||
     err instanceof RefundAlreadySubmittedError ||
-    err instanceof DuplicatePaymentError
+    err instanceof DuplicatePaymentError ||
+    // Configuration that cannot be applied because something already stands on
+    // it. A 409 rather than a 500 so the Admin screen can say "this bay has
+    // stalls planned against it" instead of showing an error page.
+    err instanceof ZoneExistsError ||
+    err instanceof ZoneInUseError ||
+    err instanceof CategoryInUseError
   ) {
     return 409;
   }
   if (err instanceof TooManyStallsError || err instanceof ValidationFailedError) return 422;
-  if (err instanceof NoActiveEditionError || err instanceof UploadsUnavailableError) return 503;
+  // 503, not 500. "No provider is wired up in this environment" and "the
+  // provider refused this document" are both conditions the caller can retry
+  // once somebody configures or fixes the service — not a bug in the request.
+  if (
+    err instanceof NoActiveEditionError ||
+    err instanceof UploadsUnavailableError ||
+    err instanceof SignatureProviderError
+  ) {
+    return 503;
+  }
   return null;
 }
 

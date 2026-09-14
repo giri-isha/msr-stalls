@@ -8,8 +8,10 @@ import {
   CheckInInput,
   ConfirmPaymentInput,
   CreateEditionInput,
+  CreateZoneInput,
   CustomFieldInput,
   CustomFieldPatch,
+  EditionSettingsInput,
   EquipmentAction,
   EquipmentPatch,
   FineTypeInput,
@@ -19,12 +21,14 @@ import {
   ListRequestsQuery,
   LogReminderInput,
   type MeResponse,
+  PlanCategoryInput,
   PresignUploadInput,
   RateCardInput,
   RejectRequestInput,
   ReminderKind,
   SelectRequestInput,
   SendEmailInput,
+  SetCouponCapacityInput,
   SubmitRefundInput,
   TEMPLATE_PLACEHOLDERS,
   TemplateKeyValue,
@@ -59,6 +63,7 @@ import {
   shortlist,
   unshortlist,
 } from './selection';
+import * as signature from './signature';
 import { grantRole, listStaff, revokeRole, searchPeople } from './staff';
 
 const IdParams = z.object({ id: z.uuid() });
@@ -248,11 +253,59 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     return config.createEdition(prisma, req.body, caller.personId);
   });
 
+  /** The season's own settings: its name, the two virtual-account prefixes
+   *  Finance issues for it, and the cap on stalls one request may ask for. */
+  zod.patch(
+    '/editions/:id/settings',
+    { schema: { params: IdParams, body: EditionSettingsInput } },
+    async (req) => {
+      const caller = await requireStaff(req, prisma);
+      requireAction(caller, 'config:write');
+      return config.updateEditionSettings(prisma, req.params.id, req.body, caller.personId);
+    },
+  );
+
   zod.post('/editions/:id/activate', { schema: { params: IdParams } }, async (req, reply) => {
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'config:write');
     await activateEdition(prisma, req.params.id);
     reply.status(204);
+  });
+
+  // Adding a bay is ordinary configuration, not a migration: the venue layout
+  // is redrawn every year and `ZONE_CODES` used to be a closed union, so a new
+  // bay meant a code change and a redeploy.
+  zod.post('/config/zones', { schema: { body: CreateZoneInput } }, async (req, reply) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'config:write');
+    const edition = await activeEdition(prisma);
+    reply.status(201);
+    return config.createZone(prisma, edition.id, req.body, caller.personId);
+  });
+
+  // ⚠️ Refuses while the bay holds stalls (409), rather than cascading away the
+  // stalls, their allocations and the record of who stood where.
+  zod.delete('/config/zones/:code', { schema: { params: CodeParams } }, async (req, reply) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'config:write');
+    const edition = await activeEdition(prisma);
+    await config.deleteZone(prisma, edition.id, req.params.code, caller.personId);
+    reply.status(204);
+  });
+
+  // The planning grid's columns. Sent whole: a column left out is one the
+  // edition no longer carries, and dropping one that is planned or allocated
+  // against is a 409 rather than a silent loss of the count.
+  zod.put('/config/plan-categories', { schema: { body: PlanCategoryInput } }, async (req) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'config:write');
+    const edition = await activeEdition(prisma);
+    return config.replacePlanCategories(
+      prisma,
+      edition.id,
+      req.body.categories,
+      caller.personId,
+    );
   });
 
   zod.put(
@@ -500,6 +553,60 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
       caller.personId,
     );
     return { code: coupon.code };
+  });
+
+  /** Raising what one coupon may register.
+   *
+   *  🔴 Eight by default, and moved case by case: "if they want more staff
+   *  members, in the back end we raise that capacity to 10, 12". It takes
+   *  effect on a coupon already in the vendor's hands, so nobody has to be sent
+   *  a new code. */
+  zod.put(
+    '/onboarding/:id/coupon/capacity',
+    { schema: { params: IdParams, body: SetCouponCapacityInput } },
+    async (req) => {
+      const caller = await requireStaff(req, prisma);
+      requireAction(caller, 'requests:write');
+      const coupon = await onboarding.setCouponCapacity(
+        prisma,
+        req.params.id,
+        req.body.capacity,
+        caller.personId,
+      );
+      return { code: coupon.code, capacity: coupon.capacity };
+    },
+  );
+
+  // ── Contract signature ────────────────────────────────────────────────────
+  //
+  // The legal team sends the stall agreement out for real digital signature and
+  // asked that it happen inside this application rather than in a parallel
+  // mailbox. Until these three routes existed the whole flow was reachable only
+  // as a side effect of sending a selection letter, which swallows its own
+  // errors — so a failed send was invisible and could not be retried.
+
+  zod.get('/requests/:id/signature', { schema: { params: IdParams } }, async (req) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'requests:read');
+    return signature.readSignature(prisma, req.params.id);
+  });
+
+  /** ⚠️ Idempotent: re-sending returns the agreement already open rather than
+   *  opening a second one against the same stall. Two live documents is exactly
+   *  the situation a signature provider cannot resolve for you. */
+  zod.post('/requests/:id/signature', { schema: { params: IdParams } }, async (req) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'comms:write');
+    return signature.sendForSignature(prisma, req.params.id, deps, caller.personId);
+  });
+
+  /** Pulls the provider's current state. Signing happens later and elsewhere,
+   *  so it has to be pulled; a host that can receive the provider's webhook
+   *  should call the same function from it. */
+  zod.post('/requests/:id/signature/refresh', { schema: { params: IdParams } }, async (req) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'requests:read');
+    return signature.refreshSignature(prisma, req.params.id, deps);
   });
 
   zod.post(

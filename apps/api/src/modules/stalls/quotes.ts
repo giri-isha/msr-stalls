@@ -26,10 +26,6 @@ export type RequestForQuote = Prisma.StallRequestGetPayload<{
   include: { allocations: { include: { stall: { include: { zone: true } } } } };
 }>;
 
-export const quoteInclude = {
-  allocations: { where: { releasedAt: null }, include: { stall: { include: { zone: true } } } },
-} satisfies Prisma.StallRequestInclude;
-
 export interface QuoteContext {
   card: Awaited<ReturnType<typeof rateCardFor>>;
   rates: ChargeRates;
