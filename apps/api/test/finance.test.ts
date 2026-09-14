@@ -272,20 +272,47 @@ describe('refunds', () => {
   });
 
   test('deductions beyond the deposit floor the refund and keep the shortfall visible', async () => {
-    const { requestId } = await selected(['C1-1']);
-    await confirmPayment(
+    // Everything lost on both counts: nothing comes back, and the excess on each
+    // deposit is carried rather than rounded away.
+    const { requestId } = await selected(['C1-1'], { chairsNeeded: 6, tablesNeeded: 2 });
+    await deposit(requestId);
+    const out = await submitRefund(
       prisma,
       requestId,
-      credit({ purpose: 'DEPOSIT', referenceNo: 'DEP2', amountPaise: rupeesToPaise(4_000) }),
+      {
+        equipmentDeductionPaise: rupeesToPaise(6_000),
+        fineTypeIds: [],
+        extraFinePaise: rupeesToPaise(6_000),
+        extraFineReason: 'Stall left uncleaned',
+      },
       SYSTEM,
     );
+    expect(out.refundDuePaise).toBe(0);
+    expect(out.shortfallPaise).toBe(rupeesToPaise(4_000));
+  });
+
+  test('an over-run on one deposit does not eat the other', async () => {
+    // 🔴 The requirement charges each deduction to its own deposit: "the chairs
+    // & tables not returned and damaged ... deducted from deposit against chairs
+    // and tables", "any penalty against unclean stalls ... deducted from stall
+    // deposit". Pooled, this stall's ₹2,000 furniture over-run would have been
+    // taken out of the stall deposit — the vendor's money — and reported no
+    // shortfall, so nobody would have chased it either.
+    const { requestId } = await selected(['C1-1'], { chairsNeeded: 6, tablesNeeded: 2 });
+    await deposit(requestId);
     const out = await submitRefund(
       prisma,
       requestId,
       { equipmentDeductionPaise: rupeesToPaise(6_000), fineTypeIds: [], extraFinePaise: 0 },
       SYSTEM,
     );
-    expect(out.refundDuePaise).toBe(0);
+    expect(out.equipmentDepositPaise).toBe(rupeesToPaise(4_000));
+    expect(out.stallDepositPaise).toBe(rupeesToPaise(4_000));
+    expect(out.equipmentRefundPaise).toBe(0);
+    expect(out.equipmentShortfallPaise).toBe(rupeesToPaise(2_000));
+    // The stall deposit comes back whole.
+    expect(out.stallRefundPaise).toBe(rupeesToPaise(4_000));
+    expect(out.refundDuePaise).toBe(rupeesToPaise(4_000));
     expect(out.shortfallPaise).toBe(rupeesToPaise(2_000));
   });
 

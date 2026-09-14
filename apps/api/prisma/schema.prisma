@@ -1090,13 +1090,29 @@ model StallFine {
 /// What the stalls team hands Finance. Written once, when the team submits the
 /// row; the figures are frozen at that moment because Finance pays against them.
 model StallRefund {
-  requestId               String   @id @map("request_id") @db.Uuid
-  depositHeldPaise        Int      @map("deposit_held_paise")
-  equipmentDeductionPaise Int      @map("equipment_deduction_paise")
-  fineDeductionPaise      Int      @map("fine_deduction_paise")
-  refundDuePaise          Int      @map("refund_due_paise")
-  /// Deductions beyond the deposit. Chased separately; never a negative refund.
-  shortfallPaise          Int      @default(0) @map("shortfall_paise")
+  requestId String @id @map("request_id") @db.Uuid
+
+  /// 🔴 TWO deposits, because each deduction is charged to its own: "the chairs
+  /// & tables not returned and damaged ... will be deducted from deposit
+  /// against chairs and tables", and "any penalty against unclean stalls ...
+  /// will be deducted from stall deposit". The 2025 payment sheet carries both
+  /// columns and the quote has always computed them apart.
+  ///
+  /// `depositHeldPaise` is their sum, kept because it is what the voucher pays
+  /// against and what a vendor asking "how much did I put in" is owed.
+  stallDepositPaise       Int @default(0) @map("stall_deposit_paise")
+  equipmentDepositPaise   Int @default(0) @map("equipment_deposit_paise")
+  depositHeldPaise        Int @map("deposit_held_paise")
+  equipmentDeductionPaise Int @map("equipment_deduction_paise")
+  fineDeductionPaise      Int @map("fine_deduction_paise")
+  refundDuePaise          Int @map("refund_due_paise")
+
+  /// Deductions beyond the deposit they are charged against. Chased separately;
+  /// never a negative refund. Per bucket, because an over-run on furniture is a
+  /// debt to recover rather than a reason to keep the stall deposit.
+  stallShortfallPaise     Int @default(0) @map("stall_shortfall_paise")
+  equipmentShortfallPaise Int @default(0) @map("equipment_shortfall_paise")
+  shortfallPaise          Int @default(0) @map("shortfall_paise")
   note                    String?
   voucherRef              String?  @map("voucher_ref")
   submittedAt             DateTime @default(now()) @map("submitted_at") @db.Timestamptz

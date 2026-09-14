@@ -294,10 +294,21 @@ async function toRefundRow(
   const quote = r.paymentPlan ? planToView(r.paymentPlan) : toQuoteView(quoteFor(r, ctx));
   // What was actually taken, where Finance has confirmed it; the quoted deposit
   // otherwise. A vendor who paid a short deposit gets the short one back.
+  //
+  // 🔴 Held as TWO figures, because each deduction is charged to its own. The
+  // quote knows the split; a confirmed credit arrives as one number, so a short
+  // payment is apportioned in the quoted proportion — the least arbitrary rule
+  // available, and the remainder lands on the stall deposit so the two always
+  // sum back to exactly what was paid.
   const confirmedDeposit = r.payments
     .filter((p) => p.purpose === 'DEPOSIT')
     .reduce((t, p) => t + p.amountPaise, 0);
-  const depositHeldPaise = confirmedDeposit > 0 ? confirmedDeposit : quote.depositTotalPaise;
+  const heldTotal = confirmedDeposit > 0 ? confirmedDeposit : quote.depositTotalPaise;
+  const quotedTotal = quote.depositTotalPaise;
+  const equipmentHeld =
+    quotedTotal > 0 ? Math.round((heldTotal * quote.equipmentDepositPaise) / quotedTotal) : 0;
+  const equipmentDepositPaise = Math.min(equipmentHeld, heldTotal);
+  const stallDepositPaise = heldTotal - equipmentDepositPaise;
 
   const suggested = r.equipment
     ? equipmentDeduction(
@@ -316,8 +327,10 @@ async function toRefundRow(
 
   const fineDeductionPaise = r.fines.reduce((t, f) => t + f.amountPaise, 0);
   const equipmentDeductionPaise = r.refund?.equipmentDeductionPaise ?? suggested;
+  // A frozen refund reports the figures it was frozen with; a live one recomputes.
   const computed = computeRefund({
-    depositHeldPaise: r.refund?.depositHeldPaise ?? depositHeldPaise,
+    stallDepositPaise: r.refund?.stallDepositPaise ?? stallDepositPaise,
+    equipmentDepositPaise: r.refund?.equipmentDepositPaise ?? equipmentDepositPaise,
     equipmentDeductionPaise,
     fineDeductionPaise: r.refund?.fineDeductionPaise ?? fineDeductionPaise,
   });
@@ -328,11 +341,17 @@ async function toRefundRow(
     stallName: r.stallName,
     requesterName: r.requesterName,
     depositHeldPaise: computed.depositHeldPaise,
+    stallDepositPaise: computed.stallDepositPaise,
+    equipmentDepositPaise: computed.equipmentDepositPaise,
     suggestedEquipmentDeductionPaise: suggested,
     equipmentDeductionPaise: computed.equipmentDeductionPaise,
     fineDeductionPaise: computed.fineDeductionPaise,
     fines: r.fines.map((f) => ({ reason: f.reason, amountPaise: f.amountPaise })),
+    stallRefundPaise: computed.stallRefundPaise,
+    equipmentRefundPaise: computed.equipmentRefundPaise,
     refundDuePaise: computed.refundDuePaise,
+    stallShortfallPaise: computed.stallShortfallPaise,
+    equipmentShortfallPaise: computed.equipmentShortfallPaise,
     shortfallPaise: computed.shortfallPaise,
     submittedAt: r.refund?.submittedAt.toISOString() ?? null,
     voucherRef: r.refund?.voucherRef ?? null,
@@ -417,7 +436,8 @@ export async function submitRefund(
   const live = await toRefundRow(db, source, ctx);
 
   const computed = computeRefund({
-    depositHeldPaise: live.depositHeldPaise,
+    stallDepositPaise: live.stallDepositPaise,
+    equipmentDepositPaise: live.equipmentDepositPaise,
     equipmentDeductionPaise: input.equipmentDeductionPaise,
     fineDeductionPaise: live.fineDeductionPaise,
   });
@@ -425,10 +445,14 @@ export async function submitRefund(
   await db.stallRefund.create({
     data: {
       requestId,
+      stallDepositPaise: computed.stallDepositPaise,
+      equipmentDepositPaise: computed.equipmentDepositPaise,
       depositHeldPaise: computed.depositHeldPaise,
       equipmentDeductionPaise: computed.equipmentDeductionPaise,
       fineDeductionPaise: computed.fineDeductionPaise,
       refundDuePaise: computed.refundDuePaise,
+      stallShortfallPaise: computed.stallShortfallPaise,
+      equipmentShortfallPaise: computed.equipmentShortfallPaise,
       shortfallPaise: computed.shortfallPaise,
       note: input.note ?? null,
       submittedBy: by,

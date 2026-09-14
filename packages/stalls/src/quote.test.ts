@@ -192,10 +192,12 @@ describe('the discretionary fee', () => {
 describe('refunds', () => {
   it('subtracts both deductions from the deposit', () => {
     const r = computeRefund({
-      depositHeldPaise: rupeesToPaise(8_000),
+      stallDepositPaise: rupeesToPaise(4_000),
+      equipmentDepositPaise: rupeesToPaise(4_000),
       equipmentDeductionPaise: rupeesToPaise(1_200),
       fineDeductionPaise: rupeesToPaise(500),
     });
+    expect(r.depositHeldPaise).toBe(rupeesToPaise(8_000));
     expect(r.totalDeductionPaise).toBe(rupeesToPaise(1_700));
     expect(r.refundDuePaise).toBe(rupeesToPaise(6_300));
     expect(r.shortfallPaise).toBe(0);
@@ -203,12 +205,55 @@ describe('refunds', () => {
 
   it('floors the refund at zero and carries the shortfall separately', () => {
     const r = computeRefund({
-      depositHeldPaise: rupeesToPaise(4_000),
+      stallDepositPaise: 0,
+      equipmentDepositPaise: rupeesToPaise(4_000),
       equipmentDeductionPaise: rupeesToPaise(5_000),
       fineDeductionPaise: 0,
     });
     expect(r.refundDuePaise).toBe(0);
     expect(r.shortfallPaise).toBe(rupeesToPaise(1_000));
+  });
+
+  it('charges each deduction to its own deposit', () => {
+    // The requirement is explicit: furniture losses come off the chairs-and-
+    // tables deposit, fines come off the stall deposit.
+    const r = computeRefund({
+      stallDepositPaise: rupeesToPaise(4_000),
+      equipmentDepositPaise: rupeesToPaise(4_000),
+      equipmentDeductionPaise: rupeesToPaise(1_000),
+      fineDeductionPaise: rupeesToPaise(500),
+    });
+    expect(r.equipmentRefundPaise).toBe(rupeesToPaise(3_000));
+    expect(r.stallRefundPaise).toBe(rupeesToPaise(3_500));
+  });
+
+  it('an over-run on one deposit does not eat the other', () => {
+    // ⚠️ The case pooling got wrong. ₹6,000 of furniture lost against a ₹4,000
+    // furniture deposit: the stall deposit comes back whole and the ₹2,000 is a
+    // debt to chase, not a silently smaller refund.
+    const r = computeRefund({
+      stallDepositPaise: rupeesToPaise(4_000),
+      equipmentDepositPaise: rupeesToPaise(4_000),
+      equipmentDeductionPaise: rupeesToPaise(6_000),
+      fineDeductionPaise: 0,
+    });
+    expect(r.equipmentRefundPaise).toBe(0);
+    expect(r.equipmentShortfallPaise).toBe(rupeesToPaise(2_000));
+    expect(r.stallRefundPaise).toBe(rupeesToPaise(4_000));
+    expect(r.stallShortfallPaise).toBe(0);
+    expect(r.refundDuePaise).toBe(rupeesToPaise(4_000));
+    expect(r.shortfallPaise).toBe(rupeesToPaise(2_000));
+  });
+
+  it('both buckets can over-run at once', () => {
+    const r = computeRefund({
+      stallDepositPaise: rupeesToPaise(1_000),
+      equipmentDepositPaise: rupeesToPaise(1_000),
+      equipmentDeductionPaise: rupeesToPaise(1_500),
+      fineDeductionPaise: rupeesToPaise(2_000),
+    });
+    expect(r.refundDuePaise).toBe(0);
+    expect(r.shortfallPaise).toBe(rupeesToPaise(1_500));
   });
 
   it('prices missing and damaged furniture', () => {

@@ -767,15 +767,21 @@ function RefundDialog({
   const finesTotal =
     fineTypes.filter((f) => fines.has(f.id)).reduce((t, f) => t + f.defaultAmountPaise, 0) +
     rupeesToPaise(Number(extra) || 0);
-  const preview = Math.max(
+  // 🔴 Each deduction against ITS OWN deposit, the same rule the API applies:
+  // furniture losses off the chairs-and-tables deposit, fines off the stall
+  // deposit. Taking both off a pooled total would preview a refund the vendor
+  // will not receive whenever one bucket over-runs.
+  const equipmentRefund = Math.max(
     0,
-    row.depositHeldPaise - rupeesToPaise(Number(deduction) || 0) - finesTotal,
+    row.equipmentDepositPaise - rupeesToPaise(Number(deduction) || 0),
   );
+  const stallRefund = Math.max(0, row.stallDepositPaise - finesTotal);
+  const preview = equipmentRefund + stallRefund;
 
   return (
     <Dialog
       title={row.stallName}
-      note={`Deposit held ${formatInr(row.depositHeldPaise)}`}
+      note={`Deposit held ${formatInr(row.depositHeldPaise)} — stall ${formatInr(row.stallDepositPaise)}, chairs and tables ${formatInr(row.equipmentDepositPaise)}`}
       onClose={onClose}
       width={560}
       footer={
@@ -833,14 +839,30 @@ function RefundDialog({
             Sent to Finance on {formatDate(row.submittedAt)}. The figures below are frozen.
           </div>
           <Card pad={14} style={{ display: 'grid', gap: 6, fontSize: 13 }}>
-            <Line label='Deposit held' value={formatInr(row.depositHeldPaise)} />
+            {/* Two deposits, each shown with what came off it — a single
+                "deposit held" line cannot explain a refund where one bucket
+                over-ran and the other came back whole. */}
+            <Line label='Chairs and tables deposit' value={formatInr(row.equipmentDepositPaise)} />
             <Line label='Chairs and tables' value={`− ${formatInr(row.equipmentDeductionPaise)}`} />
+            {row.equipmentShortfallPaise > 0 && (
+              <Line
+                label='Beyond that deposit'
+                value={`${formatInr(row.equipmentShortfallPaise)} to recover`}
+              />
+            )}
+            <Line label='Stall deposit' value={formatInr(row.stallDepositPaise)} />
             <Line label='Penalties' value={`− ${formatInr(row.fineDeductionPaise)}`} />
             {row.fines.map((f) => (
               <div key={f.reason} style={{ fontSize: 11.5, color: 'var(--mfg)', paddingLeft: 12 }}>
                 {f.reason} — {formatInr(f.amountPaise)}
               </div>
             ))}
+            {row.stallShortfallPaise > 0 && (
+              <Line
+                label='Beyond that deposit'
+                value={`${formatInr(row.stallShortfallPaise)} to recover`}
+              />
+            )}
             <Line label='Refund due' value={formatInr(row.refundDuePaise)} bold />
             {row.shortfallPaise > 0 && (
               <Line label='Still owed by vendor' value={formatInr(row.shortfallPaise)} />

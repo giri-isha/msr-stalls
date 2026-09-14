@@ -174,6 +174,11 @@ docs/                         specs, plans, migration checklist
 - **GST applies to the fee, never to the deposit**, and the amount a vendor was
   told to pay is frozen when the payment email goes out. Finance reconciles
   against the figure in the vendor's inbox, not against a live quote.
+- **Two deposits, and each deduction comes off its own.** Furniture not
+  returned or damaged is charged to the chairs-and-tables deposit; a fine for
+  an unclean stall to the stall deposit. An over-run on one is a debt to
+  recover, carried as a shortfall — never a quiet raid on the other, which is
+  the vendor's money.
 - **The first 5A plug point is free.** The request form asks for plugs
   *excluding* it; the electrical sheet prints the total *including* it. One
   function owns that conversion.

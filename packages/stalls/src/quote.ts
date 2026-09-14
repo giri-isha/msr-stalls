@@ -247,8 +247,23 @@ export function payableFeePaise(plan: {
 
 // ── Refunds ─────────────────────────────────────────────────────────────────
 
+/** 🔴 TWO deposits, not one, and each deduction comes off its own.
+ *
+ *  The requirement is explicit about which is which: "the chairs & tables not
+ *  returned and damaged ... will be deducted from deposit against chairs and
+ *  tables", and "any penalty against unclean stalls ... will be deducted from
+ *  stall deposit". The 2025 payment sheet carries both columns — Stall Deposit
+ *  and Chair and table Deposit — and the quote has always computed them apart.
+ *
+ *  Pooling them is not a rounding difference. A stall that loses ₹6,000 of
+ *  furniture against a ₹4,000 furniture deposit would eat ₹2,000 of the stall
+ *  deposit, which under the rule above the vendor is owed back, and would
+ *  report no shortfall — so nobody would chase the ₹2,000 either. */
 export interface RefundInput {
-  depositHeldPaise: number;
+  /** Held against the stall. Fines come off this one. */
+  stallDepositPaise: number;
+  /** Held against the chairs and tables. Furniture losses come off this one. */
+  equipmentDepositPaise: number;
   /** Chairs and tables not returned or returned damaged. */
   equipmentDeductionPaise: number;
   /** Unclean stall and any other fine. */
@@ -256,26 +271,47 @@ export interface RefundInput {
 }
 
 export interface Refund extends RefundInput {
+  /** The two deposits, summed — what the vendor actually paid in. */
+  depositHeldPaise: number;
   totalDeductionPaise: number;
+  /** What comes back out of each deposit, each floored at zero. */
+  stallRefundPaise: number;
+  equipmentRefundPaise: number;
   refundDuePaise: number;
-  /** Deductions exceeded the deposit. The refund is floored at zero and this
-   *  says by how much, because the team chases that separately rather than
-   *  issuing a negative voucher. */
+  /** Deductions that exceeded the deposit they are charged against. The refund
+   *  is floored at zero and these say by how much, because the team chases that
+   *  separately rather than issuing a negative voucher.
+   *
+   *  ⚠️ Per bucket. An over-run on furniture is NOT quietly taken out of the
+   *  stall deposit — that money is the vendor's, and the excess is a debt to
+   *  recover, which is a different conversation from a smaller refund. */
+  stallShortfallPaise: number;
+  equipmentShortfallPaise: number;
   shortfallPaise: number;
 }
 
 /** Never returns a negative refund. A voucher for a negative amount is not a
  *  thing Finance can process; an unrecovered balance is, and it is carried in
- *  `shortfallPaise` so it stays visible instead of being rounded away. */
+ *  the shortfall figures so it stays visible instead of being rounded away. */
 export function computeRefund(input: RefundInput): Refund {
-  const totalDeductionPaise =
-    Math.max(0, input.equipmentDeductionPaise) + Math.max(0, input.fineDeductionPaise);
-  const raw = input.depositHeldPaise - totalDeductionPaise;
+  const bucket = (heldPaise: number, deductionPaise: number) => {
+    const deduction = Math.max(0, deductionPaise);
+    const raw = Math.max(0, heldPaise) - deduction;
+    return { deduction, refund: Math.max(0, raw), shortfall: raw < 0 ? -raw : 0 };
+  };
+  const stall = bucket(input.stallDepositPaise, input.fineDeductionPaise);
+  const equipment = bucket(input.equipmentDepositPaise, input.equipmentDeductionPaise);
   return {
     ...input,
-    totalDeductionPaise,
-    refundDuePaise: Math.max(0, raw),
-    shortfallPaise: raw < 0 ? -raw : 0,
+    depositHeldPaise:
+      Math.max(0, input.stallDepositPaise) + Math.max(0, input.equipmentDepositPaise),
+    totalDeductionPaise: stall.deduction + equipment.deduction,
+    stallRefundPaise: stall.refund,
+    equipmentRefundPaise: equipment.refund,
+    refundDuePaise: stall.refund + equipment.refund,
+    stallShortfallPaise: stall.shortfall,
+    equipmentShortfallPaise: equipment.shortfall,
+    shortfallPaise: stall.shortfall + equipment.shortfall,
   };
 }
 

@@ -991,7 +991,12 @@ export interface RefundRow {
   reference: string;
   stallName: string;
   requesterName: string;
+  /** The two deposits, summed. */
   depositHeldPaise: number;
+  /** 🔴 Held apart, because each deduction is charged to its own: fines come
+   *  off the stall deposit, furniture losses off the chairs-and-tables one. */
+  stallDepositPaise: number;
+  equipmentDepositPaise: number;
   /** What Chairs & Tables says is missing or damaged, priced. An editable
    *  suggestion, not the answer — the counter's note and the vendor's account
    *  sometimes differ and a person settles it. */
@@ -999,7 +1004,15 @@ export interface RefundRow {
   equipmentDeductionPaise: number;
   fineDeductionPaise: number;
   fines: Array<{ reason: string; amountPaise: number }>;
+  /** What comes back out of each deposit, and their sum. */
+  stallRefundPaise: number;
+  equipmentRefundPaise: number;
   refundDuePaise: number;
+  /** Deductions beyond the deposit they are charged against, per bucket and
+   *  summed. An over-run on furniture is a debt to recover, not a reason to
+   *  keep the stall deposit. */
+  stallShortfallPaise: number;
+  equipmentShortfallPaise: number;
   shortfallPaise: number;
   submittedAt: string | null;
   voucherRef: string | null;

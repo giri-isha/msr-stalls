@@ -139,7 +139,7 @@ package both sides share.
 | Chairs and tables not returned or damaged, priced | `equipmentDeduction` in `quote.ts`, rates in Admin → Charges | Built |
 | Penalties for unclean stalls | `StallFine`, categories in Admin → Fine types | Built |
 | The amount handed to Finance, with a voucher reference | `StallRefund`, Finance → Refunds | Built |
-| Equipment deductions come off the **chairs-and-tables** deposit; penalties off the **stall** deposit | One pooled deposit (`depositHeldPaise`), both deductions against it, floored at zero, with `shortfallPaise` for anything over | Differs — see [Pooled deposit](#pooled-deposit) |
+| Equipment deductions come off the **chairs-and-tables** deposit; penalties off the **stall** deposit | `StallRefund.stallDepositPaise` / `equipmentDepositPaise`, each deduction charged to its own, with a shortfall per bucket. The quote has always computed the two apart and the 2025 payment sheet carries both columns | Built |
 
 ## 13. Admin
 
@@ -189,17 +189,21 @@ Two things to decide:
    keeps vendors out of the `Person` directory deliberately — reversing that is
    a host decision, not a module one.
 
-### Pooled deposit
+### Pooled deposit — closed
 
-The requirement points each deduction at its own deposit. The code holds one
-deposit total and takes both deductions from it. The refund is identical unless
-one bucket over-runs its own deposit — a stall that loses ₹6,000 of furniture
-against a ₹4,000 furniture deposit currently eats into the stall deposit
-instead of raising a ₹2,000 shortfall.
+Previously recorded here as open, on the grounds that which deposit each
+deduction came off was a policy question. It is not: the requirement answers it
+in two sentences — furniture not returned or damaged "will be deducted from
+deposit against chairs and tables", a penalty for an unclean stall "will be
+deducted from stall deposit" — and both figures already existed on the quote
+and on the 2025 payment sheet. The refund now charges each deduction to its own
+deposit and carries a shortfall per bucket.
 
-Splitting it is a migration (two columns on `StallRefund`), a change to
-`computeRefund`, and a change to the Finance screen. It has not been done
-because which behaviour the team wants is a policy question, not a coding one.
+The one judgement made along the way, stated so it can be reversed: where
+Finance has confirmed a deposit credit that differs from the quoted total (a
+short payment), the amount is apportioned between the two buckets in the quoted
+proportion, with the remainder on the stall deposit so the two always sum back
+to exactly what was paid.
 
 ### A read-only role for electrical and venue prep
 

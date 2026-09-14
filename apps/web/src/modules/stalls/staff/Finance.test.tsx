@@ -26,12 +26,20 @@ function refundRow(over: Record<string, unknown> = {}) {
     reference: 'VEN-2026-0001',
     stallName: 'Green Leaf Organics',
     requesterName: 'Priya Venkat',
+    // Two deposits, because each deduction is charged to its own: fines off the
+    // stall deposit, furniture losses off the chairs-and-tables one.
     depositHeldPaise: 800_000,
+    stallDepositPaise: 400_000,
+    equipmentDepositPaise: 400_000,
     suggestedEquipmentDeductionPaise: 195_000,
     equipmentDeductionPaise: 195_000,
     fineDeductionPaise: 0,
     fines: [] as Array<{ reason: string; amountPaise: number }>,
+    stallRefundPaise: 400_000,
+    equipmentRefundPaise: 205_000,
     refundDuePaise: 605_000,
+    stallShortfallPaise: 0,
+    equipmentShortfallPaise: 0,
     shortfallPaise: 0,
     submittedAt: null,
     voucherRef: null,
@@ -259,6 +267,40 @@ describe('refunds', () => {
     const dialog = await screen.findByRole('dialog');
     await user.click(within(dialog).getByLabelText(/Unclean stall/));
     expect(within(dialog).getByText('₹5,550')).toBeInTheDocument();
+  });
+
+  test('an over-run on one deposit leaves the other whole', async () => {
+    // 🔴 ₹6,000 of furniture lost against a ₹4,000 furniture deposit. The stall
+    // deposit is the vendor's money and comes back; the ₹2,000 is a debt to
+    // recover, and the screen has to say so rather than quietly refunding less.
+    refunds = [
+      refundRow({
+        equipmentDeductionPaise: 600_000,
+        equipmentRefundPaise: 0,
+        equipmentShortfallPaise: 200_000,
+        stallRefundPaise: 400_000,
+        refundDuePaise: 400_000,
+        shortfallPaise: 200_000,
+        submittedAt: '2026-03-01T10:00:00.000Z',
+      }),
+    ];
+    stub();
+    render();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Refunds & deductions' }));
+    await user.click(await screen.findByRole('button', { name: 'Voucher' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('₹2,000 to recover')).toBeInTheDocument();
+    // Both deposits are named, so the refund can be read line by line rather
+    // than inferred from one pooled figure.
+    expect(within(dialog).getByText('Stall deposit')).toBeInTheDocument();
+    expect(within(dialog).getByText('Chairs and tables deposit')).toBeInTheDocument();
+    // The chairs-and-tables deposit, the stall deposit and the refund due all
+    // read ₹4,000: the furniture deposit was consumed entirely, and the stall
+    // deposit came back whole, which is the whole point.
+    expect(within(dialog).getAllByText('₹4,000')).toHaveLength(3);
   });
 
   test('a retired fine category is not offered', async () => {
