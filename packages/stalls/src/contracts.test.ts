@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { IndianMobile, SelectRequestInput, SubmitRequestInput } from './contracts';
+import { Gstin, Ifsc, IndianMobile, Pan, SelectRequestInput, SubmitRequestInput } from './contracts';
 
 const valid = {
   requestType: 'VENDOR' as const,
@@ -103,5 +103,36 @@ describe('SelectRequestInput', () => {
     const r = SelectRequestInput.safeParse({ agreedZoneCode: 'B3' });
     expect(r.success).toBe(true);
     if (r.success) expect(r.data.stallNumbers).toEqual([]);
+  });
+});
+
+/** The bank-details form is filled on a phone, and what a vendor types is
+ *  whatever their keyboard gave them. Normalising at the contract rather than
+ *  at each caller is what keeps `hdfc0001234` and `HDFC0001234` from becoming
+ *  two different banks in Finance's export. */
+describe('bank identifiers normalise what a vendor actually types', () => {
+  test('an IFSC is upper-cased and trimmed before it is checked', () => {
+    const r = Ifsc.safeParse('  hdfc0001234 ');
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data).toBe('HDFC0001234');
+  });
+
+  test('a PAN is upper-cased and trimmed before it is checked', () => {
+    const r = Pan.safeParse(' abcde1234f ');
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data).toBe('ABCDE1234F');
+  });
+
+  test('a GSTIN is upper-cased, and "none" is accepted because the form says so', () => {
+    const r = Gstin.safeParse(' 33abcde1234f1z5 ');
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data).toBe('33ABCDE1234F1Z5');
+    expect(Gstin.safeParse('none').success).toBe(true);
+  });
+
+  test('the message names the shape rather than saying "invalid"', () => {
+    const r = Ifsc.safeParse('HDFC1234');
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0].message).toContain('11-character IFSC');
   });
 });

@@ -43,6 +43,8 @@ export interface ChargeRates {
   tableRatePaise: number;
   lwChairRatePaise: number;
   lwTableRatePaise: number;
+  vendorChairRatePaise: number;
+  vendorTableRatePaise: number;
   chairTableDepositPaise: number;
   plug5aRatePaise: number;
   plug15aRatePaise: number;
@@ -106,16 +108,31 @@ export interface Quote {
  *  payment sheet contains vendors and local welfare stalls only. */
 const CHARGEABLE = new Set<StallRequestType>(['VENDOR', 'LOCAL_WELFARE']);
 
+/** Three pairs, one per requester type, because 2025 quoted three.
+ *
+ *  The ashram form says Rs.50/chair/day, the local welfare form Rs.300/table
+ *  and Rs.100/chair, and the bank-details form a vendor fills says Rs.100/chair
+ *  and Rs.400/table. None of them is "the" rate — see the note in `forms.ts`.
+ *
+ *  ⚠️ The ashram pair is unreachable from here and that is correct, not dead
+ *  code waiting to be deleted: ashram departments are exempt and return above,
+ *  billed internally instead. It is kept because it is what the 2025 form
+ *  quoted and the figure has to live somewhere. What is NOT correct is letting
+ *  a vendor fall through to it, which is what happened while the vendor pair
+ *  did not exist — the one requester type that is never billed was setting the
+ *  price for the one that always is. */
 function chairTableRates(
   requestType: StallRequestType,
   rates: ChargeRates,
 ): { chair: number; table: number } {
-  // The 2025 ashram form quoted Rs.50/chair/day; the local welfare form quoted
-  // Rs.100/chair and Rs.300/table. Neither is "the" rate — see the note in
-  // `forms.ts`. The requester type picks which pair applies.
-  return requestType === 'LOCAL_WELFARE'
-    ? { chair: rates.lwChairRatePaise, table: rates.lwTableRatePaise }
-    : { chair: rates.chairRatePaise, table: rates.tableRatePaise };
+  switch (requestType) {
+    case 'VENDOR':
+      return { chair: rates.vendorChairRatePaise, table: rates.vendorTableRatePaise };
+    case 'LOCAL_WELFARE':
+      return { chair: rates.lwChairRatePaise, table: rates.lwTableRatePaise };
+    default:
+      return { chair: rates.chairRatePaise, table: rates.tableRatePaise };
+  }
 }
 
 /** Returns `null` when this bay carries no rate at this requester's scope, so

@@ -336,6 +336,12 @@ model StallChargeConfig {
   tableRatePaise   Int    @map("table_rate_paise")
   lwChairRatePaise Int    @map("lw_chair_rate_paise")
   lwTableRatePaise Int    @map("lw_table_rate_paise")
+  /// The THIRD pair. The 2025 bank-details form quotes a vendor Rs.100/chair
+  /// and Rs.400/table per day — neither the ashram figure above nor the local
+  /// welfare one. Without these columns a vendor was billed at the ashram rate,
+  /// which is the one requester type that is never billed at all.
+  vendorChairRatePaise Int @default(10000) @map("vendor_chair_rate_paise")
+  vendorTableRatePaise Int @default(40000) @map("vendor_table_rate_paise")
   plug5aRatePaise  Int    @map("plug_5a_rate_paise")
   plug15aRatePaise Int    @map("plug_15a_rate_paise")
   gstPercent       Int    @default(18) @map("gst_percent")

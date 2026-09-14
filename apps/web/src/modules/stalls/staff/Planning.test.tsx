@@ -16,8 +16,22 @@ const zero = {
   BACKUP: 0,
 };
 
+/** The grid's columns travel WITH the data — they are the edition's own
+ *  configuration, not a constant the screen holds. A fixture that omitted them
+ *  would be testing a screen that cannot exist. */
+const categories = [
+  { key: 'VENDOR_FOOD', name: 'Vendor food', isFood: true },
+  { key: 'ASHRAM_FOOD', name: 'Ashram food', isFood: true },
+  { key: 'LW_FOOD', name: 'Local welfare food', isFood: true },
+  { key: 'VENDOR_NON_FOOD', name: 'Vendor non-food', isFood: false },
+  { key: 'ASHRAM_NON_FOOD', name: 'Ashram non-food', isFood: false },
+  { key: 'HELP_DESK', name: 'Help desk', isFood: false },
+  { key: 'BACKUP', name: 'Backup', isFood: false },
+];
+
 const plan = {
   crowdPerStall: 1000,
+  categories,
   rows: [
     {
       zoneCode: 'A3',
@@ -71,10 +85,13 @@ describe('Planning', () => {
     const crowd = await screen.findByLabelText('A4 expected crowd');
     await user.clear(crowd);
     await user.type(crowd, '50000');
-    const a4row = crowd.closest('[role="row"]') as HTMLElement;
+    // `closest` matches attributes, not implicit ARIA roles, and a native <tr>
+    // carries its row role without spelling it out. Selecting the element is
+    // the right way to reach it; a redundant role= on every row would not be.
+    const a4row = crowd.closest('tr') as HTMLElement;
     expect(a4row).toHaveTextContent('50');
 
-    const vf = screen.getByLabelText('A4 Vendor Food');
+    const vf = screen.getByLabelText('A4 Vendor food');
     await user.clear(vf);
     await user.type(vf, '8');
     expect(screen.getByTestId('grand-total')).toHaveTextContent('20');
@@ -88,7 +105,7 @@ describe('Planning', () => {
     ]);
     renderAt('/m/stalls/planning', routes, { me: true });
     const user = userEvent.setup();
-    const vf = await screen.findByLabelText('A4 Vendor Food');
+    const vf = await screen.findByLabelText('A4 Vendor food');
     await user.clear(vf);
     await user.type(vf, '8');
     await user.click(screen.getByRole('button', { name: 'Save' }));
@@ -109,7 +126,7 @@ describe('Planning', () => {
     ]);
     renderAt('/m/stalls/planning', routes, { me: true });
     const user = userEvent.setup();
-    const vf = await screen.findByLabelText('A4 Vendor Food');
+    const vf = await screen.findByLabelText('A4 Vendor food');
     await user.clear(vf);
     await user.type(vf, '1');
     await user.click(screen.getByRole('button', { name: 'Apply plan' }));

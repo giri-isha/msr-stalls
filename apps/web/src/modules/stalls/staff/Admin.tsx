@@ -548,15 +548,21 @@ function Charges({ c, writable, run }: PanelProps) {
         {/* Chairs and tables are billed per day, so the number of days is part
             of the bill and not a fact about the calendar. Editing it re-prices
             every furniture line that has not been frozen onto a payment letter. */}
-        <FormField id='days' label='Event days (furniture billing)'>
+        <RupeeInput
+          id='ctdep'
+          label='Furniture deposit (flat, once)'
+          {...f('chairTableDepositPaise')}
+        />
+        <RupeeInput id='damage' label='Damage penalty' {...f('damagePenaltyPaise')} />
+        <FormField id='days' label='Days furniture is held (billing)'>
           <Input
             id='days'
             type='number'
             min={1}
             max={30}
-            value={v.eventDays}
+            value={v.equipmentDays}
             disabled={!writable}
-            onChange={(e) => setV({ ...v, eventDays: Number(e.target.value) || 1 })}
+            onChange={(e) => setV({ ...v, equipmentDays: Number(e.target.value) || 1 })}
           />
         </FormField>
         <FormField id='cps2' label='People per stall (planning)'>

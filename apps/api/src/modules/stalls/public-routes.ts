@@ -26,6 +26,7 @@ import {
   type RequestAccessLinkResponse,
   ContinueStepInput,
   PresignUploadInput,
+  RATE_SCOPES,
   RegisterStaffInput,
   RequestAccessLinkInput,
   type SubmitRequestResponse,
@@ -47,11 +48,26 @@ import { isOurKey, presignUpload } from './uploads';
 
 const TokenParams = z.object({ token: z.string().min(16).max(128) });
 
+const PublicConfigQuery = z.object({
+  scope: z.enum(RATE_SCOPES).default('VENDOR'),
+});
+
 export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDeps): void {
   const zod = app.withTypeProvider<ZodTypeProvider>();
 
-  /** What the form needs to render. No staff data. */
-  zod.get('/config', async () => getPublicConfig(prisma));
+  /** What the form needs to render. No staff data.
+   *
+   *  ⚠️ `scope` is not optional decoration. The same bay is priced differently
+   *  for trade and for local welfare, and A3 and B2 are priced for one and
+   *  closed to the other — so "the rent for this zone" cannot be answered
+   *  without knowing which form is asking. Defaulting silently to VENDOR is
+   *  what quoted a village trader the trade rent and told them the two bays
+   *  they are most likely to want were unavailable. */
+  zod.get(
+    '/config',
+    { schema: { querystring: PublicConfigQuery } },
+    async (req) => getPublicConfig(prisma, req.query.scope),
+  );
 
   /** The one public write. Per-IP rate limit on top of the global one: a
    *  script cannot fill the pipeline with junk, and a real vendor never hits

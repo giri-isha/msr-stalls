@@ -37,6 +37,25 @@ const SHEET = {
 };
 
 describe('the electrical sheet', () => {
+  // The bay tabs are the edition's own zones, loaded rather than baked in — the
+  // venue layout is redrawn every year. The screen asks /config for them.
+  const CONFIG = {
+    edition: { id: 'e1', year: 2026, name: 'MSR 2026', isActive: true },
+    zones: ['A3', 'A4', 'B2', 'B3', 'B4', 'C1', 'C2'].map((code, i) => ({
+      id: `z-${code}`,
+      code,
+      name: code,
+      expectedCrowd: 1000,
+      isClosedToVendors: code === 'A3' || code === 'B2',
+      sortOrder: i,
+    })),
+    rateCard: [],
+    charges: {},
+    flow: { bankStepEnabled: true, paymentStepEnabled: true, fssaiStepEnabled: true },
+    fineTypes: [],
+    customFields: [],
+  };
+
   const render = () =>
     renderAt('/m/stalls/electrical', [{ path: '/m/stalls/electrical', element: <Electrical /> }], {
       me: true,
@@ -45,6 +64,7 @@ describe('the electrical sheet', () => {
   test('prints the 5A total including the free plug, as the column says', async () => {
     installFetch([
       ['GET', /\/me$/, () => ME_ADMIN],
+      ['GET', /\/config$/, () => CONFIG],
       ['GET', /\/electrical/, () => SHEET],
     ]);
     render();
@@ -57,6 +77,7 @@ describe('the electrical sheet', () => {
   test('a cluster tab narrows the request, not just the table', async () => {
     const fetch = installFetch([
       ['GET', /\/me$/, () => ME_ADMIN],
+      ['GET', /\/config$/, () => CONFIG],
       ['GET', /\/electrical/, () => SHEET],
     ]);
     render();
@@ -73,6 +94,7 @@ describe('the electrical sheet', () => {
   test('totals the load across the sheet', async () => {
     installFetch([
       ['GET', /\/me$/, () => ME_ADMIN],
+      ['GET', /\/config$/, () => CONFIG],
       ['GET', /\/electrical/, () => SHEET],
     ]);
     render();

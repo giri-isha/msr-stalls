@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { PUBLIC_CONFIG, installFetch, renderAt } from '../test-utils';
+import { installFetch, publicConfigFor, renderAt } from '../test-utils';
 import { RequestForm } from './RequestForm';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -11,7 +11,9 @@ const routes = [
   { path: '/stalls/submitted', element: <div>submitted-page</div> },
 ];
 
-const config = () => ['GET', /\/public\/config$/, () => PUBLIC_CONFIG] as const;
+// The form asks at its own scope; the stub answers at the scope it was asked.
+const config = () =>
+  ['GET', /\/public\/config$/, (url: URL) => publicConfigFor(url.searchParams.get('scope'))] as const;
 
 async function fillVendor(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText(/^Email/), 'priya@greenleaf.example');

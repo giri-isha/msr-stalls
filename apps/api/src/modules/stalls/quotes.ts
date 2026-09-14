@@ -47,6 +47,8 @@ export async function quoteContext(db: Db, editionId: string): Promise<QuoteCont
       tableRatePaise: charges.tableRatePaise,
       lwChairRatePaise: charges.lwChairRatePaise,
       lwTableRatePaise: charges.lwTableRatePaise,
+      vendorChairRatePaise: charges.vendorChairRatePaise,
+      vendorTableRatePaise: charges.vendorTableRatePaise,
       chairTableDepositPaise: charges.chairTableDepositPaise,
       plug5aRatePaise: charges.plug5aRatePaise,
       plug15aRatePaise: charges.plug15aRatePaise,

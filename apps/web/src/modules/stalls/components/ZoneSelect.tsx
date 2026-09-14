@@ -2,9 +2,18 @@ import type { FieldOption, PublicZone } from '@msr/stalls';
 import { formatInr } from '@msr/stalls';
 import { ChoicePlate, Radio } from '../ui';
 
-/** The preferred-location radio list. For vendors it quotes the rent per zone
- *  from the live rate card and marks closed zones unavailable; for local
- *  welfare and ashram forms it shows the seating description only. */
+/** The preferred-location radio list, quoting each bay at the asking form's
+ *  own scope.
+ *
+ *  The rent AND the refundable advance are both per bay, so both belong here
+ *  rather than once in the form header: "keep the advance also area wise — it
+ *  might be 3000, and for the free area it might be only 2000". A single figure
+ *  at the top of the form would have been the wrong figure for most of the
+ *  bays under it.
+ *
+ *  A bay the asking scope does not price reads as unavailable rather than free.
+ *  The ashram forms pass `showRent` false — those stalls are billed internally
+ *  and never quoted at all. */
 export function ZoneSelect({
   name,
   value,
@@ -30,7 +39,10 @@ export function ZoneSelect({
       {options.map((o) => {
         const z = byCode.get(o.value);
         const rent = z ? (isFood ? z.rentFoodPaise : z.rentNonFoodPaise) : null;
-        const unavailable = showRent && z !== undefined && (z.isClosedToVendors || rent === null);
+        // ⚠️ `rent === null` is the test, not `isClosedToVendors`. A bay closed
+        // to trade is priced for local welfare, and reading the flag instead
+        // would hide from a village trader exactly the bays they may have.
+        const unavailable = showRent && z !== undefined && rent === null;
         const id = `${name}-${o.value}`;
         return (
           <ChoicePlate
@@ -63,9 +75,11 @@ export function ZoneSelect({
                   }}
                 >
                   {unavailable
-                    ? 'Not available to vendors this year'
+                    ? 'Not available this year'
                     : rent !== null
-                      ? `${formatInr(rent)} + GST`
+                      ? `${formatInr(rent)} + GST${
+                          z?.depositPaise ? ` · ${formatInr(z.depositPaise)} refundable advance` : ''
+                        }`
                       : ''}
                 </span>
               )}

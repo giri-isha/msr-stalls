@@ -576,9 +576,15 @@ export const ChargesInput = z.object({
   crowdPerStall: z.number().int().min(1).max(100_000),
   vendorChairRatePaise: Paise,
   vendorTableRatePaise: Paise,
+  /** Flat, charged once when any furniture is taken — the 2025 sheet carries
+   *  one figure per vendor, not a per-chair amount. */
+  chairTableDepositPaise: Paise,
+  /** How many days the chairs and tables are held. The forms quote per-day
+   *  rates; this is what they are multiplied by. */
+  equipmentDays: z.number().int().min(1).max(30),
   chairReplacementPaise: Paise,
   tableReplacementPaise: Paise,
-  eventDays: z.number().int().min(1).max(30),
+  damagePenaltyPaise: Paise,
 });
 export type ChargesInput = z.infer<typeof ChargesInput>;
 

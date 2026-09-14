@@ -34,8 +34,11 @@ const CHARGES_2025 = {
   tableRatePaise: rupeesToPaise(150),
   lwChairRatePaise: rupeesToPaise(100),
   lwTableRatePaise: rupeesToPaise(300),
-  vendorDepositPaise: rupeesToPaise(4000),
-  localWelfareDepositPaise: rupeesToPaise(4000),
+  // The third pair, from the bank-details form a vendor fills in. Seeded
+  // rather than inferred: a vendor quoted the ashram figure above is quoted
+  // from a form that was never addressed to them.
+  vendorChairRatePaise: rupeesToPaise(100),
+  vendorTableRatePaise: rupeesToPaise(400),
   plug5aRatePaise: rupeesToPaise(500),
   plug15aRatePaise: rupeesToPaise(1000),
   gstPercent: 18,

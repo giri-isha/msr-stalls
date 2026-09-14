@@ -27,6 +27,7 @@ import type {
   PublicConfig,
   PublicStatusResponse,
   RateCardEntry,
+  RateScope,
   RequestAccessLinkResponse,
   RefundRow,
   RegisterStaffInput,
@@ -62,7 +63,11 @@ const qs = (params: Record<string, string | number | boolean | undefined>) => {
 
 // ── Public ──────────────────────────────────────────────────────────────────
 
-export const getPublicConfig = () => apiFetch<PublicConfig>(`${BASE}/public/config`);
+/** ⚠️ The scope is the form's, not a default. The same bay is priced
+ *  differently for trade and for local welfare, and the two bays closed to
+ *  trade are the ones a local welfare requester is most likely to want. */
+export const getPublicConfig = (scope: RateScope = 'VENDOR') =>
+  apiFetch<PublicConfig>(`${BASE}/public/config${qs({ scope })}`);
 
 export const submitRequest = (body: SubmitRequestInput) =>
   apiFetch<SubmitRequestResponse>(`${BASE}/public/requests`, { method: 'POST', json: body });

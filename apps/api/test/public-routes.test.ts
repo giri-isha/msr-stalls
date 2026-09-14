@@ -26,7 +26,45 @@ describe('GET /public/config', () => {
     const body = res.json();
     expect(body.edition.year).toBe(2026);
     expect(body.zones).toHaveLength(7);
-    expect(Object.keys(body).sort()).toEqual(['charges', 'customFields', 'edition', 'zones']);
+    expect(Object.keys(body).sort()).toEqual([
+      'charges',
+      'customFields',
+      'edition',
+      'maxStallsPerRequest',
+      'zones',
+    ]);
+  });
+
+  // 🔴 The same bay is priced differently for trade and for local welfare, and
+  // A3 and B2 are priced for one and closed to the other. "The rent for this
+  // zone" is not a question that can be answered without knowing who is asking,
+  // so the form has to say which form it is.
+  test('quotes a local welfare form at the local welfare scope', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/m/stalls/public/config?scope=LOCAL_WELFARE',
+    });
+    expect(res.statusCode).toBe(200);
+    const a3 = res.json().zones.find((z: { code: string }) => z.code === 'A3');
+    // Closed to trade, and the most sought-after local welfare pitch on the
+    // ground. Quoting it nothing is what left those stalls unbillable.
+    expect(a3.rentFoodPaise).toBeGreaterThan(0);
+    expect(a3.depositPaise).toBeGreaterThan(0);
+  });
+
+  test('the same bay is unpriced on the vendor form, which is the default', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/m/stalls/public/config' });
+    const a3 = res.json().zones.find((z: { code: string }) => z.code === 'A3');
+    expect(a3.rentFoodPaise).toBeNull();
+    expect(a3.isClosedToVendors).toBe(true);
+  });
+
+  test('a scope that is not a scope is a 400, not a silent vendor quote', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/m/stalls/public/config?scope=FREE',
+    });
+    expect(res.statusCode).toBe(400);
   });
 
   test('is 503, not 500, when no edition is active', async () => {

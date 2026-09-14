@@ -16,6 +16,8 @@ const RATES: ChargeRates = {
   tableRatePaise: rupeesToPaise(150),
   lwChairRatePaise: rupeesToPaise(100),
   lwTableRatePaise: rupeesToPaise(300),
+  vendorChairRatePaise: rupeesToPaise(100),
+  vendorTableRatePaise: rupeesToPaise(400),
   chairTableDepositPaise: rupeesToPaise(4000),
   plug5aRatePaise: rupeesToPaise(500),
   plug15aRatePaise: rupeesToPaise(1000),
@@ -69,7 +71,12 @@ describe('quoteRequest', () => {
     expect(q.grandTotalPaise).toBe(q.feeTotalPaise + q.depositTotalPaise);
   });
 
-  it('charges local welfare the local welfare chair and table rates', () => {
+  // 🔴 THREE pairs, because 2025 quoted three. The ashram form says Rs.50/chair,
+  // the local welfare form Rs.100/chair and Rs.300/table, and the bank-details
+  // form a vendor fills says Rs.100/chair and Rs.400/table. A vendor billed off
+  // the ashram figure is billed off a form that was never addressed to them —
+  // and the ashram pair is the one requester type that is never billed at all.
+  it('quotes each requester type from its own chair and table rates', () => {
     const lw = quoteRequest(
       { ...base, requestType: 'LOCAL_WELFARE', chairs: 2, tables: 1 },
       DEFAULT_RATE_CARD_2025,
@@ -77,7 +84,9 @@ describe('quoteRequest', () => {
     );
     const vendor = quoteRequest({ ...base, chairs: 2, tables: 1 }, DEFAULT_RATE_CARD_2025, RATES);
     expect(lw?.equipmentFeePaise).toBe(rupeesToPaise(2 * 100 + 300));
-    expect(vendor?.equipmentFeePaise).toBe(rupeesToPaise(2 * 50 + 150));
+    expect(vendor?.equipmentFeePaise).toBe(rupeesToPaise(2 * 100 + 400));
+    // Not the same figure, which is the whole point of keeping both.
+    expect(vendor?.equipmentFeePaise).not.toBe(lw?.equipmentFeePaise);
   });
 
   it('multiplies chairs and tables by the number of days they are held', () => {
@@ -85,7 +94,7 @@ describe('quoteRequest', () => {
       ...RATES,
       equipmentDays: 3,
     });
-    expect(q?.equipmentFeePaise).toBe(rupeesToPaise((4 * 50 + 2 * 150) * 3));
+    expect(q?.equipmentFeePaise).toBe(rupeesToPaise((4 * 100 + 2 * 400) * 3));
   });
 
   it('charges the furniture deposit only when furniture is taken', () => {

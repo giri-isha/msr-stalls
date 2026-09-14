@@ -91,54 +91,71 @@ export const PUBLIC_CONFIG = {
     {
       code: 'A3',
       name: 'A3',
+      blurb: null,
       isClosedToVendors: true,
       rentFoodPaise: null,
       rentNonFoodPaise: null,
+      depositPaise: null,
     },
     {
       code: 'A4',
       name: 'A4',
+      blurb: null,
       isClosedToVendors: false,
       rentFoodPaise: 1_800_000,
       rentNonFoodPaise: 1_500_000,
+      depositPaise: 400_000,
     },
     {
       code: 'B2',
       name: 'B2',
+      blurb: null,
       isClosedToVendors: true,
       rentFoodPaise: null,
       rentNonFoodPaise: null,
+      depositPaise: null,
     },
     {
       code: 'B3',
       name: 'B3',
+      blurb: null,
       isClosedToVendors: false,
       rentFoodPaise: 1_800_000,
       rentNonFoodPaise: 1_500_000,
+      depositPaise: 400_000,
     },
     {
       code: 'B4',
       name: 'B4',
+      blurb: null,
       isClosedToVendors: false,
       rentFoodPaise: 1_800_000,
       rentNonFoodPaise: 1_500_000,
+      depositPaise: 400_000,
     },
     {
       code: 'C1',
       name: 'C1',
+      blurb: null,
       isClosedToVendors: false,
       rentFoodPaise: 1_500_000,
       rentNonFoodPaise: 1_200_000,
+      depositPaise: 400_000,
     },
     {
       code: 'C2',
       name: 'C2',
+      blurb: null,
       isClosedToVendors: false,
       rentFoodPaise: 1_500_000,
       rentNonFoodPaise: 1_200_000,
+      depositPaise: 400_000,
     },
   ],
-  charges: { vendorDepositPaise: 400_000, localWelfareDepositPaise: 400_000, gstPercent: 18 },
+  // The refundable advance is per bay now, on each zone above — not one figure
+  // for the whole venue, which is what the form used to print in its header.
+  charges: { gstPercent: 18 },
+  maxStallsPerRequest: 3,
   customFields: [
     {
       id: '11111111-1111-4111-8111-111111111111',
@@ -151,6 +168,25 @@ export const PUBLIC_CONFIG = {
     },
   ],
 };
+
+/** The same edition, answered at the asking form's scope.
+ *
+ *  ⚠️ `PUBLIC_CONFIG` above is the VENDOR answer, and A3 and B2 are unpriced in
+ *  it because they are closed to trade. At the local welfare scope those two
+ *  bays are priced — they carry the VAP traders, who pay the most of any local
+ *  welfare stall. A stub that returned one payload for both scopes would let a
+ *  screen that ignores the scope pass. */
+export function publicConfigFor(scope: string | null) {
+  if (scope !== 'LOCAL_WELFARE') return PUBLIC_CONFIG;
+  return {
+    ...PUBLIC_CONFIG,
+    zones: PUBLIC_CONFIG.zones.map((z) =>
+      z.isClosedToVendors
+        ? { ...z, rentFoodPaise: 1_200_000, rentNonFoodPaise: 1_000_000, depositPaise: 400_000 }
+        : z,
+    ),
+  };
+}
 
 export function summary(over: Record<string, unknown> = {}) {
   return {

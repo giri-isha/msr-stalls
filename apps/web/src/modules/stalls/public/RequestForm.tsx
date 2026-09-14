@@ -2,9 +2,11 @@ import {
   FORM_DEFINITIONS,
   type FormField,
   type PublicConfig,
+  type RateScope,
   type StallRequestType,
   SubmitRequestInput,
   formatInr,
+  zoneOptions,
 } from '@msr/stalls';
 import { useMemo, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router';
@@ -132,7 +134,12 @@ export function RequestForm() {
 function Form({ type }: { type: StallRequestType }) {
   const def = FORM_DEFINITIONS[type];
   const navigate = useNavigate();
-  const config = useLoad(getPublicConfig);
+  // ⚠️ Quoted at THIS form's scope. A local welfare requester asking after A3
+  // gets a figure; a vendor asking after the same bay is told it is closed to
+  // trade. One bay, two answers — which is why the rent cannot be a property of
+  // the zone and the form has to say who is asking.
+  const scope: RateScope = type === 'LOCAL_WELFARE' ? 'LOCAL_WELFARE' : 'VENDOR';
+  const config = useLoad(() => getPublicConfig(scope), [scope]);
   const customFields = useMemo(
     () => (config.data?.customFields ?? []).filter((f) => f.formType === type),
     [config.data, type],
@@ -230,8 +237,11 @@ function Form({ type }: { type: StallRequestType }) {
         {config.data && (
           <div style={{ fontSize: 12, color: 'var(--mfg)', marginTop: 5 }}>
             {config.data.edition.name}
-            {type === 'LOCAL_WELFARE' &&
-              ` · Refundable caution deposit ${formatInr(config.data.charges.localWelfareDepositPaise)}`}
+            {/* The refundable advance used to be quoted here as one figure for
+                the whole venue. It is area-wise now — "it might be 3000, and
+                for the free area it might be only 2000" — so it belongs beside
+                the bay it applies to, in the location list below, and stating
+                a single number here would be stating the wrong one. */}
           </div>
         )}
       </div>
@@ -431,14 +441,23 @@ function FieldControl({
           onChange={onChange}
           max={f.max}
         />
-      ) : f.name === 'preferredZoneCode' && f.options ? (
+      ) : f.type === 'zone' ? (
+        // ⚠️ The choices are the edition's own bays, resolved here rather than
+        // baked into the field, so a bay added for a redrawn layout appears on
+        // the form without a code change. The vendor form drops the bays closed
+        // to trade; the local welfare form keeps them, because those are the
+        // ones a village trader is most likely to want.
+        //
+        // Local welfare is quoted a rent too — a lower one for the same ground,
+        // not no rent at all. Only the ashram forms, which are billed
+        // internally and never quoted, hide the figures.
         <ZoneSelect
           name={id}
           value={str(value)}
           onChange={onChange}
-          options={f.options}
+          options={zoneOptions(config?.zones ?? [], type === 'VENDOR')}
           zones={config?.zones ?? null}
-          showRent={type === 'VENDOR'}
+          showRent={type === 'VENDOR' || type === 'LOCAL_WELFARE'}
           isFood={isFood}
           invalid={invalid}
         />
