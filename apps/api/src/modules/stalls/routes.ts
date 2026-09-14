@@ -62,7 +62,7 @@ import {
   unflagRequest,
 } from './requests';
 import { UnknownRequestError } from './errors';
-import { ROLES, requireAction, requireStaff } from './roles';
+import { ROLES, requireAction, requireAnyAction, requireStaff } from './roles';
 import { requireOwnerScope, requireRequestScope, scopeOf } from './scope';
 import {
   backupRequest,
@@ -301,7 +301,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
    *  volunteer at the counter holds `requests:read` and no business in Admin. */
   zod.get('/zones', async (req) => {
     const caller = await requireStaff(req, prisma);
-    requireAction(caller, 'requests:read');
+    requireAnyAction(caller, ['requests:read', 'planning:read', 'electrical:read']);
     const edition = await activeEdition(prisma);
     return config.listZones(prisma, edition.id);
   });
@@ -811,7 +811,7 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     { schema: { querystring: z.object({ zoneCode: ZoneCodeValue.optional() }) } },
     async (req) => {
       const caller = await requireStaff(req, prisma);
-      requireAction(caller, 'planning:read');
+      requireAction(caller, 'electrical:read');
       const edition = await activeEdition(prisma);
       return electricalSheet(prisma, edition.id, req.query.zoneCode);
     },

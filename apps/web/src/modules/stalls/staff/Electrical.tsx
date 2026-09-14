@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { getConfig, getElectrical } from '../api';
+import { getElectrical, listZones } from '../api';
 import { useLoad } from '../hooks';
 import {
   Btn,
@@ -41,8 +41,10 @@ export function Electrical() {
   // The bays are the edition's own rows, not a constant: the venue layout is
   // redrawn every year, and a filter built from a fixed list would quietly
   // offer no way to print a bay that was added this season.
-  const config = useLoad(getConfig);
-  const zones = config.data?.zones ?? [];
+  // ⚠️ The bays alone, not the whole config: the electrical and venue-prep
+  // teams hold `electrical:read` and nothing else, and `/config` is Admin's.
+  const config = useLoad(listZones);
+  const zones = config.data ?? [];
 
   const rows = useMemo(() => {
     const term = q.trim().toLowerCase();

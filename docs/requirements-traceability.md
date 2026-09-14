@@ -109,7 +109,7 @@ package both sides share.
 |---|---|---|
 | Stall-wise layout and electrical details, per bay | Electrical & Venue, `GET /electrical` | Built |
 | Printable on A4 | `@media print` scoped to that screen | Built |
-| Shared with the electrical and venue-prep teams | By print or by a staff sign-in holding `planning:read` | Differs — there is no separate read-only role for those teams |
+| Shared with the electrical and venue-prep teams | By print, or by a sign-in holding the **Electrical & Venue Prep** role — `electrical:read`, which reaches the sheet and the bay list and nothing else | Built |
 
 ## 10. Check-in
 
@@ -204,12 +204,6 @@ Finance has confirmed a deposit credit that differs from the quoted total (a
 short payment), the amount is apportioned between the two buckets in the quoted
 proportion, with the remainder on the stall deposit so the two always sum back
 to exactly what was paid.
-
-### A read-only role for electrical and venue prep
-
-Those teams currently need `planning:read`, which also opens Planning and the
-stall grid. A `stalls_electrical` role granting only the sheet would be four
-lines in `rbac.ts` and a nav entry.
 
 ### The 2025 sources
 

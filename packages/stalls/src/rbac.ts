@@ -17,6 +17,15 @@ export const STALL_ACTIONS = [
   'requests:write',
   'planning:read',
   'planning:write',
+  /** The stall-wise electrical and layout sheet, and nothing else.
+   *
+   *  🔴 Its own action rather than a corner of `planning:read`: the requirement
+   *  is to SHARE that sheet with the electrical and venue-prep teams, who are
+   *  not the stalls team. Folding it into planning means handing them the
+   *  planning grid, the stall allocations and every requester's details to get
+   *  a plug-point count — so in practice the sheet gets printed and emailed
+   *  instead, which is what this is meant to replace. */
+  'electrical:read',
   'selection:read',
   'selection:write',
   'comms:write',
@@ -53,6 +62,7 @@ const LEAD_ACTIONS = [
   'requests:write',
   'planning:read',
   'planning:write',
+  'electrical:read',
   'selection:read',
   'selection:write',
   'comms:write',
@@ -92,6 +102,13 @@ export const ROLES: StallRole[] = [
     name: 'Finance',
     description: 'Payment confirmation and refunds',
     actions: ['requests:read', 'finance:read', 'finance:write'],
+    requestTypeScope: null,
+  },
+  {
+    roleKey: 'stalls_electrical',
+    name: 'Electrical & Venue Prep',
+    description: 'The stall-wise electrical and layout sheet, read only',
+    actions: ['electrical:read'],
     requestTypeScope: null,
   },
   {

@@ -306,6 +306,23 @@ describe('the ops surfaces over HTTP', () => {
     expect(res.json().rows[0].plugs5aTotal).toBe(4);
   });
 
+  test('the electrical team reads the sheet and its bays, and nothing else', async () => {
+    // 🔴 The requirement is to SHARE this sheet with the electrical and
+    // venue-prep teams. They are not the stalls team: the sheet and the bay
+    // list it filters by are all they get.
+    await selected(['C1-1'], { plugs5a: 3 });
+    const sparky = await seedStaff(['stalls_electrical']);
+
+    expect((await get('/electrical', sparky)).statusCode).toBe(200);
+    expect((await get('/zones', sparky)).statusCode).toBe(200);
+
+    // Not the planning grid, not the requests, not the money.
+    expect((await get('/planning', sparky)).statusCode).toBe(403);
+    expect((await get('/requests', sparky)).statusCode).toBe(403);
+    expect((await get('/finance/payments', sparky)).statusCode).toBe(403);
+    expect((await get('/checkin', sparky)).statusCode).toBe(403);
+  });
+
   test('a volunteer can check a stall in and print its challan', async () => {
     const { requestId } = await selected(['C1-1'], { chairsNeeded: 4 });
     expect((await post(`/checkin/${requestId}`, { note: 'ok' }, volunteer)).statusCode).toBe(200);

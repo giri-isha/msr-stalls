@@ -118,7 +118,9 @@ export const STALLS_NAV: StallsNavItem[] = [
     to: '/m/stalls/electrical',
     glyph: 'sliders',
     group: 'Event Operations',
-    requires: 'planning:read',
+    // Its own action, so the electrical and venue-prep teams can be given the
+    // sheet without the planning grid and every requester's details with it.
+    requires: 'electrical:read',
   },
   {
     label: 'Check-in',

@@ -52,3 +52,14 @@ export function requireAction(caller: StaffCaller, action: StallAction): void {
     throw new NotAuthorizedError(`${action} requires a stalls role that grants it`);
   }
 }
+
+/** For a read several roles reach by different routes — the bay list, which
+ *  every screen that filters by bay needs and no role should have to hold
+ *  `config:read` for. Not a general escape hatch: a write always names one
+ *  action, because "any of these may change it" is how a guard stops meaning
+ *  anything. */
+export function requireAnyAction(caller: StaffCaller, actions: StallAction[]): void {
+  if (!actions.some((a) => can(caller.roleKeys, a))) {
+    throw new NotAuthorizedError(`${actions.join(' or ')} requires a stalls role that grants it`);
+  }
+}

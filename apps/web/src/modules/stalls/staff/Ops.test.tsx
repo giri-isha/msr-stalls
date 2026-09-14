@@ -58,7 +58,7 @@ describe('the electrical sheet', () => {
   test('prints the 5A total including the free plug, as the column says', async () => {
     installFetch([
       ['GET', /\/me$/, () => ME_ADMIN],
-      ['GET', /\/config$/, () => CONFIG],
+      ['GET', /\/zones$/, () => CONFIG.zones],
       ['GET', /\/electrical/, () => SHEET],
     ]);
     render();
@@ -71,7 +71,7 @@ describe('the electrical sheet', () => {
   test('a cluster tab narrows the request, not just the table', async () => {
     const fetch = installFetch([
       ['GET', /\/me$/, () => ME_ADMIN],
-      ['GET', /\/config$/, () => CONFIG],
+      ['GET', /\/zones$/, () => CONFIG.zones],
       ['GET', /\/electrical/, () => SHEET],
     ]);
     render();
@@ -86,7 +86,7 @@ describe('the electrical sheet', () => {
   test('totals the load across the sheet', async () => {
     installFetch([
       ['GET', /\/me$/, () => ME_ADMIN],
-      ['GET', /\/config$/, () => CONFIG],
+      ['GET', /\/zones$/, () => CONFIG.zones],
       ['GET', /\/electrical/, () => SHEET],
     ]);
     render();

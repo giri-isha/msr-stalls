@@ -11,11 +11,23 @@ describe('ROLES', () => {
   test('declares the staff roles from the requirements', () => {
     expect(ROLES.map((r) => r.roleKey).sort()).toEqual([
       'stalls_admin',
+      'stalls_electrical',
       'stalls_finance',
       'stalls_lead',
       'stalls_local_welfare',
       'stalls_volunteer',
     ]);
+  });
+
+  // The requirement is to SHARE the stall-wise electrical sheet with the
+  // electrical and venue-prep teams. They are not the stalls team, and folding
+  // that read into `planning:read` would hand them the planning grid and every
+  // requester's details to get a plug-point count.
+  test('the electrical role reaches the sheet and nothing else', () => {
+    expect(can(['stalls_electrical'], 'electrical:read')).toBe(true);
+    expect(can(['stalls_electrical'], 'planning:read')).toBe(false);
+    expect(can(['stalls_electrical'], 'requests:read')).toBe(false);
+    expect(can(['stalls_electrical'], 'finance:read')).toBe(false);
   });
 
   // The local welfare team files requests inside this application, because the
