@@ -4,6 +4,40 @@ import { LogMailer } from '../../src/email';
 import { createEdition } from '../../src/modules/stalls/config';
 import { prisma } from '../../src/prisma';
 
+/** How long the truncate waits for the tables before giving up. Generous: on an
+ *  idle test database it takes milliseconds, so anything near this means
+ *  somebody else is holding them and waiting longer will not help. */
+const LOCK_TIMEOUT_MS = 3_000;
+
+/** The name of the database we are pointed at, for the message below. */
+function databaseName(): string {
+  const url = process.env.DATABASE_URL ?? '';
+  return url.split('/').pop()?.split('?')[0] || 'the test database';
+}
+
+/** ⚠️ Everything else in the suite fails strangely when this does, so it is
+ *  worth reading. TRUNCATE needs ACCESS EXCLUSIVE on all 37 tables, which it
+ *  cannot get while another connection is working — a second `vitest run`, an
+ *  editor running tests on save, a REPL left open. Postgres then either blocks
+ *  or picks this statement as the deadlock victim.
+ *
+ *  Neither outcome used to say so. A `deadlock detected` surfaced at
+ *  `beforeEach` naming no database and no other process, and because the rows
+ *  it failed to clear stayed behind, the rest of the file failed as "no zone C1
+ *  in this edition" and "edition … has no charge config" — which read like bugs
+ *  in the code under test and are not. */
+function contention(err: unknown): Error | null {
+  const text = err instanceof Error ? err.message : String(err);
+  if (!/deadlock detected|lock timeout|canceling statement due to lock/i.test(text)) return null;
+  return new Error(
+    `Could not reset ${databaseName()}: another connection is holding its tables.\n` +
+      'Something else is using the test database — a second `vitest run`, an editor ' +
+      'running tests on save, or a dev server pointed at it. The suite shares one ' +
+      'database and runs its files serially, so it has to be the only thing using it. ' +
+      'Run one at a time and try again.',
+  );
+}
+
 /** Wipes every table the module and the Foundation stubs own. Discovers them
  *  from the catalogue rather than listing them, so a new model cannot be
  *  forgotten here and leak rows between tests. */
@@ -17,7 +51,18 @@ export async function resetDatabase(): Promise<void> {
   `;
   if (rows.length === 0) return;
   const list = rows.map((r) => `"${r.table_schema}"."${r.table_name}"`).join(', ');
-  await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`);
+
+  try {
+    // One transaction, so `SET LOCAL` applies to the TRUNCATE beside it and to
+    // nothing afterwards. Without the timeout the truncate waits for as long as
+    // the other run takes, which is how a blocked suite looks like a hung one.
+    await prisma.$transaction([
+      prisma.$executeRawUnsafe(`SET LOCAL lock_timeout = '${LOCK_TIMEOUT_MS}ms'`),
+      prisma.$executeRawUnsafe(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`),
+    ]);
+  } catch (err) {
+    throw contention(err) ?? err;
+  }
 }
 
 export const SYSTEM = '00000000-0000-0000-0000-000000000000';
