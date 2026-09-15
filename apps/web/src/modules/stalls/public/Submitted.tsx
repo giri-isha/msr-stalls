@@ -9,7 +9,6 @@ interface State {
 export function Submitted() {
   const state = (useLocation().state ?? {}) as State;
   if (!state.reference || !state.statusToken) return <Navigate to='/stalls/apply' replace />;
-  const statusPath = `/stalls/status/${state.statusToken}`;
 
   return (
     <div style={{ maxWidth: 520, margin: '0 auto', textAlign: 'center' }}>
@@ -65,15 +64,15 @@ export function Submitted() {
           inform selected stalls by email.
         </p>
         <p style={{ margin: '10px 0 0', fontSize: 13, lineHeight: 1.65 }}>
-          You can check your status at any time using the private link below — it is also in your
-          email. Please do not share it.
+          You can check your status at any time from your requests page. The same page opens from
+          the private link in your email — please do not share that link.
         </p>
         {/* ⚠️ An anchor styled as the primary button, not a `Btn` with a
             navigate handler. This is the one thing the page exists to hand over,
             and a real link is what can be middle-clicked, copied, and reached by
             a reader who navigates by links. */}
         <Link
-          to={statusPath}
+          to='/stalls/requests'
           className='msrs-lift'
           style={{
             display: 'flex',
@@ -91,7 +90,7 @@ export function Submitted() {
           }}
         >
           <Icon name='eye' size={15} />
-          Open my status page
+          Open my requests
         </Link>
       </Card>
 

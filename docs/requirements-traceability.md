@@ -23,7 +23,7 @@ package both sides share.
 | Ashram, Ashram Food, Local Welfare and Vendor request forms | `packages/stalls/src/forms.ts`, `/stalls/apply/:type` | Built |
 | The 2025 field lists, with their Tamil | `forms.ts` (transcribed from the 2025 PDFs) | Built |
 | Anyone with the link can register | `POST /public/register` is open and rate-limited per IP; `POST /public/requests` now needs a session | Built |
-| Register and log in with email or phone number | `POST /public/register` with an email **or** a mobile and a password, confirmed by a link sent to that contact; `POST /public/login` returns a session cookie. `/stalls/status` still emails a signed link to anyone who never registered. | Built — see [Vendor identity](#vendor-identity) below. The password is a stopgap until the host's Isha OIDC. |
+| Register and log in with email or phone number | `POST /public/register` with an email **or** a mobile and a password, confirmed by a link sent to that contact; `POST /public/login` returns a session cookie. `/stalls/status` still emails a signed link to anyone who never registered. A logged-in requester reads the same portal at `GET /public/requests` — the session and the signed link are two credentials onto one view. | Built — see [Vendor identity](#vendor-identity) below. The password is a stopgap until the host's Isha OIDC. |
 | Admin-added questions | `StallCustomField`, Admin → Custom fields | Built |
 | At most two stalls in one bay per request — "if they want another area, they raise another request, so we can individually accept one and reject the other" | `StallEdition.maxStallsPerRequest`, enforced in `submit.ts`; 422 with the cap in the message | Built |
 
@@ -72,7 +72,7 @@ package both sides share.
 | The terms document the requester accepts — "to view the terms and conditions document, please click here" on the 2025 form | `StallEdition.termsUrl`, set in Admin → Season settings, linked beside the acceptance tick-box on the bank form. Blank until the legal team issues one, and the consent then stands without a link rather than with one that 404s | Built |
 | MICR code | Required on the 2025 form; optional here | Differs — the cancelled cheque carries it and is uploaded anyway, so requiring it turns a legible cheque into a blocked submission |
 | Reminder calls for bank details pending | `StallReminderCall(kind: BANK)`, Communication → Reminder calls | Built |
-| A vendor who lost the email can get back to the form | Their status page lists what is outstanding and opens the bank form from there | Built |
+| A vendor who lost the email can get back to the form | Their status page lists what is outstanding and opens the bank form from there — reached by the emailed link (`/stalls/status/:token`) **or**, once logged in, from `/stalls/requests` | Built |
 
 ## 6. Payment details and finance
 

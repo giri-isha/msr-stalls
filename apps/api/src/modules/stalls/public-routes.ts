@@ -9,9 +9,14 @@
 //     never write to another vendor's record.
 //   • a staff COUPON        — staff registration. Same rule: the coupon names
 //     the stall.
-//   • a requester SESSION   — the stall request form and the submission behind
-//     it. A password today, the host's Isha OIDC when it lands; `session.ts` is
-//     the seam and no route here knows which it was.
+//   • a requester SESSION   — the stall request form, the submission behind it,
+//     and that account's own requests read back. A password today, the host's
+//     Isha OIDC when it lands; `session.ts` is the seam and no route here knows
+//     which it was.
+//
+// The status LINK and the SESSION are two credentials onto one portal, not two
+// portals: both end in `statusView` and `stepLink`, which take an account and
+// have never known which of the two named it.
 //
 // Four routes take no credential: `GET /config`, which is the public form's own
 // configuration and contains no vendor data; `POST /access-link`; `POST
@@ -233,9 +238,24 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
     { schema: { params: TokenParams } },
     async (req): Promise<PublicStatusResponse> => {
       const link = await resolveAccessLink(prisma, req.params.token, 'STATUS');
-      return statusView(prisma, link);
+      return statusView(prisma, link.account);
     },
   );
+
+  /** The same view, for a requester who is logged in.
+   *
+   *  ⚠️ `statusView`, not a second opinion about what a request owes. The
+   *  emailed link and the session are two credentials onto ONE portal; a page
+   *  that answered this question for itself is how a vendor gets told they are
+   *  all set here and stopped at the counter.
+   *
+   *  404 with no session, matching the link routes beside it — a requester who
+   *  is signed out and one holding a token of the wrong purpose learn the same
+   *  nothing. */
+  app.get('/requests', async (req): Promise<PublicStatusResponse> => {
+    const account = await requireRequester(prisma, req);
+    return statusView(prisma, account);
+  });
 
   /** "I applied but I cannot find the email." The requirement's register-and-
    *  login by email or phone number, in a module that has no passwords: the
@@ -268,7 +288,25 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
     },
     async (req): Promise<ContinueStepResponse> => {
       const link = await resolveAccessLink(prisma, req.params.token, 'STATUS');
-      return stepLink(prisma, deps, link, req.body);
+      return stepLink(prisma, deps, link.accountId, req.body);
+    },
+  );
+
+  /** The same step, opened from the logged-in list rather than from the letter.
+   *
+   *  The session is the credential and `reference` only picks which of that
+   *  account's requests is meant — so a reference belonging to somebody else
+   *  404s exactly as one that never existed does, and a step that is not
+   *  outstanding is a 409 rather than a link. */
+  zod.post(
+    '/requests/continue',
+    {
+      schema: { body: ContinueStepInput },
+      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
+    },
+    async (req): Promise<ContinueStepResponse> => {
+      const account = await requireRequester(prisma, req);
+      return stepLink(prisma, deps, account.id, req.body);
     },
   );
 

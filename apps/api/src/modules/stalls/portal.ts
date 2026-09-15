@@ -1,4 +1,4 @@
-import type { StallAccessLink, StallAccount } from '@prisma/client';
+import type { StallAccount } from '@prisma/client';
 import {
   type ContinueStepInput,
   type PublicStatusResponse,
@@ -17,12 +17,18 @@ import { STATUS_LINK_TTL_DAYS } from './submit';
 /** The vendor's own portal: getting back in, seeing what is outstanding, and
  *  opening the one form that is theirs to fill.
  *
- *  The requirement asks for register-and-login by email or phone number. This
- *  module has no passwords — a request mints a signed link and the receipt
- *  email carries it — so "login" is: name the mailbox or the number you applied
- *  under, and a fresh link is sent there. Nothing is ever shown to the person
- *  typing; the link is the credential and it goes to the vendor, not to the
- *  browser that asked.
+ *  TWO credentials arrive here and the functions below know neither:
+ *
+ *    • the signed LINK the receipt email carries. "Getting back in" is then:
+ *      name the mailbox or the number you applied under, and a fresh link is
+ *      sent THERE. Nothing is shown to the person typing, so this cannot be
+ *      used to ask whether somebody has applied.
+ *    • the SESSION of a requester who registered and logged in — see
+ *      `session.ts`. The newer of the two, and the one that outlives the
+ *      password when the host's Isha OIDC lands.
+ *
+ *  The link is not going away when it does: those links are in inboxes now and
+ *  are held by the vendors furthest through onboarding.
  */
 
 /** Same TTL as a selection email's links, and for the same reason: a form that
@@ -94,13 +100,16 @@ function accessLinkMail(account: StallAccount, statusUrl: string) {
  *  request — are not here. What IS here beyond the bare status is the pending
  *  list, from the same `pendingSteps` the Onboarding table and the check-in
  *  counter read, so the vendor is never told they are all set while the
- *  counter is told otherwise. */
-export async function statusView(
-  db: Db,
-  link: StallAccessLink & { account: StallAccount },
-): Promise<PublicStatusResponse> {
+ *  counter is told otherwise.
+ *
+ *  ⚠️ Takes the ACCOUNT, not the link that named it. Two credentials reach this
+ *  view — the signed link in the receipt email and the session cookie a
+ *  logged-in requester holds — and both must answer identically. Narrowing the
+ *  parameter to what the function actually reads is what makes a second way in
+ *  a second CALLER rather than a second view. */
+export async function statusView(db: Db, account: StallAccount): Promise<PublicStatusResponse> {
   const requests = await db.stallRequest.findMany({
-    where: { accountId: link.accountId },
+    where: { accountId: account.id },
     orderBy: { submittedAt: 'desc' },
     include: factsInclude,
   });
@@ -117,7 +126,7 @@ export async function statusView(
   };
 
   return {
-    displayName: link.account.displayName,
+    displayName: account.displayName,
     requests: await Promise.all(
       requests.map(async (r) => ({
         reference: r.reference,
@@ -149,21 +158,22 @@ export async function statusView(
   };
 }
 
-/** Opens one outstanding step for the holder of a status link.
+/** Opens one outstanding step for a requester who has proved who they are.
  *
- *  The status link is the credential; `reference` only picks which of THAT
- *  account's requests is meant, so a reference belonging to somebody else is
- *  indistinguishable from one that does not exist. The step must actually be
- *  outstanding: a 409 rather than a link keeps this from becoming a way to mint
- *  a bank-form link for a request whose bank details are already in. */
+ *  The CREDENTIAL — a status link or a session — is what the caller checked
+ *  before getting here; `reference` only picks which of THAT account's requests
+ *  is meant, so a reference belonging to somebody else is indistinguishable
+ *  from one that does not exist. The step must actually be outstanding: a 409
+ *  rather than a link keeps this from becoming a way to mint a bank-form link
+ *  for a request whose bank details are already in. */
 export async function stepLink(
   db: Db,
   deps: Pick<StallsDeps, 'bankFormUrl' | 'fssaiUrl'>,
-  link: StallAccessLink,
+  accountId: string,
   input: ContinueStepInput,
 ): Promise<{ url: string }> {
   const request = await db.stallRequest.findFirst({
-    where: { accountId: link.accountId, reference: input.reference },
+    where: { accountId, reference: input.reference },
     include: factsInclude,
   });
   if (request?.status !== 'SELECTED') throw new UnknownAccessLinkError();

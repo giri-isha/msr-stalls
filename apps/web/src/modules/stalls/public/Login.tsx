@@ -33,7 +33,10 @@ export function Login() {
     try {
       await loginRequester({ contact: contact.trim(), password });
       reload();
-      nav('/stalls/apply');
+      // ⚠️ Not the form picker. Somebody logging in a week later is asking
+      // what happened to the request they already sent; a first-timer lands
+      // on the empty state, one click from the forms.
+      nav('/stalls/requests');
     } catch {
       // Every failure, including a transport fault, reads the same. A reader
       // who has genuinely mistyped tries again; nobody learns anything else.

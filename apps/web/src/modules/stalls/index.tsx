@@ -10,6 +10,7 @@ import { ConfirmRegistration } from './public/ConfirmRegistration';
 import { FormPicker } from './public/FormPicker';
 import { FssaiForm } from './public/FssaiForm';
 import { Login } from './public/Login';
+import { MyRequests } from './public/MyRequests';
 import { Register } from './public/Register';
 import { RequestForm } from './public/RequestForm';
 import { ResetPassword } from './public/ResetPassword';
@@ -34,6 +35,10 @@ export const stallsPublicRoutes: RouteObject[] = [
   { path: 'apply', element: <FormPicker /> },
   { path: 'apply/:type', element: <RequestForm /> },
   { path: 'submitted', element: <Submitted /> },
+  // Behind the session: the requester's own requests. ⚠️ This one does NOT go
+  // when SSO lands — the OIDC callback mints the same session the password
+  // login mints today, and this page never knew which it was.
+  { path: 'requests', element: <MyRequests /> },
   // The temporary password login. ⚠️ These five paths go when the host's Isha
   // OIDC lands; `confirm/:token` and `reset/:token` must keep matching
   // `registerConfirmUrl` and `passwordResetUrl` in the API's deps until then.

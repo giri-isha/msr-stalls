@@ -101,6 +101,20 @@ export const continueStep = (token: string, body: ContinueStepInput) =>
     json: body,
   });
 
+/** The same two calls, for a requester who is logged in rather than following a
+ *  link. No token in either URL — the session cookie is the credential, and the
+ *  API reads the account off it.
+ *
+ *  ⚠️ These survive the swap to the host's Isha OIDC. The six password calls
+ *  below do not. */
+export const getMyRequests = () => apiFetch<PublicStatusResponse>(`${BASE}/public/requests`);
+
+export const continueMyStep = (body: ContinueStepInput) =>
+  apiFetch<ContinueStepResponse>(`${BASE}/public/requests/continue`, {
+    method: 'POST',
+    json: body,
+  });
+
 // ── Staff: me, dashboard ────────────────────────────────────────────────────
 
 export const getMe = () => apiFetch<MeResponse>(`${BASE}/me`);

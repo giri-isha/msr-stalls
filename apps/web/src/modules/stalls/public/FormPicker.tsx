@@ -102,6 +102,17 @@ export function FormPicker() {
         </Card>
       )}
 
+      {signedIn && (
+        // ⚠️ A link, not a count. A number would mean a second fetch on a page
+        // that makes one, to decorate a destination that renders the count
+        // anyway — and this page has to stay cheap for readers who are only
+        // deciding whether to sign up.
+        <p style={{ fontSize: 12.5, marginBottom: 14 }}>
+          <Link to='/stalls/requests'>View your requests</Link> — what has been decided, and which
+          forms are still waiting on you.
+        </p>
+      )}
+
       <div
         style={{
           display: 'grid',
