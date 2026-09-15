@@ -656,6 +656,27 @@ export const GrantRoleInput = z.object({
   roleKey: z.string().min(1).max(64),
 });
 
+/** A requester's own details, corrected by a desk.
+ *
+ *  ⚠️ `phone` accepts the empty string because the column already holds it:
+ *  an account registered on an email alone never had a number, and an edit
+ *  screen that refused to save one of those would be unable to fix the name on
+ *  half the directory. `IndianMobile` normalises everything else to bare ten
+ *  digits, which is what every other intake stores and what the directory
+ *  search matches against.
+ *
+ *  ⚠️ Nothing here touches a staff row. A staff member's name and address are
+ *  the Foundation's — this module reads that directory and never writes it. */
+export const UpdateAccountInput = z.object({
+  displayName: z.string().trim().min(1).max(200),
+  /** Trimmed before it is judged: an address pasted out of a mail client
+   *  arrives with whitespace around it, and rejecting that would send a desk
+   *  hunting for a typo that is not there. `normalizeEmail` lowercases it. */
+  email: z.string().trim().pipe(z.email().max(320)),
+  phone: z.union([IndianMobile, z.literal('')]),
+});
+export type UpdateAccountInput = z.infer<typeof UpdateAccountInput>;
+
 export interface StaffMember {
   personId: string;
   email: string;

@@ -54,6 +54,7 @@ import type {
   SubmitRequestInput,
   SubmitRequestResponse,
   TemplateKeyValue,
+  UpdateAccountInput,
   VendorStaffView,
   ZonePlanInput,
   ZonePlanView,
@@ -293,6 +294,11 @@ export const grantRole = (personRef: string, roleKey: string) =>
   apiFetch<void>(`${BASE}/staff`, { method: 'POST', json: { personRef, roleKey } });
 export const revokeRole = (personRef: string, roleKey: string) =>
   apiFetch<void>(`${BASE}/staff/${personRef}/${roleKey}`, { method: 'DELETE' });
+
+/** A requester's own details, corrected from the directory. Requesters only —
+ *  a staff member's name and address belong to the Foundation. */
+export const updateAccount = (id: string, body: UpdateAccountInput) =>
+  apiFetch<void>(`${BASE}/users/${id}`, { method: 'PATCH', json: body });
 
 /** The directory: staff and requesters in one list, with the tile counts. */
 export const listUsers = (q: Partial<ListUsersQuery> = {}) =>

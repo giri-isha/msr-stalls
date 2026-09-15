@@ -1,6 +1,7 @@
 import type { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { NotAuthorizedError, ValidationFailedError } from '../../errors';
 import {
+  AccountEmailTakenError,
   BankDetailsLockedError,
   CategoryInUseError,
   CouponFullError,
@@ -71,6 +72,7 @@ function statusFor(err: unknown): number | null {
     err instanceof RefundAlreadySubmittedError ||
     err instanceof DuplicatePaymentError ||
     err instanceof NothingToSendError ||
+    err instanceof AccountEmailTakenError ||
     // Configuration that cannot be applied because something already stands on
     // it. A 409 rather than a 500 so the Admin screen can say "this bay has
     // stalls planned against it" instead of showing an error page.

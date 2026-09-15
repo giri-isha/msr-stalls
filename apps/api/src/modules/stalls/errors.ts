@@ -317,3 +317,17 @@ export class NothingToSendError extends Error {
     this.name = 'NothingToSendError';
   }
 }
+
+/** An edit that would move a requester onto an address another account already
+ *  holds. Mapped to 409.
+ *
+ *  ⚠️ Names the account in the way: email is the module's identity key, so the
+ *  desk correcting a typo needs to know they have found the vendor's OTHER
+ *  account rather than an anonymous collision. Both rows are already on the
+ *  screen in front of them. */
+export class AccountEmailTakenError extends Error {
+  constructor(readonly heldBy: string) {
+    super(`${heldBy} already uses this email — a requester's address is their identity here`);
+    this.name = 'AccountEmailTakenError';
+  }
+}

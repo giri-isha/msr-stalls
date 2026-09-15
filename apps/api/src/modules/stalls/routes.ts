@@ -35,6 +35,7 @@ import {
   SubmitRefundInput,
   TEMPLATE_PLACEHOLDERS,
   TemplateKeyValue,
+  UpdateAccountInput,
   UpdateTemplateInput,
   ZoneCodeValue,
   ZoneInput,
@@ -77,7 +78,7 @@ import {
 import * as signature from './signature';
 import { listUsers } from './directory';
 import { grantRole, listStaff, revokeRole, searchPeople } from './staff';
-import { resendConfirmation, sendAccountAccessLink, unlockAccount } from './support';
+import { resendConfirmation, sendAccountAccessLink, unlockAccount, updateAccount } from './support';
 
 const IdParams = z.object({ id: z.uuid() });
 const CodeParams = z.object({ code: ZoneCodeValue });
@@ -489,6 +490,26 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     await sendAccountAccessLink(prisma, deps, req.params.id, caller.personId);
     reply.status(204);
   });
+
+  /** A requester's own details, corrected.
+   *
+   *  `users:write`, with the support actions, because it is the same job: the
+   *  desk that mails a vendor their access link is the desk that has just been
+   *  told the address it goes to is wrong.
+   *
+   *  ⚠️ Requesters only. A staff row's name and address belong to the
+   *  Foundation directory, which this module reads and never writes — what a
+   *  staff row's Edit changes is the grants below. */
+  zod.patch(
+    '/users/:id',
+    { schema: { params: IdParams, body: UpdateAccountInput } },
+    async (req, reply) => {
+      const caller = await requireStaff(req, prisma);
+      requireAction(caller, 'users:write');
+      await updateAccount(prisma, req.params.id, req.body, caller.personId);
+      reply.status(204);
+    },
+  );
 
   zod.get(
     '/staff/search',
