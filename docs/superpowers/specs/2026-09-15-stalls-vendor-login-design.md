@@ -96,6 +96,22 @@ of it.
 12. **One error for every credential failure.** Unknown contact, wrong
     password and unconfirmed credential are indistinguishable.
 
+13. **The requester session is named apart from the staff one.** Staff already
+    hold a `msr_session` cookie, a `MeResponse` and `useMe()`. The requester
+    gets `msr_stall_requester`, `RequesterSession` and `useRequester()`. Two
+    things called "me" in one module is how a requester ends up being asked
+    what they `can()` do.
+
+14. **`GET /public/session` answers 404, not 401, with no session.** It is
+    asked by a public page that must render for someone who has never logged
+    in; a 401 would make the browser treat the apply form as protected.
+
+15. **A mobile-only registration gets a placeholder address.**
+    `StallAccount.email` is non-null and unique, so a trader registering on a
+    number needs something in the column. It is
+    `mobile+<digits>@stalls.invalid`, nothing ever sends to it, and delivery is
+    chosen by the credential's `loginKind` rather than by that column.
+
 ## Data model
 
 One new table. `StallAccount` is unchanged.
@@ -142,7 +158,7 @@ lands and is updated as part of the work.
 | `POST /public/logout` | revokes the session |
 | `POST /public/password-reset` | `{ contact }` → always `202 {ok:true}` |
 | `POST /public/password-reset/confirm` | `{ token, password }` → sets it, revokes every live session |
-| `GET /public/me` | `{ displayName, contact }` or `401` |
+| `GET /public/session` | `RequesterSession`, or `404` with no session |
 
 `POST /public/register` branches invisibly:
 
