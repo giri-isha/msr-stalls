@@ -239,6 +239,7 @@ function DialogButtons({
     <>
       <Btn onClick={onClose}>Cancel</Btn>
       <Btn kind='primary' disabled={disabled} onClick={onSave}>
+        <Icon name='check' size={14} />
         Save
       </Btn>
     </>
@@ -398,6 +399,7 @@ function PlanCategories({ c, writable, run }: PanelProps) {
       note='What can occupy a stall position. These are the Planning grid’s columns, in this order. A column something is already planned or allocated against cannot be removed.'
       footer={
         <Btn kind='primary' disabled={!writable || !dirty} onClick={save}>
+          <Icon name='check' size={14} />
           Save columns
         </Btn>
       }
@@ -643,6 +645,7 @@ function EditionSettings({ c, writable, run }: PanelProps) {
             )
           }
         >
+          <Icon name='check' size={14} />
           Save settings
         </Btn>
       }
@@ -899,6 +902,7 @@ function Rates({ c, writable, run }: PanelProps) {
           disabled={!writable}
           onClick={() => run('Rates saved', () => api.putRateCard(priced))}
         >
+          <Icon name='check' size={14} />
           Save rates
         </Btn>
       }
@@ -1091,6 +1095,7 @@ function Charges({ c, writable, run }: PanelProps) {
             })
           }
         >
+          <Icon name='check' size={14} />
           Save charges
         </Btn>
       }
@@ -1253,7 +1258,8 @@ function Fines({ c, writable, run }: PanelProps) {
               })
             }
           >
-            <Icon name='plus' size={14} /> Add
+            <Icon name='plus' size={14} />
+            Add
           </Btn>
         </div>
       )}
@@ -1406,6 +1412,7 @@ function CustomFields({ c, writable, run }: PanelProps) {
                     disabled={!writable}
                     onClick={() => run('Deleted', () => api.deleteCustomField(f.id))}
                   >
+                    <Icon name='trash' size={14} />
                     Delete
                   </Btn>
                 </TD>
@@ -1485,7 +1492,8 @@ function CustomFields({ c, writable, run }: PanelProps) {
                   })
                 }
               >
-                <Icon name='plus' size={14} /> Add
+                <Icon name='plus' size={14} />
+                Add
               </Btn>
             </div>
           </Grid>
@@ -1654,6 +1662,7 @@ function Flow({ c, writable, run }: PanelProps) {
           disabled={!writable}
           onClick={() => run('Flow saved', () => api.putFlow(v))}
         >
+          <Icon name='check' size={14} />
           Save
         </Btn>
       }
@@ -1717,6 +1726,7 @@ function Editions({ writable, run }: { writable: boolean; run: PanelProps['run']
                         })
                       }
                     >
+                      <Icon name='circle-check' size={14} />
                       Activate
                     </Btn>
                   )}
@@ -1767,6 +1777,7 @@ function Editions({ writable, run }: { writable: boolean; run: PanelProps['run']
               })
             }
           >
+            <Icon name='plus' size={14} />
             Create and activate
           </Btn>
         </div>

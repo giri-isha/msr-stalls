@@ -511,13 +511,19 @@ export function Btn({
         ...skin,
         // ⚠️ Added for this module, and it is the one change to this file. In
         // the module this was copied from every caller passes a bare word, so
-        // an inline box was enough. Here half the buttons carry a glyph before
-        // the label — Add appliance, Flag, Export — and inline layout drops the
-        // 14px icon onto the text baseline with no gap, a couple of pixels low.
-        // Harmless where there is no icon.
+        // an inline box was enough. Here MOST buttons carry a glyph before the
+        // label — see the action convention in `ui/icons.tsx` — and inline
+        // layout drops the 14px icon onto the text baseline with no gap, a
+        // couple of pixels low. Harmless where there is no icon.
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
+        // ⚠️ This `gap` is the ONLY thing between a glyph and its label, and
+        // callers must not add a second separator. `<Icon /> Save` writes a
+        // literal space into the text node, which lands ON TOP of the gap and
+        // makes that button ~4px wider inside than the one beside it. The
+        // module had it both ways — 15 buttons spaced, 10 not — and the two
+        // are indistinguishable in review and obvious side by side on screen.
         gap: 6,
         padding: '8px 14px',
         // 🔴 Was `calc(var(--r4) - 6px)` — reasonable when the sheet had only

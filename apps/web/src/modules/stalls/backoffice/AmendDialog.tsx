@@ -4,7 +4,7 @@ import { ApiError } from '../api-client';
 import { listZones, patchRequest } from '../api';
 import { ApplianceRows, type ApplianceRow } from '../components/ApplianceRows';
 import { useLoad } from '../hooks';
-import { Btn, Dialog, FormField, Input, Select, Textarea, useToast } from '../ui';
+import { Btn, Dialog, FormField, Icon, Input, Select, Textarea, useToast } from '../ui';
 
 /** Correcting an application the team has taken over the phone.
  *
@@ -145,6 +145,7 @@ export function AmendDialog({
         <>
           <Btn onClick={onClose}>Cancel</Btn>
           <Btn kind='primary' disabled={busy} onClick={save}>
+            <Icon name='check' size={14} />
             {busy ? 'Saving…' : 'Save changes'}
           </Btn>
         </>

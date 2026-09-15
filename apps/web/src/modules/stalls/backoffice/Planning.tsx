@@ -97,6 +97,7 @@ function ZonePlanDialog({
         <>
           <Btn onClick={onClose}>Cancel</Btn>
           <Btn kind='primary' onClick={() => onApply({ expectedCrowd: crowd, counts })}>
+            <Icon name='check' size={14} />
             Done
           </Btn>
         </>
@@ -282,6 +283,7 @@ export function Planning() {
               />
             </label>
             <Btn disabled={!writable || !dirty || saving} onClick={save}>
+              <Icon name='check' size={14} />
               Save
             </Btn>
             <Btn
@@ -289,6 +291,7 @@ export function Planning() {
               disabled={!writable || saving}
               onClick={() => setConfirmApply(true)}
             >
+              <Icon name='check' size={14} />
               Apply plan
             </Btn>
           </>
@@ -416,6 +419,7 @@ export function Planning() {
             <>
               <Btn onClick={() => setConfirmApply(false)}>Back</Btn>
               <Btn kind='primary' onClick={apply}>
+                <Icon name='check' size={14} />
                 Apply
               </Btn>
             </>

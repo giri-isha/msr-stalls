@@ -146,6 +146,7 @@ function DuePanel() {
               <Money row={r} />
               {can('comms.write') && !r.paymentEmailSentAt && (
                 <Btn kind='primary' onClick={() => sendPayment(r)} disabled={busy === r.requestId}>
+                  <Icon name='send' size={14} />
                   Send payment email
                 </Btn>
               )}
@@ -225,6 +226,7 @@ function DuePanel() {
                   <TD align='right'>
                     {can('comms.write') && !r.paymentEmailSentAt && (
                       <Btn onClick={() => sendPayment(r)} disabled={busy === r.requestId}>
+                        <Icon name='send' size={14} />
                         Send
                       </Btn>
                     )}
@@ -324,7 +326,10 @@ function ConfirmPanel() {
                     )}
                   </TD>
                   <TD align='right'>
-                    <Btn onClick={() => setOpen(r)}>{canWrite ? 'Record credit' : 'View'}</Btn>
+                    <Btn onClick={() => setOpen(r)}>
+                      <Icon name='rupee' size={14} />
+                      {canWrite ? 'Record credit' : 'View'}
+                    </Btn>
                   </TD>
                 </TR>
               ))}
@@ -406,7 +411,12 @@ function Concession({
   };
 
   if (!open) {
-    return <Btn onClick={() => setOpen(true)}>Agree a different fee for this stall…</Btn>;
+    return (
+      <Btn onClick={() => setOpen(true)}>
+        <Icon name='pencil' size={14} />
+        Agree a different fee for this stall…
+      </Btn>
+    );
   }
 
   return (
@@ -434,10 +444,12 @@ function Concession({
       </FormField>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <Btn kind='primary' disabled={busy} onClick={() => save(false)}>
+          <Icon name='check' size={14} />
           Save agreed fee
         </Btn>
         {set && (
           <Btn disabled={busy} onClick={() => save(true)}>
+            <Icon name='undo' size={14} />
             Back to the quoted fee
           </Btn>
         )}
@@ -505,6 +517,7 @@ function ConfirmDialog({
       footer={
         canWrite ? (
           <Btn kind='primary' onClick={save} disabled={busy || referenceNo.trim().length === 0}>
+            <Icon name='rupee' size={14} />
             Record credit
           </Btn>
         ) : undefined
@@ -548,6 +561,7 @@ function ConfirmDialog({
                             }
                           }}
                         >
+                          <Icon name='trash' size={14} />
                           Remove
                         </Btn>
                       )}
@@ -716,7 +730,10 @@ function RefundPanel() {
                     )}
                   </TD>
                   <TD align='right'>
-                    <Btn onClick={() => setOpen(r)}>{r.submittedAt ? 'Voucher' : 'Prepare'}</Btn>
+                    <Btn onClick={() => setOpen(r)}>
+                      <Icon name='scroll' size={14} />
+                      {r.submittedAt ? 'Voucher' : 'Prepare'}
+                    </Btn>
                   </TD>
                 </TR>
               ))}
@@ -803,6 +820,7 @@ function RefundDialog({
                 }
               }}
             >
+              <Icon name='check' size={14} />
               Save voucher number
             </Btn>
           ) : (
@@ -827,6 +845,7 @@ function RefundDialog({
                 }
               }}
             >
+              <Icon name='send' size={14} />
               Send to Finance
             </Btn>
           )

@@ -121,6 +121,7 @@ export function FssaiForm() {
                     <Icon name='file-text' size={11} /> {f.name}
                   </Tag>
                   <Btn onClick={() => setFiles((prev) => prev.filter((x) => x.key !== f.key))}>
+                    <Icon name='trash' size={14} />
                     Remove
                   </Btn>
                 </div>
@@ -165,6 +166,7 @@ export function FssaiForm() {
 
             <div>
               <Btn kind='primary' onClick={submit} disabled={busy || files.length === 0}>
+                <Icon name='send' size={14} />
                 {busy ? 'Submitting…' : 'Submit'}
               </Btn>
             </div>

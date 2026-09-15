@@ -142,6 +142,7 @@ export function StaffRegistration() {
           </FormField>
           <div>
             <Btn kind='primary' onClick={() => lookup(code)} disabled={looking || !code.trim()}>
+              <Icon name='chevron-right' size={14} />
               {looking ? 'Checking…' : 'Continue'}
             </Btn>
           </div>
@@ -232,6 +233,7 @@ export function StaffRegistration() {
                   onClick={submit}
                   disabled={busy || !name.trim() || !mobile.trim() || !idNumber.trim()}
                 >
+                  <Icon name='user-plus' size={14} />
                   {busy ? 'Registering…' : 'Register'}
                 </Btn>
               </div>

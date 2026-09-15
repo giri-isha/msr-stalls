@@ -295,7 +295,8 @@ export function Users() {
         {writable && (
           <div style={{ marginLeft: 'auto' }}>
             <Btn kind='primary' onClick={() => setAdding(true)}>
-              <Icon name='user-plus' size={14} /> Add user
+              <Icon name='user-plus' size={14} />
+              Add user
             </Btn>
           </div>
         )}
@@ -451,6 +452,7 @@ export function Users() {
             <>
               <Btn onClick={() => setAsk(null)}>Cancel</Btn>
               <Btn kind='primary' onClick={runAsk}>
+                <Icon name='check' size={14} />
                 {ask.confirm}
               </Btn>
             </>
@@ -737,6 +739,7 @@ function EditRequester({
         <>
           <Btn onClick={onClose}>Cancel</Btn>
           <Btn kind='primary' onClick={save} disabled={!dirty || saving}>
+            <Icon name='check' size={14} />
             Save
           </Btn>
         </>
@@ -831,6 +834,7 @@ function SetPassword({
             onClick={save}
             disabled={password.length < MIN_PASSWORD_LENGTH || saving}
           >
+            <Icon name='key' size={14} />
             Set password
           </Btn>
         </>
@@ -1118,6 +1122,7 @@ function AssignDialog({
               disabled={!picked || !newRole || saving}
               onClick={() => picked && grantOne(picked.personId)}
             >
+              <Icon name='user-plus' size={14} />
               Assign
             </Btn>
           </>
@@ -1139,7 +1144,8 @@ function AssignDialog({
                 placeholder='Search name or email…'
               />
               <Btn onClick={search}>
-                <Icon name='search' size={14} /> Search
+                <Icon name='search' size={14} />
+                Search
               </Btn>
             </div>
 
@@ -1245,6 +1251,7 @@ function AssignDialog({
         <>
           <Btn onClick={onClose}>Cancel</Btn>
           <Btn kind='primary' onClick={save} disabled={!dirty || saving}>
+            <Icon name='check' size={14} />
             Save
           </Btn>
         </>

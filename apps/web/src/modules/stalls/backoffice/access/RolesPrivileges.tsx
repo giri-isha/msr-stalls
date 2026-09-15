@@ -123,7 +123,8 @@ export function RolesPrivileges() {
             </button>
             {writable && (
               <Btn kind='primary' onClick={() => setAdding(true)}>
-                <Icon name='plus' size={14} /> Add role
+                <Icon name='plus' size={14} />
+                Add role
               </Btn>
             )}
           </div>

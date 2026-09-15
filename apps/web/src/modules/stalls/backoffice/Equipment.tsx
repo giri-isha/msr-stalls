@@ -372,6 +372,7 @@ function CounterDialog({
         <>
           <Btn onClick={onClose}>Cancel</Btn>
           <Btn kind='primary' onClick={save} disabled={saving || !valid}>
+            <Icon name='check' size={14} />
             Save
           </Btn>
         </>
@@ -499,21 +500,34 @@ function Actions({
       {canWrite && <IconBtn label={`Edit ${row.stallName}`} glyph='pencil' onClick={onEdit} />}
       {canWrite &&
         (row.distributedAt ? (
-          <Btn onClick={() => act('UNDISTRIBUTE', 'Marked not distributed.')}>Undo</Btn>
+          <Btn onClick={() => act('UNDISTRIBUTE', 'Marked not distributed.')}>
+            <Icon name='undo' size={14} />
+            Undo
+          </Btn>
         ) : (
           <Btn kind='primary' onClick={() => act('DISTRIBUTE', 'Distributed.')}>
+            <Icon name='package' size={14} />
             Distribute
           </Btn>
         ))}
       {canWrite && row.extraChargePaise > 0 && !row.extraCollectedAt && (
-        <Btn onClick={() => act('COLLECT_EXTRA_PAYMENT', 'Cash recorded.')}>Cash taken</Btn>
+        <Btn onClick={() => act('COLLECT_EXTRA_PAYMENT', 'Cash recorded.')}>
+          <Icon name='rupee' size={14} />
+          Cash taken
+        </Btn>
       )}
       {canWrite &&
         row.distributedAt &&
         (row.collectedAt ? (
-          <Btn onClick={() => act('UNCOLLECT', 'Marked not collected.')}>Undo collect</Btn>
+          <Btn onClick={() => act('UNCOLLECT', 'Marked not collected.')}>
+            <Icon name='undo' size={14} />
+            Undo collect
+          </Btn>
         ) : (
-          <Btn onClick={() => act('COLLECT', 'Collected.')}>Collect</Btn>
+          <Btn onClick={() => act('COLLECT', 'Collected.')}>
+            <Icon name='package' size={14} />
+            Collect
+          </Btn>
         ))}
       {canWrite && (
         <Btn
@@ -524,7 +538,10 @@ function Actions({
           {row.flagged ? 'Unflag' : 'Flag'}
         </Btn>
       )}
-      <Btn onClick={onChallan}>Challan</Btn>
+      <Btn onClick={onChallan}>
+        <Icon name='printer' size={14} />
+        Challan
+      </Btn>
     </div>
   );
 }

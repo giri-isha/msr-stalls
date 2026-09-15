@@ -8,7 +8,17 @@ import {
 } from '@msr/stalls';
 import * as api from '../../api';
 import { useMe } from '../../me';
-import { Btn, Checkbox, Dialog, ErrorBox, FormField, Input, Select, useToast } from '../../ui';
+import {
+  Btn,
+  Checkbox,
+  Dialog,
+  ErrorBox,
+  FormField,
+  Icon,
+  Input,
+  Select,
+  useToast,
+} from '../../ui';
 import { PrivilegeTree } from './PrivilegeTree';
 import { requestTypeLabel } from './catalogue';
 
@@ -179,11 +189,13 @@ export function RoleDialog({
         <>
           {existing && !existing.isSystem && (
             <Btn kind='danger' onClick={remove} disabled={saving || existing.grantCount > 0}>
+              <Icon name='trash' size={14} />
               Delete
             </Btn>
           )}
           <Btn onClick={onClose}>Cancel</Btn>
           <Btn kind='primary' onClick={save} disabled={saving || !form.name.trim()}>
+            <Icon name='check' size={14} />
             Save
           </Btn>
         </>

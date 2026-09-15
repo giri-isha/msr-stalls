@@ -313,6 +313,7 @@ export function Requests() {
         <div style={{ flex: 1 }} />
         {cursor && (
           <Btn onClick={() => load(true)} disabled={loading}>
+            <Icon name='chevron-down' size={14} />
             Load more
           </Btn>
         )}

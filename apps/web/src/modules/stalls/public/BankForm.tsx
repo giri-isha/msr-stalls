@@ -399,6 +399,7 @@ export function BankForm() {
         <FieldError of={errors.agreeNeft ?? errors.agreeTerms} />
         <div>
           <Btn kind='primary' onClick={submit} disabled={!ready || busy}>
+            <Icon name='send' size={14} />
             {busy ? 'Submitting…' : 'Submit'}
           </Btn>
           {!ready && (

@@ -81,7 +81,8 @@ export function ApplianceRows({
       ))}
       <div>
         <Btn onClick={add} disabled={value.length >= max}>
-          <Icon name='plus' size={14} /> Add appliance
+          <Icon name='plus' size={14} />
+          Add appliance
         </Btn>
       </div>
     </div>

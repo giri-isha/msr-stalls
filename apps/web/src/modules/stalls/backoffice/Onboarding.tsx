@@ -358,6 +358,7 @@ function OnboardingDetailDialog({
                         }
                       }}
                     >
+                      <Icon name={data.fssai === 'VERIFIED' ? 'x' : 'check'} size={14} />
                       {data.fssai === 'VERIFIED' ? 'Remove verification' : 'Mark verified'}
                     </Btn>
                   </div>
@@ -464,6 +465,7 @@ function OnboardingDetailDialog({
                                 }
                               }}
                             >
+                              <Icon name='trash' size={14} />
                               Remove
                             </Btn>
                           )}
@@ -550,6 +552,7 @@ function CouponCapacity({
       <span>people</span>
       {tooLow && <span style={{ color: 'var(--warn-fg)' }}>{registered} already registered</span>}
       <Btn disabled={!writable || !dirty || saving} onClick={save}>
+        <Icon name='check' size={14} />
         Save
       </Btn>
     </span>

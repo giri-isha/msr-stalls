@@ -223,6 +223,7 @@ function StallCard({
         )}
         {canWrite && (
           <Btn kind={isIn ? 'ghost' : 'primary'} onClick={act} disabled={busy}>
+            <Icon name={isIn ? 'undo' : 'circle-check'} size={14} />
             {isIn ? 'Undo check-in' : 'Check in'}
           </Btn>
         )}

@@ -247,7 +247,8 @@ export function RequestDetail() {
           >
             {canSelect && (r.status === 'SUBMITTED' || r.status === 'BACKUP') && (
               <Btn disabled={busy} onClick={() => run('Shortlisted', () => api.shortlist(r.id))}>
-                <Icon name='check-square' size={14} /> Shortlist
+                <Icon name='check-square' size={14} />
+                Shortlist
               </Btn>
             )}
             {canSelect && r.status === 'SHORTLISTED' && (
@@ -255,12 +256,14 @@ export function RequestDetail() {
                 disabled={busy}
                 onClick={() => run('Back to submitted', () => api.unshortlist(r.id))}
               >
-                <Icon name='arrow-left-right' size={14} /> Unshortlist
+                <Icon name='arrow-left-right' size={14} />
+                Unshortlist
               </Btn>
             )}
             {canSelect && (r.status === 'SUBMITTED' || r.status === 'SHORTLISTED') && (
               <Btn disabled={busy} onClick={() => run('Moved to backup', () => api.backup(r.id))}>
-                <Icon name='layers' size={14} /> Backup
+                <Icon name='layers' size={14} />
+                Backup
               </Btn>
             )}
             {canSelect && r.status !== 'REJECTED' && r.status !== 'CANCELLED' && (
@@ -271,17 +274,20 @@ export function RequestDetail() {
             )}
             {canSelect && r.status !== 'REJECTED' && r.status !== 'CANCELLED' && (
               <Btn kind='danger' disabled={busy} onClick={() => setReasonFor('reject')}>
-                <Icon name='ban' size={14} /> Reject…
+                <Icon name='ban' size={14} />
+                Reject…
               </Btn>
             )}
             {canSelect && r.status === 'SELECTED' && (
               <Btn disabled={busy} onClick={() => run('Cancelled', () => api.cancel(r.id))}>
-                <Icon name='x' size={14} /> Cancel
+                <Icon name='x' size={14} />
+                Cancel
               </Btn>
             )}
             {canWrite && (
               <Btn disabled={busy} onClick={() => setAmending(true)}>
-                <Icon name='pencil' size={14} /> Amend…
+                <Icon name='pencil' size={14} />
+                Amend…
               </Btn>
             )}
             {canWrite &&
@@ -290,11 +296,13 @@ export function RequestDetail() {
                   disabled={busy}
                   onClick={() => run('Unflagged', () => api.unflagRequest(r.id))}
                 >
-                  <Icon name='check' size={14} /> Unflag
+                  <Icon name='check' size={14} />
+                  Unflag
                 </Btn>
               ) : (
                 <Btn disabled={busy} onClick={() => setReasonFor('flag')}>
-                  <Icon name='alert-triangle' size={14} /> Flag for follow-up
+                  <Icon name='alert-triangle' size={14} />
+                  Flag for follow-up
                 </Btn>
               ))}
           </div>
@@ -352,6 +360,7 @@ export function RequestDetail() {
                 disabled={!reason.trim()}
                 onClick={submitReason}
               >
+                <Icon name={reasonFor === 'reject' ? 'ban' : 'alert-triangle'} size={14} />
                 {reasonFor === 'reject' ? 'Reject' : 'Flag'}
               </Btn>
             </>
@@ -435,7 +444,8 @@ function Allocations({
                   disabled={busy}
                   onClick={() => run('Released', () => api.releaseAllocation(a.id))}
                 >
-                  <Icon name='x' size={13} /> Release
+                  <Icon name='x' size={13} />
+                  Release
                 </Btn>
               )}
             </div>

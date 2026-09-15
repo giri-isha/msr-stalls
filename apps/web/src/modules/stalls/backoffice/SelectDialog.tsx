@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { ApiError } from '../api-client';
 import { availableStalls, listZones, select } from '../api';
 import { useLoad } from '../hooks';
-import { Btn, Dialog, Empty, Loading, Select, useToast } from '../ui';
+import { Btn, Dialog, Empty, Icon, Loading, Select, useToast } from '../ui';
 
 /** Pick free stalls for a request. Shows only AVAILABLE stalls, opens on the
  *  vendor's preferred zone, and caps the pick at what the request asked for
@@ -90,6 +90,7 @@ export function SelectDialog({
             disabled={busy || (picked.length === 0 && !agreedZone)}
             onClick={confirm}
           >
+            <Icon name='check' size={14} />
             {busy ? 'Selecting…' : picked.length > 0 ? `Allocate ${picked.length}` : 'Select'}
           </Btn>
         </>

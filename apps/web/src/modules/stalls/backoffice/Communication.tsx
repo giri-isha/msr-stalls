@@ -226,6 +226,7 @@ function SendPanel() {
           onClick={() => setPicked(new Set(sendable.map((r) => r.id)))}
           disabled={sendable.length === 0}
         >
+          <Icon name='check-square' size={14} />
           Select all {sendable.length > 0 ? `(${sendable.length})` : ''}
         </Btn>
         {/* Named "Send selected", not "Send": the row buttons are also called
@@ -305,6 +306,7 @@ function SendPanel() {
                         <ResendButton row={r} templateKey={templateKey} onDone={reload} />
                       ) : (
                         <Btn onClick={() => send([r.id])} disabled={busy}>
+                          <Icon name='send' size={14} />
                           Send
                         </Btn>
                       )}
@@ -352,10 +354,14 @@ function ResendButton({
         }
       }}
     >
+      <Icon name='check' size={14} />
       Confirm
     </Btn>
   ) : (
-    <Btn onClick={() => setArmed(true)}>Allow re-send</Btn>
+    <Btn onClick={() => setArmed(true)}>
+      <Icon name='refresh' size={14} />
+      Allow re-send
+    </Btn>
   );
 }
 
@@ -396,6 +402,7 @@ function RecipientCard({
           </Tag>
         ) : (
           <Btn onClick={onSend} disabled={busy}>
+            <Icon name='send' size={14} />
             Send
           </Btn>
         )}
@@ -532,6 +539,7 @@ function TemplatePanel() {
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <Btn kind='primary' onClick={save} disabled={!dirty}>
+            <Icon name='check' size={14} />
             Save template
           </Btn>
           <span style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
@@ -627,6 +635,7 @@ function AttachmentControl({
             }
           }}
         >
+          <Icon name='trash' size={14} />
           Remove
         </Btn>
       )}
