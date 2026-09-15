@@ -44,11 +44,17 @@ export const STALL_PRIVILEGES = [
   'electrical.read',
   'selection.read',
   'selection.write',
+  'comms.read',
   'comms.write',
+  'onboarding.read',
+  'onboarding.write',
   'finance.read',
   'finance.write',
   'refunds.write',
+  'checkin.read',
   'checkin.write',
+  'equipment.read',
+  'equipment.write',
   'config.read',
   'config.write',
   'users.write',
@@ -156,10 +162,44 @@ export const PRIVILEGE_CATEGORIES: readonly PrivilegeCategory[] = [
     name: 'Communication',
     items: [
       {
+        /** 🔴 The reads on this screen were gated on `comms.write`, so "let me
+         *  see which letters have gone out" could only be answered by handing
+         *  somebody the button that emails every vendor in the edition. */
+        code: 'comms.read',
+        label: 'View letters and what has been sent',
+        kind: 'view',
+        description: 'The letter templates, the recipient list, and the log of reminder calls.',
+      },
+      {
         code: 'comms.write',
         label: 'Send messages and reminders',
         kind: 'action',
         description: 'Send a templated email or WhatsApp message, and log a reminder.',
+      },
+    ],
+  },
+  {
+    /** Its own category rather than a corner of Requests.
+     *
+     *  🔴 Every onboarding read was gated on `requests.read`, which opens ANY
+     *  request record in full — what a vendor sells, their appliances, their
+     *  contacts. Chasing a bank form and an FSSAI certificate needs none of
+     *  that, and a desk doing the chasing should not have to be handed it. */
+    key: 'onboarding',
+    name: 'Vendor Onboarding',
+    items: [
+      {
+        code: 'onboarding.read',
+        label: 'View onboarding',
+        kind: 'view',
+        description: 'What each selected stall still owes: bank form, contract, FSSAI, staff.',
+      },
+      {
+        code: 'onboarding.write',
+        label: 'Issue coupons and verify documents',
+        kind: 'action',
+        description:
+          'Issue a staff coupon and set what it admits, tick an FSSAI certificate as seen, and remove a staff registration.',
       },
     ],
   },
@@ -192,10 +232,47 @@ export const PRIVILEGE_CATEGORIES: readonly PrivilegeCategory[] = [
     name: 'Check-in',
     items: [
       {
+        /** 🔴 The check-in LIST was gated on `requests.read`. A volunteer on
+         *  the gate held `checkin.write` and still could not see the screen
+         *  they were there to work, unless they were also handed every
+         *  requester's application. */
+        code: 'checkin.read',
+        label: 'View the check-in list',
+        kind: 'view',
+        description: 'Who has arrived, who has not, and what is outstanding against them.',
+      },
+      {
         code: 'checkin.write',
         label: 'Check stalls in and out',
         kind: 'action',
-        description: 'Arrival, departure, and the chairs and tables issued against a stall.',
+        description: 'Record an arrival or reverse one.',
+      },
+    ],
+  },
+  {
+    /** 🔴 Split out of `checkin.write`, which used to cover both.
+     *
+     *  These are two desks. The gate marks people present; the stores counter
+     *  hands out furniture, takes cash for extras, prints a challan and notes
+     *  what came back broken — and the cash makes it the one the module should
+     *  be most careful about handing over. A category is the unit a role is
+     *  granted whole (see `electrical`), so as long as they shared a code
+     *  staffing one meant staffing the other. */
+    key: 'equipment',
+    name: 'Chairs & Tables',
+    items: [
+      {
+        code: 'equipment.read',
+        label: 'View chairs and tables',
+        kind: 'view',
+        description: 'What each stall is owed, what it has taken, and what came back.',
+      },
+      {
+        code: 'equipment.write',
+        label: 'Distribute, collect and charge',
+        kind: 'action',
+        description:
+          'Hand furniture out, take cash for extras, print a challan, and record what returned short or damaged.',
       },
     ],
   },
@@ -309,6 +386,10 @@ export interface SeedRole {
   sortOrder: number;
 }
 
+/** ⚠️ The reads a write implies are NOT listed — `can` resolves them (see
+ *  `IMPLIED_READ`). `comms.write` is here and `comms.read` is not, because
+ *  spelling out both would make the seed the second place the rule lives and
+ *  the first place it goes out of step. */
 const LEAD_PRIVILEGES = [
   'requests.read',
   'requests.write',
@@ -318,7 +399,15 @@ const LEAD_PRIVILEGES = [
   'selection.read',
   'selection.write',
   'comms.write',
+  'onboarding.read',
+  'onboarding.write',
   'finance.read',
+  // ⚠️ Reads, no writes — which is exactly what a lead had before the split.
+  // Both counter screens were gated on `requests.read`, so a lead could always
+  // see them and could never work them; leaving these out would have taken
+  // that away as a side effect of tidying the vocabulary.
+  'checkin.read',
+  'equipment.read',
   'config.read',
   'refunds.write',
 ] as const;
@@ -364,7 +453,13 @@ export const SEED_ROLES: readonly SeedRole[] = [
     name: 'Volunteer',
     description: 'Check-in, chairs and tables',
     parentKey: 'stalls_lead',
-    privileges: ['requests.read', 'checkin.write'],
+    /** 🔴 `requests.read` is GONE from this role, and that is the change, not a
+     *  tidy-up. A volunteer on the gate needed it to see the check-in list at
+     *  all — so staffing the gate for an evening meant handing over every
+     *  requester's full application: what they sell, their appliances, their
+     *  contacts. The two screens they actually work now have codes of their
+     *  own, and this role holds exactly those. */
+    privileges: ['checkin.write', 'equipment.write'],
     allPrivileges: false,
     canAssignSameLevel: false,
     requestTypeScope: null,
@@ -376,7 +471,7 @@ export const SEED_ROLES: readonly SeedRole[] = [
     name: 'Finance',
     description: 'Payment confirmation and refunds',
     parentKey: 'stalls_lead',
-    privileges: ['requests.read', 'finance.read', 'finance.write'],
+    privileges: ['requests.read', 'finance.read', 'finance.write', 'onboarding.read'],
     allPrivileges: false,
     canAssignSameLevel: false,
     requestTypeScope: null,
@@ -400,7 +495,20 @@ export const SEED_ROLES: readonly SeedRole[] = [
     name: 'Local Welfare',
     description: 'Files and follows up local welfare stalls, and nothing else',
     parentKey: 'stalls_lead',
-    privileges: ['requests.read', 'requests.write', 'selection.read', 'finance.read'],
+    privileges: [
+      'requests.read',
+      'requests.write',
+      'selection.read',
+      'finance.read',
+      'comms.read',
+      'onboarding.read',
+      // Both counter screens, read-only and NARROWED to this team's own
+      // villages by `requestTypeScope` — the reach they already had when both
+      // were gated on `requests.read`. Following a stall up includes knowing
+      // whether the trader turned up and what furniture they took.
+      'checkin.read',
+      'equipment.read',
+    ],
     allPrivileges: false,
     canAssignSameLevel: false,
     requestTypeScope: ['LOCAL_WELFARE'],
@@ -449,13 +557,48 @@ export function unionPrivileges(
   return [...out];
 }
 
+/** The read each write implies.
+ *
+ *  🔴 This is the answer to a whole CLASS of mistake rather than to one bug.
+ *  Splitting the reads out of the writes — `comms.read` from `comms.write`,
+ *  `checkin.read` from `checkin.write` — immediately raises "must every role
+ *  holding the write now also be granted the read?", and answering that by
+ *  hand means answering it again at every new route, in every seeded role, and
+ *  in every role an admin composes on the Access screen. Get it wrong in the
+ *  seed and a volunteer holds the button and cannot see the screen it is on.
+ *
+ *  So it is a rule instead: holding a write implies holding the matching read.
+ *  There is no sensible role that may CHANGE a thing and may not LOOK at it,
+ *  and the module should not be able to express one.
+ *
+ *  ⚠️ One direction only. A read never implies a write, which is the entire
+ *  point of separating them.
+ *
+ *  ⚠️ `refunds.write` implies `finance.read`, which is `sensitive` — the
+ *  deliberate case. Preparing a refund means reading the bank account it is
+ *  paid into; there is no version of the task that does not. */
+const IMPLIED_READ: Partial<Record<StallPrivilege, StallPrivilege>> = {
+  'requests.write': 'requests.read',
+  'planning.write': 'planning.read',
+  'selection.write': 'selection.read',
+  'comms.write': 'comms.read',
+  'onboarding.write': 'onboarding.read',
+  'finance.write': 'finance.read',
+  'refunds.write': 'finance.read',
+  'checkin.write': 'checkin.read',
+  'equipment.write': 'equipment.read',
+  'config.write': 'config.read',
+};
+
 /** Whether a resolved privilege list covers this privilege.
  *
- *  Thin on purpose. It exists so that every caller — routes, the web, the tests
- *  — asks the question the same way, and so the answer has one place to change
- *  if it ever stops being a plain membership test. */
+ *  It exists so that every caller — routes, the web, the tests — asks the
+ *  question the same way, and so the answer has one place to change. It stopped
+ *  being a plain membership test when the reads were split out of the writes:
+ *  see `IMPLIED_READ`. */
 export function can(privileges: readonly string[], privilege: StallPrivilege): boolean {
-  return privileges.includes(privilege);
+  if (privileges.includes(privilege)) return true;
+  return privileges.some((held) => IMPLIED_READ[held as StallPrivilege] === privilege);
 }
 
 /** The requester types these roles reach, or `null` for all of them.

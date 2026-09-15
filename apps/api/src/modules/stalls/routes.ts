@@ -649,7 +649,7 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
   // ── Communication ─────────────────────────────────────────────────────────
   zod.get('/comms/templates', async (req) => {
     const caller = await requireBackoffice(req, prisma);
-    requirePrivilege(caller, 'comms.write');
+    requirePrivilege(caller, 'comms.read');
     const edition = await activeEditionFor(prisma, caller);
     return {
       templates: await comms.listTemplates(prisma, edition.id),
@@ -700,7 +700,7 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
 
   zod.get('/comms/recipients', async (req) => {
     const caller = await requireBackoffice(req, prisma);
-    requirePrivilege(caller, 'comms.write');
+    requirePrivilege(caller, 'comms.read');
     const edition = await activeEditionFor(prisma, caller);
     return comms.listRecipients(prisma, edition.id, scopeOf(caller));
   });
@@ -733,7 +733,7 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     { schema: { querystring: z.object({ kind: ReminderKind }) } },
     async (req) => {
       const caller = await requireBackoffice(req, prisma);
-      requirePrivilege(caller, 'comms.write');
+      requirePrivilege(caller, 'comms.read');
       const edition = await activeEditionFor(prisma, caller);
       return comms.listReminders(prisma, edition.id, req.query.kind, scopeOf(caller));
     },
@@ -754,21 +754,21 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
   // ── Onboarding ────────────────────────────────────────────────────────────
   zod.get('/onboarding', async (req) => {
     const caller = await requireBackoffice(req, prisma);
-    requirePrivilege(caller, 'requests.read');
+    requirePrivilege(caller, 'onboarding.read');
     const edition = await activeEditionFor(prisma, caller);
     return onboarding.listOnboarding(prisma, edition.id, scopeOf(caller));
   });
 
   zod.get('/onboarding/:id', { schema: { params: IdParams } }, async (req) => {
     const caller = await requireBackoffice(req, prisma);
-    requirePrivilege(caller, 'requests.read');
+    requirePrivilege(caller, 'onboarding.read');
     await requireRequestScope(caller, prisma, req.params.id);
     return onboarding.getOnboarding(prisma, req.params.id, deps.files);
   });
 
   zod.post('/onboarding/:id/coupon', { schema: { params: IdParams } }, async (req) => {
     const caller = await requireBackoffice(req, prisma);
-    requirePrivilege(caller, 'requests.write');
+    requirePrivilege(caller, 'onboarding.write');
     await requireRequestScope(caller, prisma, req.params.id);
     const r = await prisma.stallRequest.findUnique({
       where: { id: req.params.id },
@@ -796,7 +796,7 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     { schema: { params: IdParams, body: SetCouponCapacityInput } },
     async (req) => {
       const caller = await requireBackoffice(req, prisma);
-      requirePrivilege(caller, 'requests.write');
+      requirePrivilege(caller, 'onboarding.write');
       await requireRequestScope(caller, prisma, req.params.id);
       const coupon = await onboarding.setCouponCapacity(
         prisma,
@@ -818,7 +818,7 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
 
   zod.get('/requests/:id/signature', { schema: { params: IdParams } }, async (req) => {
     const caller = await requireBackoffice(req, prisma);
-    requirePrivilege(caller, 'requests.read');
+    requirePrivilege(caller, 'onboarding.read');
     await requireRequestScope(caller, prisma, req.params.id);
     return signature.readSignature(prisma, req.params.id);
   });
@@ -838,7 +838,7 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
    *  should call the same function from it. */
   zod.post('/requests/:id/signature/refresh', { schema: { params: IdParams } }, async (req) => {
     const caller = await requireBackoffice(req, prisma);
-    requirePrivilege(caller, 'requests.read');
+    requirePrivilege(caller, 'onboarding.read');
     await requireRequestScope(caller, prisma, req.params.id);
     return signature.refreshSignature(prisma, req.params.id, deps);
   });
@@ -848,7 +848,7 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     { schema: { params: IdParams, body: z.object({ verified: z.boolean() }) } },
     async (req, reply) => {
       const caller = await requireBackoffice(req, prisma);
-      requirePrivilege(caller, 'requests.write');
+      requirePrivilege(caller, 'onboarding.write');
       await requireRequestScope(caller, prisma, req.params.id);
       await onboarding.verifyFssai(prisma, req.params.id, req.body.verified, caller.personId);
       reply.status(204);
@@ -857,7 +857,7 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
 
   zod.get('/onboarding/:id/backoffice', { schema: { params: IdParams } }, async (req) => {
     const caller = await requireBackoffice(req, prisma);
-    requirePrivilege(caller, 'requests.read');
+    requirePrivilege(caller, 'onboarding.read');
     await requireRequestScope(caller, prisma, req.params.id);
     return onboarding.listStaffFor(prisma, req.params.id);
   });
@@ -866,7 +866,7 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
   // walk to the stall it belongs to before it can answer.
   zod.delete('/staff-registrations/:id', { schema: { params: IdParams } }, async (req, reply) => {
     const caller = await requireBackoffice(req, prisma);
-    requirePrivilege(caller, 'requests.write');
+    requirePrivilege(caller, 'onboarding.write');
     await requireOwnerScope(caller, prisma, () =>
       prisma.stallVendorStaff.findUnique({
         where: { id: req.params.id },
@@ -987,7 +987,7 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     { schema: { querystring: z.object({ q: z.string().trim().max(200).optional() }) } },
     async (req) => {
       const caller = await requireBackoffice(req, prisma);
-      requirePrivilege(caller, 'requests.read');
+      requirePrivilege(caller, 'checkin.read');
       const edition = await activeEditionFor(prisma, caller);
       return checkin.listCheckIns(prisma, edition.id, req.query.q, scopeOf(caller));
     },
@@ -1009,7 +1009,7 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
 
   zod.get('/equipment', async (req) => {
     const caller = await requireBackoffice(req, prisma);
-    requirePrivilege(caller, 'requests.read');
+    requirePrivilege(caller, 'equipment.read');
     const edition = await activeEditionFor(prisma, caller);
     return equipment.listEquipment(prisma, edition.id, scopeOf(caller));
   });
@@ -1019,7 +1019,7 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     { schema: { params: IdParams, body: EquipmentPatch } },
     async (req) => {
       const caller = await requireBackoffice(req, prisma);
-      requirePrivilege(caller, 'checkin.write');
+      requirePrivilege(caller, 'equipment.write');
       await requireRequestScope(caller, prisma, req.params.id);
       return equipment.patchEquipment(prisma, req.params.id, req.body, caller.personId);
     },
@@ -1030,7 +1030,7 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     { schema: { params: IdParams, body: z.object({ action: EquipmentAction }) } },
     async (req) => {
       const caller = await requireBackoffice(req, prisma);
-      requirePrivilege(caller, 'checkin.write');
+      requirePrivilege(caller, 'equipment.write');
       await requireRequestScope(caller, prisma, req.params.id);
       return equipment.actOnEquipment(prisma, req.params.id, req.body.action, caller.personId);
     },
@@ -1038,7 +1038,7 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
 
   zod.get('/equipment/:id/challan', { schema: { params: IdParams } }, async (req) => {
     const caller = await requireBackoffice(req, prisma);
-    requirePrivilege(caller, 'requests.read');
+    requirePrivilege(caller, 'equipment.read');
     return equipment.challan(prisma, req.params.id);
   });
 }

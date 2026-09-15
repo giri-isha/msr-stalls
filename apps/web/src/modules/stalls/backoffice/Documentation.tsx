@@ -252,6 +252,7 @@ const SCREENS: ScreenDoc[] = [
     label: 'All Requests',
     to: '/m/stalls/requests',
     glyph: 'list-view',
+    requires: 'requests.read',
     purpose: 'Every request in the pipeline — the triage queue and the decided rows, one list.',
     steps: [
       'Filter by type, status, stage or zone, or search a reference, stall name, requester or phone number.',
@@ -288,7 +289,7 @@ const SCREENS: ScreenDoc[] = [
     label: 'Communication',
     to: '/m/stalls/communication',
     glyph: 'megaphone',
-    requires: 'comms.write',
+    requires: 'comms.read',
     purpose: 'The letters, who has had which, and the calls chasing the rest.',
     steps: [
       'Templates: edit the subject and body for this edition and attach one file. Placeholders such as {{stallNumbers}} are filled per recipient, and the editor warns about a placeholder it does not recognise.',
@@ -305,6 +306,7 @@ const SCREENS: ScreenDoc[] = [
     label: 'Vendor Onboarding',
     to: '/m/stalls/onboarding',
     glyph: 'clipboard-list',
+    requires: 'onboarding.read',
     purpose: 'Who is holding us up — every outstanding step in one table.',
     steps: [
       'Each row carries bank details, payment, FSSAI and staff registration as pending, received, verified, or absent where the step does not apply.',
@@ -354,6 +356,7 @@ const SCREENS: ScreenDoc[] = [
     label: 'Check-in',
     to: '/m/stalls/checkin',
     glyph: 'circle-check',
+    requires: 'checkin.read',
     purpose: 'The counter on the morning of the event, usually on a phone.',
     steps: [
       'Search by stall number, reference, stall name or the requester’s phone.',
@@ -370,6 +373,7 @@ const SCREENS: ScreenDoc[] = [
     label: 'Chairs & Tables',
     to: '/m/stalls/equipment',
     glyph: 'layout-grid',
+    requires: 'equipment.read',
     purpose: 'Distribution, extras at the counter, and what came back.',
     steps: [
       'Find the stall. The row carries what they ordered, copied when the row opened.',

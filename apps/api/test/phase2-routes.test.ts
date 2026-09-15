@@ -69,6 +69,82 @@ describe('who may reach the new backoffice surfaces', () => {
     expect((await get('/comms/recipients', volunteer)).statusCode).toBe(403);
   });
 
+  /** 🔴 The whole point of splitting the reads out of the writes: a volunteer
+   *  works two counters and reaches nothing else. Every one of these was a 200
+   *  when both screens were gated on `requests.read`. */
+  test('and reaches neither the pipeline nor onboarding to do it', async () => {
+    expect((await get('/requests', volunteer)).statusCode).toBe(403);
+    expect((await get('/onboarding', volunteer)).statusCode).toBe(403);
+    expect((await get('/finance/payments', volunteer)).statusCode).toBe(403);
+  });
+
+  /** ⚠️ Reaches the check-in list holding only `checkin.write` — no
+   *  `checkin.read` is granted anywhere. A write implies its read; this is that
+   *  rule observed from outside, over HTTP. */
+  test('the write carries its own read, so nobody holds a button with no screen', async () => {
+    // The Volunteer role is granted `checkin.write` and `equipment.write` and
+    // NEITHER read — no role anywhere is granted those. Both lists answer 200
+    // regardless, which is `IMPLIED_READ` observed from outside, over HTTP.
+    expect((await get('/checkin', volunteer)).statusCode).toBe(200);
+    expect((await get('/equipment', volunteer)).statusCode).toBe(200);
+  });
+
+  /** 🔴 Chairs and tables left `checkin.write`. They are two desks — one marks
+   *  people present, the other hands out furniture and takes CASH for extras —
+   *  and while they shared a code, staffing one meant staffing the other. */
+  test('a role may run the gate without running the furniture counter', async () => {
+    const gate = await seedBackoffice([]);
+    const role = await prisma.stallRole.create({
+      data: {
+        roleKey: `gate_only_${Date.now()}`,
+        name: 'Gate only',
+        description: 'Check-in and nothing else',
+        level: 2,
+        parentKey: 'stalls_lead',
+        sortOrder: 90,
+        privileges: {
+          create: {
+            privilege: { connect: { code: 'checkin.write' } },
+          },
+        },
+      },
+    });
+    await prisma.stallBackofficeRole.create({
+      data: { personRef: gate.personId, roleKey: role.roleKey, grantedBy: admin.personId },
+    });
+    try {
+      expect((await get('/checkin', gate)).statusCode).toBe(200);
+      expect((await get('/equipment', gate)).statusCode).toBe(403);
+    } finally {
+      // ⚠️ `resetDatabase` does not truncate the role tables, so an authored
+      // role outlives its test unless it is taken away here — the exact leak
+      // the exclusion in `helpers/db.ts` warns about. The GRANT goes first:
+      // `stall_backoffice_role.role_key` is a foreign key, and the truncate
+      // that would have cleared it does not run until the next test.
+      await prisma.stallBackofficeRole.deleteMany({ where: { roleKey: role.roleKey } });
+      await prisma.stallRole.delete({ where: { id: role.id } });
+    }
+  });
+
+  /** 🔴 "Which letters have gone out?" used to be answerable only by handing
+   *  somebody the button that emails every vendor in the edition. */
+  test('local welfare may read the letters it may not send', async () => {
+    const welfare = await seedBackoffice(['stalls_local_welfare']);
+    expect((await get('/comms/templates', welfare)).statusCode).toBe(200);
+    expect((await get('/comms/recipients', welfare)).statusCode).toBe(200);
+
+    // ⚠️ A real request id, not an empty list: the body is validated before the
+    // handler runs, so an empty one answers 400 from the schema and the guard
+    // this test is about never gets to refuse anything.
+    const { requestId } = await selected(['C1-1']);
+    const send = await post(
+      '/comms/send',
+      { templateKey: 'SELECTION_VENDOR', requestIds: [requestId] },
+      welfare,
+    );
+    expect(send.statusCode).toBe(403);
+  });
+
   test('a lead may send letters but not confirm a payment', async () => {
     expect((await get('/comms/recipients', lead)).statusCode).toBe(200);
     expect((await get('/finance/payments', lead)).statusCode).toBe(200);
@@ -437,10 +513,22 @@ describe('the contract signature, over HTTP', () => {
     expect((await post(`/requests/${requestId}/signature`, {}, lead)).statusCode).toBe(409);
   });
 
-  test('a volunteer may read the state but not send the agreement', async () => {
+  /** ⚠️ FINANCE, not the volunteer this test used to use. Reading the signature
+   *  state is `onboarding.read` now rather than `requests.read`, and the
+   *  volunteer holds neither — the two counters they work were split out so
+   *  that staffing one stops handing over the rest of the pipeline. Finance is
+   *  the role that still reads onboarding and still may not send: the shape the
+   *  test was always about. */
+  test('a role that reads onboarding may see the state but not send the agreement', async () => {
     const { requestId } = await selected(['C1-1']);
-    expect((await get(`/requests/${requestId}/signature`, volunteer)).statusCode).toBe(200);
-    expect((await post(`/requests/${requestId}/signature`, {}, volunteer)).statusCode).toBe(403);
+    expect((await get(`/requests/${requestId}/signature`, finance)).statusCode).toBe(200);
+    expect((await post(`/requests/${requestId}/signature`, {}, finance)).statusCode).toBe(403);
+  });
+
+  /** And the volunteer reaches neither half. */
+  test('a volunteer cannot see the agreement at all', async () => {
+    const { requestId } = await selected(['C1-1']);
+    expect((await get(`/requests/${requestId}/signature`, volunteer)).statusCode).toBe(403);
   });
 
   test('refreshing a request that was never sent stays not-sent rather than erroring', async () => {

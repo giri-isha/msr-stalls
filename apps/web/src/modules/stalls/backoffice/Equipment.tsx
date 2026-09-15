@@ -54,7 +54,7 @@ export function Equipment() {
   // a <tr> is markup React will not have.
   const [editing, setEditing] = useState<EquipmentRow | null>(null);
   const mobile = useIsMobile();
-  const canWrite = can('checkin.write');
+  const canWrite = can('equipment.write');
 
   const rows = useMemo(() => {
     const term = q.trim().toLowerCase();

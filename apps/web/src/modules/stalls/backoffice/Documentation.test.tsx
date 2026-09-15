@@ -8,12 +8,17 @@ import { Documentation } from './Documentation';
 beforeEach(() => vi.unstubAllGlobals());
 
 /** A volunteer — the reader this screen is most for, and the one whose nav is
- *  missing most of what the manual describes. */
+ *  missing most of what the manual describes.
+ *
+ *  ⚠️ Holds NEITHER `requests.read` NOR `onboarding.read` — that is the shipped
+ *  Volunteer role since the reads were split out of the writes, and it is what
+ *  makes this the right fixture for "a screen the caller cannot open". The two
+ *  reads it DOES reach, it reaches by implication from the writes. */
 const ME_VOLUNTEER = {
   personId: 'p-vol',
   displayName: 'Arun Kumar',
   roleKeys: ['stalls_volunteer'],
-  privileges: ['requests.read', 'checkin.write'],
+  privileges: ['checkin.write', 'equipment.write'],
 };
 
 const render = (path = '/m/stalls/docs', me: unknown = ME_ADMIN) => {
@@ -66,10 +71,18 @@ describe('the documentation screen', () => {
     const hrefs = screen.getAllByRole('link', { name: /Open/ }).map((l) => l.getAttribute('href'));
     expect(hrefs).toContain('/m/stalls/checkin');
 
+    // Chairs and tables is theirs too, and used to ride on the same privilege.
+    expect(hrefs).toContain('/m/stalls/equipment');
+
     // Finance is not. The block stays — a volunteer still has to know where the
     // deposit they are deducting from goes — but the link does not.
     expect(screen.getByText('Finance')).toBeInTheDocument();
     expect(hrefs).not.toContain('/m/stalls/finance');
+
+    // 🔴 Nor is the pipeline, and that is the change. Working a gate used to
+    // require `requests.read`, which opens every requester's full application.
+    expect(hrefs).not.toContain('/m/stalls/requests');
+    expect(hrefs).not.toContain('/m/stalls/onboarding');
   });
 
   test('every screen block links where the nav does', async () => {

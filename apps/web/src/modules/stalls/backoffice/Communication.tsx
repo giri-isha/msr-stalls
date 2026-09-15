@@ -56,11 +56,16 @@ export function Communication() {
   const [tab, setTab] = useState<'send' | 'templates' | 'reminders'>('send');
   const { can } = useMe();
 
-  if (!can('comms.write')) {
+  // ⚠️ The gate is the READ, and the sends inside carry their own `comms.write`.
+  // This was one check for the whole screen back when seeing the letters and
+  // sending them were the same privilege — so a local welfare coordinator who
+  // wanted to know whether a vendor had been written to had to be trusted with
+  // the button that writes to every vendor in the edition.
+  if (!can('comms.read')) {
     return (
       <div>
         <H1 icon={<Icon name='megaphone' size={18} />}>Communication</H1>
-        <Empty>You do not have access to send vendor communication.</Empty>
+        <Empty>You do not have access to vendor communication.</Empty>
       </div>
     );
   }
@@ -128,6 +133,8 @@ const TEMPLATE_LABEL: Record<string, string> = {
 };
 
 function SendPanel() {
+  const { can } = useMe();
+  const canSend = can('comms.write');
   const toast = useToast();
   const { data, error, loading, reload } = useLoad(listRecipients);
   const [templateKey, setTemplateKey] = useState<TemplateKeyValue>('SELECTION_VENDOR');
@@ -222,20 +229,32 @@ function SendPanel() {
         </Select>
         <Search value={q} onChange={setQ} placeholder='Search vendors…' />
         <div style={{ flex: 1 }} />
-        <Btn
-          onClick={() => setPicked(new Set(sendable.map((r) => r.id)))}
-          disabled={sendable.length === 0}
-        >
-          <Icon name='check-square' size={14} />
-          Select all {sendable.length > 0 ? `(${sendable.length})` : ''}
-        </Btn>
+        {/* ⚠️ Both of these are hidden rather than disabled for a reader who
+            may only LOOK at this screen. Ticking rows is the first half of
+            sending them, so a live Select all beside a dead Send offers a
+            gesture with no ending. */}
+        {canSend && (
+          <Btn
+            onClick={() => setPicked(new Set(sendable.map((r) => r.id)))}
+            disabled={sendable.length === 0}
+          >
+            <Icon name='check-square' size={14} />
+            Select all {sendable.length > 0 ? `(${sendable.length})` : ''}
+          </Btn>
+        )}
         {/* Named "Send selected", not "Send": the row buttons are also called
             Send, and two controls sharing an accessible name in one toolbar is
             ambiguous to a screen reader before it is ambiguous to a test. */}
-        <Btn kind='primary' onClick={() => send([...picked])} disabled={busy || picked.size === 0}>
-          <Icon name='megaphone' size={14} />
-          {picked.size > 0 ? `Send ${picked.size} selected` : 'Send selected'}
-        </Btn>
+        {canSend && (
+          <Btn
+            kind='primary'
+            onClick={() => send([...picked])}
+            disabled={busy || picked.size === 0}
+          >
+            <Icon name='megaphone' size={14} />
+            {picked.size > 0 ? `Send ${picked.size} selected` : 'Send selected'}
+          </Btn>
+        )}
       </div>
 
       {rows.length === 0 ? (
@@ -302,7 +321,7 @@ function SendPanel() {
                       )}
                     </TD>
                     <TD align='right'>
-                      {sent ? (
+                      {!canSend ? null : sent ? (
                         <ResendButton row={r} templateKey={templateKey} onDone={reload} />
                       ) : (
                         <Btn onClick={() => send([r.id])} disabled={busy}>
@@ -414,6 +433,8 @@ function RecipientCard({
 // ── Templates ───────────────────────────────────────────────────────────────
 
 function TemplatePanel() {
+  const { can } = useMe();
+  const canWrite = can('comms.write');
   const toast = useToast();
   const { data, error, loading, reload } = useLoad<TemplatesResponse>(getTemplates);
   const [key, setKey] = useState<TemplateKeyValue>('SELECTION_VENDOR');
@@ -538,7 +559,9 @@ function TemplatePanel() {
         )}
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Btn kind='primary' onClick={save} disabled={!dirty}>
+          {/* The wording itself stays readable — knowing what the letter says
+              is the point of the tab — and only committing a change is gated. */}
+          <Btn kind='primary' onClick={save} disabled={!dirty || !canWrite}>
             <Icon name='check' size={14} />
             Save template
           </Btn>
@@ -546,7 +569,7 @@ function TemplatePanel() {
             {current.updatedAt ? `Edited ${formatDateTime(current.updatedAt)}` : 'Default wording'}
           </span>
           <div style={{ flex: 1 }} />
-          <AttachmentControl template={current} onDone={reload} />
+          {canWrite && <AttachmentControl template={current} onDone={reload} />}
         </div>
 
         <details>
@@ -646,6 +669,8 @@ function AttachmentControl({
 // ── Reminder calls ──────────────────────────────────────────────────────────
 
 function ReminderPanel() {
+  const { can } = useMe();
+  const canLog = can('comms.write');
   const toast = useToast();
   const [kind, setKind] = useState<ReminderKind>('BANK');
   const { data, error, loading, reload } = useLoad(() => listReminders(kind), [kind]);
@@ -702,20 +727,22 @@ function ReminderPanel() {
                     {r.lastCalledAt ? formatDateTime(r.lastCalledAt) : '—'}
                   </TD>
                   <TD align='right'>
-                    <Btn
-                      onClick={async () => {
-                        try {
-                          await logReminder(r.requestId, kind);
-                          toast.ok(`Call logged for ${r.stallName}.`);
-                          reload();
-                        } catch (e) {
-                          toast.fail(e);
-                        }
-                      }}
-                    >
-                      <Icon name='phone-call' size={13} />
-                      Log call
-                    </Btn>
+                    {canLog && (
+                      <Btn
+                        onClick={async () => {
+                          try {
+                            await logReminder(r.requestId, kind);
+                            toast.ok(`Call logged for ${r.stallName}.`);
+                            reload();
+                          } catch (e) {
+                            toast.fail(e);
+                          }
+                        }}
+                      >
+                        <Icon name='phone-call' size={13} />
+                        Log call
+                      </Btn>
+                    )}
                   </TD>
                 </TR>
               ))}

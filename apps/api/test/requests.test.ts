@@ -58,9 +58,15 @@ describe('authentication and authorisation', () => {
     expect(res.statusCode).toBe(403);
   });
 
-  test('a volunteer may read the list but may not flag', async () => {
+  /** 🔴 A volunteer cannot reach the pipeline AT ALL now, and that is the point
+   *  of the split rather than a side effect of it. Working a gate or the
+   *  furniture counter used to require `requests.read` — so staffing either for
+   *  an evening meant being handed every requester's full application: what
+   *  they sell, their appliances, their contacts. Both screens have their own
+   *  codes now, and this role holds only those. */
+  test('a volunteer cannot read the request pipeline at all', async () => {
     const r = await submit({});
-    expect((await list(volunteer)).statusCode).toBe(200);
+    expect((await list(volunteer)).statusCode).toBe(403);
     const flag = await app.inject({
       method: 'POST',
       url: `/api/m/stalls/requests/${r.requestId}/flag`,
@@ -68,6 +74,26 @@ describe('authentication and authorisation', () => {
       payload: { reason: 'duplicate' },
     });
     expect(flag.statusCode).toBe(403);
+  });
+
+  /** The other half: a role that may LOOK at the pipeline is still refused the
+   *  writes on it. Local Welfare reads every request it is scoped to and holds
+   *  no `selection.write`, so flagging is theirs and rejecting is not. */
+  test('a reader without the write is refused the write, not the list', async () => {
+    const welfare = await seedBackoffice(['stalls_local_welfare']);
+    const r = await submit({
+      requestType: 'LOCAL_WELFARE',
+      depositAcknowledged: true,
+      preferredZoneCode: 'A3',
+    });
+    expect((await list(welfare)).statusCode).toBe(200);
+    const reject = await app.inject({
+      method: 'POST',
+      url: `/api/m/stalls/requests/${r.requestId}/reject`,
+      headers: welfare.headers,
+      payload: { reason: 'no room' },
+    });
+    expect(reject.statusCode).toBe(403);
   });
 
   test('a lead may flag and unflag', async () => {

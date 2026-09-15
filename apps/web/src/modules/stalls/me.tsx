@@ -1,3 +1,4 @@
+import { can as grants } from '@msr/stalls';
 import type { MeResponse, StallPrivilege } from '@msr/stalls';
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { ApiError } from './api-client';
@@ -40,10 +41,16 @@ export function MeProvider({ children }: { children: ReactNode }) {
   }, [tick]);
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
-  const can = useCallback(
-    (action: StallPrivilege) => me?.privileges.includes(action) ?? false,
-    [me],
-  );
+
+  /** 🔴 Answered by the SHARED rule, not by `privileges.includes(action)`.
+   *
+   *  This was a second implementation of `can`, which is the one thing the
+   *  shared one exists to prevent — and it went wrong the moment the rule
+   *  stopped being a plain membership test. A write implies its read (see
+   *  `IMPLIED_READ` in `@msr/stalls`), so a volunteer holding `checkin.write`
+   *  reaches `checkin.read`; the API agreed and this screen did not, which
+   *  shows up as a nav item missing from the one person it is for. */
+  const can = useCallback((action: StallPrivilege) => grants(me?.privileges ?? [], action), [me]);
 
   return <MeContext.Provider value={{ me, status, reload, can }}>{children}</MeContext.Provider>;
 }

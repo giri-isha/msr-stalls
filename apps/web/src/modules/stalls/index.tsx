@@ -17,6 +17,8 @@ import { ResetPassword } from './public/ResetPassword';
 import { StaffRegistration } from './public/StaffRegistration';
 import { StatusPage } from './public/StatusPage';
 import { Submitted } from './public/Submitted';
+import { Empty } from './ui';
+import { useMe } from './me';
 import { Admin } from './backoffice/Admin';
 import { RolesPrivileges } from './backoffice/access/RolesPrivileges';
 import { Users } from './backoffice/access/Users';
@@ -62,7 +64,7 @@ export const stallsPublicRoutes: RouteObject[] = [
 ];
 
 export const stallsBackofficeRoutes: RouteObject[] = [
-  { index: true, element: <Dashboard /> },
+  { index: true, element: <Landing /> },
   { path: 'requests', element: <Requests /> },
   // One record, one page, hanging one segment under the list — so the back
   // link is the pathname with the id taken off, and the URL is something a
@@ -89,6 +91,39 @@ export const stallsBackofficeRoutes: RouteObject[] = [
   { path: 'access/users', element: <Users /> },
   { path: 'docs', element: <Documentation /> },
 ];
+
+/**
+ * Where a signed-in member lands.
+ *
+ * 🔴 The Dashboard, for anybody who may read requests — which was everybody,
+ * until the check-in and chairs-and-tables volunteer stopped needing
+ * `requests.read` to work their own counters. Landing them on a screen the API
+ * refuses would make "your access was set up" and "the app is broken"
+ * indistinguishable from the first frame.
+ *
+ * So the landing is the first screen in the nav that this caller can actually
+ * open. The nav is already the list of what they may reach, in the order the
+ * event runs, so the volunteer lands on Check-in and the electrical team lands
+ * on their sheet — without this file knowing either of those facts.
+ */
+function Landing() {
+  const { can } = useMe();
+  if (can('requests.read')) return <Dashboard />;
+
+  const first = STALLS_NAV.find((n) => !n.end && (!n.requires || can(n.requires)));
+  // ⚠️ Not an error page when there is nothing. A person with a stalls grant
+  // that reaches no screen is somebody whose access was set up wrong, and the
+  // sentence has to say that rather than blaming them for arriving.
+  if (!first) {
+    return (
+      <Empty>
+        Your stalls access does not reach any screen yet. Ask whoever set it up to grant a role with
+        something in it.
+      </Empty>
+    );
+  }
+  return <Navigate to={first.to} replace />;
+}
 
 /** A permanent move that keeps the query string.
  *
@@ -129,7 +164,11 @@ export interface StallsNavItem {
  *  screen is used: requests and selection before the event, onboarding and
  *  money between, operations on the day. */
 export const STALLS_NAV: StallsNavItem[] = [
-  { label: 'Dashboard', to: '/m/stalls', glyph: 'home', end: true },
+  // ⚠️ Every entry below carries a `requires` now, including the four that
+  // carried none. An ungated item is a link to a screen the API then refuses —
+  // and since the check-in and chairs-and-tables volunteer stopped holding
+  // `requests.read`, three of those four would have been exactly that.
+  { label: 'Dashboard', to: '/m/stalls', glyph: 'home', end: true, requires: 'requests.read' },
   // ⚠️ ONE entry, where there were two. "Stall Requests" (triage) and "All
   // Requests" (the pipeline) were the same rows behind two presets, and the
   // split cost a reader the question "which list is my request in?" every time
@@ -139,6 +178,7 @@ export const STALLS_NAV: StallsNavItem[] = [
     to: '/m/stalls/requests',
     glyph: 'list-view',
     group: 'Requests & Selection',
+    requires: 'requests.read',
   },
   {
     label: 'Planning & Zones',
@@ -152,13 +192,14 @@ export const STALLS_NAV: StallsNavItem[] = [
     to: '/m/stalls/communication',
     glyph: 'megaphone',
     group: 'Onboarding & Money',
-    requires: 'comms.write',
+    requires: 'comms.read',
   },
   {
     label: 'Vendor Onboarding',
     to: '/m/stalls/onboarding',
     glyph: 'clipboard-list',
     group: 'Onboarding & Money',
+    requires: 'onboarding.read',
   },
   {
     label: 'Finance',
@@ -181,12 +222,14 @@ export const STALLS_NAV: StallsNavItem[] = [
     to: '/m/stalls/checkin',
     glyph: 'circle-check',
     group: 'Event Operations',
+    requires: 'checkin.read',
   },
   {
     label: 'Chairs & Tables',
     to: '/m/stalls/equipment',
     glyph: 'layout-grid',
     group: 'Event Operations',
+    requires: 'equipment.read',
   },
   {
     label: 'Admin',

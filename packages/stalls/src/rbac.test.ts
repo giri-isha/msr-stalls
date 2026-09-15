@@ -118,17 +118,19 @@ describe('the seeded roles', () => {
 });
 
 /**
- * What each role granted BEFORE roles became data, frozen here.
+ * What each shipped role HOLDS, frozen here.
  *
- * ⚠️ This is the migration's safety net and the reason it is a literal rather
- * than something derived from `SEED_ROLES`: derived, it would agree with any
- * seed, including a wrong one. Written out, it fails the day a seed edit
- * silently widens or narrows what a shipped role grants.
+ * ⚠️ A literal rather than something derived from `SEED_ROLES`: derived, it
+ * would agree with any seed, including a wrong one. Written out, it fails the
+ * day a seed edit silently widens or narrows what a shipped role grants — and
+ * it did exactly that when the reads were split out of the writes, which is
+ * what the notes below record.
  *
- * The codes are the old `a:b` ones re-prefixed to `a.b` and nothing else. No
- * grant changed hands in this migration; only the spelling did.
+ * ⚠️ Holdings, not effective access. `unionPrivileges` is the raw union; the
+ * read a write implies is resolved by `can` and deliberately does not appear
+ * here — see `IMPLIED_READ` and the tests for it further down.
  */
-const BEFORE_THE_MIGRATION: Record<string, readonly string[]> = {
+const SHIPPED_HOLDINGS: Record<string, readonly string[]> = {
   stalls_admin: STALL_PRIVILEGES,
   stalls_lead: [
     'requests.read',
@@ -139,19 +141,43 @@ const BEFORE_THE_MIGRATION: Record<string, readonly string[]> = {
     'selection.read',
     'selection.write',
     'comms.write',
+    // Gained when onboarding stopped riding on `requests.read`. A lead ran the
+    // onboarding screen before and still does; this is the same access under
+    // its own name.
+    'onboarding.read',
+    'onboarding.write',
     'finance.read',
+    // The two counter screens, read-only — the reach a lead already had when
+    // both were gated on `requests.read`.
+    'checkin.read',
+    'equipment.read',
     'config.read',
     'refunds.write',
   ],
-  stalls_volunteer: ['requests.read', 'checkin.write'],
-  stalls_finance: ['requests.read', 'finance.read', 'finance.write'],
+  // 🔴 NARROWED, on purpose. Was `['requests.read', 'checkin.write']` — the
+  // read was there only because the check-in LIST was gated on it, so staffing
+  // a gate meant handing over every requester's full application. The two
+  // screens a volunteer works have their own codes now.
+  stalls_volunteer: ['checkin.write', 'equipment.write'],
+  stalls_finance: ['requests.read', 'finance.read', 'finance.write', 'onboarding.read'],
   stalls_electrical: ['electrical.read'],
-  stalls_local_welfare: ['requests.read', 'requests.write', 'selection.read', 'finance.read'],
+  stalls_local_welfare: [
+    'requests.read',
+    'requests.write',
+    'selection.read',
+    'finance.read',
+    // Reading, not sending: this team chases its own villages' stalls and
+    // should see what has gone out without being able to email the edition.
+    'comms.read',
+    'onboarding.read',
+    'checkin.read',
+    'equipment.read',
+  ],
 };
 
-describe('parity with the static roles this replaced', () => {
+describe('what the shipped roles hold', () => {
   test.each(SEED_ROLES.map((r) => [r.roleKey, r] as const))(
-    '%s grants exactly what it granted before',
+    '%s holds exactly what the frozen table says',
     (roleKey, role) => {
       const held: HeldRole = {
         roleKey,
@@ -160,7 +186,7 @@ describe('parity with the static roles this replaced', () => {
         requestTypeScope: role.requestTypeScope,
       };
       const resolved = unionPrivileges([held], STALL_PRIVILEGES);
-      expect(resolved.sort()).toEqual([...BEFORE_THE_MIGRATION[roleKey]].sort());
+      expect(resolved.sort()).toEqual([...(SHIPPED_HOLDINGS[roleKey] ?? [])].sort());
     },
   );
 });
@@ -472,3 +498,110 @@ describe('naming a privilege category', () => {
     expect(privilegeCategoryName('legacy_exports')).toBe('legacy_exports');
   });
 });
+
+/**
+ * The reads were split out of the writes so a role could hold one without the
+ * other. These are the tests that the split did not leave anybody holding a
+ * button they cannot see the screen for.
+ */
+describe('a write implies its read', () => {
+  test.each([
+    ['requests.write', 'requests.read'],
+    ['planning.write', 'planning.read'],
+    ['selection.write', 'selection.read'],
+    ['comms.write', 'comms.read'],
+    ['onboarding.write', 'onboarding.read'],
+    ['finance.write', 'finance.read'],
+    ['checkin.write', 'checkin.read'],
+    ['equipment.write', 'equipment.read'],
+    ['config.write', 'config.read'],
+  ] as const)('%s reaches %s', (write, read) => {
+    expect(can([write], read)).toBe(true);
+  });
+
+  /** ⚠️ Preparing a refund means reading the bank account it is paid into, and
+   *  `finance.read` is `sensitive`. The one implication that widens into a
+   *  sensitive read, and it is deliberate. */
+  test('refunds.write reaches finance.read', () => {
+    expect(can(['refunds.write'], 'finance.read')).toBe(true);
+  });
+
+  /** ⚠️ One direction only — the entire point of separating them. */
+  test('a read never implies its write', () => {
+    expect(can(['comms.read'], 'comms.write')).toBe(false);
+    expect(can(['checkin.read'], 'checkin.write')).toBe(false);
+    expect(can(['config.read'], 'config.write')).toBe(false);
+  });
+
+  /** And it does not leak sideways: holding one area's write says nothing
+   *  about another area's read. */
+  test('an implication stays inside its own area', () => {
+    expect(can(['checkin.write'], 'equipment.read')).toBe(false);
+    expect(can(['comms.write'], 'requests.read')).toBe(false);
+    expect(can(['equipment.write'], 'finance.read')).toBe(false);
+  });
+
+  test('every implied read is a real privilege, and no write implies itself', () => {
+    for (const [write, read] of Object.entries(IMPLIED_READ_FOR_TEST)) {
+      expect(STALL_PRIVILEGES).toContain(write);
+      expect(STALL_PRIVILEGES).toContain(read);
+      expect(write).not.toBe(read);
+      expect(write.endsWith('.write')).toBe(true);
+      expect(read.endsWith('.read')).toBe(true);
+    }
+  });
+});
+
+/** The table `can` resolves against, re-declared here rather than exported from
+ *  `rbac.ts`: it is an implementation detail of one function, and a test that
+ *  reads the real one could only ever assert that it equals itself. Every pair
+ *  is also checked behaviourally above. */
+const IMPLIED_READ_FOR_TEST: Record<string, string> = {
+  'requests.write': 'requests.read',
+  'planning.write': 'planning.read',
+  'selection.write': 'selection.read',
+  'comms.write': 'comms.read',
+  'onboarding.write': 'onboarding.read',
+  'finance.write': 'finance.read',
+  'refunds.write': 'finance.read',
+  'checkin.write': 'checkin.read',
+  'equipment.write': 'equipment.read',
+  'config.write': 'config.read',
+};
+
+describe('the volunteer role, after the split', () => {
+  const privileges = [...seeded('stalls_volunteer').privileges];
+
+  /** 🔴 The point of the whole exercise: staffing a gate for an evening used to
+   *  mean being handed every requester's full application, because the check-in
+   *  list was gated on `requests.read`. */
+  test('can work both counters without reading a single application', () => {
+    expect(can(privileges, 'checkin.read')).toBe(true);
+    expect(can(privileges, 'checkin.write')).toBe(true);
+    expect(can(privileges, 'equipment.read')).toBe(true);
+    expect(can(privileges, 'equipment.write')).toBe(true);
+
+    expect(can(privileges, 'requests.read')).toBe(false);
+    expect(can(privileges, 'finance.read')).toBe(false);
+    expect(can(privileges, 'onboarding.read')).toBe(false);
+  });
+});
+
+describe('the reads that used to be gated on a write', () => {
+  const welfare = [...seeded('stalls_local_welfare').privileges];
+
+  /** 🔴 "Let me see which letters have gone out" could only be answered by
+   *  handing somebody the button that emails every vendor in the edition. */
+  test('local welfare can see what was sent without being able to send it', () => {
+    expect(can(welfare, 'comms.read')).toBe(true);
+    expect(can(welfare, 'comms.write')).toBe(false);
+  });
+});
+
+/** A shipped role by key, or a failure that names the key rather than throwing
+ *  `undefined is not an object` three assertions later. */
+function seeded(roleKey: string) {
+  const role = SEED_ROLES.find((r) => r.roleKey === roleKey);
+  if (!role) throw new Error(`no seeded role ${roleKey}`);
+  return role;
+}

@@ -343,7 +343,7 @@ function OnboardingDetailDialog({
                     ),
                   )}
                 </div>
-                {can('requests.write') && (
+                {can('onboarding.write') && (
                   <div style={{ display: 'flex', gap: 8 }}>
                     <Btn
                       kind={data.fssai === 'VERIFIED' ? 'ghost' : 'primary'}
@@ -402,7 +402,7 @@ function OnboardingDetailDialog({
                     letter goes out.
                   </span>
                 )}
-                {can('requests.write') && !data.couponCode && (
+                {can('onboarding.write') && !data.couponCode && (
                   <Btn
                     onClick={async () => {
                       try {
@@ -423,7 +423,7 @@ function OnboardingDetailDialog({
                     requestId={id}
                     capacity={data.couponCapacity ?? 0}
                     registered={data.staffRegistered}
-                    writable={can('requests.write')}
+                    writable={can('onboarding.write')}
                     onSaved={refresh}
                   />
                 )}
@@ -455,7 +455,7 @@ function OnboardingDetailDialog({
                           {formatDate(s.registeredAt)}
                         </TD>
                         <TD align='right'>
-                          {can('requests.write') && (
+                          {can('onboarding.write') && (
                             <Btn
                               kind='danger'
                               onClick={async () => {

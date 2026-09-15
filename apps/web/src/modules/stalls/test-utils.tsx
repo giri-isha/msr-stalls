@@ -1,3 +1,4 @@
+import { SEED_ROLES, STALL_PRIVILEGES } from '@msr/stalls';
 import { render } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { type RouteObject, RouterProvider, createMemoryRouter } from 'react-router';
@@ -72,21 +73,24 @@ export function renderAt(
   return { ...render(<ToastProvider>{inner}</ToastProvider>), router };
 }
 
+/** What a shipped role actually holds, so a fixture cannot drift from the seed.
+ *
+ *  ⚠️ Hand-listed before, and it HAD drifted — `ME_LEAD` was missing
+ *  `refunds.write` and `electrical.read`, which the Lead role has granted since
+ *  it was written. A fixture that lists privileges is a second opinion about
+ *  what a role is, and this suite is the last place that should hold one.
+ *
+ *  The reads a write implies are deliberately absent: `can` resolves those, and
+ *  the fixture stands for what `GET /me` returns, which is the raw union. */
+const seeded = (roleKey: string): string[] => [
+  ...(SEED_ROLES.find((r) => r.roleKey === roleKey)?.privileges ?? []),
+];
+
 export const ME_LEAD = {
   personId: 'p-lead',
   displayName: 'Deepa Ramanathan',
   roleKeys: ['stalls_lead'],
-  privileges: [
-    'requests.read',
-    'requests.write',
-    'planning.read',
-    'planning.write',
-    'selection.read',
-    'selection.write',
-    'comms.write',
-    'finance.read',
-    'config.read',
-  ],
+  privileges: seeded('stalls_lead'),
 };
 
 export const PUBLIC_CONFIG = {
@@ -280,28 +284,12 @@ export const ME_ADMIN = {
   personId: 'p-admin',
   displayName: 'Vikram Sethu',
   roleKeys: ['stalls_admin'],
-  privileges: [
-    'requests.read',
-    'requests.write',
-    'planning.read',
-    'planning.write',
-    'selection.read',
-    'selection.write',
-    'comms.write',
-    'finance.read',
-    'finance.write',
-    'checkin.write',
-    'config.read',
-    'config.write',
-    'users.write',
-    'roles.write',
-    'refunds.write',
-    'electrical.read',
-    // ⚠️ TEMPORARY, with the requester password login. An admin holds it
-    // because Admin carries every active privilege — not because it is part of
-    // `users.write`, which is the whole point of it being separate.
-    'passwords.write',
-  ],
+  /** ⚠️ Every ACTIVE privilege, because that is what `allPrivileges` resolves
+   *  to — including `passwords.write`, which an admin holds not as part of
+   *  `users.write` but because the flag expands against the whole live list.
+   *  A privilege added in a later release reaches this fixture with no edit,
+   *  which is exactly how it reaches a real admin. */
+  privileges: [...STALL_PRIVILEGES],
 };
 
 /**
