@@ -144,7 +144,7 @@ describe('getPublicConfig', () => {
       { formType: 'BANK', label: 'UPI id', fieldType: 'text', isRequired: false, sortOrder: 0 },
       SYSTEM,
     );
-    await prisma.stallCustomField.update({ where: { id: bank.id }, data: { isActive: true } });
+    await prisma.stallFormField.update({ where: { id: bank.id }, data: { isActive: true } });
     const cfg = await getPublicConfig(prisma);
     expect(cfg.customFields.map((f) => f.id)).toEqual([active.id]);
   });
@@ -157,6 +157,7 @@ describe('getPublicConfig', () => {
       'customFields',
       'declarations',
       'edition',
+      'forms',
       'maxStallsPerRequest',
       'zones',
     ]);
@@ -173,7 +174,7 @@ describe('deleteCustomField', () => {
       SYSTEM,
     );
     await deleteCustomField(prisma, f.id, SYSTEM);
-    expect(await prisma.stallCustomField.findUnique({ where: { id: f.id } })).toBeNull();
+    expect(await prisma.stallFormField.findUnique({ where: { id: f.id } })).toBeNull();
   });
 
   test('refuses to delete a field that already has answers', async () => {

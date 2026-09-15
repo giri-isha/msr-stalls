@@ -11,7 +11,14 @@ import {
   CreateZoneInput,
   CustomFieldInput,
   CustomFieldPatch,
+  AddFormFieldInput,
+  AddSectionInput,
   DeclarationInput,
+  FormDefinitionPatch,
+  FormFieldPatch,
+  type ListFormsResponse,
+  ReorderFieldsInput,
+  RequestType,
   DeclarationPatch,
   type DeclarationRow,
   type ListDeclarationsResponse,
@@ -56,6 +63,7 @@ import * as checkin from './checkin';
 import * as comms from './comms';
 import * as config from './config';
 import * as declarations from './declarations';
+import * as formBuilder from './form-builder';
 // ⚠️ `activeEdition` itself is deliberately NOT imported here: every backoffice route
 // resolves the edition through `activeEditionFor`, which refuses a caller whose
 // grants do not cover it. Reaching for the unguarded one is how a route would
@@ -534,6 +542,96 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     const caller = await requireBackoffice(req, prisma);
     requirePrivilege(caller, 'config.write');
     await config.deleteCustomField(prisma, req.params.id, caller.personId);
+    reply.status(204);
+  });
+
+  /* ── The form builder ────────────────────────────────────────────────────*/
+
+  zod.get('/config/forms', async (req): Promise<ListFormsResponse> => {
+    const caller = await requireBackoffice(req, prisma);
+    requirePrivilege(caller, 'config.read');
+    const edition = await activeEditionFor(prisma, caller);
+    return { forms: await formBuilder.formsFor(prisma, edition.id) };
+  });
+
+  zod.patch(
+    '/config/forms/:formType',
+    { schema: { params: z.object({ formType: RequestType }), body: FormDefinitionPatch } },
+    async (req, reply) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'config.write');
+      const edition = await activeEditionFor(prisma, caller);
+      await formBuilder.updateFormDefinition(
+        prisma,
+        edition.id,
+        req.params.formType,
+        req.body,
+        caller.personId,
+      );
+      reply.status(204);
+    },
+  );
+
+  zod.post(
+    '/config/forms/:definitionId/fields',
+    { schema: { params: z.object({ definitionId: z.uuid() }), body: AddFormFieldInput } },
+    async (req, reply) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'config.write');
+      const edition = await activeEditionFor(prisma, caller);
+      reply.status(201);
+      return formBuilder.addFormField(prisma, edition.id, req.params.definitionId, req.body);
+    },
+  );
+
+  zod.patch(
+    '/config/form-fields/:id',
+    { schema: { params: IdParams, body: FormFieldPatch } },
+    async (req, reply) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'config.write');
+      const edition = await activeEditionFor(prisma, caller);
+      await formBuilder.updateFormField(prisma, edition.id, req.params.id, req.body);
+      reply.status(204);
+    },
+  );
+
+  zod.put(
+    '/config/forms/:definitionId/order',
+    { schema: { params: z.object({ definitionId: z.uuid() }), body: ReorderFieldsInput } },
+    async (req, reply) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'config.write');
+      const edition = await activeEditionFor(prisma, caller);
+      await formBuilder.reorderFormFields(
+        prisma,
+        edition.id,
+        req.params.definitionId,
+        req.body.fields,
+      );
+      reply.status(204);
+    },
+  );
+
+  zod.post(
+    '/config/forms/:definitionId/sections',
+    { schema: { params: z.object({ definitionId: z.uuid() }), body: AddSectionInput } },
+    async (req, reply) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'config.write');
+      const edition = await activeEditionFor(prisma, caller);
+      reply.status(201);
+      return formBuilder.addSection(prisma, edition.id, req.params.definitionId, req.body);
+    },
+  );
+
+  /** ⚠️ Removes the HEADING, never the questions under it — `section_id` is
+   *  `ON DELETE SET NULL`, so they fall back into the form's own flow. */
+  zod.delete('/config/sections/:id', { schema: { params: IdParams } }, async (req, reply) => {
+    const caller = await requireBackoffice(req, prisma);
+    requirePrivilege(caller, 'config.write');
+    const edition = await activeEditionFor(prisma, caller);
+    await formBuilder.deleteSection(prisma, edition.id, req.params.id);
     reply.status(204);
   });
 

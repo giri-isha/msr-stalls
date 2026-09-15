@@ -1,8 +1,13 @@
 import type {
   ApplyPlanResult,
   AvailableStall,
+  AddFormFieldInput,
+  AddSectionInput,
   BankFormView,
   DeclarationInput,
+  FormDefinitionPatch,
+  FormFieldPatch,
+  ListFormsResponse,
   DeclarationPatch,
   DeclarationRow,
   ListDeclarationsResponse,
@@ -319,6 +324,35 @@ export const patchCustomField = (id: string, patch: Record<string, unknown>) =>
   apiFetch<unknown>(`${BASE}/config/custom-fields/${id}`, { method: 'PATCH', json: patch });
 export const deleteCustomField = (id: string) =>
   apiFetch<void>(`${BASE}/config/custom-fields/${id}`, { method: 'DELETE' });
+
+// ── Backoffice: the form builder ────────────────────────────────────────────
+
+export const listForms = () => apiFetch<ListFormsResponse>(`${BASE}/config/forms`);
+export const patchForm = (formType: string, patch: FormDefinitionPatch) =>
+  apiFetch<void>(`${BASE}/config/forms/${formType}`, { method: 'PATCH', json: patch });
+export const addFormField = (definitionId: string, input: AddFormFieldInput) =>
+  apiFetch<{ id: string }>(`${BASE}/config/forms/${definitionId}/fields`, {
+    method: 'POST',
+    json: input,
+  });
+export const patchFormField = (id: string, patch: FormFieldPatch) =>
+  apiFetch<void>(`${BASE}/config/form-fields/${id}`, { method: 'PATCH', json: patch });
+/** ⚠️ The whole order, not one moved field — see `reorderFormFields`. */
+export const reorderFormFields = (
+  definitionId: string,
+  fields: Array<{ id: string; sectionId: string | null }>,
+) =>
+  apiFetch<void>(`${BASE}/config/forms/${definitionId}/order`, {
+    method: 'PUT',
+    json: { fields },
+  });
+export const addFormSection = (definitionId: string, input: AddSectionInput) =>
+  apiFetch<{ id: string }>(`${BASE}/config/forms/${definitionId}/sections`, {
+    method: 'POST',
+    json: input,
+  });
+export const deleteFormSection = (id: string) =>
+  apiFetch<void>(`${BASE}/config/sections/${id}`, { method: 'DELETE' });
 
 // ── Backoffice: declarations ────────────────────────────────────────────────
 

@@ -17,8 +17,10 @@ import {
 } from '@msr/stalls';
 import { recordActivity } from '../../activity';
 import { seedDeclarations } from './declarations';
+import { publicFormsFor, seedFormDefinitions } from './form-builder';
 import { type Db, activeEdition } from './editions';
 import {
+  BuiltInFieldLockedError,
   CategoryInUseError,
   CustomFieldInUseError,
   UnknownZoneError,
@@ -136,6 +138,9 @@ export async function ensureEditionDefaults(db: Db, editionId: string): Promise<
   // fall back to a constant nobody can edit.
   await seedDeclarations(db, editionId);
 
+  // The four request forms, from the same constants that used to BE them.
+  await seedFormDefinitions(db, editionId);
+
   // The outbound letters, seeded from `@msr/stalls`. `update: {}` so a
   // re-run never overwrites wording an admin has edited.
   for (const t of DEFAULT_TEMPLATES) {
@@ -252,14 +257,18 @@ export async function chargesFor(db: Db, editionId: string) {
  *  answered without knowing who is asking. */
 export async function getPublicConfig(db: Db, scope: RateScope = 'VENDOR'): Promise<PublicConfig> {
   const edition = await activeEdition(db);
-  const [zones, card, charges, customFields, declarations] = await Promise.all([
+  const [zones, card, charges, customFields, declarations, forms] = await Promise.all([
     listZones(db, edition.id),
     rateCardFor(db, edition.id),
     chargesFor(db, edition.id),
-    db.stallCustomField.findMany({
+    // ⚠️ `isBuiltIn: false`. This list is `PublicConfig.customFields`, which the
+    // page renders AFTER the form's own questions — so without the clause every
+    // built-in question would be drawn a second time, below itself.
+    db.stallFormField.findMany({
       where: {
         editionId: edition.id,
         isActive: true,
+        isBuiltIn: false,
         formType: { in: ['ASHRAM', 'ASHRAM_FOOD', 'LOCAL_WELFARE', 'VENDOR'] },
       },
       orderBy: [{ formType: 'asc' }, { sortOrder: 'asc' }],
@@ -282,6 +291,7 @@ export async function getPublicConfig(db: Db, scope: RateScope = 'VENDOR'): Prom
         isCurrent: true,
       },
     }),
+    publicFormsFor(db, edition.id),
   ]);
   return {
     edition: { year: edition.year, name: edition.name },
@@ -308,6 +318,11 @@ export async function getPublicConfig(db: Db, scope: RateScope = 'VENDOR'): Prom
       gstPercent: charges.gstPercent,
     },
     maxStallsPerRequest: edition.maxStallsPerRequest,
+    // ⚠️ Nullable, and the page falls back to `FORM_DEFINITIONS` when it is
+    // empty. An edition seeded before forms became data has no rows, and a
+    // request form that renders nothing is worse than one rendering last year's
+    // constant — `seedFormDefinitions` fills it in on the next boot regardless.
+    forms,
     customFields: customFields.map((f) => ({
       id: f.id,
       formType: f.formType,
@@ -571,9 +586,14 @@ export async function upsertFineType(
   return row;
 }
 
+/** The APPENDED fields, for Admin's Custom fields tab.
+ *
+ *  ⚠️ `isBuiltIn: false`. That tab is about questions an admin added; the form's
+ *  own questions are the Form Builder's, and listing them here would offer a
+ *  Delete on a field whose answer is a column. */
 export async function listCustomFields(db: Db, editionId: string) {
-  return db.stallCustomField.findMany({
-    where: { editionId },
+  return db.stallFormField.findMany({
+    where: { editionId, isBuiltIn: false },
     orderBy: [{ formType: 'asc' }, { sortOrder: 'asc' }],
   });
 }
@@ -591,7 +611,7 @@ export async function createCustomField(
   },
   by: string,
 ) {
-  const row = await db.stallCustomField.create({
+  const row = await db.stallFormField.create({
     data: { editionId, ...input, labelTa: input.labelTa ?? null },
   });
   await recordActivity(db, {
@@ -617,7 +637,7 @@ export async function updateCustomField(
   }>,
   by: string,
 ) {
-  const row = await db.stallCustomField.update({ where: { id }, data: patch });
+  const row = await db.stallFormField.update({ where: { id }, data: patch });
   await recordActivity(db, {
     actorRef: by,
     moduleKey: MODULE_KEY,
@@ -628,11 +648,20 @@ export async function updateCustomField(
   return row;
 }
 
-/** Delete only while nothing has been typed into it. After that, deactivate. */
+/** Delete only while nothing has been typed into it. After that, deactivate.
+ *
+ *  ⚠️ And never a built-in, whatever it has been answered: its answer lives in
+ *  a column the submit path writes regardless of whether the form asked, so
+ *  deleting the question leaves a required column with nothing to fill it. */
 export async function deleteCustomField(db: PrismaClient, id: string, by: string): Promise<void> {
+  const field = await db.stallFormField.findUnique({
+    where: { id },
+    select: { isBuiltIn: true, label: true },
+  });
+  if (field?.isBuiltIn) throw new BuiltInFieldLockedError(field.label, 'existence');
   const used = await db.stallCustomFieldValue.count({ where: { customFieldId: id } });
   if (used > 0) throw new CustomFieldInUseError(id);
-  await db.stallCustomField.delete({ where: { id } });
+  await db.stallFormField.delete({ where: { id } });
   await recordActivity(db, {
     actorRef: by,
     moduleKey: MODULE_KEY,

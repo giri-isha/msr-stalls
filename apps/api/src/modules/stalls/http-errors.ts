@@ -19,9 +19,13 @@ import {
   BadDeclarationKeyError,
   DeclarationExistsError,
   DeclarationsChangedError,
+  BuiltInFieldLockedError,
+  UnauthorableFieldTypeError,
   RoleInUseError,
   RoleKeyTakenError,
   UnknownDeclarationError,
+  UnknownFormError,
+  UnknownFormFieldError,
   UnknownRoleError,
   SystemRoleError,
   NoActiveEditionError,
@@ -84,6 +88,8 @@ function statusFor(err: unknown): number | null {
     err instanceof UnknownPersonError ||
     err instanceof UnknownRoleError ||
     err instanceof UnknownDeclarationError ||
+    err instanceof UnknownFormError ||
+    err instanceof UnknownFormFieldError ||
     err instanceof UnknownAccountError ||
     err instanceof UnknownCouponError ||
     err instanceof UnknownTemplateError
@@ -100,6 +106,7 @@ function statusFor(err: unknown): number | null {
     err instanceof DeclarationExistsError ||
     err instanceof ArchivedDeclarationError ||
     err instanceof DeclarationsChangedError ||
+    err instanceof BuiltInFieldLockedError ||
     err instanceof SystemRoleError ||
     err instanceof RoleCycleError ||
     err instanceof CustomFieldInUseError ||
@@ -124,6 +131,7 @@ function statusFor(err: unknown): number | null {
   // A key the vocabulary will not take is a malformed request, not a conflict:
   // there is nothing on the server it collides with.
   if (err instanceof BadDeclarationKeyError) return 400;
+  if (err instanceof UnauthorableFieldTypeError) return 400;
   if (
     err instanceof TooManyStallsError ||
     err instanceof TooManyStallsRequestedError ||

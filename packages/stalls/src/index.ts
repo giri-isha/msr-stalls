@@ -4,6 +4,7 @@ export * from './coupons';
 export * from './forms';
 export * from './money';
 export * from './declarations';
+export * from './form-builder';
 export * from './onboarding';
 export * from './quote';
 export * from './rates';

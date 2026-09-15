@@ -227,17 +227,18 @@ model StallEdition {
   /// with its own audit trail — see `StallContractSignature`.
   termsUrl String? @map("terms_url")
 
-  zones          StallZone[]
-  planCategories StallPlanCategory[]
-  rateCard       StallRateCard[]
-  charges        StallChargeConfig?
-  fineTypes      StallFineType[]
-  customFields   StallCustomField[]
-  declarations   StallDeclaration[]
-  flow           StallFlowConfig?
-  requests       StallRequest[]
-  sequences      StallReferenceSequence[]
-  templates      StallEmailTemplate[]
+  zones           StallZone[]
+  planCategories  StallPlanCategory[]
+  rateCard        StallRateCard[]
+  charges         StallChargeConfig?
+  fineTypes       StallFineType[]
+  formDefinitions StallFormDefinition[]
+  customFields    StallFormField[]
+  declarations    StallDeclaration[]
+  flow            StallFlowConfig?
+  requests        StallRequest[]
+  sequences       StallReferenceSequence[]
+  templates       StallEmailTemplate[]
 
   @@map("stall_edition")
   @@schema("stalls")
@@ -410,8 +411,6 @@ model StallFineType {
   @@schema("stalls")
 }
 
-/// The Form Builder's whole surface: a field an admin APPENDS to a base form.
-/// Deactivated, never deleted, once it has values.
 /// The wording a requester ticks, as data rather than as a constant.
 ///
 /// 🔴 The disclaimer was a string in `packages/stalls/src/forms.ts` and the
@@ -492,22 +491,109 @@ model StallDeclarationConsent {
   @@schema("stalls")
 }
 
-model StallCustomField {
-  id         String        @id @default(uuid()) @db.Uuid
-  editionId  String        @map("edition_id") @db.Uuid
+/// A form, as data.
+///
+/// 🔴 The four 2025 forms were a constant in `packages/stalls/src/forms.ts` and
+/// the Form Builder could only APPEND to them. Reordering a field, fixing a
+/// label, or marking something required meant a code change and a redeploy —
+/// an edition's form waiting on an engineer, which is the same problem the bay
+/// list had before zones became rows.
+///
+/// The constants are the SEED now. These rows are what a form is.
+model StallFormDefinition {
+  id        String        @id @default(uuid()) @db.Uuid
+  editionId String        @map("edition_id") @db.Uuid
+  formType  StallFormType @map("form_type")
+
+  title   String
+  titleTa String? @map("title_ta")
+
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  updatedBy String?  @map("updated_by")
+
+  edition  StallEdition       @relation(fields: [editionId], references: [id], onDelete: Cascade)
+  sections StallFormSection[]
+  fields   StallFormField[]
+
+  @@unique([editionId, formType])
+  @@map("stall_form_definition")
+  @@schema("stalls")
+}
+
+/// A heading within a form, and the fields under it.
+///
+/// Optional: a field with no section renders in the form's own flow, which is
+/// what the 2025 forms are — one run of questions with no headings at all.
+model StallFormSection {
+  id           String @id @default(uuid()) @db.Uuid
+  definitionId String @map("definition_id") @db.Uuid
+
+  heading   String
+  headingTa String? @map("heading_ta")
+  help      String?
+  sortOrder Int     @map("sort_order")
+
+  definition StallFormDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  fields     StallFormField[]
+
+  @@index([definitionId, sortOrder])
+  @@map("stall_form_section")
+  @@schema("stalls")
+}
+
+/// One question.
+///
+/// ⚠️ This table WAS `stall_custom_field`, renamed rather than replaced: the
+/// answers already given hang off it by foreign key, and a new table would have
+/// meant migrating them or losing them. An appended custom field is simply a
+/// field with `is_built_in` false — there is one kind of field now.
+///
+/// 🔴 `is_built_in` is the honest limit of "the whole form is data". These
+/// fields' answers go into TYPED COLUMNS on `stall_request` — `stall_name`,
+/// `email`, `num_stalls_requested` — so their `name` and `field_type` cannot be
+/// edited: renaming one would post an answer the submit path has nowhere to
+/// put, and retyping one would post a string into an integer column. Everything
+/// a screen can actually control — the wording, the Tamil, the help, the order,
+/// the section, whether it is required, whether it is asked at all — is
+/// editable on every field, built-in or not.
+model StallFormField {
+  id           String  @id @default(uuid()) @db.Uuid
+  editionId    String  @map("edition_id") @db.Uuid
+  definitionId String? @map("definition_id") @db.Uuid
+  sectionId    String? @map("section_id") @db.Uuid
+
+  /// The key the answer travels under. For a built-in it is the contract's own
+  /// field name; for an appended one it is null and the id is the key.
+  name String?
+
   formType   StallFormType @map("form_type")
   label      String
   labelTa    String?       @map("label_ta")
+  help       String?
+  helpTa     String?       @map("help_ta")
   fieldType  String        @map("field_type")
   isRequired Boolean       @default(false) @map("is_required")
   sortOrder  Int           @map("sort_order")
   isActive   Boolean       @default(true) @map("is_active")
 
-  edition StallEdition            @relation(fields: [editionId], references: [id], onDelete: Cascade)
-  values  StallCustomFieldValue[]
+  /// Whose answer lands in a column on `stall_request`. Locked in the ways the
+  /// model comment sets out.
+  isBuiltIn Boolean @default(false) @map("is_built_in")
+
+  /// `[{ value, label, labelTa }]` for a select or radio. Null for the rest.
+  options Json?
+  /// Bounds for a number field.
+  min     Int?
+  max     Int?
+
+  edition    StallEdition            @relation(fields: [editionId], references: [id], onDelete: Cascade)
+  definition StallFormDefinition?    @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  section    StallFormSection?       @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  values     StallCustomFieldValue[]
 
   @@index([editionId, formType])
-  @@map("stall_custom_field")
+  @@index([definitionId, sortOrder])
+  @@map("stall_form_field")
   @@schema("stalls")
 }
 
@@ -894,8 +980,8 @@ model StallCustomFieldValue {
   customFieldId String @map("custom_field_id") @db.Uuid
   value         String
 
-  request StallRequest     @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  field   StallCustomField @relation(fields: [customFieldId], references: [id])
+  request StallRequest   @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  field   StallFormField @relation(fields: [customFieldId], references: [id])
 
   @@unique([requestId, customFieldId])
   @@map("stall_custom_field_value")

@@ -546,3 +546,58 @@ export class DeclarationsChangedError extends Error {
     this.name = 'DeclarationsChangedError';
   }
 }
+
+/* ── The form builder ──────────────────────────────────────────────────────*/
+
+/** A field id that is not on this edition. Mapped to 404. */
+export class UnknownFormFieldError extends Error {
+  constructor(readonly id: string) {
+    super('that field is not on this edition');
+    this.name = 'UnknownFormFieldError';
+  }
+}
+
+/** A form or section id that is not on this edition. Mapped to 404. */
+export class UnknownFormError extends Error {
+  constructor(readonly id: string) {
+    super('that form is not on this edition');
+    this.name = 'UnknownFormError';
+  }
+}
+
+/** An edit to the one thing a built-in field cannot change. Mapped to 409.
+ *
+ *  🔴 Not a policy. A built-in field's answer lands in a TYPED COLUMN on
+ *  `stall_request` — `stall_name`, `email`, `num_stalls_requested` — so
+ *  retyping one would post a string into an integer column and renaming one
+ *  would post an answer the submit path has nowhere to put. Everything a screen
+ *  can actually control is editable on these fields; this is the short list
+ *  that having a database underneath makes impossible.
+ *
+ *  ⚠️ A built-in that should stop being asked is switched OFF, not deleted or
+ *  retyped — `isActive` is supported on every field for exactly this. */
+export class BuiltInFieldLockedError extends Error {
+  constructor(
+    readonly label: string,
+    readonly attribute: string,
+  ) {
+    super(
+      `"${label}" is a built-in question and its ${attribute} cannot change — ` +
+        'its answer goes into a column of its own. Switch it off instead of changing it.',
+    );
+    this.name = 'BuiltInFieldLockedError';
+  }
+}
+
+/** A field type the builder cannot author. Mapped to 400.
+ *
+ *  ⚠️ `appliances` and `zone` are STRUCTURAL: one is a repeating row editor
+ *  wired to its own table, the other resolves its choices from the edition's
+ *  bays at render time. Offering either from a picker would produce a field
+ *  nothing knows how to draw. */
+export class UnauthorableFieldTypeError extends Error {
+  constructor(readonly fieldType: string) {
+    super(`"${fieldType}" is not a field type a form can be given`);
+    this.name = 'UnauthorableFieldTypeError';
+  }
+}

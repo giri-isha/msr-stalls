@@ -14,10 +14,21 @@ import type { PublicZone } from './contracts';
  *  PDFs; they were taken from the 2025 bank-details form, where the same text
  *  renders cleanly. Nothing here is an approximation.
  *
- *  ── Why this is data and not JSX ───────────────────────────────────────────
- *  One component renders all four forms from this table, and the API validates
- *  against the same table. A field added here appears on the form and in the
- *  contract together, which is the only way they stay in agreement.
+ *  ── 🔴 THIS FILE IS THE SEED, NOT THE FORM ─────────────────────────────────
+ *  It WAS both: one component rendered all four forms from this table and the
+ *  API validated against it. Forms are rows now — `StallFormDefinition` and the
+ *  fields under it — and `seedFormDefinitions` writes these constants into an
+ *  edition the first time it is created.
+ *
+ *  ⚠️ So an edit here reaches NO existing edition. Changing a label in this
+ *  file changes what a NEW edition starts with and nothing else; the 2026 form
+ *  is whatever the 2026 rows say, and the Admin screen is where it is changed.
+ *  What this file is still for is the transcription below — which is why it is
+ *  read by the seed rather than copied into a migration.
+ *
+ *  The two ashram forms' `FORM_DEFINITIONS` entries also remain the fallback
+ *  the public page renders while an edition has no rows yet, which is the
+ *  window between deploying this and the API next starting.
  */
 
 export type FieldType =

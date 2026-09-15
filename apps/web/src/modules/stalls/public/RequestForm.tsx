@@ -1,7 +1,10 @@
 import {
+  type BuiltFormField,
   declarationsFor,
   FORM_DEFINITIONS,
   type FormField,
+  renderForm,
+  type RenderedGroup,
   type PublicConfig,
   type RateScope,
   type RequesterSession,
@@ -125,6 +128,107 @@ function fieldNameFor(path: string, type: StallRequestType): string {
   return path;
 }
 
+/**
+ * The key a field's answer travels under in the form's own state.
+ *
+ * ⚠️ TWO key spaces, and they are not interchangeable. A built-in answers by
+ * `name`, because that is the contract key its value is posted under and the
+ * column it lands in; an appended field answers by id under a `cf:` prefix,
+ * because it has no column and its id is all it has. Reading one with the
+ * other's key finds nothing, which looks exactly like an unanswered question.
+ */
+function fieldKey(f: BuiltFormField): string {
+  return f.isBuiltIn && f.name !== null ? f.name : `cf:${f.id}`;
+}
+
+/** A built field in the shape `FieldControl` draws. That component predates the
+ *  builder and still speaks `FormField`; the adapter is here rather than
+ *  rewriting it, because what it knows about `zone` and `appliances` is real
+ *  and would have to be rebuilt to no purpose. */
+function asFormField(f: BuiltFormField): FormField {
+  return {
+    name: fieldKey(f),
+    label: f.label,
+    labelTa: f.labelTa,
+    help: f.help ?? undefined,
+    helpTa: f.helpTa,
+    type: f.type,
+    required: f.required,
+    options: f.options ?? undefined,
+    min: f.min ?? undefined,
+    max: f.max ?? undefined,
+  };
+}
+
+/** The constant's fields, as built ones — the fallback path only. */
+function fromConstant(f: FormField, i: number): BuiltFormField {
+  return {
+    id: f.name,
+    name: f.name,
+    label: f.label,
+    labelTa: f.labelTa,
+    help: f.help ?? null,
+    helpTa: f.helpTa ?? null,
+    type: f.type,
+    required: f.required,
+    isBuiltIn: true,
+    isActive: true,
+    sectionId: null,
+    sortOrder: i,
+    options: f.options ?? null,
+    min: f.min ?? null,
+    max: f.max ?? null,
+  };
+}
+
+function appended(
+  id: string,
+  label: string,
+  labelTa: string | null,
+  fieldType: string,
+  required: boolean,
+): BuiltFormField {
+  return {
+    id,
+    name: null,
+    label,
+    labelTa,
+    help: null,
+    helpTa: null,
+    type: fieldType as FormField['type'],
+    required,
+    isBuiltIn: false,
+    isActive: true,
+    sectionId: null,
+    sortOrder: 0,
+    options: null,
+    min: null,
+    max: null,
+  };
+}
+
+/** A heading the edition put on the form. The 2025 forms have none — they are
+ *  one run of questions — so this draws nothing until somebody adds one. */
+function SectionHeading({
+  section,
+}: {
+  section: { heading: string; headingTa: string | null; help: string | null };
+}) {
+  return (
+    <div style={{ gridColumn: '1 / -1', marginTop: 4 }}>
+      <div style={{ fontSize: 14, fontWeight: 700 }}>{section.heading}</div>
+      {section.headingTa && (
+        <div className='msrs-tamil' lang='ta' style={{ fontSize: 12.5, color: 'var(--mfg)' }}>
+          {section.headingTa}
+        </div>
+      )}
+      {section.help && (
+        <div style={{ fontSize: 12, color: 'var(--mfg)', marginTop: 3 }}>{section.help}</div>
+      )}
+    </div>
+  );
+}
+
 function isEmpty(v: unknown): boolean {
   if (v === undefined || v === null) return true;
   if (typeof v === 'boolean') return v === false;
@@ -192,16 +296,36 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
     if (errors[name]) setErrors(({ [name]: _, ...rest }) => rest);
   };
 
-  const allFields: FormField[] = [
-    ...def.fields,
-    ...customFields.map<FormField>((f) => ({
-      name: `cf:${f.id}`,
-      label: f.label,
-      labelTa: f.labelTa,
-      type: f.fieldType as FormField['type'],
-      required: f.isRequired,
-    })),
-  ];
+  /**
+   * The form, as the EDITION defines it — headings, order, wording and all.
+   *
+   * 🔴 `def.fields` was the constant in `forms.ts`, and a custom field could
+   * only be appended after it. The rows say what the form is now, so a
+   * coordinator reordering a question or fixing a label does it on a screen
+   * rather than in a pull request.
+   *
+   * ⚠️ The constant is still the fallback, for an edition seeded before forms
+   * became data. `seedFormDefinitions` fills those rows in on the next boot, so
+   * this is a window rather than a mode — but a request form that renders
+   * nothing is worse than one rendering last year's wording, and the window is
+   * exactly as long as one deploy.
+   */
+  const built = (config.data?.forms ?? []).find((f) => f.formType === type) ?? null;
+
+  const groups: RenderedGroup[] = built
+    ? renderForm(built)
+    : [
+        {
+          section: null,
+          fields: [
+            ...def.fields.map(fromConstant),
+            ...customFields.map((f) =>
+              appended(f.id, f.label, f.labelTa, f.fieldType, f.isRequired),
+            ),
+          ],
+        },
+      ];
+  const allFields = groups.flatMap((g) => g.fields);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -209,14 +333,18 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
     // Required-ness comes from the form definition; shape from the contract.
     const missing: Record<string, string> = {};
     for (const f of allFields) {
-      if (f.required && isEmpty(values[f.name])) {
-        missing[f.name] = f.type === 'checkbox' ? 'Please tick to continue' : 'Required';
+      const key = fieldKey(f);
+      if (f.required && isEmpty(values[key])) {
+        missing[key] = f.type === 'checkbox' ? 'Please tick to continue' : 'Required';
       }
     }
     const built = buildInput(
       type,
       values,
-      customFields.map((f) => f.id),
+      // ⚠️ The APPENDED fields of the form as drawn, not `config.customFields`.
+      // The two agree today; they would stop agreeing the moment a field is
+      // switched off, and the one the reader actually filled in is this one.
+      allFields.filter((f) => !f.isBuiltIn).map((f) => f.id),
       shown.map((d) => d.id),
     );
     const parsed = SubmitRequestInput.safeParse(built);
@@ -355,17 +483,25 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
       <Card pad={0}>
         <div style={{ padding: 18 }}>
           <FieldStack>
-            {allFields.map((f) => (
-              <FieldControl
-                key={f.name}
-                field={f}
-                value={values[f.name]}
-                error={errors[f.name]}
-                onChange={(v) => set(f.name, v)}
-                config={config.data}
-                type={type}
-                isFood={isFood}
-              />
+            {groups.map((g, gi) => (
+              <div key={g.section?.id ?? `loose-${gi}`} style={{ display: 'contents' }}>
+                {g.section && <SectionHeading section={g.section} />}
+                {g.fields.map((f) => {
+                  const key = fieldKey(f);
+                  return (
+                    <FieldControl
+                      key={f.id}
+                      field={asFormField(f)}
+                      value={values[key]}
+                      error={errors[key]}
+                      onChange={(v) => set(key, v)}
+                      config={config.data}
+                      type={type}
+                      isFood={isFood}
+                    />
+                  );
+                })}
+              </div>
             ))}
           </FieldStack>
         </div>

@@ -32,6 +32,7 @@ import {
 } from '../ui';
 import { Panel } from '../components/Panel';
 import { Declarations } from './Declarations';
+import { FormBuilder } from './FormBuilder';
 
 const TABS = [
   { label: 'Bays', glyph: 'map-pin' },
@@ -39,6 +40,7 @@ const TABS = [
   { label: 'Rates', glyph: 'ticket' },
   { label: 'Charges', glyph: 'file-text' },
   { label: 'Fines', glyph: 'ban' },
+  { label: 'Form builder', glyph: 'clipboard-list' },
   { label: 'Custom fields', glyph: 'sliders' },
   { label: 'Declarations', glyph: 'scroll' },
   { label: 'Flow', glyph: 'arrow-left-right' },
@@ -188,6 +190,9 @@ export function Admin() {
       {tab === 'Rates' && <Rates c={c} writable={writable} run={run} />}
       {tab === 'Charges' && <Charges c={c} writable={writable} run={run} />}
       {tab === 'Fines' && <Fines c={c} writable={writable} run={run} />}
+      {/* ⚠️ Reads its own data. `c` is the CONFIG payload, whose `customFields`
+          is the appended questions only — this screen is about the whole form. */}
+      {tab === 'Form builder' && <FormBuilder writable={writable} />}
       {tab === 'Custom fields' && <CustomFields c={c} writable={writable} run={run} />}
       {/* ⚠️ Reads its own data rather than taking `c`. The config payload is
           what is LIVE; this screen shows every version including the archived

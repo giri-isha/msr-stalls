@@ -121,6 +121,19 @@ export function vendorBody(overrides: Record<string, unknown> = {}) {
     itemsSelling: 'Organic spices, cold-pressed oils, honey',
     numStallsRequested: 1,
     agreed: true,
+    // ⚠️ Zeros, not omissions. The 2025 LOCAL WELFARE form marks every one of
+    // these required — a requester with no gas stove types 0 — and since the
+    // form definition became the thing the API validates against, leaving them
+    // out is an unanswered question rather than a default. Harmless on a vendor
+    // body, where the same fields are optional.
+    plugs5a: 0,
+    plugs15a: 0,
+    gasStoves: 0,
+    tablesNeeded: 0,
+    chairsNeeded: 0,
+    passes2w: 0,
+    passes4w: 0,
+    passesStaff: 0,
     ...overrides,
   };
 }

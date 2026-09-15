@@ -62,6 +62,10 @@ describe('what is owed', () => {
         creditCardNeeded: false,
         usage: 'DEPT_SALES',
         wantsThembu: false,
+        // Required by the ashram FOOD form, and by nothing else. Since the form
+        // definition became what the API validates against, omitting it is an
+        // unanswered question rather than a field the contract will default.
+        fssaiExpected: false,
       },
     });
     expect(await rowFor(requestId)).toBeUndefined();

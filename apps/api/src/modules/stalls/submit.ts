@@ -1,7 +1,14 @@
 import type { Prisma, PrismaClient, StallRequestType } from '@prisma/client';
-import { type SubmitRequestInput, formatReference, isPlaceholderEmail } from '@msr/stalls';
+import {
+  formatReference,
+  isPlaceholderEmail,
+  type SubmitRequestInput,
+  validateAgainstForm,
+} from '@msr/stalls';
 import { mintAccessLink, normalizeEmail } from './accounts';
 import { declarationsForForm, recordConsent } from './declarations';
+import { formFor } from './form-builder';
+import { ValidationFailedError } from '../../errors';
 import { type Db, activeEdition } from './editions';
 import { DeclarationsChangedError, TooManyStallsRequestedError } from './errors';
 import type { Mailer } from './mailer';
@@ -53,6 +60,34 @@ async function nextSequence(
 /** The ONE write the public can reach. Everything it touches lands in a single
  *  transaction; the receipt email goes out only after commit, so a failed
  *  insert never produces a confirmation for a request that does not exist. */
+/**
+ * The submission keyed the way the FORM names its fields.
+ *
+ * 🔴 The two ashram forms do not use the contract's names. They ask for the
+ * requester under `requestedBy` and their number under `requesterContact`, and
+ * everything about the department is nested under `ashram` — because the
+ * printed 2025 forms ask it that way and the transcription kept their words.
+ * The contract flattens all of that into `requesterName`, `contactNumber` and a
+ * nested block, which is the right shape for the columns and the wrong shape
+ * for looking a field up by the name the form gave it.
+ *
+ * ⚠️ The web has the INVERSE of this — `fieldNameFor` in `RequestForm.tsx`,
+ * which puts a server error back onto the input that caused it. The two have to
+ * agree about which names are renamed, and this comment is the pointer between
+ * them; there is no third place.
+ */
+function formValues(input: SubmitRequestInput): Record<string, unknown> {
+  const ashram = (input.ashram ?? {}) as Record<string, unknown>;
+  return {
+    ...(input as unknown as Record<string, unknown>),
+    // The department block, flattened: `departmentHead`, `department`, `usage`
+    // and the rest are asked at the top level of the ashram forms.
+    ...ashram,
+    requestedBy: ashram.requestedBy ?? input.requesterName,
+    requesterContact: ashram.requesterContact ?? input.contactNumber,
+  };
+}
+
 /** Whether the page displayed exactly the declarations that are live now.
  *
  *  Set equality, not order: the page renders them in key order and so does
@@ -108,13 +143,47 @@ export async function submitRequest(
     const seq = await nextSequence(tx, edition.id, input.requestType);
     const reference = formatReference(input.requestType, edition.year, seq);
 
+    // 🔴 What the EDITION'S OWN FORM insists on, checked before anything is
+    // written. `SubmitRequestInput` can only say what a field's type is — it is
+    // a constant, and it has to accept everything any of the four forms might
+    // send — so almost everything in it is optional. Which questions must be
+    // answered moved into the rows when forms became data, and this is where
+    // that half is enforced.
+    //
+    // ⚠️ Skipped when the edition has no definition yet: one seeded before
+    // forms became data validates exactly as it did before, which is what keeps
+    // the fallback on the page honest.
+    const form = await formFor(tx, edition.id, input.requestType);
+    if (form) {
+      const violations = validateAgainstForm(form, {
+        builtIn: formValues(input),
+        custom: input.customFields,
+      });
+      if (violations.length > 0) {
+        throw new ValidationFailedError(violations.map((v) => ({ row: 0, ...v })));
+      }
+    }
+
     // Only fields that belong to THIS form type, this edition, and are active.
     // A value posted against any other field id is dropped, not stored.
-    const allowedFields = await tx.stallCustomField.findMany({
-      where: { editionId: edition.id, formType: input.requestType, isActive: true },
+    //
+    // 🔴 `isBuiltIn: false` is not a tidy-up. The appended fields and the form's
+    // own questions became ONE table when forms became data, and a built-in's
+    // answer belongs in its own column on `stall_request` — so without this
+    // clause, posting `customFields[<id of the Stall Name field>]` would write a
+    // second, shadow copy of the stall name into `stall_custom_field_value`,
+    // where the record page would then show it as an extra answer nobody asked
+    // for.
+    const allowedFields = await tx.stallFormField.findMany({
+      where: {
+        editionId: edition.id,
+        formType: input.requestType,
+        isActive: true,
+        isBuiltIn: false,
+      },
       select: { id: true },
     });
-    const allowed = new Set(allowedFields.map((f) => f.id));
+    const allowed = new Set(allowedFields.map((f: { id: string }) => f.id));
     const customValues = Object.entries(input.customFields)
       .filter(([id, v]) => allowed.has(id) && v.trim().length > 0)
       .map(([customFieldId, value]) => ({ customFieldId, value }));

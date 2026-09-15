@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Declaration } from './declarations';
+import type { BuilderForm, BuiltForm } from './form-builder';
 import { SELF_SERVE_STEPS } from './access';
 import type { PendingStep } from './onboarding';
 import { CATEGORY_KEY_PATTERN, ZONE_CODE_PATTERN } from './zones';
@@ -214,6 +215,13 @@ export interface PublicConfig {
    *  one and decline the other. */
   maxStallsPerRequest: number;
   customFields: PublicCustomField[];
+  /** The four request forms, as the edition defines them.
+   *
+   *  ⚠️ Empty on an edition seeded before forms became data, and the page then
+   *  falls back to `FORM_DEFINITIONS` — a form that renders nothing is worse
+   *  than one rendering last year's constant. `seedFormDefinitions` fills the
+   *  rows in on the next boot, so the fallback is a window, not a mode. */
+  forms: BuiltForm[];
   /** Every LIVE declaration on the edition, for every form.
    *
    *  ⚠️ Not pre-filtered to the form being rendered. The page picks its own
@@ -680,6 +688,75 @@ export const CustomFieldInput = z.object({
 export const CustomFieldPatch = CustomFieldInput.partial().extend({
   isActive: z.boolean().optional(),
 });
+
+/* ── The form builder ──────────────────────────────────────────────────────*/
+
+export const FieldOptionInput = z.object({
+  value: z.string().trim().min(1).max(100),
+  label: z.string().trim().min(1).max(200),
+  labelTa: z.string().trim().max(200).nullable().default(null),
+});
+
+/** ⚠️ No `name` and no `isBuiltIn`. Both are the API's to decide: an appended
+ *  field is never built in, and it has no name because its answer is keyed by
+ *  id. A body that could set either would be a body that could claim a column. */
+export const AddFormFieldInput = z.object({
+  label: z.string().trim().min(1).max(200),
+  labelTa: z.string().trim().max(200).nullable().default(null),
+  help: z.string().trim().max(600).nullable().default(null),
+  fieldType: z.enum(['text', 'textarea', 'email', 'tel', 'number', 'select', 'radio', 'checkbox']),
+  isRequired: z.boolean().default(false),
+  sectionId: z.uuid().nullable().default(null),
+  options: z.array(FieldOptionInput).max(60).nullable().default(null),
+  min: z.number().int().nullable().default(null),
+  max: z.number().int().nullable().default(null),
+});
+export type AddFormFieldInput = z.infer<typeof AddFormFieldInput>;
+
+/** ⚠️ `fieldType` is accepted and then REFUSED on a built-in, rather than left
+ *  out of the shape. Leaving it out would make an impossible edit look like a
+ *  field the client forgot to send; refusing it says which field and why. */
+export const FormFieldPatch = z.object({
+  label: z.string().trim().min(1).max(200).optional(),
+  labelTa: z.string().trim().max(200).nullable().optional(),
+  help: z.string().trim().max(600).nullable().optional(),
+  helpTa: z.string().trim().max(600).nullable().optional(),
+  fieldType: z.string().optional(),
+  isRequired: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+  sectionId: z.uuid().nullable().optional(),
+  options: z.array(FieldOptionInput).max(60).nullable().optional(),
+  min: z.number().int().nullable().optional(),
+  max: z.number().int().nullable().optional(),
+});
+export type FormFieldPatch = z.infer<typeof FormFieldPatch>;
+
+/** The order of a form, sent WHOLE. Dragging one field changes every position
+ *  between where it was and where it went, and sending those one at a time
+ *  leaves a reader loading mid-drag an order that is neither. */
+export const ReorderFieldsInput = z.object({
+  fields: z
+    .array(z.object({ id: z.uuid(), sectionId: z.uuid().nullable().default(null) }))
+    .max(200),
+});
+export type ReorderFieldsInput = z.infer<typeof ReorderFieldsInput>;
+
+export const FormDefinitionPatch = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  titleTa: z.string().trim().max(200).nullable().optional(),
+});
+export type FormDefinitionPatch = z.infer<typeof FormDefinitionPatch>;
+
+export const AddSectionInput = z.object({
+  heading: z.string().trim().min(1).max(200),
+  headingTa: z.string().trim().max(200).nullable().default(null),
+  help: z.string().trim().max(600).nullable().default(null),
+});
+export type AddSectionInput = z.infer<typeof AddSectionInput>;
+
+export interface ListFormsResponse {
+  forms: BuilderForm[];
+}
 
 /* ── Declarations ──────────────────────────────────────────────────────────*/
 

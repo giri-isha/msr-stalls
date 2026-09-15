@@ -52,6 +52,7 @@ describe('GET /public/config', () => {
       'customFields',
       'declarations',
       'edition',
+      'forms',
       'maxStallsPerRequest',
       'zones',
     ]);
