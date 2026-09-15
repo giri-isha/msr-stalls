@@ -2,6 +2,10 @@ import type {
   ApplyPlanResult,
   AvailableStall,
   BankFormView,
+  DeclarationInput,
+  DeclarationPatch,
+  DeclarationRow,
+  ListDeclarationsResponse,
   ChallanView,
   ContinueStepInput,
   ContinueStepResponse,
@@ -315,6 +319,18 @@ export const patchCustomField = (id: string, patch: Record<string, unknown>) =>
   apiFetch<unknown>(`${BASE}/config/custom-fields/${id}`, { method: 'PATCH', json: patch });
 export const deleteCustomField = (id: string) =>
   apiFetch<void>(`${BASE}/config/custom-fields/${id}`, { method: 'DELETE' });
+
+// ── Backoffice: declarations ────────────────────────────────────────────────
+
+export const listDeclarations = () =>
+  apiFetch<ListDeclarationsResponse>(`${BASE}/config/declarations`);
+export const createDeclaration = (input: DeclarationInput) =>
+  apiFetch<DeclarationRow>(`${BASE}/config/declarations`, { method: 'POST', json: input });
+/** ⚠️ Returns whichever version is CURRENT after the save, which is a new row
+ *  when the wording changed. The caller reloads rather than patching the one it
+ *  sent — see `updateDeclaration` on the API side. */
+export const patchDeclaration = (id: string, patch: DeclarationPatch) =>
+  apiFetch<DeclarationRow>(`${BASE}/config/declarations/${id}`, { method: 'PATCH', json: patch });
 
 // ── Backoffice: users ────────────────────────────────────────────────────────────
 

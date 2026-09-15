@@ -233,6 +233,7 @@ model StallEdition {
   charges        StallChargeConfig?
   fineTypes      StallFineType[]
   customFields   StallCustomField[]
+  declarations   StallDeclaration[]
   flow           StallFlowConfig?
   requests       StallRequest[]
   sequences      StallReferenceSequence[]
@@ -358,23 +359,23 @@ model StallRateCard {
 /// 2025 forms (ashram: chair Rs.50/day; local welfare: chair Rs.100, table
 /// Rs.300) — both are kept, neither is "the" rate.
 model StallChargeConfig {
-  id               String @id @default(uuid()) @db.Uuid
-  editionId        String @unique @map("edition_id") @db.Uuid
-  chairRatePaise   Int    @map("chair_rate_paise")
-  tableRatePaise   Int    @map("table_rate_paise")
-  lwChairRatePaise Int    @map("lw_chair_rate_paise")
-  lwTableRatePaise Int    @map("lw_table_rate_paise")
+  id                   String @id @default(uuid()) @db.Uuid
+  editionId            String @unique @map("edition_id") @db.Uuid
+  chairRatePaise       Int    @map("chair_rate_paise")
+  tableRatePaise       Int    @map("table_rate_paise")
+  lwChairRatePaise     Int    @map("lw_chair_rate_paise")
+  lwTableRatePaise     Int    @map("lw_table_rate_paise")
   /// The THIRD pair. The 2025 bank-details form quotes a vendor Rs.100/chair
   /// and Rs.400/table per day — neither the ashram figure above nor the local
   /// welfare one. Without these columns a vendor was billed at the ashram rate,
   /// which is the one requester type that is never billed at all.
-  vendorChairRatePaise Int @default(10000) @map("vendor_chair_rate_paise")
-  vendorTableRatePaise Int @default(40000) @map("vendor_table_rate_paise")
-  plug5aRatePaise  Int    @map("plug_5a_rate_paise")
-  plug15aRatePaise Int    @map("plug_15a_rate_paise")
-  gstPercent       Int    @default(18) @map("gst_percent")
+  vendorChairRatePaise Int    @default(10000) @map("vendor_chair_rate_paise")
+  vendorTableRatePaise Int    @default(40000) @map("vendor_table_rate_paise")
+  plug5aRatePaise      Int    @map("plug_5a_rate_paise")
+  plug15aRatePaise     Int    @map("plug_15a_rate_paise")
+  gstPercent           Int    @default(18) @map("gst_percent")
   /// The Planning screen's divisor: expected crowd ÷ this = suggested stalls.
-  crowdPerStall    Int    @default(1000) @map("crowd_per_stall")
+  crowdPerStall        Int    @default(1000) @map("crowd_per_stall")
 
   /// A flat refundable deposit against the furniture, charged once when any is
   /// taken. The 2025 payment sheet carries one figure per vendor in its
@@ -411,6 +412,86 @@ model StallFineType {
 
 /// The Form Builder's whole surface: a field an admin APPENDS to a base form.
 /// Deactivated, never deleted, once it has values.
+/// The wording a requester ticks, as data rather than as a constant.
+///
+/// 🔴 The disclaimer was a string in `packages/stalls/src/forms.ts` and the
+/// consent was one `agreed_at` timestamp on the request. That records THAT
+/// somebody agreed and never WHAT they agreed to — so the day a stall is in
+/// dispute, the only answer available is whatever the constant says today,
+/// which is not what it said when they ticked it. The edition already carries
+/// `terms_url` with a comment about exactly this problem on the bank form.
+///
+/// ⚠️ Versions are IMMUTABLE. Editing the text writes a new row and archives
+/// the old one; the consent rows go on pointing at the exact version that was
+/// on screen. Nothing here is ever updated in place except `is_active`, which
+/// decides whether a form still shows it and says nothing about what was
+/// agreed in the past.
+model StallDeclaration {
+  id        String @id @default(uuid()) @db.Uuid
+  editionId String @map("edition_id") @db.Uuid
+
+  /// The declaration's identity, stable across versions and variants:
+  /// `request_submission`, `deposit_terms`. Lower case with underscores.
+  key String
+
+  /// Which form this wording is for, or NULL for "any form without one of its
+  /// own". The same fallback the sport variants use in the module this was
+  /// modelled on: the specific one wins, the default catches the rest.
+  requestType StallRequestType? @map("request_type")
+
+  /// 1, then 2, then 3 — per (edition, key, requestType), not globally.
+  version Int
+
+  title  String
+  /// Limited rich text: bold, links, line breaks. Never raw HTML from a
+  /// paste — see `packages/stalls/src/declarations.ts` for what survives.
+  body   String
+  /// The Tamil beside the English. Null where the form has none, exactly as
+  /// `label_ta` is null on the two ashram forms.
+  bodyTa String? @map("body_ta")
+
+  /// Whether a form still shows it. Retiring a declaration must not orphan the
+  /// consents already given against it, so this is a flag and not a delete.
+  isActive Boolean @default(true) @map("is_active")
+
+  /// The version a form shows NOW. Exactly one per (edition, key, requestType)
+  /// — enforced by a partial unique index, not by application code, because
+  /// two live versions of a consent is the one state nobody can resolve after
+  /// the fact.
+  isCurrent Boolean @default(true) @map("is_current")
+
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  createdBy  String?   @map("created_by")
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz
+
+  edition  StallEdition              @relation(fields: [editionId], references: [id], onDelete: Cascade)
+  consents StallDeclarationConsent[]
+
+  @@index([editionId, key])
+  @@map("stall_declaration")
+  @@schema("stalls")
+}
+
+/// One requester agreeing to one exact version.
+///
+/// ⚠️ `declaration_id` points at the VERSION, never at the key. That is the
+/// whole point: reprinting what a vendor accepted means reading this row's
+/// declaration, not today's wording.
+model StallDeclarationConsent {
+  id            String   @id @default(uuid()) @db.Uuid
+  requestId     String   @map("request_id") @db.Uuid
+  declarationId String   @map("declaration_id") @db.Uuid
+  agreedAt      DateTime @default(now()) @map("agreed_at") @db.Timestamptz
+
+  request     StallRequest     @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  declaration StallDeclaration @relation(fields: [declarationId], references: [id])
+
+  @@unique([requestId, declarationId])
+  @@index([declarationId])
+  @@map("stall_declaration_consent")
+  @@schema("stalls")
+}
+
 model StallCustomField {
   id         String        @id @default(uuid()) @db.Uuid
   editionId  String        @map("edition_id") @db.Uuid
@@ -557,10 +638,10 @@ model StallPrivilege {
 /// host would carry on a participation, so it is stable and append-only: a role
 /// may be re-labelled or retired, never re-keyed.
 model StallRole {
-  id          String  @id @default(uuid()) @db.Uuid
-  roleKey     String  @unique @map("role_key")
-  name        String
-  description String
+  id                 String   @id @default(uuid()) @db.Uuid
+  roleKey            String   @unique @map("role_key")
+  name               String
+  description        String
   /// The role this one sits under. Null is the root of a branch.
   ///
   /// Held as the KEY, not a uuid FK to this table: the seed writes the tree by
@@ -568,7 +649,7 @@ model StallRole {
   /// what every other reference in this module already uses. `onDelete:
   /// SetNull` re-parents orphans to the root rather than cascading a subtree
   /// out of existence when one role is removed.
-  parentKey   String? @map("parent_key")
+  parentKey          String?  @map("parent_key")
   /// The rank an admin typed, 0 being the top.
   ///
   /// ⚠️ STORED rather than derived by walking `parentKey`, which is how the
@@ -577,17 +658,17 @@ model StallRole {
   /// level that disagrees with the parent chain reads oddly and changes
   /// nobody's reach. Derived depth was the alternative and it cannot express
   /// what an admin wants here — two sibling roles at different ranks.
-  level       Int     @default(0)
+  level              Int      @default(0)
   /// Shipped with the module. Blocks deletion and re-keying — never the editing
   /// of privileges, which is the whole point of roles being data.
-  isSystem    Boolean @default(false) @map("is_system")
+  isSystem           Boolean  @default(false) @map("is_system")
   /// Carries every ACTIVE privilege, including ones added in a later release.
   /// A real grant, not an editor convenience: a role holding this has NO
   /// `stall_role_privilege` rows, so any query that only joins those rows
   /// misses it entirely.
-  allPrivileges Boolean @default(false) @map("all_privileges")
+  allPrivileges      Boolean  @default(false) @map("all_privileges")
   /// May hand out this role as well as the ones under it. Never a sibling.
-  canAssignSameLevel Boolean @default(false) @map("can_assign_same_level")
+  canAssignSameLevel Boolean  @default(false) @map("can_assign_same_level")
   /// Which requester types this role may reach. Empty is every type — see
   /// `unionRequestTypeScope`, which unions across the roles a person holds so a
   /// narrow role can never take access away from a broad one.
@@ -596,15 +677,15 @@ model StallRole {
   /// nothing". The difference is real: a role with no restriction and a person
   /// with no role are opposite answers. The resolver maps `[]` on the row to
   /// `null` in the rule.
-  requestTypeScope String[] @map("request_type_scope")
-  sortOrder   Int      @map("sort_order")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  requestTypeScope   String[] @map("request_type_scope")
+  sortOrder          Int      @map("sort_order")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   privileges StallRolePrivilege[]
   grants     StallBackofficeRole[]
-  parent     StallRole?  @relation("StallRoleTree", fields: [parentKey], references: [roleKey], onDelete: SetNull, onUpdate: Cascade)
-  children   StallRole[] @relation("StallRoleTree")
+  parent     StallRole?            @relation("StallRoleTree", fields: [parentKey], references: [roleKey], onDelete: SetNull, onUpdate: Cascade)
+  children   StallRole[]           @relation("StallRoleTree")
 
   @@index([parentKey])
   @@map("stall_role")
@@ -746,6 +827,7 @@ model StallRequest {
   ashramDetail StallRequestAshramDetail?
   appliances   StallRequestAppliance[]
   customValues StallCustomFieldValue[]
+  consents     StallDeclarationConsent[]
   allocations  StallAllocation[]
   accessLinks  StallAccessLink[]
 
@@ -1296,9 +1378,9 @@ model StallRefund {
   /// Deductions beyond the deposit they are charged against. Chased separately;
   /// never a negative refund. Per bucket, because an over-run on furniture is a
   /// debt to recover rather than a reason to keep the stall deposit.
-  stallShortfallPaise     Int @default(0) @map("stall_shortfall_paise")
-  equipmentShortfallPaise Int @default(0) @map("equipment_shortfall_paise")
-  shortfallPaise          Int @default(0) @map("shortfall_paise")
+  stallShortfallPaise     Int      @default(0) @map("stall_shortfall_paise")
+  equipmentShortfallPaise Int      @default(0) @map("equipment_shortfall_paise")
+  shortfallPaise          Int      @default(0) @map("shortfall_paise")
   note                    String?
   voucherRef              String?  @map("voucher_ref")
   submittedAt             DateTime @default(now()) @map("submitted_at") @db.Timestamptz

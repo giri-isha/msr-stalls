@@ -472,3 +472,77 @@ export class CannotSetPasswordError extends Error {
     this.name = 'CannotSetPasswordError';
   }
 }
+
+/* ── Declarations ──────────────────────────────────────────────────────────*/
+
+/** A declaration id that is not on this edition. Mapped to 404. */
+export class UnknownDeclarationError extends Error {
+  constructor(readonly id: string) {
+    super('that declaration is not on this edition');
+    this.name = 'UnknownDeclarationError';
+  }
+}
+
+/** A key an admin typed that the vocabulary will not take. Mapped to 400.
+ *
+ *  ⚠️ The key is what a consent is FILED under and it is stable across versions
+ *  and variants, so it has the shape of an identifier rather than of a
+ *  sentence. Refused with the rule rather than silently slugified: an admin who
+ *  typed "Request Submission" and got `request_submission` would have no idea
+ *  which of the two to reuse when adding a variant later. */
+export class BadDeclarationKeyError extends Error {
+  constructor(readonly key: string) {
+    super(`"${key}" is not a declaration key — use lower case letters, digits and underscores`);
+    this.name = 'BadDeclarationKeyError';
+  }
+}
+
+/** A key and variant that already exist. Mapped to 409.
+ *
+ *  ⚠️ Reusing a KEY is the documented way to add a form-specific wording — the
+ *  same key, one row per form — so this fires only when the key and the variant
+ *  both already exist, and the message says which of the two the admin meant. */
+export class DeclarationExistsError extends Error {
+  constructor(
+    readonly key: string,
+    readonly requestType: string | null,
+  ) {
+    super(
+      requestType
+        ? `${key} already has a ${requestType} variant — edit that one instead`
+        : `${key} already exists — edit it, or add a variant for one form`,
+    );
+    this.name = 'DeclarationExistsError';
+  }
+}
+
+/** An edit aimed at a version that has been superseded. Mapped to 409.
+ *
+ *  🔴 An archived version is a RECORD, not a draft. Editing one would change
+ *  what somebody is recorded as having agreed to, which is the entire thing
+ *  versioning exists to prevent — so it is refused rather than quietly forked
+ *  into a new version off an old branch. */
+export class ArchivedDeclarationError extends Error {
+  constructor(readonly id: string) {
+    super('that is an archived version — edit the current one instead');
+    this.name = 'ArchivedDeclarationError';
+  }
+}
+
+/** The wording moved while somebody had the form open. Mapped to 409.
+ *
+ *  🔴 The one refusal in this module that exists to protect the REQUESTER
+ *  rather than the data. A consent is worth exactly what the person saw when
+ *  they gave it, so a form that was opened before a new version was published
+ *  cannot be allowed to submit against it — the alternative is a log recording
+ *  agreement to a paragraph that was never on their screen, which is worse than
+ *  useless because it looks authoritative. They re-read and tick again. */
+export class DeclarationsChangedError extends Error {
+  constructor() {
+    super(
+      'the wording on this form was updated while you had it open — ' +
+        'please read it again and resubmit',
+    );
+    this.name = 'DeclarationsChangedError';
+  }
+}

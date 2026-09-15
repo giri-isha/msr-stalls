@@ -1,8 +1,9 @@
 import type { Prisma, PrismaClient, StallRequestType } from '@prisma/client';
 import { type SubmitRequestInput, formatReference, isPlaceholderEmail } from '@msr/stalls';
 import { mintAccessLink, normalizeEmail } from './accounts';
+import { declarationsForForm, recordConsent } from './declarations';
 import { type Db, activeEdition } from './editions';
-import { TooManyStallsRequestedError } from './errors';
+import { DeclarationsChangedError, TooManyStallsRequestedError } from './errors';
 import type { Mailer } from './mailer';
 import type { WhatsAppSender } from './whatsapp';
 
@@ -52,6 +53,27 @@ async function nextSequence(
 /** The ONE write the public can reach. Everything it touches lands in a single
  *  transaction; the receipt email goes out only after commit, so a failed
  *  insert never produces a confirmation for a request that does not exist. */
+/** Whether the page displayed exactly the declarations that are live now.
+ *
+ *  Set equality, not order: the page renders them in key order and so does
+ *  `declarationsFor`, but nothing should depend on two sorts agreeing.
+ *
+ *  ⚠️ `undefined` is not a claim and passes. A caller that does not send the
+ *  field has not said what it displayed — the seed, a script, anything
+ *  server-side — and refusing those would be refusing them for not
+ *  participating in a check that exists to catch a stale BROWSER. An empty
+ *  array IS a claim: "I showed none", which is wrong the moment one is live.
+ */
+function sameDeclarations(
+  live: readonly { id: string }[],
+  posted: readonly string[] | undefined,
+): boolean {
+  if (posted === undefined) return true;
+  if (live.length !== posted.length) return false;
+  const seen = new Set(posted);
+  return live.every((d) => seen.has(d.id));
+}
+
 export async function submitRequest(
   db: PrismaClient,
   input: SubmitRequestInput,
@@ -157,6 +179,22 @@ export async function submitRequest(
         customValues: customValues.length ? { create: customValues } : undefined,
       },
     });
+
+    // 🔴 What they agreed to, by VERSION, in the same transaction that creates
+    // the request. `agreedAt` above records that somebody ticked a box; these
+    // rows record which words were beside it — the thing that has to be
+    // producible if a stall is ever in dispute, and the thing a constant in
+    // `forms.ts` could never answer once somebody had edited it.
+    //
+    // ⚠️ The versions LOGGED are the live ones, resolved here — a posted id is
+    // never trusted into the record. What the post is for is the CHECK above
+    // it: if the page displayed a different set from the one live now, the
+    // wording moved while the form sat open, and agreeing on their behalf to a
+    // paragraph they never saw is the one outcome this whole feature exists to
+    // prevent. So it is refused and they re-read it.
+    const live = await declarationsForForm(tx, edition.id, input.requestType);
+    if (!sameDeclarations(live, input.declarationIds)) throw new DeclarationsChangedError();
+    await recordConsent(tx, request.id, live);
 
     const { token } = await mintAccessLink(tx, {
       accountId: account.id,

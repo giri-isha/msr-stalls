@@ -1,4 +1,5 @@
 import {
+  declarationsFor,
   FORM_DEFINITIONS,
   type FormField,
   type PublicConfig,
@@ -14,6 +15,7 @@ import { ApiError, fieldErrorsFrom } from '../api-client';
 import { getPublicConfig, submitRequest } from '../api';
 import { type ApplianceRow, ApplianceRows } from '../components/ApplianceRows';
 import { BilingualLabel } from '../components/BilingualLabel';
+import { DeclarationText } from '../components/DeclarationText';
 import { ZoneSelect } from '../components/ZoneSelect';
 import { useLoad } from '../hooks';
 import { useRequester } from '../requester';
@@ -60,6 +62,7 @@ function buildInput(
   type: StallRequestType,
   values: Values,
   customFieldIds: string[],
+  declarationIds: string[],
 ): Record<string, unknown> {
   const ashram = ASHRAM_TYPES.has(type);
   const appliances = (Array.isArray(values.appliances) ? values.appliances : [])
@@ -84,6 +87,10 @@ function buildInput(
     numStallsRequested: num(values.numStallsRequested),
     remarks: str(values.remarks) || undefined,
     agreed: values.agreed === true,
+    // The exact versions this page drew. The API checks them against what is
+    // live and refuses the submission if the wording moved while the form was
+    // open — see `DeclarationsChangedError`.
+    declarationIds,
     depositAcknowledged: values.depositAcknowledged === true,
     appliances: appliances.length ? appliances : undefined,
     customFields,
@@ -148,6 +155,13 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
   // the zone and the form has to say who is asking.
   const scope: RateScope = type === 'LOCAL_WELFARE' ? 'LOCAL_WELFARE' : 'VENDOR';
   const config = useLoad(() => getPublicConfig(scope), [scope]);
+
+  // ⚠️ `declarationsFor`, the same function the API validates the submission
+  // with. A page that picked its own variant would be a second opinion about
+  // which wording this form asks — and the one that matters legally is the
+  // server's, so a disagreement would show up as a refused submission nobody
+  // could explain.
+  const shown = declarationsFor(config.data?.declarations ?? [], type);
   const customFields = useMemo(
     () => (config.data?.customFields ?? []).filter((f) => f.formType === type),
     [config.data, type],
@@ -203,6 +217,7 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
       type,
       values,
       customFields.map((f) => f.id),
+      shown.map((d) => d.id),
     );
     const parsed = SubmitRequestInput.safeParse(built);
     if (!parsed.success) {
@@ -285,11 +300,31 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
             <Icon name='info' size={16} />
           </span>
           <div style={{ minWidth: 0, fontSize: 12.5, lineHeight: 1.65 }}>
-            <p style={{ margin: 0 }}>{def.disclaimer}</p>
-            {def.disclaimerTa && (
-              <p className='msrs-tamil' lang='ta' style={{ margin: '7px 0 0' }}>
-                {def.disclaimerTa}
-              </p>
+            {/* 🔴 The edition's own declarations, not the constant in
+                `forms.ts`. Falls back to that constant when an edition has
+                none — a form with no disclaimer at all is worse than one
+                showing last year's, and an edition seeded before this feature
+                existed has nothing in the table. */}
+            {shown.length > 0 ? (
+              shown.map((d, i) => (
+                <div key={d.id} style={{ marginTop: i === 0 ? 0 : 10 }}>
+                  <DeclarationText body={d.body} />
+                  {d.bodyTa && (
+                    <div className='msrs-tamil' lang='ta' style={{ marginTop: 7 }}>
+                      <DeclarationText body={d.bodyTa} />
+                    </div>
+                  )}
+                </div>
+              ))
+            ) : (
+              <>
+                <p style={{ margin: 0 }}>{def.disclaimer}</p>
+                {def.disclaimerTa && (
+                  <p className='msrs-tamil' lang='ta' style={{ margin: '7px 0 0' }}>
+                    {def.disclaimerTa}
+                  </p>
+                )}
+              </>
             )}
           </div>
         </div>

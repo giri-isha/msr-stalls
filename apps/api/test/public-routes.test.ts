@@ -50,10 +50,54 @@ describe('GET /public/config', () => {
     expect(Object.keys(body).sort()).toEqual([
       'charges',
       'customFields',
+      'declarations',
       'edition',
       'maxStallsPerRequest',
       'zones',
     ]);
+  });
+
+  /** The declarations ride on this payload, so the whitelist above has to
+   *  extend INTO them — a wide select here is the same leak one level down. */
+  test('a declaration carries its wording and nothing about who wrote it', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/m/stalls/public/config' });
+    const [first] = res.json().declarations;
+    expect(first).toBeDefined();
+    expect(Object.keys(first).sort()).toEqual([
+      'body',
+      'bodyTa',
+      'id',
+      'isActive',
+      'isCurrent',
+      'key',
+      'requestType',
+      'title',
+      'version',
+    ]);
+  });
+
+  /** ⚠️ LIVE versions only. The archive is the record of what people agreed to
+   *  in the past and belongs to the backoffice screen; serving it here would
+   *  publish every superseded paragraph to anybody who asks. */
+  test('and only the live versions, never the archive', async () => {
+    const edition = await prisma.stallEdition.findFirstOrThrow({ where: { isActive: true } });
+    await prisma.stallDeclaration.create({
+      data: {
+        editionId: edition.id,
+        key: 'request_submission',
+        requestType: null,
+        version: 99,
+        title: 'Superseded',
+        body: 'An old paragraph nobody should be served.',
+        isActive: true,
+        isCurrent: false,
+        archivedAt: new Date(),
+      },
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/api/m/stalls/public/config' });
+    const bodies = res.json().declarations.map((d: { body: string }) => d.body);
+    expect(bodies).not.toContain('An old paragraph nobody should be served.');
   });
 
   // 🔴 The same bay is priced differently for trade and for local welfare, and

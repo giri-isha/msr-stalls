@@ -31,6 +31,7 @@ import {
   useToast,
 } from '../ui';
 import { Panel } from '../components/Panel';
+import { Declarations } from './Declarations';
 
 const TABS = [
   { label: 'Bays', glyph: 'map-pin' },
@@ -39,6 +40,7 @@ const TABS = [
   { label: 'Charges', glyph: 'file-text' },
   { label: 'Fines', glyph: 'ban' },
   { label: 'Custom fields', glyph: 'sliders' },
+  { label: 'Declarations', glyph: 'scroll' },
   { label: 'Flow', glyph: 'arrow-left-right' },
   { label: 'Editions', glyph: 'calendar' },
 ] as const;
@@ -187,6 +189,10 @@ export function Admin() {
       {tab === 'Charges' && <Charges c={c} writable={writable} run={run} />}
       {tab === 'Fines' && <Fines c={c} writable={writable} run={run} />}
       {tab === 'Custom fields' && <CustomFields c={c} writable={writable} run={run} />}
+      {/* ⚠️ Reads its own data rather than taking `c`. The config payload is
+          what is LIVE; this screen shows every version including the archived
+          ones, which is a different question and a different query. */}
+      {tab === 'Declarations' && <Declarations writable={writable} />}
       {tab === 'Flow' && <Flow c={c} writable={writable} run={run} />}
       {/* ⚠️ Users and Roles used to be two tabs here. They are screens of their
           own under Access now — each one a full page with its own toolbar,

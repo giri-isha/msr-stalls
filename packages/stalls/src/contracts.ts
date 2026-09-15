@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Declaration } from './declarations';
 import { SELF_SERVE_STEPS } from './access';
 import type { PendingStep } from './onboarding';
 import { CATEGORY_KEY_PATTERN, ZONE_CODE_PATTERN } from './zones';
@@ -119,6 +120,27 @@ export const SubmitRequestInput = z
     numStallsRequested: z.number().int().min(1).max(10),
     remarks: z.string().trim().max(2000).optional(),
     agreed: z.literal(true),
+    /** The exact declaration VERSIONS this page displayed.
+     *
+     *  🔴 Posted back, and checked against what is live — see `submitRequest`.
+     *  Not because the client is trusted with them (it is not; a posted id is
+     *  never what gets logged) but because a MISMATCH is the only way to notice
+     *  that the wording changed while the form sat open. Without it, a page
+     *  opened this morning submits against wording published this afternoon and
+     *  the consent log records agreement to a paragraph nobody ever saw.
+     *
+     *  ⚠️ `optional`, NOT `.default([])`, and the difference is the whole
+     *  design. Defaulted, "I displayed no declarations" and "I have never heard
+     *  of declarations" arrive as the same value, so the check cannot tell a
+     *  form that showed nothing from a caller that does not participate — and
+     *  it would have to refuse both or neither. Absent means the second: log
+     *  what is live, which is what every caller did before this existed. An
+     *  ARRAY is a claim about what was on screen, and a claim is checked.
+     *
+     *  Omitting it is not a way around the check. The check detects staleness;
+     *  it does not authorise anything, and skipping it logs the live wording —
+     *  the same thing the server would have recorded anyway. */
+    declarationIds: z.array(z.uuid()).max(20).optional(),
     depositAcknowledged: z.boolean().optional(),
     plugs5a: Count(50).optional(),
     plugs15a: Count(50).optional(),
@@ -192,6 +214,14 @@ export interface PublicConfig {
    *  one and decline the other. */
   maxStallsPerRequest: number;
   customFields: PublicCustomField[];
+  /** Every LIVE declaration on the edition, for every form.
+   *
+   *  ⚠️ Not pre-filtered to the form being rendered. The page picks its own
+   *  with `declarationsFor`, and the API validates a submission with the same
+   *  function — filtering here would put the variant-beats-default rule in two
+   *  places, and the one that matters legally is the one that decides what was
+   *  agreed to. */
+  declarations: Declaration[];
 }
 
 export interface SubmitRequestResponse {
@@ -650,6 +680,67 @@ export const CustomFieldInput = z.object({
 export const CustomFieldPatch = CustomFieldInput.partial().extend({
   isActive: z.boolean().optional(),
 });
+
+/* ── Declarations ──────────────────────────────────────────────────────────*/
+
+/** ⚠️ The key is validated against the same pattern `isDeclarationKey` uses,
+ *  not a looser one. Two spellings of "what a key may be" is how a key gets in
+ *  through the API that the screen would have refused. */
+export const DeclarationKeyValue = z
+  .string()
+  .trim()
+  .regex(/^[a-z][a-z0-9_]{2,63}$/, 'lower case letters, digits and underscores');
+
+export const DeclarationInput = z.object({
+  key: DeclarationKeyValue,
+  /** `null` is the default, shown by any form with no variant of its own. */
+  requestType: RequestType.nullable().default(null),
+  title: z.string().trim().min(1).max(200),
+  /** 🔴 Generous, and deliberately so: this is a legal paragraph somebody
+   *  pastes in, not a label. It is stored as written — see
+   *  `declarations.ts` for why the markers are parsed rather than the text
+   *  being sanitised. */
+  body: z.string().trim().min(1).max(8000),
+  bodyTa: z.string().trim().max(8000).nullable().default(null),
+  isActive: z.boolean().default(true),
+});
+export type DeclarationInput = z.infer<typeof DeclarationInput>;
+
+/** ⚠️ No `key` and no `requestType`. Both are the row's IDENTITY — the key is
+ *  what consents are filed under and the variant is which form it belongs to —
+ *  and changing either would silently move a consent somebody already gave to a
+ *  different question. A wording that belongs to another form is a new row. */
+export const DeclarationPatch = DeclarationInput.omit({ key: true, requestType: true });
+export type DeclarationPatch = z.infer<typeof DeclarationPatch>;
+
+/** One version, as the backoffice screen lists it. */
+export interface DeclarationRow {
+  id: string;
+  key: string;
+  requestType: string | null;
+  version: number;
+  title: string;
+  body: string;
+  bodyTa: string | null;
+  isActive: boolean;
+  isCurrent: boolean;
+  createdAt: string;
+  archivedAt: string | null;
+}
+
+export interface ListDeclarationsResponse {
+  declarations: DeclarationRow[];
+}
+
+/** What one requester agreed to, with the wording as it stood when they did. */
+export interface ConsentRecord {
+  key: string;
+  version: number;
+  title: string;
+  body: string;
+  bodyTa: string | null;
+  agreedAt: string;
+}
 
 export const GrantRoleInput = z.object({
   personRef: z.uuid(),

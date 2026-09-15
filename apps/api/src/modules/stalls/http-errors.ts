@@ -15,8 +15,13 @@ import {
   PrivilegeEscalationError,
   RoleAboveYouError,
   RoleCycleError,
+  ArchivedDeclarationError,
+  BadDeclarationKeyError,
+  DeclarationExistsError,
+  DeclarationsChangedError,
   RoleInUseError,
   RoleKeyTakenError,
+  UnknownDeclarationError,
   UnknownRoleError,
   SystemRoleError,
   NoActiveEditionError,
@@ -78,6 +83,7 @@ function statusFor(err: unknown): number | null {
     err instanceof UnknownZoneError ||
     err instanceof UnknownPersonError ||
     err instanceof UnknownRoleError ||
+    err instanceof UnknownDeclarationError ||
     err instanceof UnknownAccountError ||
     err instanceof UnknownCouponError ||
     err instanceof UnknownTemplateError
@@ -91,6 +97,9 @@ function statusFor(err: unknown): number | null {
     err instanceof LastAdminError ||
     err instanceof RoleKeyTakenError ||
     err instanceof RoleInUseError ||
+    err instanceof DeclarationExistsError ||
+    err instanceof ArchivedDeclarationError ||
+    err instanceof DeclarationsChangedError ||
     err instanceof SystemRoleError ||
     err instanceof RoleCycleError ||
     err instanceof CustomFieldInUseError ||
@@ -112,6 +121,9 @@ function statusFor(err: unknown): number | null {
   ) {
     return 409;
   }
+  // A key the vocabulary will not take is a malformed request, not a conflict:
+  // there is nothing on the server it collides with.
+  if (err instanceof BadDeclarationKeyError) return 400;
   if (
     err instanceof TooManyStallsError ||
     err instanceof TooManyStallsRequestedError ||

@@ -11,6 +11,10 @@ import {
   CreateZoneInput,
   CustomFieldInput,
   CustomFieldPatch,
+  DeclarationInput,
+  DeclarationPatch,
+  type DeclarationRow,
+  type ListDeclarationsResponse,
   EditionSettingsInput,
   EquipmentAction,
   EquipmentPatch,
@@ -51,6 +55,7 @@ import type { ZodTypeProvider } from '../../zod-validation';
 import * as checkin from './checkin';
 import * as comms from './comms';
 import * as config from './config';
+import * as declarations from './declarations';
 // ⚠️ `activeEdition` itself is deliberately NOT imported here: every backoffice route
 // resolves the edition through `activeEditionFor`, which refuses a caller whose
 // grants do not cover it. Reaching for the unguarded one is how a route would
@@ -101,6 +106,29 @@ const CodeParams = z.object({ code: ZoneCodeValue });
 const RoleParams = z.object({ personRef: z.uuid(), roleKey: z.string() });
 const RoleKeyParams = z.object({ roleKey: z.string().min(1).max(60) });
 const TemplateParams = z.object({ key: TemplateKeyValue });
+
+/** A declaration row as the wire carries it: dates as ISO strings, and the
+ *  enum widened to a string because `DeclarationRow` is shared with the web,
+ *  which has no Prisma types. */
+function declarationRow(d: {
+  id: string;
+  key: string;
+  requestType: string | null;
+  version: number;
+  title: string;
+  body: string;
+  bodyTa: string | null;
+  isActive: boolean;
+  isCurrent: boolean;
+  createdAt: Date;
+  archivedAt: Date | null;
+}): DeclarationRow {
+  return {
+    ...d,
+    createdAt: d.createdAt.toISOString(),
+    archivedAt: d.archivedAt?.toISOString() ?? null,
+  };
+}
 
 export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: StallsDeps): void {
   const zod = app.withTypeProvider<ZodTypeProvider>();
@@ -508,6 +536,53 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     await config.deleteCustomField(prisma, req.params.id, caller.personId);
     reply.status(204);
   });
+
+  /* ── Declarations ────────────────────────────────────────────────────────*/
+
+  /** Every VERSION, not just what is live — the screen shows the history
+   *  beside the current wording, because "what did this say in January?" is
+   *  the question the whole feature exists to answer. */
+  zod.get('/config/declarations', async (req): Promise<ListDeclarationsResponse> => {
+    const caller = await requireBackoffice(req, prisma);
+    requirePrivilege(caller, 'config.read');
+    const edition = await activeEditionFor(prisma, caller);
+    const rows = await declarations.listDeclarations(prisma, edition.id);
+    return { declarations: rows.map(declarationRow) };
+  });
+
+  zod.post('/config/declarations', { schema: { body: DeclarationInput } }, async (req, reply) => {
+    const caller = await requireBackoffice(req, prisma);
+    requirePrivilege(caller, 'config.write');
+    const edition = await activeEditionFor(prisma, caller);
+    reply.status(201);
+    return declarationRow(
+      await declarations.createDeclaration(prisma, edition.id, req.body, caller.personId),
+    );
+  });
+
+  /** ⚠️ A PATCH that may create a row. Changing the wording archives this
+   *  version and returns the new one — see `updateDeclaration` for why an
+   *  in-place update would rewrite what people already agreed to. The caller
+   *  gets whichever row is now current, and does not have to know which
+   *  happened. */
+  zod.patch(
+    '/config/declarations/:id',
+    { schema: { params: IdParams, body: DeclarationPatch } },
+    async (req) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'config.write');
+      const edition = await activeEditionFor(prisma, caller);
+      return declarationRow(
+        await declarations.updateDeclaration(
+          prisma,
+          edition.id,
+          req.params.id,
+          req.body,
+          caller.personId,
+        ),
+      );
+    },
+  );
 
   // ── Backoffice ─────────────────────────────────────────────────────────────────
   zod.get('/backoffice', async (req) => {

@@ -16,6 +16,7 @@ import {
   rupeesToPaise,
 } from '@msr/stalls';
 import { recordActivity } from '../../activity';
+import { seedDeclarations } from './declarations';
 import { type Db, activeEdition } from './editions';
 import {
   CategoryInUseError,
@@ -127,6 +128,14 @@ export async function ensureEditionDefaults(db: Db, editionId: string): Promise<
       update: {},
     });
   }
+  // The consent declarations, seeded from the 2025 disclaimers.
+  //
+  // ⚠️ Here rather than in the dev seed, so an edition CREATED FROM THE ADMIN
+  // SCREEN gets them too — the Editions panel promises a new edition is seeded
+  // from the 2025 defaults, and a year that opened with no declaration would
+  // fall back to a constant nobody can edit.
+  await seedDeclarations(db, editionId);
+
   // The outbound letters, seeded from `@msr/stalls`. `update: {}` so a
   // re-run never overwrites wording an admin has edited.
   for (const t of DEFAULT_TEMPLATES) {
@@ -243,7 +252,7 @@ export async function chargesFor(db: Db, editionId: string) {
  *  answered without knowing who is asking. */
 export async function getPublicConfig(db: Db, scope: RateScope = 'VENDOR'): Promise<PublicConfig> {
   const edition = await activeEdition(db);
-  const [zones, card, charges, customFields] = await Promise.all([
+  const [zones, card, charges, customFields, declarations] = await Promise.all([
     listZones(db, edition.id),
     rateCardFor(db, edition.id),
     chargesFor(db, edition.id),
@@ -254,6 +263,24 @@ export async function getPublicConfig(db: Db, scope: RateScope = 'VENDOR'): Prom
         formType: { in: ['ASHRAM', 'ASHRAM_FOOD', 'LOCAL_WELFARE', 'VENDOR'] },
       },
       orderBy: [{ formType: 'asc' }, { sortOrder: 'asc' }],
+    }),
+    // ⚠️ Every live version for every form, not the ones for one form. The
+    // public form picks its own with `declarationsFor`, and the picker has to
+    // be the same function the API validates a submission with — a server that
+    // pre-filtered here would be a second implementation of the fallback rule.
+    db.stallDeclaration.findMany({
+      where: { editionId: edition.id, isCurrent: true, isActive: true },
+      select: {
+        id: true,
+        key: true,
+        requestType: true,
+        version: true,
+        title: true,
+        body: true,
+        bodyTa: true,
+        isActive: true,
+        isCurrent: true,
+      },
     }),
   ]);
   return {
@@ -290,6 +317,7 @@ export async function getPublicConfig(db: Db, scope: RateScope = 'VENDOR'): Prom
       isRequired: f.isRequired,
       sortOrder: f.sortOrder,
     })),
+    declarations,
   };
 }
 

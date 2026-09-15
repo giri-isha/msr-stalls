@@ -155,6 +155,7 @@ describe('getPublicConfig', () => {
     expect(Object.keys(cfg).sort()).toEqual([
       'charges',
       'customFields',
+      'declarations',
       'edition',
       'maxStallsPerRequest',
       'zones',
