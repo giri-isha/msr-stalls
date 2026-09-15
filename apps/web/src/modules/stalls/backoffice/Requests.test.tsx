@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ME_LEAD, detail, installFetch, onboarding, renderAt, summary } from '../test-utils';
@@ -90,7 +90,10 @@ describe('Requests', () => {
     await waitFor(() => expect(screen.queryByText('VEN-2026-0001')).not.toBeInTheDocument());
   });
 
-  test('toggles between table and cards', async () => {
+  // jsdom is 1024px wide, which `test-setup.ts` answers as `desktop` — so this
+  // is the laptop default. The phone default is `useListView.test.ts`, which
+  // can set a width before the breakpoint store reads one.
+  test('opens as a table on a laptop, and toggles to cards', async () => {
     installFetch(base());
     renderAt('/m/stalls/requests', routes, { me: true });
     await screen.findByText('VEN-2026-0001');
@@ -101,6 +104,23 @@ describe('Requests', () => {
       'aria-pressed',
       'true',
     );
+  });
+
+  // ⚠️ The phone default is a GUESS, and the point of this one is that being
+  // told otherwise beats it. The table is the shape that answers "find me this
+  // reference", and a narrow screen does not stop somebody needing that.
+  test('a chosen shape survives the width and the next visit', async () => {
+    installFetch(base());
+    renderAt('/m/stalls/requests', routes, { me: true });
+    await screen.findByText('VEN-2026-0001');
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Card view' }));
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+
+    cleanup();
+    installFetch(base());
+    renderAt('/m/stalls/requests', routes, { me: true });
+    await screen.findByText('VEN-2026-0001');
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
   test('clicking a row navigates to the record page', async () => {

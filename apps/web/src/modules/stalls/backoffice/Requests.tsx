@@ -30,7 +30,8 @@ import {
   Table,
   toolBtnStyle,
   Toolbar,
-  useIsMobile,
+  useListView,
+  ViewToggle,
 } from '../ui';
 
 /** Every request in the pipeline, with every filter.
@@ -43,14 +44,13 @@ import {
  *  Triage is what the filters are FOR, so it is a filter now, not an address. */
 export function Requests() {
   const [params, setParams] = useSearchParams();
-  const mobile = useIsMobile();
   const q = params.get('q') ?? '';
   const requestType = params.get('requestType') ?? '';
   const status = params.get('status') ?? '';
   const stage = params.get('stage') ?? '';
   const zoneCode = params.get('zoneCode') ?? '';
   const flagged = params.get('flagged') === 'true';
-  const [view, setView] = useState<'table' | 'cards'>('table');
+  const [view, setView] = useListView('requests');
   // The bays are the edition's own rows, not a list in this file: the venue is
   // redrawn every year, and a filter that cannot offer a new bay hides every
   // request standing in it.
@@ -115,42 +115,20 @@ export function Requests() {
     setParams(next, { replace: true });
   };
 
-  // A table of eleven columns has no narrow form, so a phone gets the cards
-  // whichever view is chosen. The toggle is still drawn — the choice is
-  // remembered for when the window widens — it simply does not apply here.
-  const asCards = view === 'cards' || mobile;
+  // ⚠️ The phone is no longer FORCED into cards. `useListView` opens it there,
+  // which is what a phone wants without being asked — but a coordinator who
+  // picks the table gets the table, scrolled sideways inside its card, because
+  // "find me VEN-2026-0114" is a job the tiles are bad at and the width does
+  // not change that. The toggle used to be drawn on mobile and ignored there,
+  // which is a control that lies about what it does.
+  const asCards = view === 'cards';
 
   return (
     <div>
       <H1
         icon={<Icon name='list-view' size={18} />}
         sub='Every request in the pipeline. Click one to see its full application.'
-        actions={
-          // The two views, as one segmented control on the card plate.
-          <div
-            style={{
-              display: 'flex',
-              gap: 2,
-              padding: 2,
-              borderRadius: 'var(--r2)',
-              border: '1px solid var(--bd)',
-              background: 'var(--card)',
-            }}
-          >
-            <ViewBtn
-              on={view === 'table'}
-              label='Table view'
-              glyph='list-view'
-              onClick={() => setView('table')}
-            />
-            <ViewBtn
-              on={view === 'cards'}
-              label='Card view'
-              glyph='layout-grid'
-              onClick={() => setView('cards')}
-            />
-          </div>
-        }
+        actions={<ViewToggle view={view} onChange={setView} />}
       >
         All Requests
       </H1>
@@ -367,43 +345,6 @@ function FlagMark() {
     >
       <Icon name='alert-triangle' size={12} />
     </span>
-  );
-}
-
-function ViewBtn({
-  on,
-  label,
-  glyph,
-  onClick,
-}: {
-  on: boolean;
-  label: string;
-  glyph: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type='button'
-      onClick={onClick}
-      aria-pressed={on}
-      aria-label={label}
-      title={label}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: 32,
-        height: 28,
-        borderRadius: 'var(--r)',
-        border: 0,
-        background: on ? 'var(--pri-t)' : 'transparent',
-        color: on ? 'var(--pri)' : 'var(--mfg)',
-        cursor: 'pointer',
-        padding: 0,
-      }}
-    >
-      <Icon name={glyph} size={15} />
-    </button>
   );
 }
 

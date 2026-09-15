@@ -1,3 +1,4 @@
+import { afterEach } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 
 /**
@@ -39,3 +40,22 @@ if (!window.matchMedia) {
     } as unknown as MediaQueryList;
   };
 }
+
+/**
+ * A clean `localStorage` per test.
+ *
+ * ⚠️ The module remembers two things across visits — the theme, and whether a
+ * given list was last read as rows or as tiles (`ui/useListView.ts`) — and
+ * jsdom keeps one storage for a whole FILE. Without this, a test that clicks
+ * "Card view" writes a preference that the next test in the file silently
+ * inherits, and `getByRole('table')` fails in a test that never touched the
+ * toggle. The failure would point at the second test, which is the one place
+ * the bug is not.
+ */
+afterEach(() => {
+  try {
+    localStorage.clear();
+  } catch {
+    // Not every environment has one; a test that never wrote has none to clear.
+  }
+});
