@@ -816,3 +816,217 @@ describe('editing a requester', () => {
     expect(screen.queryByLabelText('Edit Vikram Sethu')).not.toBeInTheDocument();
   });
 });
+
+/**
+ * Adding somebody the Foundation directory does not have yet.
+ *
+ * 🔴 **Search first, stage second.** The order is the guard, not the layout: a
+ * well-formed but wrong address stages a role for whoever really owns it, so
+ * "add them" has to be the answer to a search that found nothing rather than
+ * the first thing the dialog offers.
+ */
+describe('adding somebody who is not in the directory', () => {
+  const found = (rows: unknown[]) =>
+    ['GET', /\/backoffice\/search$/, () => rows] as readonly [string, RegExp, unknown];
+
+  const openAdd = async (user: ReturnType<typeof userEvent.setup>) => {
+    await screen.findByText('Vikram Sethu');
+    await user.click(screen.getByRole('button', { name: /Add user/ }));
+  };
+
+  test('offers to add them only once a search has actually run', async () => {
+    base(page([backoffice()]), [found([])]);
+    render();
+    const user = userEvent.setup();
+
+    await openAdd(user);
+    expect(screen.queryByRole('button', { name: 'Add them' })).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Search people'), 'kavya');
+    await user.click(screen.getByRole('button', { name: /^Search$/ }));
+
+    expect(await screen.findByRole('button', { name: 'Add them' })).toBeInTheDocument();
+  });
+
+  test('stages the person and the role in one call', async () => {
+    const fetch = base(page([backoffice()]), [
+      found([]),
+      ['POST', /\/backoffice$/, () => [204, null]],
+    ]);
+    render();
+    const user = userEvent.setup();
+
+    await openAdd(user);
+    await user.type(screen.getByLabelText('Search people'), 'kavya');
+    await user.click(screen.getByRole('button', { name: /^Search$/ }));
+    await user.click(await screen.findByRole('button', { name: 'Add them' }));
+
+    await user.type(screen.getByLabelText('Name'), 'Kavya Nair');
+    await user.type(screen.getByLabelText('Email'), 'kavya.n@ishafoundation.org');
+    await user.selectOptions(screen.getByLabelText('Role'), 'stalls_volunteer');
+    await user.click(screen.getByRole('button', { name: /Add and assign/ }));
+
+    await waitFor(() => {
+      const call = fetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/backoffice'));
+      expect(call?.body).toMatchObject({
+        newPerson: { displayName: 'Kavya Nair', email: 'kavya.n@ishafoundation.org', phone: '' },
+        roleKey: 'stalls_volunteer',
+      });
+    });
+    // The one arm or the other — never a body carrying both, which the server
+    // refuses outright.
+    const call = fetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/backoffice'));
+    expect(call?.body).not.toHaveProperty('personRef');
+  });
+
+  test('will not stage until there is a name and an address to stage', async () => {
+    base(page([backoffice()]), [found([])]);
+    render();
+    const user = userEvent.setup();
+
+    await openAdd(user);
+    await user.type(screen.getByLabelText('Search people'), 'kavya');
+    await user.click(screen.getByRole('button', { name: /^Search$/ }));
+    await user.click(await screen.findByRole('button', { name: 'Add them' }));
+    await user.selectOptions(screen.getByLabelText('Role'), 'stalls_volunteer');
+
+    expect(screen.getByRole('button', { name: /Add and assign/ })).toBeDisabled();
+    await user.type(screen.getByLabelText('Name'), 'Kavya Nair');
+    expect(screen.getByRole('button', { name: /Add and assign/ })).toBeDisabled();
+    await user.type(screen.getByLabelText('Email'), 'kavya.n@ishafoundation.org');
+    expect(screen.getByRole('button', { name: /Add and assign/ })).toBeEnabled();
+  });
+
+  test('the way back to the search is on the staging form', async () => {
+    base(page([backoffice()]), [found([])]);
+    render();
+    const user = userEvent.setup();
+
+    await openAdd(user);
+    await user.type(screen.getByLabelText('Search people'), 'kavya');
+    await user.click(screen.getByRole('button', { name: /^Search$/ }));
+    await user.click(await screen.findByRole('button', { name: 'Add them' }));
+    await user.click(screen.getByRole('button', { name: /Search the directory instead/ }));
+
+    expect(screen.getByLabelText('Search people')).toBeInTheDocument();
+  });
+
+  /** Marked, not hidden. A row still waiting on its first sign-in is exactly
+   *  the one to reuse, and a search that looks like a miss is what produces a
+   *  second person on the same address. */
+  test('a person somebody already staged is shown, marked as not yet arrived', async () => {
+    base(page([backoffice()]), [
+      found([
+        {
+          personId: 'p-new',
+          displayName: 'Kavya Nair',
+          email: 'kavya.n@ishafoundation.org',
+          phone: null,
+          staged: true,
+        },
+      ]),
+    ]);
+    render();
+    const user = userEvent.setup();
+
+    await openAdd(user);
+    await user.type(screen.getByLabelText('Search people'), 'kavya');
+    await user.click(screen.getByRole('button', { name: /^Search$/ }));
+
+    expect(await screen.findByLabelText('Kavya Nair')).toBeInTheDocument();
+    expect(screen.getByText('Not signed in yet')).toBeInTheDocument();
+  });
+});
+
+/** The other half: a backoffice member's own details, which this dialog used
+ *  not to offer at all. */
+describe("editing a backoffice member's details", () => {
+  const open = async (user: ReturnType<typeof userEvent.setup>, name = 'Vikram Sethu') => {
+    await user.click(await screen.findByLabelText(`Edit ${name}`));
+  };
+
+  test('opens on their name, address and number', async () => {
+    base(page([backoffice({ phone: '9840011111' })]));
+    render();
+    const user = userEvent.setup();
+
+    await open(user);
+
+    expect(await screen.findByLabelText('Name')).toHaveValue('Vikram Sethu');
+    expect(screen.getByLabelText('Email')).toHaveValue('vikram.s@ishafoundation.org');
+    expect(screen.getByLabelText('Phone')).toHaveValue('9840011111');
+  });
+
+  test('saves them to the directory, and asks nothing about roles', async () => {
+    const fetch = base(page([backoffice()]), [
+      ['PATCH', /\/backoffice\/p-admin$/, () => [204, null]],
+    ]);
+    render();
+    const user = userEvent.setup();
+
+    await open(user);
+    await user.clear(await screen.findByLabelText('Phone'));
+    await user.type(screen.getByLabelText('Phone'), '9840011111');
+    await user.click(screen.getByRole('button', { name: /^Save$/ }));
+
+    await waitFor(() => {
+      const call = fetch.calls.find((c) => c.method === 'PATCH');
+      expect(call?.url).toBe('/api/m/stalls/backoffice/p-admin');
+      expect(call?.body).toMatchObject({
+        displayName: 'Vikram Sethu',
+        email: 'vikram.s@ishafoundation.org',
+        phone: '9840011111',
+      });
+    });
+    expect(fetch.calls.some((c) => c.method === 'POST' || c.method === 'DELETE')).toBe(false);
+  });
+
+  /** ⚠️ Details BEFORE roles. The refusal that actually happens is an address
+   *  another person holds, and it should land while the role picture is still
+   *  as the admin found it. */
+  test('a refused detail change leaves the roles untouched', async () => {
+    const fetch = base(page([backoffice()]), [
+      [
+        'PATCH',
+        /\/backoffice\/p-admin$/,
+        () => [409, { error: 'Arun Kumar is already in the directory with this email' }],
+      ],
+      ['POST', /\/backoffice$/, () => [204, null]],
+      ['DELETE', /\/backoffice\/p-admin\/[a-z_]+$/, () => [204, null]],
+    ]);
+    render();
+    const user = userEvent.setup();
+
+    await open(user);
+    await user.clear(await screen.findByLabelText('Email'));
+    await user.type(screen.getByLabelText('Email'), 'arun.k@ishafoundation.org');
+    await user.click(await screen.findByRole('radio', { name: 'Volunteer' }));
+    await user.click(screen.getByRole('button', { name: /^Save$/ }));
+
+    expect(await screen.findByText(/already in the directory/)).toBeInTheDocument();
+    expect(fetch.calls.some((c) => c.method === 'POST' || c.method === 'DELETE')).toBe(false);
+  });
+
+  /** A person who really signs in through the Foundation keeps their identity
+   *  there; one who has not arrived yet is matched by the address in this box.
+   *  Two different facts, so two different sentences. */
+  test('says what the address means for somebody who has not signed in yet', async () => {
+    base(page([backoffice({ signInState: 'INVITED' })]));
+    render();
+    const user = userEvent.setup();
+
+    await open(user);
+
+    expect(await screen.findByText(/have not signed in yet/i)).toBeInTheDocument();
+  });
+
+  test('says the Foundation refreshes it for somebody who has', async () => {
+    base(page([backoffice()]));
+    render();
+    const user = userEvent.setup();
+
+    await open(user);
+
+    expect(await screen.findByText(/next sign-in refreshes it/i)).toBeInTheDocument();
+  });
+});

@@ -918,3 +918,277 @@ describe('editing a requester', () => {
     expect(after.displayName).toBe('Priya Venkat');
   });
 });
+
+/**
+ * Putting somebody into the Foundation directory from here.
+ *
+ * 🔴 The module reads that directory everywhere else and writes it only through
+ * this route and the one below. What the suite is pinning down is the shape of
+ * that concession: one transaction, a claimable row, and a duplicate address
+ * refused rather than merged.
+ */
+describe('adding somebody to the directory', () => {
+  const grant = (headers: { cookie: string }, payload: Record<string, unknown>) =>
+    app.inject({ method: 'POST', url: '/api/m/stalls/backoffice', headers, payload });
+
+  test('a staged person is created with the role, and marked as not yet arrived', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+
+    const res = await grant(admin.headers, {
+      newPerson: { displayName: 'Kavya Nair', email: 'kavya.n@ishafoundation.org', phone: '' },
+      roleKey: 'stalls_volunteer',
+    });
+    expect(res.statusCode).toBe(204);
+
+    const person = await prisma.person.findUniqueOrThrow({
+      where: { email: 'kavya.n@ishafoundation.org' },
+    });
+    expect(person).toMatchObject({ displayName: 'Kavya Nair', staged: true, phone: null });
+    const grants = await prisma.stallBackofficeRole.findMany({
+      where: { personRef: person.personId },
+    });
+    expect(grants.map((g) => g.roleKey)).toEqual(['stalls_volunteer']);
+  });
+
+  test('the address is stored normalised, and a number is kept when one is given', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+
+    await grant(admin.headers, {
+      newPerson: {
+        displayName: 'Kavya Nair',
+        email: '  Kavya.N@IshaFoundation.ORG ',
+        phone: '+91 98400 11111',
+      },
+      roleKey: 'stalls_volunteer',
+    });
+
+    const person = await prisma.person.findUniqueOrThrow({
+      where: { email: 'kavya.n@ishafoundation.org' },
+    });
+    expect(person.phone).toBe('9840011111');
+  });
+
+  /** Two rows on one address is a grant made to a human who may never receive
+   *  it — one of them claimable, one of them not. The admin searched; they are
+   *  being told to look again. */
+  test('an address the directory already holds is a 409 naming who holds it', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+    await seedBackoffice([], 'kavya.n@ishafoundation.org');
+
+    const res = await grant(admin.headers, {
+      newPerson: { displayName: 'Kavya Nair', email: 'kavya.n@ishafoundation.org', phone: '' },
+      roleKey: 'stalls_volunteer',
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toContain('kavya.n');
+    expect(await prisma.person.count({ where: { email: 'kavya.n@ishafoundation.org' } })).toBe(1);
+  });
+
+  /** The whole reason the two writes are one request. A refused grant must not
+   *  leave a human in the Foundation's directory with nothing to do there. */
+  test('a role the caller may not hand out stages nobody', async () => {
+    const lead = await seedBackoffice(['stalls_lead']);
+
+    const res = await grant(lead.headers, {
+      newPerson: { displayName: 'Kavya Nair', email: 'kavya.n@ishafoundation.org', phone: '' },
+      roleKey: 'stalls_admin',
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(await prisma.person.findUnique({ where: { email: 'kavya.n@ishafoundation.org' } })).toBe(
+      null,
+    );
+  });
+
+  test('a body naming both arms, or neither, is refused before anything is written', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+    const someone = await seedBackoffice([], 'arun.k@ishafoundation.org');
+
+    const both = await grant(admin.headers, {
+      personRef: someone.personId,
+      newPerson: { displayName: 'Kavya Nair', email: 'kavya.n@ishafoundation.org', phone: '' },
+      roleKey: 'stalls_volunteer',
+    });
+    expect(both.statusCode).toBe(400);
+
+    const neither = await grant(admin.headers, { roleKey: 'stalls_volunteer' });
+    expect(neither.statusCode).toBe(400);
+    expect(await prisma.person.count({ where: { email: 'kavya.n@ishafoundation.org' } })).toBe(0);
+  });
+
+  test('the directory search marks a staged row rather than hiding it', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+    await grant(admin.headers, {
+      newPerson: { displayName: 'Kavya Nair', email: 'kavya.n@ishafoundation.org', phone: '' },
+      roleKey: 'stalls_volunteer',
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/m/stalls/backoffice/search?q=kavya',
+      headers: admin.headers,
+    });
+
+    expect(res.json()).toMatchObject([{ displayName: 'Kavya Nair', staged: true }]);
+  });
+
+  /** `OK` would read as "Active" in the Sign-in column — a claim about somebody
+   *  who has never been here. */
+  test('a staged person reads as INVITED in the directory, and not as cannot-sign-in', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+    await grant(admin.headers, {
+      newPerson: { displayName: 'Kavya Nair', email: 'kavya.n@ishafoundation.org', phone: '' },
+      roleKey: 'stalls_volunteer',
+    });
+
+    const { body } = await list(admin.headers);
+    const row = body.users.find((u) => u.displayName === 'Kavya Nair');
+    expect(row?.signInState).toBe('INVITED');
+    expect(count(body, 'Cannot sign in')).toBe(0);
+  });
+
+  test('a role without users:write cannot add anybody', async () => {
+    const lead = await seedBackoffice(['stalls_lead']);
+
+    const res = await grant(lead.headers, {
+      newPerson: { displayName: 'Kavya Nair', email: 'kavya.n@ishafoundation.org', phone: '' },
+      roleKey: 'stalls_volunteer',
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(await prisma.person.count({ where: { email: 'kavya.n@ishafoundation.org' } })).toBe(0);
+  });
+});
+
+/** The other half of the same concession: having typed somebody's address into
+ *  the directory, this module can correct it. */
+describe("editing a backoffice member's details", () => {
+  const patch = (personRef: string, headers: { cookie: string }, payload: Record<string, string>) =>
+    app.inject({
+      method: 'PATCH',
+      url: `/api/m/stalls/backoffice/${personRef}`,
+      headers,
+      payload,
+    });
+
+  test('a corrected name, address and number are stored and land in the trail', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+    const who = await seedBackoffice(['stalls_volunteer'], 'kavya.n@ishafoundation.org');
+
+    const res = await patch(who.personId, admin.headers, {
+      displayName: 'Kavya Nair',
+      email: 'kavya.nair@ishafoundation.org',
+      phone: '+91 98400 11111',
+    });
+    expect(res.statusCode).toBe(204);
+
+    const after = await prisma.person.findUniqueOrThrow({ where: { personId: who.personId } });
+    expect(after).toMatchObject({
+      displayName: 'Kavya Nair',
+      email: 'kavya.nair@ishafoundation.org',
+      phone: '9840011111',
+    });
+    const trail = await prisma.activityTrail.findMany({
+      where: { subjectRef: who.personId, action: 'person.updated' },
+    });
+    expect(trail).toHaveLength(1);
+  });
+
+  test('the phone may be cleared, and it shows on the directory row', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+    const who = await seedBackoffice(['stalls_volunteer'], 'kavya.n@ishafoundation.org');
+
+    await patch(who.personId, admin.headers, {
+      displayName: 'Kavya Nair',
+      email: 'kavya.n@ishafoundation.org',
+      phone: '9840011111',
+    });
+    const { body } = await list(admin.headers);
+    expect(body.users.find((u) => u.id === who.personId)?.phone).toBe('9840011111');
+
+    await patch(who.personId, admin.headers, {
+      displayName: 'Kavya Nair',
+      email: 'kavya.n@ishafoundation.org',
+      phone: '',
+    });
+    const after = await prisma.person.findUniqueOrThrow({ where: { personId: who.personId } });
+    expect(after.phone).toBe(null);
+  });
+
+  /** Moving a staged row's address moves its CLAIM KEY, so the refusal matters
+   *  as much here as it does when the row is created. */
+  test('an address another person already holds is a 409 naming them', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+    const who = await seedBackoffice(['stalls_volunteer'], 'kavya.n@ishafoundation.org');
+    await seedBackoffice(['stalls_volunteer'], 'arun.k@ishafoundation.org');
+
+    const res = await patch(who.personId, admin.headers, {
+      displayName: 'Kavya Nair',
+      email: 'arun.k@ishafoundation.org',
+      phone: '',
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toContain('arun.k');
+    const after = await prisma.person.findUniqueOrThrow({ where: { personId: who.personId } });
+    expect(after.email).toBe('kavya.n@ishafoundation.org');
+  });
+
+  /** The hierarchy check that guards a grant guards a rename too, and for the
+   *  same reason: renaming somebody is editing an account above you. */
+  test('somebody above the caller in the hierarchy cannot be renamed', async () => {
+    const lead = await seedBackoffice(['stalls_lead']);
+    const boss = await seedBackoffice(['stalls_admin'], 'vikram.s@ishafoundation.org');
+
+    const res = await patch(boss.personId, lead.headers, {
+      displayName: 'Not Vikram',
+      email: 'vikram.s@ishafoundation.org',
+      phone: '',
+    });
+
+    expect(res.statusCode).toBe(403);
+    const after = await prisma.person.findUniqueOrThrow({ where: { personId: boss.personId } });
+    expect(after.displayName).not.toBe('Not Vikram');
+  });
+
+  test('a role without users:write cannot edit anybody', async () => {
+    const lead = await seedBackoffice(['stalls_lead']);
+    const who = await seedBackoffice([], 'kavya.n@ishafoundation.org');
+
+    const res = await patch(who.personId, lead.headers, {
+      displayName: 'Renamed',
+      email: 'kavya.n@ishafoundation.org',
+      phone: '',
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  test('an unchanged save writes nothing and records nothing', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+    const who = await seedBackoffice(['stalls_volunteer'], 'kavya.n@ishafoundation.org');
+
+    const res = await patch(who.personId, admin.headers, {
+      displayName: who.email.split('@')[0],
+      email: 'kavya.n@ishafoundation.org',
+      phone: '',
+    });
+    expect(res.statusCode).toBe(204);
+    expect(
+      await prisma.activityTrail.count({
+        where: { subjectRef: who.personId, action: 'person.updated' },
+      }),
+    ).toBe(0);
+  });
+
+  test('an unknown person is a 404', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+
+    const res = await patch('00000000-0000-4000-8000-000000000000', admin.headers, {
+      displayName: 'Nobody',
+      email: 'nobody@ishafoundation.org',
+      phone: '',
+    });
+    expect(res.statusCode).toBe(404);
+  });
+});

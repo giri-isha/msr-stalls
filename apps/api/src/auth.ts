@@ -52,7 +52,13 @@ export async function getCurrentPerson(
 }
 
 /** Look a Person up by email and mint a session token. Development only — the
- *  host has the same function and the same rule: no HTTP caller, ever. */
+ *  host has the same function and the same rule: no HTTP caller, ever.
+ *
+ *  ⚠️ **This is where a staged row is claimed.** A person an admin added from
+ *  the Users screen exists with `staged` set and nobody behind it; signing in as
+ *  them is the event that makes them real, so the flag is cleared here and
+ *  nowhere else. In the host the same moment is Isha's callback writing an
+ *  `sso_id` onto the row it matched by email — see the `Person` model. */
 export async function devLogin(
   client: PrismaClient,
   email: string,
@@ -61,5 +67,9 @@ export async function devLogin(
     where: { email: email.trim().toLowerCase() },
   });
   if (!person || person.signInDisabled) return null;
+  // Only when it is actually set, so an ordinary sign-in is still a pure read.
+  if (person.staged) {
+    await client.person.update({ where: { personId: person.personId }, data: { staged: false } });
+  }
   return { personId: person.personId, email: person.email, token: person.personId };
 }

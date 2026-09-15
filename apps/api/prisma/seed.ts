@@ -1,5 +1,6 @@
-// Development seed: a 2026 edition, four backoffice members, a plan applied across every
-// zone, and a realistic spread of requests drawn from the 2025 prototype data
+// Development seed: one edition — `EDITION_YEAR` below, and every date here is
+// that year's — four backoffice members, a plan applied across every zone, and
+// a realistic spread of requests drawn from the 2025 prototype data
 // — some shortlisted, some selected onto real stalls, one flagged.
 //
 // Refuses to run against a database that already has an edition, so it can
@@ -34,6 +35,23 @@ import type { MediaStore } from '../src/storage/media-namespace';
 
 const SYSTEM = '00000000-0000-0000-0000-000000000000';
 const force = process.argv.includes('--force');
+
+/** The edition this seed builds. Everything dated below hangs off it — the
+ *  payment dates, the bank references that carry those dates, the prior
+ *  edition a flag refers back to — so rolling the seed forward a year is this
+ *  one number and nothing else. */
+const EDITION_YEAR = 2026;
+
+/** The two credits Finance confirms for the vendor walked all the way through.
+ *  Mid-February, which is when the money lands in a real edition. */
+const RENT_RECEIVED_ON = `${EDITION_YEAR}-02-14`;
+const DEPOSIT_RECEIVED_ON = `${EDITION_YEAR}-02-18`;
+
+/** A YES Bank e-collect reference as it reads on the statement: the bank's
+ *  prefix, the date of the credit, and a serial within that day. Built from
+ *  the date so the reference cannot drift away from the payment it names. */
+const bankRef = (receivedOn: string, serial: number) =>
+  `YESBN1${receivedOn.replaceAll('-', '')}${String(serial).padStart(2, '0')}`;
 
 /** What every seeded requester's password is.
  *
@@ -134,7 +152,11 @@ const ashram = (o: Record<string, unknown>, block: Record<string, unknown>) => (
   agreed: true,
   requesterName: block.requestedBy,
   contactNumber: block.requesterContact,
+  // The whole electrical block, because the ashram form asks all of it — a
+  // department bringing nothing still has to answer "none".
   plugs5a: 1,
+  plugs15a: 0,
+  gasStoves: 0,
   tablesNeeded: 2,
   chairsNeeded: 4,
   passes2w: 2,
@@ -416,7 +438,7 @@ async function main() {
   // Edition + plan
   const edition = await createEdition(
     prisma,
-    { year: 2026, name: 'MSR 2026', activate: true },
+    { year: EDITION_YEAR, name: `MSR ${EDITION_YEAR}`, activate: true },
     SYSTEM,
   );
   await writePlan(
@@ -549,7 +571,7 @@ async function main() {
   await flagRequest(
     prisma,
     ids[6],
-    'Possible duplicate of a 2025 vendor — confirm GST number',
+    `Possible duplicate of a ${EDITION_YEAR - 1} vendor — confirm GST number`,
     lead,
   );
   console.log('Pipeline: 2 shortlisted, 4 selected, 1 flagged');
@@ -632,10 +654,10 @@ async function main() {
     greenLeaf,
     {
       purpose: 'RENT',
-      referenceNo: 'YESBN12026021401',
+      referenceNo: bankRef(RENT_RECEIVED_ON, 1),
       eCollectCode: 'IFCTGE39840012345',
       amountPaise: plan.feeTotalPaise,
-      receivedOn: '2026-02-14',
+      receivedOn: RENT_RECEIVED_ON,
       remitterName: 'GREEN LEAF ORGANICS',
       mode: 'NEFT',
     },
@@ -646,9 +668,9 @@ async function main() {
     greenLeaf,
     {
       purpose: 'DEPOSIT',
-      referenceNo: 'YESBN12026021802',
+      referenceNo: bankRef(DEPOSIT_RECEIVED_ON, 2),
       amountPaise: plan.depositTotalPaise,
-      receivedOn: '2026-02-18',
+      receivedOn: DEPOSIT_RECEIVED_ON,
       remitterName: 'GREEN LEAF ORGANICS',
       mode: 'NEFT',
     },

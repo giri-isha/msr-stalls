@@ -51,6 +51,7 @@ import {
   TEMPLATE_PLACEHOLDERS,
   TemplateKeyValue,
   UpdateAccountInput,
+  UpdatePersonInput,
   SetRequesterPasswordInput,
   UpdateTemplateInput,
   ZoneCodeValue,
@@ -100,7 +101,14 @@ import * as signature from './signature';
 import { listUsers } from './directory';
 import { listPrivileges } from './privileges';
 import { createRole, deleteRole, getRole, updateRole } from './roles-admin';
-import { grantRole, listRoles, listBackoffice, revokeRole, searchPeople } from './backoffice';
+import {
+  grantRole,
+  listRoles,
+  listBackoffice,
+  revokeRole,
+  searchPeople,
+  updatePersonDetails,
+} from './backoffice';
 import {
   resendConfirmation,
   sendAccountAccessLink,
@@ -112,6 +120,7 @@ import {
 const IdParams = z.object({ id: z.uuid() });
 const CodeParams = z.object({ code: ZoneCodeValue });
 const RoleParams = z.object({ personRef: z.uuid(), roleKey: z.string() });
+const PersonParams = z.object({ personRef: z.uuid() });
 const RoleKeyParams = z.object({ roleKey: z.string().min(1).max(60) });
 const TemplateParams = z.object({ key: TemplateKeyValue });
 
@@ -742,9 +751,10 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
    *  desk that mails a vendor their access link is the desk that has just been
    *  told the address it goes to is wrong.
    *
-   *  ⚠️ Requesters only. A backoffice row's name and address belong to the
-   *  Foundation directory, which this module reads and never writes — what a
-   *  backoffice row's Edit changes is the grants below. */
+   *  ⚠️ Requesters only, and `:id` is a `StallAccount` id. A backoffice row's
+   *  details live in the Foundation directory and are saved by
+   *  `PATCH /backoffice/:personRef` below — a separate route because the two
+   *  ids come from different tables. */
   zod.patch(
     '/users/:id',
     { schema: { params: IdParams, body: UpdateAccountInput } },
@@ -788,12 +798,38 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     },
   );
 
+  /** A role handed out — to somebody in the directory, or to somebody this call
+   *  puts there (`newPerson`). Still 204: the staging arm mints a `Person`, but
+   *  no caller has anything to do with its id that reloading the directory does
+   *  not already do, and a body on one arm and not the other would be a shape
+   *  every client had to branch on. */
   zod.post('/backoffice', { schema: { body: GrantRoleInput } }, async (req, reply) => {
     const caller = await requireBackoffice(req, prisma);
     requirePrivilege(caller, 'users.write');
     await grantRole(prisma, req.body, caller);
     reply.status(204);
   });
+
+  /** A backoffice member's own name, address and number.
+   *
+   *  🔴 **This module WRITING the Foundation directory**, which is new and is
+   *  narrow on purpose — see `updatePersonDetails` for why staging somebody
+   *  from a typed address makes mending that address this module's problem too.
+   *
+   *  `users.write`, and separate from `PATCH /users/:id`: that one edits a
+   *  `StallAccount` and this one a `Person`, the ids come from different tables,
+   *  and one route deciding which by looking the id up in both would be a route
+   *  that silently edits the wrong human on a collision. */
+  zod.patch(
+    '/backoffice/:personRef',
+    { schema: { params: PersonParams, body: UpdatePersonInput } },
+    async (req, reply) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'users.write');
+      await updatePersonDetails(prisma, req.params.personRef, req.body, caller);
+      reply.status(204);
+    },
+  );
 
   zod.delete(
     '/backoffice/:personRef/:roleKey',

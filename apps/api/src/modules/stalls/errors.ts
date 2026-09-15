@@ -327,6 +327,24 @@ export class UnknownPersonError extends Error {
   }
 }
 
+/** An address the Foundation directory already holds. Mapped to 409.
+ *
+ *  ⚠️ Raised by both writes this module makes into that directory — staging
+ *  somebody new, and correcting somebody's address — and it means the same
+ *  thing in each: the admin searched, and is being told to look again.
+ *
+ *  ⚠️ **Names the holder**, exactly as `AccountEmailTakenError` does and for
+ *  the same reason: an admin adding a coordinator needs to know they have found
+ *  that person's existing row rather than an anonymous collision. Two rows on
+ *  one address is the expensive mistake here — one of them claimable and one of
+ *  them not — so refusing is cheaper than explaining later. */
+export class PersonEmailTakenError extends Error {
+  constructor(readonly heldBy: string) {
+    super(`${heldBy} is already in the directory with this email — grant them the role instead`);
+    this.name = 'PersonEmailTakenError';
+  }
+}
+
 // ── Phase 2 and 3 ───────────────────────────────────────────────────────────
 
 /** A template key that this edition has no row for. Mapped to 404. */

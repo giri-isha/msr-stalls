@@ -84,7 +84,7 @@ async function backofficeRows(db: Db): Promise<DirectoryUser[]> {
         kind: 'BACKOFFICE' as const,
         displayName: p.displayName,
         email: p.email,
-        phone: null,
+        phone: p.phone,
         grants: grants
           .filter((g) => g.personRef === ref)
           .map((g) => ({
@@ -93,7 +93,16 @@ async function backofficeRows(db: Db): Promise<DirectoryUser[]> {
             zoneScope: g.zoneScope,
           })),
         requestCount: null,
-        signInState: p.signInDisabled ? ('DISABLED' as const) : ('OK' as const),
+        // ⚠️ Three states, and the middle one is the point. `OK` on a person an
+        // admin added this morning and nobody has signed in as would read
+        // "Active" in the Sign-in column — a claim about somebody who has never
+        // been here. `INVITED` says what is actually true, and deliberately
+        // does not count under "Cannot sign in": they can, they have not.
+        signInState: p.signInDisabled
+          ? ('DISABLED' as const)
+          : p.staged
+            ? ('INVITED' as const)
+            : ('OK' as const),
         lockedUntil: null,
       },
     ];
@@ -153,8 +162,9 @@ function lockedUntilOf(creds: StallCredential[], now: Date = new Date()): Date |
 /**
  * Which tile a row falls under.
  *
- * ⚠️ `LINK_ONLY` is absent from "Cannot sign in" on purpose — see
- * `SignInState`. A vendor who never registered has not lost anything.
+ * ⚠️ `LINK_ONLY` and `INVITED` are absent from "Cannot sign in" on purpose —
+ * see `SignInState`. A vendor who never registered has not lost anything, and
+ * neither has a coordinator who was added an hour ago.
  */
 function inView(u: DirectoryUser, view: DirectoryView): boolean {
   switch (view) {
@@ -171,8 +181,8 @@ function inView(u: DirectoryUser, view: DirectoryView): boolean {
   }
 }
 
-/** Name, email or number. A backoffice row has no number, so a numeric search
- *  simply finds no backoffice member rather than being rejected. */
+/** Name, email or number — the same three for both populations, now that a
+ *  backoffice row can carry a number too. */
 function matchesSearch(u: DirectoryUser, q: string | undefined): boolean {
   if (!q) return true;
   const needle = q.toLowerCase();

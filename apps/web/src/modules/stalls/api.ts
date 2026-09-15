@@ -68,6 +68,9 @@ import type {
   SubmitRequestResponse,
   TemplateKeyValue,
   UpdateAccountInput,
+  UpdatePersonInput,
+  PersonMatch,
+  StagedPersonInput,
   VendorStaffView,
   ZonePlanInput,
   ZonePlanView,
@@ -370,17 +373,29 @@ export const patchDeclaration = (id: string, patch: DeclarationPatch) =>
 
 export const listBackoffice = () => apiFetch<BackofficeMember[]>(`${BASE}/backoffice`);
 export const searchPeople = (q: string) =>
-  apiFetch<Array<{ personId: string; email: string; displayName: string }>>(
-    `${BASE}/backoffice/search${qs({ q })}`,
-  );
+  apiFetch<PersonMatch[]>(`${BASE}/backoffice/search${qs({ q })}`);
+
+/** A role handed to somebody already in the directory, or to somebody this call
+ *  adds to it.
+ *
+ *  ⚠️ **One call, not two.** Staging and granting travel together because the
+ *  server does them in one transaction — a person added for a grant that was
+ *  then refused would be a human in the directory with nothing to do there. */
 export const grantRole = (
-  personRef: string,
+  who: { personRef: string } | { newPerson: StagedPersonInput },
   roleKey: string,
   scope: { editionScope?: string[]; zoneScope?: string[] } = {},
-) =>
-  apiFetch<void>(`${BASE}/backoffice`, { method: 'POST', json: { personRef, roleKey, ...scope } });
+) => apiFetch<void>(`${BASE}/backoffice`, { method: 'POST', json: { ...who, roleKey, ...scope } });
 export const revokeRole = (personRef: string, roleKey: string) =>
   apiFetch<void>(`${BASE}/backoffice/${personRef}/${roleKey}`, { method: 'DELETE' });
+
+/** A backoffice member's own details, corrected in the Foundation directory.
+ *
+ *  ⚠️ The sibling of `updateAccount` and deliberately a different route: that
+ *  one edits a `StallAccount` and this one a `Person`. Which to call is decided
+ *  by the row's `kind`, never by trying one and falling back to the other. */
+export const updatePerson = (personRef: string, body: UpdatePersonInput) =>
+  apiFetch<void>(`${BASE}/backoffice/${personRef}`, { method: 'PATCH', json: body });
 
 /** A requester's own details, corrected from the directory. Requesters only —
  *  a backoffice member's name and address belong to the Foundation. */

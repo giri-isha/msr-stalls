@@ -819,16 +819,84 @@ export interface ConsentRecord {
   agreedAt: string;
 }
 
-export const GrantRoleInput = z.object({
-  personRef: z.uuid(),
-  roleKey: z.string().min(1).max(64),
-  /** Which editions this grant reaches. Empty — and absent — is every one,
-   *  including editions created after the grant was made. */
-  editionScope: z.array(z.uuid()).max(50).default([]),
-  /** Which bays this grant reaches, by zone code. Empty is every bay. */
-  zoneScope: z.array(ZoneCodeValue).max(100).default([]),
+/** Somebody an admin is putting into the directory themselves.
+ *
+ *  🔴 **The one thing this module writes into the Foundation's `Person`**, and
+ *  the answer to a search that found nobody. Before it, adding a backoffice
+ *  member meant asking somebody else to create the human first and coming back
+ *  — so a desk that needed a new coordinator on Tuesday waited on a directory
+ *  they could not reach.
+ *
+ *  ⚠️ The address is the CLAIM KEY, not a contact detail. The row is created
+ *  with `staged` set, and their first sign-in finds it by email and takes it
+ *  over — roles and all. A well-formed but wrong address therefore stages a
+ *  role for whoever really owns it, which is why the dialog makes staging the
+ *  answer to a search rather than the first thing it offers. */
+export const StagedPersonInput = z.object({
+  displayName: z.string().trim().min(1).max(200),
+  /** Trimmed before it is judged, as `UpdateAccountInput` explains. */
+  email: z.string().trim().pipe(z.email().max(320)),
+  /** Optional in the same breath as `Person.phone`: the directory holds no
+   *  number for most people, and refusing to stage somebody over one would put
+   *  an admin back where this field was added to get them out of. */
+  phone: z.union([IndianMobile, z.literal('')]).default(''),
 });
+export type StagedPersonInput = z.infer<typeof StagedPersonInput>;
+
+/** A role handed to somebody — either a person already in the directory, or one
+ *  this call is putting there.
+ *
+ *  ⚠️ **One arm or the other, never both and never neither.** Staging and
+ *  granting are one request precisely so they are one transaction: a staged
+ *  person whose grant was then refused would be a human in the directory with
+ *  nothing to do there and nobody to explain them. */
+export const GrantRoleInput = z
+  .object({
+    personRef: z.uuid().optional(),
+    newPerson: StagedPersonInput.optional(),
+    roleKey: z.string().min(1).max(64),
+    /** Which editions this grant reaches. Empty — and absent — is every one,
+     *  including editions created after the grant was made. */
+    editionScope: z.array(z.uuid()).max(50).default([]),
+    /** Which bays this grant reaches, by zone code. Empty is every bay. */
+    zoneScope: z.array(ZoneCodeValue).max(100).default([]),
+  })
+  .refine((b) => Boolean(b.personRef) !== Boolean(b.newPerson), {
+    error: 'name the person by id, or give the details to add them — not both',
+    path: ['personRef'],
+  });
 export type GrantRoleInput = z.infer<typeof GrantRoleInput>;
+
+/** A backoffice member's own details, corrected.
+ *
+ *  ⚠️ **This writes the Foundation's directory**, which every other read in
+ *  this module treats as another team's table. It is here because the module
+ *  can now put somebody INTO that directory: having staged a person from a
+ *  typed address, refusing to let the same desk fix a typo in it would strand
+ *  the row — nobody could ever claim it, and nothing else in the product would
+ *  offer to mend it.
+ *
+ *  ⚠️ For somebody who really signs in through the Foundation, name and address
+ *  are the identity provider's and come back on their next sign-in. The dialog
+ *  says so; this schema cannot. */
+export const UpdatePersonInput = z.object({
+  displayName: z.string().trim().min(1).max(200),
+  email: z.string().trim().pipe(z.email().max(320)),
+  phone: z.union([IndianMobile, z.literal('')]),
+});
+export type UpdatePersonInput = z.infer<typeof UpdatePersonInput>;
+
+/** One row of the directory search behind the Add user dialog. */
+export interface PersonMatch {
+  personId: string;
+  email: string;
+  displayName: string;
+  phone: string | null;
+  /** Added here by an admin and not yet claimed by a sign-in. Marked rather
+   *  than hidden: a staged person is precisely the one being onboarded, and
+   *  granting a role to somebody who may never arrive is worth seeing. */
+  staged: boolean;
+}
 
 /** A requester's own details, corrected by a desk.
  *
@@ -839,8 +907,9 @@ export type GrantRoleInput = z.infer<typeof GrantRoleInput>;
  *  digits, which is what every other intake stores and what the directory
  *  search matches against.
  *
- *  ⚠️ Nothing here touches a backoffice row. A backoffice member's name and address are
- *  the Foundation's — this module reads that directory and never writes it. */
+ *  ⚠️ Nothing here touches a backoffice row, whose details live in the
+ *  Foundation directory and travel as `UpdatePersonInput`. Two schemas because
+ *  they are two tables, not because they ask for different things. */
 export const UpdateAccountInput = z.object({
   displayName: z.string().trim().min(1).max(200),
   /** Trimmed before it is judged: an address pasted out of a mail client
@@ -877,12 +946,17 @@ export type DirectoryKind = 'BACKOFFICE' | 'REQUESTER';
  * their login, and most vendors never register at all. It must never be
  * counted under "Cannot sign in", or that tile reads as an outage every year.
  *
- * ⚠️ TEMPORARY, in the same breath as `credentials.ts`: every state but `OK`
- * and `DISABLED` describes the requester password login that the host's Isha
- * OIDC replaces. When that goes, this narrows to the two that are about a
- * Foundation account, and the two tiles that read the rest go with it.
+ * ⚠️ `INVITED` IS NOT A FAULT EITHER, and it is the backoffice half of the same
+ * point. An admin added this person to the directory and nobody has signed in
+ * as them yet — the ordinary state of somebody onboarded this morning. It must
+ * never be counted under "Cannot sign in": they can, they simply have not.
+ *
+ * ⚠️ TEMPORARY, in the same breath as `credentials.ts`: every state but `OK`,
+ * `INVITED` and `DISABLED` describes the requester password login that the
+ * host's Isha OIDC replaces. When that goes, this narrows to the three that are
+ * about a Foundation account, and the tiles that read the rest go with them.
  */
-export type SignInState = 'OK' | 'LINK_ONLY' | 'UNCONFIRMED' | 'LOCKED' | 'DISABLED';
+export type SignInState = 'OK' | 'INVITED' | 'LINK_ONLY' | 'UNCONFIRMED' | 'LOCKED' | 'DISABLED';
 
 /** One role somebody holds, and how far it reaches.
  *
@@ -904,7 +978,9 @@ export interface DirectoryUser {
   kind: DirectoryKind;
   displayName: string;
   email: string;
-  /** Requesters only. The Foundation directory holds no number for backoffice. */
+  /** Null where nobody has given one. It used to be null for EVERY backoffice
+   *  row, because the directory stub had no column to hold a number — it has
+   *  one now, and the Phone column means the same thing for both populations. */
   phone: string | null;
   /**
    * The roles this person holds, each with what it reaches. Empty for a
@@ -944,7 +1020,14 @@ export type DirectoryView = z.infer<typeof DirectoryView>;
 /** The finer sign-in states, for the Filter popover. The tiles flatten
  *  `LINK_ONLY`, `UNCONFIRMED` and `DISABLED` into one coarse reading; this is
  *  how a caller asks for one of them on its own. */
-export const SignInStateValue = z.enum(['OK', 'LINK_ONLY', 'UNCONFIRMED', 'LOCKED', 'DISABLED']);
+export const SignInStateValue = z.enum([
+  'OK',
+  'INVITED',
+  'LINK_ONLY',
+  'UNCONFIRMED',
+  'LOCKED',
+  'DISABLED',
+]);
 
 export const ListUsersQuery = z.object({
   view: DirectoryView.default('All'),

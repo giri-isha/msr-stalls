@@ -12,6 +12,7 @@ import {
   InvalidTransitionError,
   LastAdminError,
   PersonAboveYouError,
+  PersonEmailTakenError,
   PrivilegeEscalationError,
   RoleAboveYouError,
   RoleCycleError,
@@ -118,6 +119,7 @@ function statusFor(err: unknown): number | null {
     err instanceof DuplicatePaymentError ||
     err instanceof NothingToSendError ||
     err instanceof AccountEmailTakenError ||
+    err instanceof PersonEmailTakenError ||
     err instanceof CannotSetPasswordError ||
     // Configuration that cannot be applied because something already stands on
     // it. A 409 rather than a 500 so the Admin screen can say "this bay has

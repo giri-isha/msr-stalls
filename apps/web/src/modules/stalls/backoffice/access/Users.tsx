@@ -3,6 +3,7 @@ import {
   type DirectoryGrant,
   type DirectoryUser,
   type DirectoryView,
+  type PersonMatch,
   type SignInState,
   type RoleSummary,
   MIN_PASSWORD_LENGTH,
@@ -492,9 +493,11 @@ interface Ask {
  *
  * ⚠️ **Edit means a different thing per population, and that is not a
  * shortcut.** A requester's name, address and number are this module's own
- * (`StallAccount`), so they are edited here. A backoffice member's are the
- * Foundation's, which a module reads and never writes — so their Edit opens
- * the roles this module DID grant, and nothing else.
+ * (`StallAccount`); a backoffice member's belong to the Foundation directory
+ * and travel on a different route. Both dialogs now offer the same three
+ * fields — see `AssignDialog` for why this module writes that directory at all
+ * — but which one opens, and which route it saves through, is decided by the
+ * row's `kind` and never by trying one and falling back to the other.
  */
 function Actions({
   user,
@@ -657,13 +660,22 @@ function cell(key: ColKey, u: DirectoryUser, roles: RoleSummary[]): React.ReactN
   }
 }
 
-const SIGN_IN_STATES: SignInState[] = ['OK', 'LINK_ONLY', 'UNCONFIRMED', 'LOCKED', 'DISABLED'];
+const SIGN_IN_STATES: SignInState[] = [
+  'OK',
+  'INVITED',
+  'LINK_ONLY',
+  'UNCONFIRMED',
+  'LOCKED',
+  'DISABLED',
+];
 
-/** ⚠️ "Link only" reads as a plain fact, not a warning, and wears the neutral
- *  tone — a requester who never set a password has lost nothing. Colouring it
+/** ⚠️ "Link only" and "Not signed in" read as plain facts, not warnings, and
+ *  wear the neutral tone — a requester who never set a password has lost
+ *  nothing, and neither has a coordinator added an hour ago. Colouring either
  *  amber would mark most of the directory as broken. */
 const STATE_LABEL: Record<SignInState, string> = {
   OK: 'Registered',
+  INVITED: 'Not signed in',
   LINK_ONLY: 'Link only',
   UNCONFIRMED: 'Unconfirmed',
   LOCKED: 'Locked',
@@ -672,6 +684,7 @@ const STATE_LABEL: Record<SignInState, string> = {
 
 const STATE_TONE: Record<SignInState, Tone> = {
   OK: 'ok',
+  INVITED: 'neutral',
   LINK_ONLY: 'neutral',
   UNCONFIRMED: 'warn',
   LOCKED: 'des',
@@ -868,6 +881,23 @@ function SetPassword({
 
 // ── Assigning roles ─────────────────────────────────────────────────────────
 
+/** A button that reads as a link.
+ *
+ *  ⚠️ Not a `Btn` variant: the two that use it do not submit the dialog or act
+ *  on a row — they change what the form in front of you is FOR, from searching
+ *  the directory to adding to it. Giving that a button's weight beside Assign
+ *  would make it read as the other half of a choice about the same thing. */
+const linkBtn: React.CSSProperties = {
+  border: 0,
+  background: 'none',
+  padding: 0,
+  color: 'var(--pri)',
+  font: 'inherit',
+  fontWeight: 600,
+  cursor: 'pointer',
+  textDecoration: 'underline',
+};
+
 /** One role a person holds, as the dialog is editing it. */
 interface Draft {
   roleKey: string;
@@ -888,11 +918,18 @@ const sameScope = (a: Draft, b: DirectoryGrant): boolean =>
  * silently handed out the widest grant the module can express, with nothing on
  * screen saying so. A single dialog cannot drift from itself.
  *
- * ⚠️ **Roles only.** A backoffice member's name and address are the Foundation's,
- * and a module reads that directory without ever writing it — see `backoffice.ts`.
- * Fields for them here would offer an edit this application cannot make, which
- * is also why there is no "add them to the directory" link: this module grants
- * the role; it never creates the person.
+ * ⚠️ **Roles AND the person's own details**, which it did not use to be. The
+ * dialog was roles only because a module reads the Foundation directory and
+ * never writes it — a rule this screen now breaks twice, deliberately and
+ * narrowly: it can put somebody into that directory (the person step below),
+ * and having done so it can mend the address it typed. `backoffice.ts` carries
+ * the argument; what matters here is that the two are one dialog, because
+ * "correct their number and make them a bay marshal" is one errand.
+ *
+ * ⚠️ **Details are saved BEFORE the roles.** The refusal that actually happens
+ * is an address another person already holds, and it should land before
+ * anything has been granted — leaving the role picture exactly as the admin
+ * found it, rather than half-changed under a message about an email.
  *
  * ⚠️ **Saves the difference, not the ticks.** Each grant and each revoke is its
  * own audited call, so re-sending every ticked role would write a row per role
@@ -943,12 +980,18 @@ function AssignDialog({
 
   // ── Add mode: who, then which role ────────────────────────────────────────
   const [q, setQ] = useState('');
-  const [found, setFound] = useState<Array<{
-    personId: string;
-    email: string;
-    displayName: string;
-  }> | null>(null);
+  const [found, setFound] = useState<PersonMatch[] | null>(null);
   const [picked, setPicked] = useState<{ personId: string; displayName: string } | null>(null);
+  /**
+   * The admin searched, did not find them, and is adding them from scratch.
+   *
+   * 🔴 **Search first, stage second, and the order is the guard.** A
+   * well-formed but wrong address stages a role for whoever really owns it —
+   * their first sign-in claims the row by email — so "add them" is the answer to
+   * a search that found nothing, never the first thing the dialog offers.
+   */
+  const [staging, setStaging] = useState(false);
+  const [draft, setDraft] = useState({ displayName: '', email: '', phone: '' });
   /**
    * Deliberately NO default role.
    *
@@ -976,6 +1019,21 @@ function AssignDialog({
   const [chosen, setChosen] = useState<Draft | null>(
     user?.grants[0] ? { ...user.grants[0] } : null,
   );
+  /**
+   * Their own details, and what they were when this dialog last agreed with the
+   * server.
+   *
+   * ⚠️ `was` is state rather than `user`, for the reason `held` is: the details
+   * can commit and the roles beneath them fail, and the dialog stays open on
+   * what actually stuck. Comparing against the prop would then offer to save a
+   * change that is already saved.
+   */
+  const [details, setDetails] = useState({
+    displayName: user?.displayName ?? '',
+    email: user?.email ?? '',
+    phone: user?.phone ?? '',
+  });
+  const [was, setWas] = useState(details);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -988,12 +1046,25 @@ function AssignDialog({
     }
   };
 
-  const grantOne = async (personRef: string) => {
+  /** Who the grant is for: the row that was picked, or the person being added.
+   *  `null` while neither is answered, which is what disables Assign. */
+  const who = staging
+    ? draft.displayName.trim() && draft.email.trim()
+      ? { newPerson: draft }
+      : null
+    : picked
+      ? { personRef: picked.personId }
+      : null;
+
+  const grantOne = async (target: { personRef: string } | { newPerson: typeof draft }) => {
     setSaving(true);
     setError(null);
     try {
-      await api.grantRole(personRef, newRole, newScope);
-      toast.ok('Assigned');
+      await api.grantRole(target, newRole, newScope);
+      // Different words for the two arms, because they are different events: one
+      // gave somebody who was already here a job, the other put a human into the
+      // Foundation's directory who was not in it this morning.
+      toast.ok('newPerson' in target ? 'Added and assigned' : 'Assigned');
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -1032,7 +1103,11 @@ function AssignDialog({
     return !before || !sameScope(chosen, before) ? chosen : null;
   })();
   const revoking = held.filter((g) => g.roleKey !== chosen?.roleKey);
-  const dirty = Boolean(granting) || revoking.length > 0;
+  const renaming =
+    details.displayName !== was.displayName ||
+    details.email !== was.email ||
+    details.phone !== was.phone;
+  const dirty = renaming || Boolean(granting) || revoking.length > 0;
 
   const save = async () => {
     if (!user) return;
@@ -1041,11 +1116,19 @@ function AssignDialog({
     let granted: Draft | null = null;
     const gone: string[] = [];
     try {
+      // FIRST, and before anything about roles — see this dialog's own note.
+      // The refusal that actually happens here is an address another person
+      // holds, and it should land on a screen whose roles are still as the
+      // admin found them.
+      if (renaming) {
+        await api.updatePerson(user.id, details);
+        setWas(details);
+      }
       // ⚠️ Grant BEFORE revoke. The calls are not atomic, so the order decides
       // what a refusal leaves behind — this way a failure leaves them holding
       // both roles, which an admin can see and fix, rather than holding none.
       if (granting) {
-        await api.grantRole(user.id, granting.roleKey, {
+        await api.grantRole({ personRef: user.id }, granting.roleKey, {
           editionScope: granting.editionScope,
           zoneScope: granting.zoneScope,
         });
@@ -1111,7 +1194,11 @@ function AssignDialog({
     return (
       <Dialog
         title='Add user'
-        note='Somebody already in the Foundation directory. This module grants the role; it never creates the person.'
+        note={
+          staging
+            ? 'Adding somebody the directory does not have yet, and giving them a role.'
+            : 'Somebody in the Foundation directory. If they are not in it, you can add them.'
+        }
         onClose={onClose}
         width={520}
         footer={
@@ -1119,11 +1206,11 @@ function AssignDialog({
             <Btn onClick={onClose}>Cancel</Btn>
             <Btn
               kind='primary'
-              disabled={!picked || !newRole || saving}
-              onClick={() => picked && grantOne(picked.personId)}
+              disabled={!who || !newRole || saving}
+              onClick={() => who && grantOne(who)}
             >
               <Icon name='user-plus' size={14} />
-              Assign
+              {staging ? 'Add and assign' : 'Assign'}
             </Btn>
           </>
         }
@@ -1131,65 +1218,139 @@ function AssignDialog({
         {error && <ErrorBox>{error}</ErrorBox>}
 
         <div style={{ display: 'grid', gap: 14 }}>
-          <FormField
-            id='person-search'
-            label='Person'
-            help='Searched in the Foundation directory. Somebody who is not there has to be added to it first — this module never writes that table.'
-          >
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              <Search
-                label='Search people'
-                value={q}
-                onChange={setQ}
-                placeholder='Search name or email…'
-              />
-              <Btn onClick={search}>
-                <Icon name='search' size={14} />
-                Search
-              </Btn>
-            </div>
-
-            {found !== null && (
-              <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
-                {found.length === 0 && <Empty>Nobody in the directory matches that.</Empty>}
-                {found.map((p) => (
-                  <label
-                    key={p.personId}
-                    htmlFor={`person-${p.personId}`}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
-                      padding: '8px 10px',
-                      borderRadius: 'var(--r2)',
-                      border: `1px solid ${
-                        picked?.personId === p.personId ? 'var(--pri)' : 'var(--bd)'
-                      }`,
-                      background: picked?.personId === p.personId ? 'var(--pri-t)' : 'var(--card)',
-                      fontSize: 12.5,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <Checkbox
-                      id={`person-${p.personId}`}
-                      type='radio'
-                      name='person'
-                      aria-label={p.displayName}
-                      checked={picked?.personId === p.personId}
-                      onChange={() =>
-                        setPicked({ personId: p.personId, displayName: p.displayName })
-                      }
-                    />
-                    <Avatar name={p.displayName} size={26} />
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ fontWeight: 600 }}>{p.displayName}</span>
-                      <span style={{ display: 'block', color: 'var(--mfg)' }}>{p.email}</span>
-                    </span>
-                  </label>
-                ))}
+          {staging ? (
+            <FormField
+              /* A caption over three fields rather than a label for one of
+                 them, as the search variant below is — each input names itself
+                 with `aria-label`, because `Field` draws its own caption as a
+                 styled div and not a `<label>`. */
+              id='new-person'
+              label='Person'
+              help='They can sign in and pick this account up — the address below is what matches them to it, so it has to be the one they use.'
+            >
+              <div style={{ display: 'grid', gap: 10 }}>
+                <Field label='Name'>
+                  <Input
+                    aria-label='Name'
+                    value={draft.displayName}
+                    onChange={(e) => setDraft({ ...draft, displayName: e.target.value })}
+                  />
+                </Field>
+                <Field label='Email'>
+                  <Input
+                    aria-label='Email'
+                    type='email'
+                    value={draft.email}
+                    onChange={(e) => setDraft({ ...draft, email: e.target.value })}
+                  />
+                </Field>
+                {/* Optional, and said so on the caption rather than left to be
+                    discovered by pressing Assign: most of the directory has no
+                    number, and refusing to add somebody over one would put an
+                    admin back where this dialog exists to get them out of. */}
+                <Field label='Phone (optional)'>
+                  <Input
+                    aria-label='Phone'
+                    value={draft.phone}
+                    onChange={(e) => setDraft({ ...draft, phone: e.target.value })}
+                  />
+                </Field>
               </div>
-            )}
-          </FormField>
+              <div style={{ fontSize: 11.5, color: 'var(--mfg)', marginTop: 8, lineHeight: 1.5 }}>
+                <button type='button' onClick={() => setStaging(false)} style={linkBtn}>
+                  Search the directory instead
+                </button>
+              </div>
+            </FormField>
+          ) : (
+            <FormField
+              id='person-search'
+              label='Person'
+              help='Searched in the Foundation directory. Somebody who is not there can be added from here.'
+            >
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <Search
+                  label='Search people'
+                  value={q}
+                  onChange={setQ}
+                  placeholder='Search name or email…'
+                />
+                <Btn onClick={search}>
+                  <Icon name='search' size={14} />
+                  Search
+                </Btn>
+              </div>
+
+              {found !== null && (
+                <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+                  {found.length === 0 && <Empty>Nobody in the directory matches that.</Empty>}
+                  {found.map((p) => (
+                    <label
+                      key={p.personId}
+                      htmlFor={`person-${p.personId}`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: '8px 10px',
+                        borderRadius: 'var(--r2)',
+                        border: `1px solid ${
+                          picked?.personId === p.personId ? 'var(--pri)' : 'var(--bd)'
+                        }`,
+                        background:
+                          picked?.personId === p.personId ? 'var(--pri-t)' : 'var(--card)',
+                        fontSize: 12.5,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Checkbox
+                        id={`person-${p.personId}`}
+                        type='radio'
+                        name='person'
+                        aria-label={p.displayName}
+                        checked={picked?.personId === p.personId}
+                        onChange={() =>
+                          setPicked({ personId: p.personId, displayName: p.displayName })
+                        }
+                      />
+                      <Avatar name={p.displayName} size={26} />
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ fontWeight: 600 }}>{p.displayName}</span>
+                        <span style={{ display: 'block', color: 'var(--mfg)' }}>{p.email}</span>
+                      </span>
+                      {/* Marked, not hidden. Somebody added last week and still
+                          waiting on their first sign-in is exactly the row to
+                          reuse — and a search that looked like a miss is what
+                          produces a second person on the same address. */}
+                      {p.staged && (
+                        <Tag tone='neutral' size='sm'>
+                          Not signed in yet
+                        </Tag>
+                      )}
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {/* Offered only AFTER a search has run, and that is the guard, not
+                  a layout choice — see `staging`. */}
+              {found !== null && (
+                <div style={{ fontSize: 11.5, color: 'var(--mfg)', marginTop: 8, lineHeight: 1.5 }}>
+                  Not in the directory?{' '}
+                  <button
+                    type='button'
+                    onClick={() => {
+                      setPicked(null);
+                      setStaging(true);
+                    }}
+                    style={linkBtn}
+                  >
+                    Add them
+                  </button>
+                </div>
+              )}
+            </FormField>
+          )}
 
           <FormField id='new-role' label='Role'>
             <Select
@@ -1243,8 +1404,8 @@ function AssignDialog({
   // ── Editing somebody already in the list ──────────────────────────────────
   return (
     <Dialog
-      title={`Roles for ${user.displayName}`}
-      note='What this module has granted them. Their name and address belong to the Foundation directory.'
+      title={`Edit ${user.displayName}`}
+      note='Their details in the Foundation directory, and the role this module has granted them.'
       onClose={onClose}
       width={560}
       footer={
@@ -1259,10 +1420,45 @@ function AssignDialog({
     >
       {error && <ErrorBox>{error}</ErrorBox>}
 
+      {/* ⚠️ `aria-label` on each input, as the fields on the requester dialog
+          do: `Field` draws its caption as a styled div rather than a `<label>`,
+          so the caption names the field for a reader and nothing else. */}
+      <Field label='Name'>
+        <Input
+          aria-label='Name'
+          value={details.displayName}
+          onChange={(e) => setDetails({ ...details, displayName: e.target.value })}
+        />
+      </Field>
+      <Field label='Email'>
+        <Input
+          aria-label='Email'
+          value={details.email}
+          onChange={(e) => setDetails({ ...details, email: e.target.value })}
+        />
+        {/* ⚠️ The note is the point of the field, not decoration. For somebody
+            who has not signed in yet this address is what their first sign-in
+            matches them by — correcting a typo is what makes them reachable,
+            and a wrong correction hands their role to whoever really owns it.
+            For everybody else it is a local copy of what the Foundation holds. */}
+        <div style={{ fontSize: 11.5, color: 'var(--mfg)', marginTop: 5, lineHeight: 1.5 }}>
+          {user.signInState === 'INVITED'
+            ? 'They have not signed in yet. This is the address that will match them to this account, so it has to be the one they use.'
+            : 'The Foundation directory holds this address too — their next sign-in refreshes it from there.'}
+        </div>
+      </Field>
+      <Field label='Phone'>
+        <Input
+          aria-label='Phone'
+          value={details.phone}
+          onChange={(e) => setDetails({ ...details, phone: e.target.value })}
+        />
+      </Field>
+
       {/* ⚠️ Said in words, not left to be inferred from the shape of the
           controls: these are radios because a person holds exactly one role,
           and picking another takes the old one away. */}
-      <div style={{ fontSize: 12, color: 'var(--mfg)', marginBottom: 8 }}>
+      <div style={{ fontSize: 12, color: 'var(--mfg)', marginTop: 4, marginBottom: 8 }}>
         One role at a time — choosing another replaces the one they hold.
       </div>
 

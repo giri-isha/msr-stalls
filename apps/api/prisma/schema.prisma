@@ -31,6 +31,22 @@ model Person {
   personId       String  @id @default(uuid()) @map("person_id") @db.Uuid
   email          String  @unique
   displayName    String  @map("display_name")
+  /// The host's real `Person` carries one and this stub did not, so a backoffice
+  /// member's number had nowhere to live: the directory showed a blank Phone cell
+  /// for half its rows and the Edit dialog could not offer the field. Nullable
+  /// for the host's reason — Isha's `phone_number` claim is optional, and a
+  /// person staged by an admin may simply not have been given one.
+  phone          String? @map("phone")
+  /// An admin added this human here and nobody has signed in as them yet.
+  ///
+  /// ⚠️ **In the host this is not a column.** The real `Person` carries a
+  /// nullable `sso_id`, and "staged" means it is null — the row waits for its
+  /// owner's first Isha sign-in to claim it by email. This repo has no SSO at
+  /// all (`auth.ts` signs a person in by looking their address up), so there is
+  /// no `sso_id` to be null and the flag stands in for it. At migration the one
+  /// derivation moves: `staged: true` becomes `ssoId === null`, in `backoffice.ts`
+  /// and `directory.ts` and nowhere else.
+  staged         Boolean @default(false) @map("staged")
   signInDisabled Boolean @default(false) @map("sign_in_disabled")
 
   @@map("person")

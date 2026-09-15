@@ -132,7 +132,20 @@ a one-line registration — none is a port.
 ## Known differences to reconcile
 
 - **Backoffice auth.** Here, `auth.ts` is a dev stub. In the host, `getCurrentPerson` is Isha SSO. The module never noticed; nothing to change in the module.
-- **Person lookup in `backoffice.ts`.** `listBackoffice` and `searchPeople` read `db.person` with `personId`, `email`, `displayName`, `signInDisabled`. Confirm the host's `Person` exposes those four; rename in one file if not.
+- **Person lookup in `backoffice.ts`.** `listBackoffice` and `searchPeople` read `db.person` with `personId`, `email`, `displayName`, `phone`, `staged`, `signInDisabled`. The host's `Person` has all but `staged` under those names.
+
+- 🔴 **The module WRITES `foundation.person`, in exactly two places.** Everything else it does with that table is a read, and the two writes are both in `backoffice.ts`:
+
+  - `stagePerson` — a human an admin adds from the Users screen, created inside the grant's transaction so a refused grant stages nobody. It mints the row with `staged: true`, meaning "claimable, nobody has signed in as them yet".
+  - `updatePersonDetails` — the correction that follows from being able to create the row. Gated on `users.write` plus the same hierarchy check a grant takes.
+
+  **What changes in the host.** The host's `Person` has no `staged` column and does not need one: a claimable row there is one whose `sso_id` is null, which is what its own onboarding seam already mints. So:
+
+  - point `stagePerson` at the host's directory seam (`stagePerson` in its `onboarding.ts` — same name, same job, including the duplicate-address refusal) instead of writing `db.person.create` here, and drop `staged: true` with it;
+  - read `staged` as `ssoId === null` in the two places that consume it — the `signInState` in `directory.ts`, and the row `searchPeople` returns;
+  - delete the `staged` clearing in `devLogin` (`auth.ts`): the host's Isha callback writes `sso_id` onto the row it matched by email, which IS the claim, and `auth.ts` does not survive the move anyway.
+
+  ⚠️ **Confirm the host wants this module writing its directory before you keep it.** The alternative is to drop the Add-user staging arm and the backoffice half of the Edit dialog, and send admins to the Admin Console's own People screen — everything else on the Users screen stands either way. What the concession buys is that a desk can put a new coordinator into the directory and give them a role in one errand, rather than waiting on somebody with console access.
 - **`recordActivity`.** The stub writes to `activity_trail`. The host's `recordActivity` takes the same `ActivityEvent` shape; if its field names differ, the adaptation is inside the host's function, not in the module.
 - **Media namespace.** Every key the module mints begins `stalls/`. Construct the host's `MediaStore` for this module with that namespace, or `keyWithinNamespace` refuses every upload — loudly, which is the intended failure.
 - **Print stylesheets.** `Electrical.tsx` and the chairs-and-tables challan inject `@media print` rules that hide `nav`, `header` and `aside`. If the host's shell uses different landmark elements for its chrome, add its selector to the `.msrs-noprint` list in those two files — a stray sidebar on an A4 sheet is the only thing that breaks.

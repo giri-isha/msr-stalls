@@ -94,7 +94,18 @@ async function listBackoffice(): Promise<void> {
     const scope = unionRequestTypeScope(held);
 
     console.log(`  ${p.email}`);
-    console.log(`    ${p.displayName}${p.signInDisabled ? '  [SIGN-IN DISABLED]' : ''}`);
+    // ⚠️ A staged row is one an admin added from the Users screen and nobody
+    // has signed in as yet. Marked because it is still a working login here —
+    // signing in by this address claims the row — and a reader of this list
+    // needs to know which of these humans are real.
+    const marks = [
+      p.staged ? '[NOT SIGNED IN YET]' : '',
+      p.signInDisabled ? '[SIGN-IN DISABLED]' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    console.log(`    ${p.displayName}${marks ? `  ${marks}` : ''}`);
+    if (p.phone) console.log(`    phone   ${p.phone}`);
     console.log(
       `    roles   ${roleKeys.length ? `${names.join(', ')} (${roleKeys.join(', ')})` : 'none — can sign in, can do nothing'}`,
     );
