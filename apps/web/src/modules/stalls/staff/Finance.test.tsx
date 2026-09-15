@@ -376,17 +376,17 @@ describe('refunds', () => {
 });
 
 describe('access', () => {
-  test('somebody without finance:read is told, not shown an empty table', async () => {
-    installFetch([['GET', /\/me$/, () => ({ ...ME_ADMIN, actions: ['requests:read'] })]]);
+  test('somebody without finance.read is told, not shown an empty table', async () => {
+    installFetch([['GET', /\/me$/, () => ({ ...ME_ADMIN, privileges: ['requests.read'] })]]);
     render();
     expect(
       await screen.findByText(/do not have access to the finance screens/),
     ).toBeInTheDocument();
   });
 
-  test('finance:read without finance:write can look but not record', async () => {
+  test('finance.read without finance.write can look but not record', async () => {
     installFetch([
-      ['GET', /\/me$/, () => ({ ...ME_ADMIN, actions: ['requests:read', 'finance:read'] })],
+      ['GET', /\/me$/, () => ({ ...ME_ADMIN, privileges: ['requests.read', 'finance.read'] })],
       ['GET', /\/finance\/payments$/, () => payments],
       ['GET', /\/finance\/refunds$/, () => refunds],
       ['GET', /\/config$/, () => CONFIG],

@@ -1,19 +1,19 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ROLES } from '@msr/stalls';
+import { PRIVILEGE_CATEGORIES } from '@msr/stalls';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ME_ADMIN, installFetch, renderAt } from '../test-utils';
 import { Documentation } from './Documentation';
 
 beforeEach(() => vi.unstubAllGlobals());
 
-/** The volunteer from `ROLES` — the reader this screen is most for, and the one
- *  whose nav is missing most of what the manual describes. */
+/** A volunteer — the reader this screen is most for, and the one whose nav is
+ *  missing most of what the manual describes. */
 const ME_VOLUNTEER = {
   personId: 'p-vol',
   displayName: 'Arun Kumar',
   roleKeys: ['stalls_volunteer'],
-  actions: ['requests:read', 'checkin:write'],
+  privileges: ['requests.read', 'checkin.write'],
 };
 
 const render = (path = '/m/stalls/docs', me: unknown = ME_ADMIN) => {
@@ -44,12 +44,17 @@ describe('the documentation screen', () => {
     expect(await screen.findByText('Status — the selection decision')).toBeInTheDocument();
   });
 
-  test('the roles table is the real one, not a retyped copy of it', async () => {
+  // Roles are data and cannot be documented from the bundle. The privilege
+  // vocabulary is the half that is still code, so it is the half that can be
+  // shown without going stale.
+  test('the privilege table is the real one, not a retyped copy of it', async () => {
     render('/m/stalls/docs?tab=reference');
 
-    for (const role of ROLES) {
-      expect(await screen.findByText(role.name)).toBeInTheDocument();
-      expect(screen.getByText(role.roleKey)).toBeInTheDocument();
+    for (const category of PRIVILEGE_CATEGORIES) {
+      expect(await screen.findByText(category.name)).toBeInTheDocument();
+      for (const item of category.items) {
+        expect(screen.getByText(item.code)).toBeInTheDocument();
+      }
     }
   });
 

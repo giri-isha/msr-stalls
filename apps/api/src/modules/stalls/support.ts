@@ -1,21 +1,26 @@
 import type { PrismaClient } from '@prisma/client';
-import { parseContact } from '@msr/stalls';
+import { type UpdateAccountInput, parseContact } from '@msr/stalls';
 import { recordActivity } from '../../activity';
+import { normalizeEmail } from './accounts';
 import { clearLockout } from './credentials';
 import type { Db } from './editions';
-import { NothingToSendError, UnknownAccountError } from './errors';
+import { AccountEmailTakenError, NothingToSendError, UnknownAccountError } from './errors';
 import { type AccessLinkDeps, deliverAccessLink } from './portal';
 import { type SendDeps, sendConfirmation } from './registration';
 import { MODULE_KEY } from './roles';
 
 /**
- * The three things a desk can do for a requester who cannot get in.
+ * What a desk can do to a requester's account on their behalf.
  *
- * Each one already existed for the requester to do themselves; what is new is
- * a staff member doing it on their behalf, from the Users screen, for the
- * vendor on the phone who cannot follow the instructions being read to them.
+ * Three of these unstick a vendor who cannot get in; each already existed for
+ * the requester to do themselves, and what is new is a staff member doing it
+ * from the Users screen for the vendor on the phone who cannot follow the
+ * instructions being read to them. The fourth corrects the details the account
+ * carries — the same call, from the same screen, for the vendor whose address
+ * was typed wrong on the form and who therefore receives none of the other
+ * three.
  *
- * ⚠️ Two rules hold across all three.
+ * ⚠️ Two rules hold across all of them.
  *
  * **Nothing is ever shown to the caller.** A link is minted and sent to the
  * address or number the ACCOUNT already holds — never to anything typed into
@@ -39,6 +44,61 @@ async function accountOr404(db: Db, accountId: string) {
   });
   if (!account) throw new UnknownAccountError(accountId);
   return account;
+}
+
+/**
+ * A requester's name, address and number, corrected.
+ *
+ * ⚠️ **The address is the module's identity key.** `accounts.ts` merges a new
+ * submission onto the account holding that email, and every access link is
+ * sent to it, so moving it moves both. A second account already holding the
+ * new address is refused rather than merged: merging two vendors' request
+ * histories on a desk's typo is not undoable, and the desk can see both rows.
+ *
+ * ⚠️ **It deliberately does NOT move the password login.** `StallCredential`
+ * holds its own unique `loginValue` (see the schema for why it cannot be a
+ * column here), and a vendor who registered under the old address goes on
+ * signing in with it. Rewriting it would silently change what somebody types
+ * to get in, without telling them — and the Sign-in column would go on reading
+ * "Registered" either way. A desk that has moved an address and stranded
+ * somebody sends them their access link, which needs no password at all.
+ *
+ * A save that changes nothing writes nothing: the trail answers "who changed
+ * this vendor's address", and a row saying somebody changed nothing is noise
+ * in the only place that question gets asked.
+ */
+export async function updateAccount(
+  db: PrismaClient,
+  accountId: string,
+  input: UpdateAccountInput,
+  by: string,
+): Promise<void> {
+  const account = await accountOr404(db, accountId);
+  const next = {
+    displayName: input.displayName,
+    email: normalizeEmail(input.email),
+    phone: input.phone,
+  };
+
+  if (next.email !== account.email) {
+    const held = await db.stallAccount.findUnique({ where: { email: next.email } });
+    if (held) throw new AccountEmailTakenError(held.displayName);
+  }
+
+  const changed: Record<string, { from: string; to: string }> = {};
+  for (const field of ['displayName', 'email', 'phone'] as const) {
+    if (next[field] !== account[field]) changed[field] = { from: account[field], to: next[field] };
+  }
+  if (Object.keys(changed).length === 0) return;
+
+  await db.stallAccount.update({ where: { id: account.id }, data: next });
+  await recordActivity(db, {
+    actorRef: by,
+    moduleKey: MODULE_KEY,
+    action: 'stall_account.updated',
+    subjectRef: account.id,
+    detail: changed,
+  });
 }
 
 /** Clears the lockout too many wrong passwords caused, on every credential the

@@ -21,7 +21,7 @@ import { ensureCoupon } from './onboarding';
 import { planToView, quoteContext, quoteFor, toQuoteView } from './quotes';
 import { signatureLinkFor } from './signature';
 import { MODULE_KEY } from './roles';
-import { type RequestScope, scopeWhere } from './scope';
+import { type RequestScope, UNSCOPED, scopeWhere } from './scope';
 
 /** Vendor communication: the editable letters, who has had one, and the log of
  *  chasing calls.
@@ -142,7 +142,7 @@ function suggestedTemplate(requestType: string): TemplateKeyValue {
 export async function listRecipients(
   db: Db,
   editionId: string,
-  scope: RequestScope = null,
+  scope: RequestScope = UNSCOPED,
 ): Promise<CommRecipient[]> {
   const rows = await db.stallRequest.findMany({
     where: { editionId, status: 'SELECTED', ...scopeWhere(scope) },
@@ -514,7 +514,7 @@ export async function listReminders(
   db: Db,
   editionId: string,
   kind: ReminderKind,
-  scope: RequestScope = null,
+  scope: RequestScope = UNSCOPED,
 ): Promise<ReminderRow[]> {
   const rows = await db.stallRequest.findMany({
     where: {

@@ -1,4 +1,4 @@
-import type { MeResponse, StallAction } from '@msr/stalls';
+import type { MeResponse, StallPrivilege } from '@msr/stalls';
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { ApiError } from './api-client';
 import { getMe } from './api';
@@ -7,7 +7,7 @@ interface MeState {
   me: MeResponse | null;
   status: 'loading' | 'ready';
   reload(): void;
-  can(action: StallAction): boolean;
+  can(action: StallPrivilege): boolean;
 }
 
 const MeContext = createContext<MeState | null>(null);
@@ -40,7 +40,10 @@ export function MeProvider({ children }: { children: ReactNode }) {
   }, [tick]);
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
-  const can = useCallback((action: StallAction) => me?.actions.includes(action) ?? false, [me]);
+  const can = useCallback(
+    (action: StallPrivilege) => me?.privileges.includes(action) ?? false,
+    [me],
+  );
 
   return <MeContext.Provider value={{ me, status, reload, can }}>{children}</MeContext.Provider>;
 }

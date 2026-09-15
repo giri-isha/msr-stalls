@@ -1,6 +1,7 @@
 import type { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { NotAuthorizedError, ValidationFailedError } from '../../errors';
 import {
+  AccountEmailTakenError,
   BankDetailsLockedError,
   CategoryInUseError,
   CouponFullError,
@@ -9,12 +10,22 @@ import {
   InvalidCredentialsError,
   InvalidTransitionError,
   LastAdminError,
+  PersonAboveYouError,
+  PrivilegeEscalationError,
+  RoleAboveYouError,
+  RoleCycleError,
+  RoleInUseError,
+  RoleKeyTakenError,
+  UnknownRoleError,
+  SystemRoleError,
   NoActiveEditionError,
   NothingToSendError,
   StallAlreadyAllocatedError,
   StallBlockedError,
   RefundAlreadySubmittedError,
   RequestTypeForbiddenError,
+  ZoneForbiddenError,
+  EditionForbiddenError,
   StepNotOpenError,
   TooManyStallsError,
   TooManyStallsRequestedError,
@@ -45,13 +56,27 @@ function statusFor(err: unknown): number | null {
   // A role that reaches some requester types but not this one. 403, the same
   // as holding no grant at all — the caller may not, and which half of the
   // rule stopped them is not their business.
-  if (err instanceof NotAuthorizedError || err instanceof RequestTypeForbiddenError) return 403;
+  // A role or an account that sits above the caller in the role hierarchy.
+  // 403 like any other refusal: the caller may not, and the tree that stopped
+  // them is explained in the message rather than in the status.
+  if (
+    err instanceof NotAuthorizedError ||
+    err instanceof RequestTypeForbiddenError ||
+    err instanceof ZoneForbiddenError ||
+    err instanceof EditionForbiddenError ||
+    err instanceof RoleAboveYouError ||
+    err instanceof PersonAboveYouError ||
+    err instanceof PrivilegeEscalationError
+  ) {
+    return 403;
+  }
   if (
     err instanceof UnknownAccessLinkError ||
     err instanceof UnknownRequestError ||
     err instanceof UnknownStallError ||
     err instanceof UnknownZoneError ||
     err instanceof UnknownPersonError ||
+    err instanceof UnknownRoleError ||
     err instanceof UnknownAccountError ||
     err instanceof UnknownCouponError ||
     err instanceof UnknownTemplateError
@@ -63,6 +88,10 @@ function statusFor(err: unknown): number | null {
     err instanceof StallBlockedError ||
     err instanceof InvalidTransitionError ||
     err instanceof LastAdminError ||
+    err instanceof RoleKeyTakenError ||
+    err instanceof RoleInUseError ||
+    err instanceof SystemRoleError ||
+    err instanceof RoleCycleError ||
     err instanceof CustomFieldInUseError ||
     err instanceof WrongTemplateError ||
     err instanceof CouponFullError ||
@@ -71,6 +100,7 @@ function statusFor(err: unknown): number | null {
     err instanceof RefundAlreadySubmittedError ||
     err instanceof DuplicatePaymentError ||
     err instanceof NothingToSendError ||
+    err instanceof AccountEmailTakenError ||
     // Configuration that cannot be applied because something already stands on
     // it. A 409 rather than a 500 so the Admin screen can say "this bay has
     // stalls planned against it" instead of showing an error page.

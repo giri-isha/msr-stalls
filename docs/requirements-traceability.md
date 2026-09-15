@@ -150,7 +150,7 @@ package both sides share.
 | Furniture deposit | Admin → Charges (`chairTableDepositPaise`), flat and charged once when any furniture is taken, as the 2025 sheet carries it | Built |
 | Chair and table amount | Admin → Charges — three rates, because 2025 quoted three: ashram, local welfare, and the vendor pair the bank-details form carries | Built |
 | Fine categorisation | Admin → Fine types | Built |
-| Access management | Admin → Users, `StallStaffRole` | Built |
+| Access management | Admin → Users, `StallStaffRole`. A role hierarchy limits who may hand out which role, and a grant can be narrowed to particular seasons and bays | Built |
 | Bays added and removed for a redrawn venue | Admin → Bays (`POST`/`DELETE /config/zones`). A bay holding stalls refuses with a 409 rather than cascading | Built |
 | The planning grid's columns | Admin → Planning columns (`PUT /config/plan-categories`), including the sponsor and Adiyogi columns the 2025 sheet carries | Built |
 | The season's own settings | Admin → Editions (`PATCH /editions/:id/settings`): name, the two virtual-account prefixes, the stalls-per-request cap — which the public write enforces | Built |
@@ -162,7 +162,7 @@ package both sides share.
 | Requirement | Where | Status |
 |---|---|---|
 | External vendors / local welfare / ashram stall vendors | Requester types on the account side (`StallRequestType`), never staff roles | Built |
-| Admin, Lead, Volunteer | `ROLES` in `@msr/stalls/rbac.ts` | Built |
+| Admin, Lead, Volunteer | `stall_role` / `stall_privilege`, seeded from `SEED_ROLES` in `@msr/stalls/rbac.ts`. Roles are DATA — an admin retunes them in Admin → Roles without a deploy | Built |
 | — | A fourth role, **Finance**, exists because the finance requirement needs one that is not the Lead | Differs — an addition, not a substitution |
 | The local welfare team works inside the application and files on behalf of their traders | A fifth role, **Local Welfare**, scoped to `LOCAL_WELFARE` requests. `scope.ts` narrows every list and guards every request-addressed route, so the role's write access cannot reach a commercial vendor's record | Built |
 

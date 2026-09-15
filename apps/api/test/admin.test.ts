@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { StallEdition } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { type RateCardEntry, SubmitRequestInput } from '@msr/stalls';
 import { buildApp } from '../src/app';
+import { seedRbac } from '../src/modules/stalls/seed-rbac';
 import { planCategoriesFor, rateCardFor } from '../src/modules/stalls/config';
 import { submitRequest } from '../src/modules/stalls/submit';
 import {
@@ -285,10 +286,156 @@ describe('staff roles', () => {
     expect(res.statusCode).toBe(404);
   });
 
-  test('/me reports the union of actions the roles grant', async () => {
+  test('/me reports the union of privileges the roles grant', async () => {
     const me = await app.inject({ method: 'GET', url: '/api/m/stalls/me', headers: lead.headers });
-    expect(me.json().actions).toContain('selection:write');
-    expect(me.json().actions).not.toContain('config:write');
+    expect(me.json().privileges).toContain('selection.write');
+    expect(me.json().privileges).not.toContain('config.write');
+  });
+});
+
+/**
+ * Who may hand out which role.
+ *
+ * ⚠️ **The shipped roles cannot exercise this on their own.** `users.write`
+ * belongs to Admin alone, and Admin sits at the root and carries
+ * `can_assign_same_level`, so the only role that can reach these routes can
+ * already assign everything — the hierarchy is enforced but never observed.
+ * It starts to bite the moment somebody authors a role that grants
+ * `users.write` lower down the tree, which is what roles-as-data is for.
+ *
+ * So these tests do exactly that: they give the Lead role `users.write` on the
+ * table, the way an admin would on the role editor, and then check the rule
+ * from a rung that is not the top.
+ */
+describe('the role hierarchy', () => {
+  /** Grant a privilege to a role, as the role editor will. */
+  async function givePrivilege(roleKey: string, code: string) {
+    const [role, privilege] = await Promise.all([
+      prisma.stallRole.findUniqueOrThrow({ where: { roleKey } }),
+      prisma.stallPrivilege.findUniqueOrThrow({ where: { code } }),
+    ]);
+    await prisma.stallRolePrivilege.upsert({
+      where: { roleId_privilegeId: { roleId: role.id, privilegeId: privilege.id } },
+      update: {},
+      create: { roleId: role.id, privilegeId: privilege.id },
+    });
+  }
+
+  const grant = (by: Staff, personRef: string, roleKey: string) =>
+    app.inject({
+      method: 'POST',
+      url: '/api/m/stalls/staff',
+      headers: by.headers,
+      payload: { personRef, roleKey },
+    });
+
+  /** Put the shipped roles back exactly as they ship.
+   *
+   *  ⚠️ NOT optional. `resetDatabase` deliberately leaves the RBAC tables alone
+   *  — they are reference data the migration installed, and truncating them
+   *  would break the foreign key every `seedStaff` call depends on — so the
+   *  privilege added above survives into every test file that runs afterwards.
+   *  Left in place it silently hands `users.write` to the Lead role for the
+   *  rest of the suite, and the tests asserting a lead CANNOT do something
+   *  start passing for the wrong reason.
+   *
+   *  `seedRbac` rewrites each role's bundle as a SET, so it restores removals
+   *  as well as additions. */
+  beforeEach(() => givePrivilege('stalls_lead', 'users.write'));
+  afterEach(() => seedRbac(prisma));
+
+  test('a lead may staff their own team', async () => {
+    const newcomer = await seedStaff([], 'newcomer@example.org');
+    const res = await grant(lead, newcomer.personId, 'stalls_volunteer');
+    expect(res.statusCode).toBe(204);
+  });
+
+  test('a lead may not mint an admin', async () => {
+    const newcomer = await seedStaff([], 'newcomer@example.org');
+    const res = await grant(lead, newcomer.personId, 'stalls_admin');
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toContain('above you in the role hierarchy');
+  });
+
+  // Handing out your own role is a promotion, and only Admin carries the flag
+  // that permits it.
+  test('a lead may not hand out their own role either', async () => {
+    const newcomer = await seedStaff([], 'newcomer@example.org');
+    const res = await grant(lead, newcomer.personId, 'stalls_lead');
+    expect(res.statusCode).toBe(403);
+  });
+
+  // The wider refusal: not "you cannot give them that role" but "you cannot
+  // touch this account". Otherwise a lead could strip a role from an admin by
+  // picking the one attribute of their account that sits below them.
+  test('a lead may not touch an account that holds a role above them', async () => {
+    const res = await grant(lead, admin.personId, 'stalls_volunteer');
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toContain(admin.email.split('@')[0]);
+  });
+
+  test('nor revoke a lesser role from one', async () => {
+    await grant(admin, admin.personId, 'stalls_volunteer');
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/m/stalls/staff/${admin.personId}/stalls_volunteer`,
+      headers: lead.headers,
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  test('taking a role away is gated exactly as handing it out is', async () => {
+    const newcomer = await seedStaff(['stalls_volunteer'], 'newcomer@example.org');
+    await grant(admin, newcomer.personId, 'stalls_admin');
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/m/stalls/staff/${newcomer.personId}/stalls_volunteer`,
+      headers: lead.headers,
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  test('a role that no longer exists is a 404, not a 500', async () => {
+    const newcomer = await seedStaff([], 'newcomer@example.org');
+    const res = await grant(admin, newcomer.personId, 'stalls_nonexistent');
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+describe('the roles endpoint', () => {
+  const roles = async (who: Staff) => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/m/stalls/roles',
+      headers: who.headers,
+    });
+    return res.json().roles as Array<{ roleKey: string; assignable: boolean; depth: number }>;
+  };
+
+  test('lists every role, so a held one can always be named', async () => {
+    const keys = (await roles(lead)).map((r) => r.roleKey);
+    expect(keys).toContain('stalls_admin');
+    expect(keys).toContain('stalls_local_welfare');
+  });
+
+  // The picker renders only the assignable rows, so this flag is what stops it
+  // offering a choice the grant route is about to refuse.
+  test('marks assignable per caller, not per role', async () => {
+    const forAdmin = await roles(admin);
+    expect(forAdmin.every((r) => r.assignable)).toBe(true);
+
+    const forLead = await roles(lead);
+    const byKey = new Map(forLead.map((r) => [r.roleKey, r.assignable]));
+    expect(byKey.get('stalls_admin')).toBe(false);
+    expect(byKey.get('stalls_lead')).toBe(false);
+    expect(byKey.get('stalls_volunteer')).toBe(true);
+  });
+
+  test('carries the depth the picker indents by, derived from the tree', async () => {
+    const byKey = new Map((await roles(admin)).map((r) => [r.roleKey, r.depth]));
+    expect(byKey.get('stalls_admin')).toBe(0);
+    expect(byKey.get('stalls_lead')).toBe(1);
+    expect(byKey.get('stalls_volunteer')).toBe(2);
   });
 });
 

@@ -513,10 +513,118 @@ model StallAccessLink {
   @@schema("stalls")
 }
 
-/// Module-owned RBAC (host ADR 0016). `personRef` is the host's person_id after
-/// migration; the stub Person's id before it. Deliberately NOT a foreign key —
-/// the host's Person lives in another schema owned by another module, and a
-/// module never reaches into another's tables.
+// ── Module-owned RBAC ───────────────────────────────────────────────────────
+//
+// Host ADR 0016: which role a person holds is this module's own fact, granted
+// on this module's own screen against its own tables. Host ADR 0018: what a
+// role MEANS is data, so an admin retunes it without a deploy.
+//
+// The split that matters: the privilege vocabulary is developer-defined and
+// seeded from `@msr/stalls`, because a privilege means nothing unless a route
+// enforces it. Only the BUNDLING of privileges into roles is authored.
+
+/// One thing a person can be allowed to do, named after what they DO rather
+/// than after a screen — screens get renamed and merged, "may confirm a
+/// payment" does not.
+///
+/// Seeded from `PRIVILEGE_CATEGORIES` in `@msr/stalls` and never written by the
+/// application. `isActive` retires one without deleting it, so a role that
+/// still bundles it keeps resolving.
+model StallPrivilege {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  label       String
+  /// The group the role editor lists this under, and the unit a role is
+  /// usually granted whole.
+  category    String
+  /// view / action / config / sensitive / export. Presentation on the role
+  /// editor — nothing branches on it at runtime.
+  kind        String
+  description String
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  roles StallRolePrivilege[]
+
+  @@map("stall_privilege")
+  @@schema("stalls")
+}
+
+/// A named bundle of privileges, and a place in the hierarchy.
+///
+/// `roleKey` rather than the uuid is what `StallStaffRole` stores and what the
+/// host would carry on a participation, so it is stable and append-only: a role
+/// may be re-labelled or retired, never re-keyed.
+model StallRole {
+  id          String  @id @default(uuid()) @db.Uuid
+  roleKey     String  @unique @map("role_key")
+  name        String
+  description String
+  /// The role this one sits under. Null is the root of a branch.
+  ///
+  /// Held as the KEY, not a uuid FK to this table: the seed writes the tree by
+  /// name in one pass without a second update to wire parents up, and a key is
+  /// what every other reference in this module already uses. `onDelete:
+  /// SetNull` re-parents orphans to the root rather than cascading a subtree
+  /// out of existence when one role is removed.
+  parentKey   String? @map("parent_key")
+  /// Shipped with the module. Blocks deletion and re-keying — never the editing
+  /// of privileges, which is the whole point of roles being data.
+  isSystem    Boolean @default(false) @map("is_system")
+  /// Carries every ACTIVE privilege, including ones added in a later release.
+  /// A real grant, not an editor convenience: a role holding this has NO
+  /// `stall_role_privilege` rows, so any query that only joins those rows
+  /// misses it entirely.
+  allPrivileges Boolean @default(false) @map("all_privileges")
+  /// May hand out this role as well as the ones under it. Never a sibling.
+  canAssignSameLevel Boolean @default(false) @map("can_assign_same_level")
+  /// Which requester types this role may reach. Empty is every type — see
+  /// `unionRequestTypeScope`, which unions across the roles a person holds so a
+  /// narrow role can never take access away from a broad one.
+  ///
+  /// ⚠️ Empty means UNSCOPED here, while an empty resolved scope means "reaches
+  /// nothing". The difference is real: a role with no restriction and a person
+  /// with no role are opposite answers. The resolver maps `[]` on the row to
+  /// `null` in the rule.
+  requestTypeScope String[] @map("request_type_scope")
+  sortOrder   Int      @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  privileges StallRolePrivilege[]
+  grants     StallStaffRole[]
+  parent     StallRole?  @relation("StallRoleTree", fields: [parentKey], references: [roleKey], onDelete: SetNull, onUpdate: Cascade)
+  children   StallRole[] @relation("StallRoleTree")
+
+  @@index([parentKey])
+  @@map("stall_role")
+  @@schema("stalls")
+}
+
+/// Which privileges a role bundles. Cascades on both sides: a deleted role
+/// takes its bundle with it, and a privilege that no longer exists cannot leave
+/// a row granting nothing.
+model StallRolePrivilege {
+  roleId      String @map("role_id") @db.Uuid
+  privilegeId String @map("privilege_id") @db.Uuid
+
+  role      StallRole      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  privilege StallPrivilege @relation(fields: [privilegeId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, privilegeId])
+  @@index([privilegeId])
+  @@map("stall_role_privilege")
+  @@schema("stalls")
+}
+
+/// The grant: this person holds this role.
+///
+/// `personRef` is the host's person_id after migration; the stub Person's id
+/// before it. Deliberately NOT a foreign key — the host's Person lives in
+/// another schema owned by another module, and a module never reaches into
+/// another's tables. `roleKey` IS one: `StallRole` is this module's own table,
+/// and a grant naming a role that does not exist is a row nothing can resolve.
 model StallStaffRole {
   id        String   @id @default(uuid()) @db.Uuid
   personRef String   @map("person_ref")
@@ -524,7 +632,33 @@ model StallStaffRole {
   grantedBy String   @map("granted_by")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
 
+  /// Which seasons this grant reaches. Empty is every one, including editions
+  /// created after the grant was made.
+  ///
+  /// ⚠️ Empty is deliberately "all", not "none" — a person given the whole event
+  /// must not lose next year the moment somebody creates it, with nothing
+  /// watching. A seasonal volunteer gets an explicit list instead, and simply
+  /// stops reaching the module when the next edition is activated.
+  ///
+  /// Ids rather than years, and deliberately NOT a foreign key: an array column
+  /// cannot carry one. A deleted edition therefore leaves a stale id behind,
+  /// which is harmless — it can never match the active edition again — and the
+  /// alternative, a join table, buys referential integrity for a value that is
+  /// only ever compared against one id per request.
+  editionScope String[] @map("edition_scope")
+
+  /// Which bays this grant reaches, by zone CODE. Empty is every bay.
+  ///
+  /// Codes, not zone ids, because that is what a request carries
+  /// (`preferred_zone_code` / `agreed_zone_code`) and because a bay marshal who
+  /// runs A1 runs A1 every season — a zone ROW is per-edition, so scoping by id
+  /// would silently empty the grant the day next year's bays are created.
+  zoneScope String[] @map("zone_scope")
+
+  role StallRole @relation(fields: [roleKey], references: [roleKey], onDelete: Restrict, onUpdate: Cascade)
+
   @@unique([personRef, roleKey])
+  @@index([roleKey])
   @@map("stall_staff_role")
   @@schema("stalls")
 }

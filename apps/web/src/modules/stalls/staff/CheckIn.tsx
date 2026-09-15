@@ -101,7 +101,7 @@ export function CheckIn() {
             <StallCard
               key={r.requestId}
               row={r}
-              canWrite={can('checkin:write')}
+              canWrite={can('checkin.write')}
               onChanged={replace}
               onError={reload}
             />

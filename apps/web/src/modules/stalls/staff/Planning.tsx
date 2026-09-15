@@ -64,7 +64,7 @@ export function Planning() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmApply, setConfirmApply] = useState(false);
-  const writable = can('planning:write');
+  const writable = can('planning.write');
 
   useEffect(() => {
     if (data) setDraft(toDraft(data));

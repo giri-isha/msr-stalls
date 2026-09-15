@@ -141,7 +141,7 @@ describe('Planning', () => {
         () => ({
           ...ME_LEAD,
           roleKeys: ['stalls_volunteer'],
-          actions: ['requests:read', 'planning:read'],
+          privileges: ['requests.read', 'planning.read'],
         }),
       ],
       ['GET', /\/planning$/, () => plan],

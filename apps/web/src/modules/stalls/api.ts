@@ -47,13 +47,17 @@ import type {
   SendEmailResult,
   SetDiscretionaryFeeInput,
   StaffMember,
-  StallRole,
+  CreateRoleInput,
+  ListRolesResponse,
+  RoleDetail,
+  SaveRoleInput,
   SubmitBankDetailsInput,
   SubmitFssaiInput,
   SubmitRefundInput,
   SubmitRequestInput,
   SubmitRequestResponse,
   TemplateKeyValue,
+  UpdateAccountInput,
   VendorStaffView,
   ZonePlanInput,
   ZonePlanView,
@@ -118,7 +122,27 @@ export const continueMyStep = (body: ContinueStepInput) =>
 // ── Staff: me, dashboard ────────────────────────────────────────────────────
 
 export const getMe = () => apiFetch<MeResponse>(`${BASE}/me`);
-export const listRoles = () => apiFetch<StallRole[]>(`${BASE}/roles`);
+/** The live roles, each marked with whether THIS caller may hand it out.
+ *  Served rather than imported: a role an admin creates is on no list the
+ *  bundle ships. */
+export const listRoles = () => apiFetch<ListRolesResponse>(`${BASE}/roles`);
+
+// ── Staff: authoring roles ──────────────────────────────────────────────────
+//
+// Composition, not vocabulary. The privileges themselves are code and arrive
+// with the bundle (`PRIVILEGE_CATEGORIES`); which of them a role bundles is
+// data, and these are how it is edited.
+
+export const getRole = (roleKey: string) => apiFetch<RoleDetail>(`${BASE}/roles/${roleKey}`);
+
+export const createRole = (body: CreateRoleInput) =>
+  apiFetch<RoleDetail>(`${BASE}/roles`, { method: 'POST', json: body });
+
+export const saveRole = (roleKey: string, body: SaveRoleInput) =>
+  apiFetch<RoleDetail>(`${BASE}/roles/${roleKey}`, { method: 'PUT', json: body });
+
+export const deleteRole = (roleKey: string) =>
+  apiFetch<void>(`${BASE}/roles/${roleKey}`, { method: 'DELETE' });
 export const getDashboard = () => apiFetch<DashboardCounts>(`${BASE}/dashboard`);
 
 // ── Staff: requests ─────────────────────────────────────────────────────────
@@ -289,10 +313,18 @@ export const searchPeople = (q: string) =>
   apiFetch<Array<{ personId: string; email: string; displayName: string }>>(
     `${BASE}/staff/search${qs({ q })}`,
   );
-export const grantRole = (personRef: string, roleKey: string) =>
-  apiFetch<void>(`${BASE}/staff`, { method: 'POST', json: { personRef, roleKey } });
+export const grantRole = (
+  personRef: string,
+  roleKey: string,
+  scope: { editionScope?: string[]; zoneScope?: string[] } = {},
+) => apiFetch<void>(`${BASE}/staff`, { method: 'POST', json: { personRef, roleKey, ...scope } });
 export const revokeRole = (personRef: string, roleKey: string) =>
   apiFetch<void>(`${BASE}/staff/${personRef}/${roleKey}`, { method: 'DELETE' });
+
+/** A requester's own details, corrected from the directory. Requesters only —
+ *  a staff member's name and address belong to the Foundation. */
+export const updateAccount = (id: string, body: UpdateAccountInput) =>
+  apiFetch<void>(`${BASE}/users/${id}`, { method: 'PATCH', json: body });
 
 /** The directory: staff and requesters in one list, with the tile counts. */
 export const listUsers = (q: Partial<ListUsersQuery> = {}) =>

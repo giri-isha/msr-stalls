@@ -71,12 +71,12 @@ describe('the staff shell', () => {
   });
 
   test('hides the nav items the caller has no action for', async () => {
-    // `ME_LEAD` holds both `planning:read` and `config:read`, so one is stripped
-    // here — the point is that the filter reads the ACTIONS list rather than
+    // `ME_LEAD` holds both `planning.read` and `config.read`, so one is stripped
+    // here — the point is that the filter reads the PRIVILEGES list rather than
     // hard-coding which labels a role sees.
     const noPlanning = {
       ...ME_LEAD,
-      actions: ME_LEAD.actions.filter((a) => a !== 'planning:read'),
+      privileges: ME_LEAD.privileges.filter((a) => a !== 'planning.read'),
     };
     installFetch([['GET', /\/m\/stalls\/me$/, () => noPlanning], DASH]);
     renderStaff();

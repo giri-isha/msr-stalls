@@ -153,7 +153,7 @@ describe('check-in', () => {
 
   test('a volunteer without the action sees the state but no button', async () => {
     installFetch([
-      ['GET', /\/me$/, () => ({ ...ME_ADMIN, actions: ['requests:read'] })],
+      ['GET', /\/me$/, () => ({ ...ME_ADMIN, privileges: ['requests.read'] })],
       ['GET', /\/checkin/, () => [checkInRow()]],
     ]);
     render();

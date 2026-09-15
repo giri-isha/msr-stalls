@@ -56,7 +56,7 @@ export function Communication() {
   const [tab, setTab] = useState<'send' | 'templates' | 'reminders'>('send');
   const { can } = useMe();
 
-  if (!can('comms:write')) {
+  if (!can('comms.write')) {
     return (
       <div>
         <H1 icon={<Icon name='megaphone' size={18} />}>Communication</H1>
@@ -335,7 +335,7 @@ function ResendButton({
   const { can } = useMe();
   const toast = useToast();
   const [armed, setArmed] = useState(false);
-  if (!can('config:write')) return null;
+  if (!can('config.write')) return null;
 
   return armed ? (
     <Btn

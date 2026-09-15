@@ -442,3 +442,207 @@ describe('support actions', () => {
     expect(mail.sent).toHaveLength(0);
   });
 });
+
+describe('editing a requester', () => {
+  const patch = (id: string, headers: { cookie: string }, payload: Record<string, string>) =>
+    app.inject({ method: 'PATCH', url: `/api/m/stalls/users/${id}`, headers, payload });
+
+  const trailFor = (accountId: string) =>
+    prisma.activityTrail.findMany({
+      where: { subjectRef: accountId, action: 'stall_account.updated' },
+    });
+
+  test('a corrected name, email and number are stored', async () => {
+    const admin = await seedStaff(['stalls_admin']);
+    const account = await requester();
+
+    const res = await patch(account.id, admin.headers, {
+      displayName: 'Priya Venkatesan',
+      email: 'priya@greenleaf.co.in',
+      phone: '9840099999',
+    });
+    expect(res.statusCode).toBe(204);
+
+    const after = await prisma.stallAccount.findUniqueOrThrow({ where: { id: account.id } });
+    expect(after).toMatchObject({
+      displayName: 'Priya Venkatesan',
+      email: 'priya@greenleaf.co.in',
+      phone: '9840099999',
+    });
+  });
+
+  /** The same normalisation `findOrCreateAccount` applies, for the same
+   *  reason: a typed `Priya@X ` must not become a second identity for one
+   *  vendor that the next submission then fails to merge into. */
+  test('a typed address is stored trimmed and lowercased', async () => {
+    const admin = await seedStaff(['stalls_admin']);
+    const account = await requester();
+
+    await patch(account.id, admin.headers, {
+      displayName: 'Priya Venkat',
+      email: '  Priya@GreenLeaf.CO.IN  ',
+      phone: '9840012345',
+    });
+
+    const after = await prisma.stallAccount.findUniqueOrThrow({ where: { id: account.id } });
+    expect(after.email).toBe('priya@greenleaf.co.in');
+  });
+
+  test('a number arrives normalised to its bare ten digits', async () => {
+    const admin = await seedStaff(['stalls_admin']);
+    const account = await requester();
+
+    await patch(account.id, admin.headers, {
+      displayName: 'Priya Venkat',
+      email: 'priya@greenleaf.example',
+      phone: '+91 98400 99999',
+    });
+
+    const after = await prisma.stallAccount.findUniqueOrThrow({ where: { id: account.id } });
+    expect(after.phone).toBe('9840099999');
+  });
+
+  test('an account registered on an email alone may keep no number at all', async () => {
+    const admin = await seedStaff(['stalls_admin']);
+    const account = await requester({ phone: '' });
+
+    const res = await patch(account.id, admin.headers, {
+      displayName: 'Priya Venkat',
+      email: 'priya@greenleaf.example',
+      phone: '',
+    });
+    expect(res.statusCode).toBe(204);
+  });
+
+  test('an address another account already holds is a 409 naming who holds it', async () => {
+    const admin = await seedStaff(['stalls_admin']);
+    const account = await requester();
+    await requester({ email: 'arun@spicebox.example', name: 'Arun Kumar' });
+
+    const res = await patch(account.id, admin.headers, {
+      displayName: 'Priya Venkat',
+      email: 'arun@spicebox.example',
+      phone: '9840012345',
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toMatch(/Arun Kumar/);
+    const after = await prisma.stallAccount.findUniqueOrThrow({ where: { id: account.id } });
+    expect(after.email).toBe('priya@greenleaf.example');
+  });
+
+  test('an account may be saved under its own address unchanged', async () => {
+    const admin = await seedStaff(['stalls_admin']);
+    const account = await requester();
+
+    const res = await patch(account.id, admin.headers, {
+      displayName: 'Priya Venkatesan',
+      email: 'priya@greenleaf.example',
+      phone: '9840012345',
+    });
+    expect(res.statusCode).toBe(204);
+  });
+
+  /** ⚠️ The decision the service documents: the account's address moves, the
+   *  password login does not. A vendor whose address is corrected here still
+   *  signs in with the one they registered under, and the Sign-in column keeps
+   *  telling the truth about it. */
+  test('moving the address leaves the password login where it was', async () => {
+    const admin = await seedStaff(['stalls_admin']);
+    const account = await requester({ credential: 'confirmed' });
+
+    await patch(account.id, admin.headers, {
+      displayName: 'Priya Venkat',
+      email: 'priya@greenleaf.co.in',
+      phone: '9840012345',
+    });
+
+    const after = await prisma.stallAccount.findUniqueOrThrow({ where: { id: account.id } });
+    expect(after.email).toBe('priya@greenleaf.co.in');
+    const cred = await authenticate(prisma, {
+      contact: 'priya@greenleaf.example',
+      password: 'hunter2hunter2',
+    });
+    expect(cred.accountId).toBe(account.id);
+  });
+
+  test('the trail records only what changed, with what it was before', async () => {
+    const admin = await seedStaff(['stalls_admin']);
+    const account = await requester();
+
+    await patch(account.id, admin.headers, {
+      displayName: 'Priya Venkat',
+      email: 'priya@greenleaf.co.in',
+      phone: '9840012345',
+    });
+
+    const [entry] = await trailFor(account.id);
+    expect(entry.actorRef).toBe(admin.personId);
+    expect(entry.detail).toEqual({
+      email: { from: 'priya@greenleaf.example', to: 'priya@greenleaf.co.in' },
+    });
+  });
+
+  test('a save that changed nothing writes nothing to the trail', async () => {
+    const admin = await seedStaff(['stalls_admin']);
+    const account = await requester();
+
+    const res = await patch(account.id, admin.headers, {
+      displayName: 'Priya Venkat',
+      email: 'priya@greenleaf.example',
+      phone: '9840012345',
+    });
+
+    expect(res.statusCode).toBe(204);
+    expect(await trailFor(account.id)).toHaveLength(0);
+  });
+
+  test('an address that is not one is refused', async () => {
+    const admin = await seedStaff(['stalls_admin']);
+    const account = await requester();
+
+    const res = await patch(account.id, admin.headers, {
+      displayName: 'Priya Venkat',
+      email: 'not-an-address',
+      phone: '9840012345',
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  test('a name cannot be emptied', async () => {
+    const admin = await seedStaff(['stalls_admin']);
+    const account = await requester();
+
+    const res = await patch(account.id, admin.headers, {
+      displayName: '   ',
+      email: 'priya@greenleaf.example',
+      phone: '9840012345',
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  test('an unknown account is a 404', async () => {
+    const admin = await seedStaff(['stalls_admin']);
+    const res = await patch('11111111-1111-4111-8111-111111111111', admin.headers, {
+      displayName: 'Nobody',
+      email: 'nobody@example.com',
+      phone: '',
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  test('a role without users:write cannot edit a requester', async () => {
+    const lead = await seedStaff(['stalls_lead']);
+    const account = await requester();
+
+    const res = await patch(account.id, lead.headers, {
+      displayName: 'Priya Venkatesan',
+      email: 'priya@greenleaf.example',
+      phone: '9840012345',
+    });
+
+    expect(res.statusCode).toBe(403);
+    const after = await prisma.stallAccount.findUniqueOrThrow({ where: { id: account.id } });
+    expect(after.displayName).toBe('Priya Venkat');
+  });
+});
