@@ -65,7 +65,7 @@ describe('the backoffice shell', () => {
 
     const nav = await screen.findByRole('navigation', { name: 'Main navigation' });
     expect(within(nav).getByTitle('Dashboard')).toBeInTheDocument();
-    expect(within(nav).getByTitle('Stall Requests')).toBeInTheDocument();
+    expect(within(nav).getByTitle('All Requests')).toBeInTheDocument();
     // The crumb names the group and the title the route.
     expect(await screen.findByText('Maha Shivratri · MSR Stalls Program')).toBeInTheDocument();
   });

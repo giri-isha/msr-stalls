@@ -7,14 +7,12 @@ import { Requests } from './Requests';
 
 afterEach(() => vi.unstubAllGlobals());
 
-// The record's route is mounted alongside the two lists, because opening one
-// is now a navigation — a test that only mounted the list would assert against
-// a router that has nowhere to go.
+// The record's route is mounted alongside the list, because opening one is a
+// navigation — a test that only mounted the list would assert against a router
+// that has nowhere to go.
 const routes = [
-  { path: '/m/stalls/requests', element: <Requests mode='triage' /> },
-  { path: '/m/stalls/all', element: <Requests mode='all' /> },
+  { path: '/m/stalls/requests', element: <Requests /> },
   { path: '/m/stalls/requests/:id', element: <RequestDetail /> },
-  { path: '/m/stalls/all/:id', element: <RequestDetail /> },
 ];
 
 const items = [
@@ -62,7 +60,7 @@ const base = () =>
 describe('Requests', () => {
   test('lists requests with reference, type and status', async () => {
     installFetch(base());
-    renderAt('/m/stalls/all', routes, { me: true });
+    renderAt('/m/stalls/requests', routes, { me: true });
     expect(await screen.findByText('VEN-2026-0001')).toBeInTheDocument();
     // Scoped to the table: the type and status filters also list these words
     // as <option>s.
@@ -74,7 +72,7 @@ describe('Requests', () => {
 
   test('the status filter narrows the list through the API and the URL', async () => {
     const fx = installFetch(base());
-    const { router } = renderAt('/m/stalls/all', routes, { me: true });
+    const { router } = renderAt('/m/stalls/requests', routes, { me: true });
     await screen.findByText('VEN-2026-0001');
     await userEvent.setup().selectOptions(screen.getByLabelText('Status'), 'SHORTLISTED');
     await waitFor(() => expect(screen.queryByText('VEN-2026-0001')).not.toBeInTheDocument());
@@ -85,7 +83,7 @@ describe('Requests', () => {
 
   test('search is sent as q', async () => {
     const fx = installFetch(base());
-    renderAt('/m/stalls/all', routes, { me: true });
+    renderAt('/m/stalls/requests', routes, { me: true });
     await screen.findByText('VEN-2026-0001');
     await userEvent.setup().type(screen.getByLabelText('Search'), 'seva');
     await waitFor(() => expect(fx.calls.some((c) => c.url.includes('q=seva'))).toBe(true));
@@ -94,7 +92,7 @@ describe('Requests', () => {
 
   test('toggles between table and cards', async () => {
     installFetch(base());
-    renderAt('/m/stalls/all', routes, { me: true });
+    renderAt('/m/stalls/requests', routes, { me: true });
     await screen.findByText('VEN-2026-0001');
     expect(screen.getByRole('table')).toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole('button', { name: 'Card view' }));
@@ -105,11 +103,10 @@ describe('Requests', () => {
     );
   });
 
-  test('triage mode opens in cards and clicking one navigates to the record page', async () => {
+  test('clicking a row navigates to the record page', async () => {
     const fx = installFetch(base());
     const { router } = renderAt('/m/stalls/requests', routes, { me: true });
     await screen.findByText('VEN-2026-0001');
-    expect(screen.queryByRole('table')).not.toBeInTheDocument();
     await userEvent.setup().click(screen.getByText('Green Leaf Organics'));
     const page = await screen.findByRole('region', { name: 'Request detail' });
     expect(
@@ -125,14 +122,14 @@ describe('Requests', () => {
 
   test('the record page carries the list filters home on its back link', async () => {
     installFetch(base());
-    const { router } = renderAt('/m/stalls/all?status=SHORTLISTED', routes, { me: true });
+    const { router } = renderAt('/m/stalls/requests?status=SHORTLISTED', routes, { me: true });
     await screen.findByText('LWS-2026-0001');
     const user = userEvent.setup();
     await user.click(screen.getByText('Seva Health Camp'));
     const page = await screen.findByRole('region', { name: 'Request detail' });
     expect(router.state.location.search).toContain('status=SHORTLISTED');
     await user.click(within(page).getByRole('link', { name: 'All Requests' }));
-    await waitFor(() => expect(router.state.location.pathname).toBe('/m/stalls/all'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/m/stalls/requests'));
     expect(router.state.location.search).toContain('status=SHORTLISTED');
   });
 
@@ -151,7 +148,7 @@ describe('Requests', () => {
 
   test('the stage column reads the onboarding stage, and only where there is one', async () => {
     installFetch(base());
-    renderAt('/m/stalls/all', routes, { me: true });
+    renderAt('/m/stalls/requests', routes, { me: true });
     await screen.findByText('VEN-2026-0002');
     const rows = screen.getAllByRole('row');
     const selected = rows.find((r) => within(r).queryByText('Kodiveli Idli Kadai'));
@@ -163,7 +160,7 @@ describe('Requests', () => {
 
   test('the record page tabs the forms the requester has since filled', async () => {
     installFetch(base());
-    renderAt('/m/stalls/all/22222222-2222-4222-8222-222222222222', routes, { me: true });
+    renderAt('/m/stalls/requests/22222222-2222-4222-8222-222222222222', routes, { me: true });
     const page = await screen.findByRole('region', { name: 'Request detail' });
     const user = userEvent.setup();
     // The application is what opens; the forms are tabs beside it.
@@ -188,7 +185,7 @@ describe('Requests', () => {
         () => onboarding({ bankDetails: 'NOT_APPLICABLE', fssai: 'NOT_APPLICABLE' }),
       ],
     ] as Array<[string, RegExp, (url: URL) => unknown]>);
-    renderAt('/m/stalls/all/22222222-2222-4222-8222-222222222222', routes, { me: true });
+    renderAt('/m/stalls/requests/22222222-2222-4222-8222-222222222222', routes, { me: true });
     const page = await screen.findByRole('region', { name: 'Request detail' });
     await within(page).findByRole('tab', { name: 'Application' });
     expect(within(page).queryByRole('tab', { name: 'Bank form' })).not.toBeInTheDocument();
@@ -197,7 +194,7 @@ describe('Requests', () => {
 
   test('the stage filter narrows the list through the API and the URL', async () => {
     const fx = installFetch(base());
-    const { router } = renderAt('/m/stalls/all', routes, { me: true });
+    const { router } = renderAt('/m/stalls/requests', routes, { me: true });
     await screen.findByText('VEN-2026-0001');
     await userEvent.setup().selectOptions(screen.getByLabelText('Stage'), 'BANK_FORM_SENT');
     await waitFor(() => expect(screen.queryByText('VEN-2026-0001')).not.toBeInTheDocument());

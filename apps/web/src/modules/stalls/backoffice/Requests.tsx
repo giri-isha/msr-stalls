@@ -187,50 +187,49 @@ export function Requests() {
             </option>
           ))}
         </Select>
-        {/* The stage filter. The query has always accepted `stage` and the
-                pipeline has always carried one — this is the control that was
-                missing, which is why "show me everyone still sitting on a bank
-                form" could be asked of the API but not of the screen. */}
-            <Select
-              aria-label='Stage'
-              value={stage}
-              onChange={(e) => setParam('stage', e.target.value)}
-              style={{ width: 'auto', minWidth: 170 }}
-            >
-              <option value=''>All stages</option>
-              {Object.entries(STAGE_LABEL).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v}
-                </option>
-              ))}
-            </Select>
-            <Select
-              aria-label='Zone'
-              value={zoneCode}
-              onChange={(e) => setParam('zoneCode', e.target.value)}
-              style={{ width: 'auto', minWidth: 120 }}
-            >
-              <option value=''>All zones</option>
-              {(zones ?? []).map((z) => (
-                <option key={z.code} value={z.code}>
-                  {z.code}
-                </option>
-              ))}
-            </Select>
-            {/* ⚠️ `aria-pressed`, not a variant swap. "Flagged is on" is carried
-                by the primary tint, which is information only a sighted reader
-                gets otherwise — the same reason `Chip` announces its state. */}
-            <button
-              type='button'
-              aria-pressed={flagged}
-              onClick={() => setParam('flagged', flagged ? '' : 'true')}
-              style={toolBtnStyle(flagged)}
-            >
-              <Icon name='alert-triangle' size={14} />
-              Flagged
-            </button>
-          </>
-        )}
+        {/* Stage, zone and flagged were hidden on the triage preset. With one
+            list there is no preset to hide them from, and these three are what
+            triage actually WAS: "show me everyone still sitting on a bank
+            form" is a question the API always answered and the screen only
+            sometimes asked. */}
+        <Select
+          aria-label='Stage'
+          value={stage}
+          onChange={(e) => setParam('stage', e.target.value)}
+          style={{ width: 'auto', minWidth: 170 }}
+        >
+          <option value=''>All stages</option>
+          {Object.entries(STAGE_LABEL).map(([k, v]) => (
+            <option key={k} value={k}>
+              {v}
+            </option>
+          ))}
+        </Select>
+        <Select
+          aria-label='Zone'
+          value={zoneCode}
+          onChange={(e) => setParam('zoneCode', e.target.value)}
+          style={{ width: 'auto', minWidth: 120 }}
+        >
+          <option value=''>All zones</option>
+          {(zones ?? []).map((z) => (
+            <option key={z.code} value={z.code}>
+              {z.code}
+            </option>
+          ))}
+        </Select>
+        {/* ⚠️ `aria-pressed`, not a variant swap. "Flagged is on" is carried
+            by the primary tint, which is information only a sighted reader
+            gets otherwise — the same reason `Chip` announces its state. */}
+        <button
+          type='button'
+          aria-pressed={flagged}
+          onClick={() => setParam('flagged', flagged ? '' : 'true')}
+          style={toolBtnStyle(flagged)}
+        >
+          <Icon name='alert-triangle' size={14} />
+          Flagged
+        </button>
       </Toolbar>
 
       {error && <ErrorBox>{error}</ErrorBox>}

@@ -9,8 +9,8 @@ import { Requests } from './Requests';
 afterEach(() => vi.unstubAllGlobals());
 
 const routes = [
-  { path: '/m/stalls/all', element: <Requests mode='all' /> },
-  { path: '/m/stalls/all/:id', element: <RequestDetail /> },
+  { path: '/m/stalls/requests', element: <Requests /> },
+  { path: '/m/stalls/requests/:id', element: <RequestDetail /> },
 ];
 
 const stubs = (over: Record<string, unknown> = {}) =>
@@ -23,7 +23,7 @@ const stubs = (over: Record<string, unknown> = {}) =>
   ] as Array<[string, RegExp, (url: URL) => unknown]>;
 
 const openDetail = async () => {
-  renderAt('/m/stalls/all', routes, { me: true });
+  renderAt('/m/stalls/requests', routes, { me: true });
   await userEvent.click(await screen.findByText('Green Leaf Organics'));
   return screen.findByRole('region', { name: 'Request detail' });
 };

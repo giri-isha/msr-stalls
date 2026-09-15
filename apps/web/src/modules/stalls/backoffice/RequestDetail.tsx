@@ -45,8 +45,7 @@ const USAGE: Record<string, string> = {
  *  with the id taken off — no prop, and a pasted URL lands with a working back
  *  link rather than a dead one. */
 const LIST_LABEL: Record<string, string> = {
-  requests: 'Stall Requests',
-  all: 'All Requests',
+  requests: 'All Requests',
 };
 
 type Fact = [string, React.ReactNode];

@@ -142,7 +142,7 @@ export function Dashboard() {
           value={data.total}
           glyph='clipboard-list'
           tone='info'
-          to='/m/stalls/all'
+          to='/m/stalls/requests'
         />
         {(['VENDOR', 'LOCAL_WELFARE', 'ASHRAM', 'ASHRAM_FOOD'] as const).map((t) => (
           <Tile
@@ -154,7 +154,7 @@ export function Dashboard() {
             // are the same fact in two places; a different colour in each is how
             // a dashboard and a list stop agreeing about what they are counting.
             tone='violet'
-            to={`/m/stalls/all?requestType=${t}`}
+            to={`/m/stalls/requests?requestType=${t}`}
           />
         ))}
       </Group>
@@ -167,7 +167,7 @@ export function Dashboard() {
             value={s[st] ?? 0}
             glyph={STATUS_GLYPH[st]}
             tone={requestStatusTone(st)}
-            to={`/m/stalls/all?status=${st}`}
+            to={`/m/stalls/requests?status=${st}`}
           />
         ))}
       </Group>
@@ -186,7 +186,7 @@ export function Dashboard() {
           value={data.flagged}
           glyph='alert-triangle'
           tone='warn'
-          to='/m/stalls/all?flagged=true'
+          to='/m/stalls/requests?flagged=true'
         />
       </Group>
 

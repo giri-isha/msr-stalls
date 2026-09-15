@@ -249,30 +249,22 @@ const SCREENS: ScreenDoc[] = [
     ],
   },
   {
-    label: 'Stall Requests',
+    label: 'All Requests',
     to: '/m/stalls/requests',
-    glyph: 'clipboard-list',
-    purpose: 'The triage queue — everything still waiting on a decision.',
+    glyph: 'list-view',
+    purpose: 'Every request in the pipeline — the triage queue and the decided rows, one list.',
     steps: [
-      'Filter by type, zone or status, or search a reference, stall name, requester or phone number.',
+      'Filter by type, status, stage or zone, or search a reference, stall name, requester or phone number.',
+      'For the triage queue — everything still waiting on a decision — set Status to Submitted, or turn on Flagged for the ones that need a call first.',
       'Open a row for the whole application: what they sell, their appliances and load, passes, chairs and tables, the answers to any custom questions, and the consent stamps.',
       'Flag a request with a reason when it needs a call before any decision. The reason shows in the list.',
       'Shortlist what is worth considering, then Select onto a zone AND a stall number, Reject with a reason, or hold as Backup.',
       'The stalls offered when selecting are the ones still free in that zone.',
     ],
     notes: [
+      'This was two screens — a triage queue and a full pipeline — reading the same rows behind different presets. Triage is a filter on this list now, not a separate address.',
       'One stall holds one occupant, and that is enforced by the database rather than by a check on the screen. Two coordinators selecting onto the same stall at the same moment end with one allocation and one clear refusal.',
       'A request for three stalls becomes three allocation rows, so re-allocating leaves a trail.',
-    ],
-  },
-  {
-    label: 'All Requests',
-    to: '/m/stalls/all',
-    glyph: 'list-view',
-    purpose: 'The same list, decided rows included.',
-    steps: [
-      'Use this when you have a reference in hand, or when you want to see rejected and cancelled requests alongside the live ones.',
-      'The filters and the detail view are the triage screen’s.',
     ],
   },
   {
@@ -726,7 +718,7 @@ const INTAKE: FlowItem[] = [
   {
     actor: 'backoffice',
     glyph: 'search',
-    title: 'Triaged in Stall Requests',
+    title: 'Triaged in All Requests',
     detail: 'Filtered, searched, and read in full.',
   },
   {
