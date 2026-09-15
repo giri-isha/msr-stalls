@@ -22,8 +22,8 @@ package both sides share.
 |---|---|---|
 | Ashram, Ashram Food, Local Welfare and Vendor request forms | `packages/stalls/src/forms.ts`, `/stalls/apply/:type` | Built |
 | The 2025 field lists, with their Tamil | `forms.ts` (transcribed from the 2025 PDFs) | Built |
-| Anyone with the link can register | `POST /public/requests` — the one open write, rate-limited per IP | Built |
-| Register and log in with email or phone number | Submitting IS the signup: it creates an account keyed on the email and mints a signed link. `/stalls/status` takes an email address **or** a mobile number and emails that account its link back. | Differs — no password, no OTP. See [Vendor identity](#vendor-identity) below. |
+| Anyone with the link can register | `POST /public/register` is open and rate-limited per IP; `POST /public/requests` now needs a session | Built |
+| Register and log in with email or phone number | `POST /public/register` with an email **or** a mobile and a password, confirmed by a link sent to that contact; `POST /public/login` returns a session cookie. `/stalls/status` still emails a signed link to anyone who never registered. | Built — see [Vendor identity](#vendor-identity) below. The password is a stopgap until the host's Isha OIDC. |
 | Admin-added questions | `StallCustomField`, Admin → Custom fields | Built |
 | At most two stalls in one bay per request — "if they want another area, they raise another request, so we can individually accept one and reject the other" | `StallEdition.maxStallsPerRequest`, enforced in `submit.ts`; 422 with the cap in the message | Built |
 
@@ -173,21 +173,34 @@ package both sides share.
 ### Vendor identity
 
 The requirement says "register & login (SSO) using email or phone number".
-There is no password anywhere in this module. A submission creates the account,
-the receipt email carries a long signed link, and that link is the credential
-for every later page. `/stalls/status` closes the gap that left: an email
-address or a mobile number gets the link emailed **to the address on the
-account**, never to whoever asked.
 
-Two things to decide:
+**Closed 2026-09-15, in mechanism.** A requester registers with an email
+address or a mobile number and a password, confirms it by following a link sent
+to that contact, and logs in for a session. `/stalls/apply` asks for an account
+before it opens a form, and a request now belongs to the session rather than to
+the address typed into it. Design:
+`docs/superpowers/specs/2026-09-15-stalls-vendor-login-design.md`.
 
-1. **Delivery is email only.** The module has a `Mailer` port and no SMS port,
-   so a vendor whose email address is wrong still needs the team. Adding SMS
-   delivery is a port and an adapter, nothing structural.
-2. **Real SSO for requesters** would mean the host's Isha OIDC. Ashram
-   departments have identities there; external vendors do not. Host ADR 0016
-   keeps vendors out of the `Person` directory deliberately — reversing that is
-   a host decision, not a module one.
+Item 1, **delivery is email only**, is closed with it: a mobile registration
+confirms and resets over the existing WhatsApp port, so a requester with no
+working email address is no longer dependent on one.
+
+**Item 2, real SSO, stays open — and is the reason the password is temporary.**
+It would mean the host's Isha OIDC. Ashram departments have identities there;
+external vendors do not, and host ADR 0016 keeps vendors out of the `Person`
+directory deliberately. Reversing that is a host decision, not a module one.
+
+The password login is built to be deleted rather than extended. A session is a
+`StallAccessLink` carrying a `SESSION` purpose, minted by `startSession` — so
+the swap is: an OIDC callback calls that same function, `StallCredential` and
+the six password routes are dropped, and nothing else in the module moves.
+
+**What is still NOT self-serve.** Registering on a contact that already has an
+account does not attach a password to it — staff do that linking. So the
+village traders the local welfare team files for, who have no address of their
+own, still cannot reach the portal themselves; staff screens remain their only
+route. That was a deliberate call, not an oversight, and `StallCredential` is
+shaped to take a claim flow if it is revisited.
 
 ### Pooled deposit — closed
 

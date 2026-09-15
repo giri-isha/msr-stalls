@@ -12,7 +12,7 @@ a one-line registration — none is a port.
 | `packages/stalls/` | `packages/stalls/` | Becomes `@msr/stalls`, next to `@msr/volunteering`. Add to root `workspaces` if not globbed. |
 | `apps/api/src/modules/stalls/` | `apps/api/src/modules/stalls/` | Verbatim. Every import outside the folder resolves to a host file with the same path and signature. |
 | `apps/web/src/modules/stalls/` | `apps/web/src/modules/stalls/` | Verbatim. Imports only `../../components/ui/*` and `../../lib/*`, which the host has. |
-| `apps/api/prisma/schema.prisma` — the `stalls` section only | appended to host `schema.prisma` | Add `"stalls"` to the datasource `schemas` list. Do **not** copy the `foundation` models — they are stubs for the host's real `Person` and activity trail. |
+| `apps/api/prisma/schema.prisma` — the `stalls` section only | appended to host `schema.prisma` | Add `"stalls"` to the datasource `schemas` list. Do **not** copy the `foundation` models — they are stubs for the host's real `Person` and activity trail. `StallCredential` and `StallLoginKind` belong to the temporary password login and are dropped when SSO lands — see step 3b. |
 | `apps/api/prisma/migrations/*_stalls_*/` | do not copy | Generate ONE fresh migration in the host after appending the models (`prisma migrate dev --name stalls`). The stub tables must not be created there, and the two migrations here are only this repo's own history. |
 
 ## What does not move
@@ -43,16 +43,41 @@ a one-line registration — none is a port.
      mail: mailer,                            // step 2
      statusUrl: (token) => `${WEB_ORIGIN}/stalls/status/${token}`,
      bankFormUrl: (token) => `${WEB_ORIGIN}/stalls/bank/${token}`,
+     registerConfirmUrl: (token) => `${WEB_ORIGIN}/stalls/confirm/${token}`,
+     passwordResetUrl: (token) => `${WEB_ORIGIN}/stalls/reset/${token}`,
      fssaiUrl: (token) => `${WEB_ORIGIN}/stalls/fssai/${token}`,
      staffRegistrationUrl: (code) => `${WEB_ORIGIN}/stalls/staff/${encodeURIComponent(code)}`,
      publicRateLimitMax: 20,
    });
    ```
 
-   The four URL builders are the only place the module learns its own public
+   The six URL builders are the only place the module learns its own public
    origin. Point them wherever the host serves `stallsPublicRoutes` — they are
    what the outbound letters carry, so a wrong path here is a dead link in a
    vendor's inbox rather than a build error.
+
+   `registerConfirmUrl` and `passwordResetUrl` belong to the temporary password
+   login (see below) and go with it.
+
+3b. **The requester login is a stopgap — plan to delete it.** The module ships a
+   password login for external requesters because the requirement asks for one
+   and the host's Isha OIDC is not available to vendors: ADR 0016 keeps them out
+   of the `Person` directory. Design:
+   `docs/superpowers/specs/2026-09-15-stalls-vendor-login-design.md`.
+
+   It is built so that swapping it for OIDC touches one seam. A logged-in
+   requester is a `StallAccessLink` carrying a `SESSION` purpose, minted by
+   `startSession(db, accountId)` in `modules/stalls/session.ts`. To replace it:
+
+   - have the host's OIDC callback call `startSession` and hand the token to
+     `setSessionCookie` from the same file;
+   - drop `StallCredential` and `StallLoginKind` from the schema, and the
+     `REGISTER_CONFIRM` and `PASSWORD_RESET` purposes;
+   - delete `credentials.ts`, `registration.ts`, the six password routes in
+     `public-routes.ts`, and the four public screens (`Login`, `Register`,
+     `ConfirmRegistration`, `ResetPassword`);
+   - keep `session.ts`, `SESSION`, `StallAccount`, the portal, and every staff
+     screen. None of them knows which credential minted the session.
 
 4. **Module registry** (`apps/api/src/modules.ts` or wherever `syncModuleRegistry` is fed): add `STALLS_MANIFEST` from `./modules/stalls`.
 
