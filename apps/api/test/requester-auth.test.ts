@@ -509,3 +509,110 @@ describe('confirm, login, logout', () => {
     expect(after.statusCode).toBe(404);
   });
 });
+
+describe('password reset', () => {
+  beforeEach(() => {
+    mail.sent.length = 0;
+    whatsapp.sent.length = 0;
+  });
+
+  const ask = (contact: string) =>
+    app.inject({ method: 'POST', url: url('password-reset'), payload: { contact } });
+
+  // 🔴 Same rule as registration. "No account on that address" would be an
+  // answer to a question this route refuses to be asked.
+  test('an unknown contact gets the same 202 as a known one, and no mail', async () => {
+    await loggedIn();
+    mail.sent.length = 0;
+
+    const known = await ask('new@vendor.example');
+    const unknown = await ask('nobody@vendor.example');
+    const junk = await ask('not a contact');
+
+    expect(known.statusCode).toBe(202);
+    expect(unknown.statusCode).toBe(known.statusCode);
+    expect(junk.statusCode).toBe(known.statusCode);
+    expect(unknown.body).toBe(known.body);
+    expect(junk.body).toBe(known.body);
+    // Exactly one went out: the one with an account behind it.
+    expect(mail.sent).toHaveLength(1);
+    expect(mail.sent[0].to).toBe('new@vendor.example');
+  });
+
+  test('a reset sets the new password and evicts every live session', async () => {
+    const stale = await loggedIn();
+    mail.sent.length = 0;
+
+    await ask('new@vendor.example');
+    const token = tokenFromLastMessage();
+    const res = await app.inject({
+      method: 'POST',
+      url: url('password-reset/confirm'),
+      payload: { token, password: 'brandnewpassword' },
+    });
+    expect(res.statusCode).toBe(200);
+
+    // The session that asked for the reset is gone — that is most of the point.
+    const dead = await app.inject({
+      method: 'GET',
+      url: url('session'),
+      cookies: { msr_stall_requester: stale },
+    });
+    expect(dead.statusCode).toBe(404);
+
+    const old = await app.inject({
+      method: 'POST',
+      url: url('login'),
+      payload: { contact: 'new@vendor.example', password: 'hunter2hunter2' },
+    });
+    expect(old.statusCode).toBe(401);
+
+    const fresh = await app.inject({
+      method: 'POST',
+      url: url('login'),
+      payload: { contact: 'new@vendor.example', password: 'brandnewpassword' },
+    });
+    expect(fresh.statusCode).toBe(200);
+  });
+
+  test('a reset link works once', async () => {
+    await loggedIn();
+    mail.sent.length = 0;
+    await ask('new@vendor.example');
+    const token = tokenFromLastMessage();
+
+    await app.inject({
+      method: 'POST',
+      url: url('password-reset/confirm'),
+      payload: { token, password: 'brandnewpassword' },
+    });
+    const again = await app.inject({
+      method: 'POST',
+      url: url('password-reset/confirm'),
+      payload: { token, password: 'thirdpasswordhere' },
+    });
+    expect(again.statusCode).toBe(404);
+  });
+
+  // Following the link proves the contact, which is the same thing the
+  // confirmation link proves — so a vendor who never confirmed is not stranded.
+  test('a reset also confirms a registration that was never confirmed', async () => {
+    await registered('never@vendor.example');
+    mail.sent.length = 0;
+
+    await ask('never@vendor.example');
+    const token = tokenFromLastMessage();
+    await app.inject({
+      method: 'POST',
+      url: url('password-reset/confirm'),
+      payload: { token, password: 'brandnewpassword' },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: url('login'),
+      payload: { contact: 'never@vendor.example', password: 'brandnewpassword' },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+});

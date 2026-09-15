@@ -29,6 +29,8 @@ import {
   RATE_SCOPES,
   ConfirmRegistrationInput,
   LoginInput,
+  PasswordResetConfirmInput,
+  PasswordResetInput,
   RegisterInput,
   RegisterStaffInput,
   RequestAccessLinkInput,
@@ -46,7 +48,13 @@ import type { StallsDeps } from './deps';
 import { UnknownAccessLinkError } from './errors';
 import { registerStaff, resolveCoupon, submitFssai, toCouponView } from './onboarding';
 import { authenticate } from './credentials';
-import { confirmRegistration, isPlaceholderEmail, register } from './registration';
+import {
+  completePasswordReset,
+  confirmRegistration,
+  isPlaceholderEmail,
+  register,
+  requestPasswordReset,
+} from './registration';
 import {
   REQUESTER_COOKIE,
   clearSessionCookie,
@@ -156,6 +164,34 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
       phone: account.phone,
     };
   });
+
+  /** ⚠️ 202 whatever happens, for the same reason `/register` does. Exactly one
+   *  message goes out — to the contact that has an account behind it. */
+  zod.post(
+    '/password-reset',
+    {
+      schema: { body: PasswordResetInput },
+      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
+    },
+    async (req, reply) => {
+      await requestPasswordReset(prisma, deps, req.body.contact);
+      reply.status(202);
+      return { ok: true };
+    },
+  );
+
+  zod.post(
+    '/password-reset/confirm',
+    {
+      schema: { body: PasswordResetConfirmInput },
+      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
+    },
+    async (req, reply) => {
+      const { accountId } = await completePasswordReset(prisma, req.body.token, req.body.password);
+      setSessionCookie(reply, await startSession(prisma, accountId));
+      return { ok: true };
+    },
+  );
 
   /** The one public write. Per-IP rate limit on top of the global one: a
    *  script cannot fill the pipeline with junk, and a real vendor never hits
