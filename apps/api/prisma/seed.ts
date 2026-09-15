@@ -13,6 +13,7 @@ import { submitBankDetails } from '../src/modules/stalls/bank';
 import { checkIn } from '../src/modules/stalls/checkin';
 import { logReminder, sendTemplate } from '../src/modules/stalls/comms';
 import { createEdition } from '../src/modules/stalls/config';
+import { hashPassword } from '../src/modules/stalls/credentials';
 import type { StallsDeps } from '../src/modules/stalls/deps';
 import { actOnEquipment, patchEquipment } from '../src/modules/stalls/equipment';
 import { confirmPayment } from '../src/modules/stalls/finance';
@@ -32,6 +33,15 @@ import type { MediaStore } from '../src/storage/media-namespace';
 
 const SYSTEM = '00000000-0000-0000-0000-000000000000';
 const force = process.argv.includes('--force');
+
+/** What every seeded requester's password is.
+ *
+ *  ⚠️ DEV SEED ONLY. The seed truncates the database before it runs, so it can
+ *  only ever be pointed at a throwaway one — but this is still a password in a
+ *  source file, and nothing outside a developer's machine may use it. Change a
+ *  single account's with `npm run dev:users -- --set-password <contact> <new>`.
+ */
+export const DEV_PASSWORD = 'stalls-dev-password';
 
 const STAFF = [
   { email: 'vikram.s@maildrop.cc', displayName: 'Vikram Sethu', roles: ['stalls_admin'] },
@@ -420,16 +430,29 @@ async function main() {
   const ids: string[] = [];
   for (const body of REQUESTS) {
     // The form is behind a session in the app; the seed has no browser, so it
-    // creates the account the session would have named. Passwordless on
-    // purpose — a seeded account cannot be logged into, and a developer who
-    // wants to log in registers through the form like a vendor would.
+    // creates the account the session would have named, and gives it a login
+    // you can actually use — see DEV_PASSWORD.
+    const email = String(body.email).trim().toLowerCase();
     const account = await prisma.stallAccount.upsert({
-      where: { email: String(body.email).trim().toLowerCase() },
+      where: { email },
       update: {},
       create: {
-        email: String(body.email).trim().toLowerCase(),
+        email,
         phone: String(body.contactNumber),
         displayName: String(body.requesterName),
+      },
+    });
+    await prisma.stallCredential.upsert({
+      where: { loginValue: email },
+      update: {},
+      create: {
+        accountId: account.id,
+        loginValue: email,
+        loginKind: 'EMAIL',
+        passwordHash: await hashPassword(DEV_PASSWORD),
+        // Already confirmed: the confirmation link exists to prove somebody
+        // holds the contact, and a seed script is not somebody.
+        confirmedAt: new Date(),
       },
     });
     const r = await submitRequest(
@@ -440,7 +463,7 @@ async function main() {
     );
     ids.push(r.requestId);
   }
-  console.log(`Requests: ${ids.length}`);
+  console.log(`Requests: ${ids.length} (each requester logs in with ${DEV_PASSWORD})`);
 
   // A realistic pipeline state
   await shortlist(prisma, ids[1], lead); // Coastal Spice
