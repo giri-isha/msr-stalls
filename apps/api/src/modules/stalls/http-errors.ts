@@ -6,6 +6,7 @@ import {
   CouponFullError,
   CustomFieldInUseError,
   DuplicatePaymentError,
+  InvalidCredentialsError,
   InvalidTransitionError,
   LastAdminError,
   NoActiveEditionError,
@@ -36,6 +37,9 @@ import { NotSignedInError } from './roles';
  *  code constructed inside a route. */
 function statusFor(err: unknown): number | null {
   if (err instanceof NotSignedInError) return 401;
+  // Every way a requester's password login can fail. One status, one body —
+  // see `InvalidCredentialsError`.
+  if (err instanceof InvalidCredentialsError) return 401;
   // A role that reaches some requester types but not this one. 403, the same
   // as holding no grant at all — the caller may not, and which half of the
   // rule stopped them is not their business.
