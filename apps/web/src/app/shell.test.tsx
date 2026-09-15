@@ -136,15 +136,16 @@ describe('the staff shell', () => {
 });
 
 describe('the public shell', () => {
-  test('wraps the forms and carries nothing but the theme control', () => {
-    installFetch([]);
+  test('wraps the forms and carries nothing but the theme control', async () => {
+    // Signed out — the gate is on the page, and the header stays bare.
+    installFetch([['GET', /\/public\/session$/, () => [404, { error: 'no session' }]]]);
     const router = createMemoryRouter(
       [{ path: '/stalls', element: <PublicLayout />, children: stallsPublicRoutes }],
       { initialEntries: ['/stalls/apply'] },
     );
     render(<RouterProvider router={router} />);
 
-    expect(screen.getByText('Request a stall')).toBeInTheDocument();
+    expect(await screen.findByText('Request a stall')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /theme/i })).toBeInTheDocument();
     // No sidebar, no account chip: a vendor with a link from an email meets the
     // form and nothing else.

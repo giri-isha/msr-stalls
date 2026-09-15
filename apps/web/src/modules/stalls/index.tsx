@@ -6,9 +6,13 @@ import type { StallAction } from '@msr/stalls';
 import { Navigate, type RouteObject } from 'react-router';
 import { AccessLink } from './public/AccessLink';
 import { BankForm } from './public/BankForm';
+import { ConfirmRegistration } from './public/ConfirmRegistration';
 import { FormPicker } from './public/FormPicker';
 import { FssaiForm } from './public/FssaiForm';
+import { Login } from './public/Login';
+import { Register } from './public/Register';
 import { RequestForm } from './public/RequestForm';
+import { ResetPassword } from './public/ResetPassword';
 import { StaffRegistration } from './public/StaffRegistration';
 import { StatusPage } from './public/StatusPage';
 import { Submitted } from './public/Submitted';
@@ -29,6 +33,14 @@ export const stallsPublicRoutes: RouteObject[] = [
   { path: 'apply', element: <FormPicker /> },
   { path: 'apply/:type', element: <RequestForm /> },
   { path: 'submitted', element: <Submitted /> },
+  // The temporary password login. ⚠️ These five paths go when the host's Isha
+  // OIDC lands; `confirm/:token` and `reset/:token` must keep matching
+  // `registerConfirmUrl` and `passwordResetUrl` in the API's deps until then.
+  { path: 'login', element: <Login /> },
+  { path: 'register', element: <Register /> },
+  { path: 'confirm/:token', element: <ConfirmRegistration /> },
+  { path: 'forgot', element: <ResetPassword /> },
+  { path: 'reset/:token', element: <ResetPassword /> },
   // No token: the "I lost my link" page. With one: the vendor's own portal.
   { path: 'status', element: <AccessLink /> },
   { path: 'status/:token', element: <StatusPage /> },
