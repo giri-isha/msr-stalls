@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { OnboardingStep } from './onboarding';
 
 /** How a vendor gets back in.
@@ -50,4 +51,57 @@ export type SelfServeStep = (typeof SELF_SERVE_STEPS)[number];
 
 export function isSelfServe(step: OnboardingStep): step is SelfServeStep {
   return (SELF_SERVE_STEPS as readonly string[]).includes(step);
+}
+
+/* ── The requester login ────────────────────────────────────────────────────
+ *
+ * ⚠️ TEMPORARY. A password stands in until the host's Isha OIDC arrives — see
+ * `docs/superpowers/specs/2026-09-15-stalls-vendor-login-design.md`. Everything
+ * below is written to be deleted rather than grown.
+ */
+
+/** 8 is a floor, not a policy. A rule demanding a symbol and a digit would
+ *  outlive the mechanism it protects and buy nothing the floor does not. */
+export const MIN_PASSWORD_LENGTH = 8;
+
+export const RegisterInput = z.object({
+  contact: z.string().min(1).max(254),
+  password: z.string().min(MIN_PASSWORD_LENGTH).max(200),
+  displayName: z.string().min(1).max(160),
+});
+export type RegisterInput = z.infer<typeof RegisterInput>;
+
+export const LoginInput = z.object({
+  contact: z.string().min(1).max(254),
+  /** No minimum. A short password is a failed login, not a validation error —
+   *  a 400 here would tell a caller their guess was too short to be anyone's,
+   *  which is one bit more than the login route is willing to say. */
+  password: z.string().min(1).max(200),
+});
+export type LoginInput = z.infer<typeof LoginInput>;
+
+export const ConfirmRegistrationInput = z.object({ token: z.string().min(16).max(128) });
+export type ConfirmRegistrationInput = z.infer<typeof ConfirmRegistrationInput>;
+
+export const PasswordResetInput = z.object({ contact: z.string().min(1).max(254) });
+export type PasswordResetInput = z.infer<typeof PasswordResetInput>;
+
+export const PasswordResetConfirmInput = z.object({
+  token: z.string().min(16).max(128),
+  password: z.string().min(MIN_PASSWORD_LENGTH).max(200),
+});
+export type PasswordResetConfirmInput = z.infer<typeof PasswordResetConfirmInput>;
+
+/** Who is logged in on the public side.
+ *
+ *  ⚠️ NOT `MeResponse`. That is the STAFF session and it answers `can()` about
+ *  roles a requester will never hold. Conflating the two is how a requester
+ *  ends up being asked what they are allowed to do. */
+export interface RequesterSession {
+  accountId: string;
+  displayName: string;
+  /** Empty when the account was registered on a mobile and has no real
+   *  address — the column holds a placeholder and nothing sends to it. */
+  email: string;
+  phone: string;
 }

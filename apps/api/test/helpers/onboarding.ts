@@ -86,6 +86,8 @@ export interface TestDeps extends StallsDeps {
     fssai: string[];
     staff: string[];
     signature: string[];
+    confirm: string[];
+    reset: string[];
   };
 }
 
@@ -96,6 +98,8 @@ export function testDeps(overrides: Partial<TestDeps> = {}): TestDeps {
     fssai: [],
     staff: [],
     signature: [],
+    confirm: [],
+    reset: [],
   };
   const capture = (bucket: string[], prefix: string) => (token: string) => {
     bucket.push(token);
@@ -112,6 +116,8 @@ export function testDeps(overrides: Partial<TestDeps> = {}): TestDeps {
     fssaiUrl: capture(links.fssai, 'https://web.test/stalls/fssai'),
     staffRegistrationUrl: capture(links.staff, 'https://web.test/stalls/staff'),
     signatureUrl: capture(links.signature, 'https://web.test/stalls/sign'),
+    registerConfirmUrl: capture(links.confirm, 'https://web.test/stalls/confirm'),
+    passwordResetUrl: capture(links.reset, 'https://web.test/stalls/reset'),
     publicRateLimitMax: 10_000,
     ...overrides,
   };

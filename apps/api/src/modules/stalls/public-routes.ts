@@ -27,6 +27,7 @@ import {
   ContinueStepInput,
   PresignUploadInput,
   RATE_SCOPES,
+  RegisterInput,
   RegisterStaffInput,
   RequestAccessLinkInput,
   type SubmitRequestResponse,
@@ -42,6 +43,7 @@ import { getPublicConfig } from './config';
 import type { StallsDeps } from './deps';
 import { UnknownAccessLinkError } from './errors';
 import { registerStaff, resolveCoupon, submitFssai, toCouponView } from './onboarding';
+import { register } from './registration';
 import { sendAccessLink, statusView, stepLink } from './portal';
 import { submitRequest } from './submit';
 import { isOurKey, presignUpload } from './uploads';
@@ -65,6 +67,26 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
    *  they are most likely to want were unavailable. */
   zod.get('/config', { schema: { querystring: PublicConfigQuery } }, async (req) =>
     getPublicConfig(prisma, req.query.scope),
+  );
+
+  /** Registration.
+   *
+   *  ⚠️ 202 `{ ok: true }` for a free contact, for one that already has an
+   *  account, and for a string that is not a contact at all. The three differ
+   *  only in which message goes out and to whom — see `registration.ts`. A
+   *  route that answered "that number is already registered" would be a way of
+   *  asking whether a particular shopkeeper had applied. */
+  zod.post(
+    '/register',
+    {
+      schema: { body: RegisterInput },
+      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
+    },
+    async (req, reply) => {
+      await register(prisma, deps, req.body);
+      reply.status(202);
+      return { ok: true };
+    },
   );
 
   /** The one public write. Per-IP rate limit on top of the global one: a

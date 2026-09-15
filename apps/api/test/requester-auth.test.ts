@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, test } from 'vitest';
+import type { FastifyInstance } from 'fastify';
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
+import { buildApp } from '../src/app';
 import {
   authenticate,
   createCredential,
@@ -13,12 +15,25 @@ import {
   requireRequester,
   startSession,
 } from '../src/modules/stalls/session';
-import { prisma, resetDatabase, seedEdition } from './helpers/db';
+import { LogMailer, prisma, resetDatabase, seedEdition } from './helpers/db';
+import { recordingWhatsApp } from './helpers/onboarding';
+
+let app: FastifyInstance;
+const mail = new LogMailer();
+const whatsapp = recordingWhatsApp();
+beforeAll(async () => {
+  app = await buildApp({ logger: false, mail, whatsapp, webOrigin: 'http://web.example' });
+});
+afterAll(() => app.close());
 
 beforeEach(async () => {
   await resetDatabase();
   await seedEdition();
 });
+
+const url = (p: string) => `/api/m/stalls/public/${p}`;
+const postRegister = (body: Record<string, unknown>) =>
+  app.inject({ method: 'POST', url: url('register'), payload: body });
 
 async function account(email = 'priya@greenleaf.example', phone = '9840012345') {
   return prisma.stallAccount.create({
@@ -197,5 +212,148 @@ describe('session', () => {
     await expect(
       requireRequester(prisma, { cookies: { msr_stall_requester: token } }),
     ).rejects.toBeInstanceOf(UnknownAccessLinkError);
+  });
+});
+
+describe('POST /public/register', () => {
+  beforeEach(() => {
+    mail.sent.length = 0;
+    whatsapp.sent.length = 0;
+  });
+
+  test('a free email creates an account and an UNCONFIRMED credential', async () => {
+    const res = await postRegister({
+      contact: 'new@vendor.example',
+      password: 'hunter2hunter2',
+      displayName: 'New Vendor',
+    });
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toEqual({ ok: true });
+
+    const cred = await prisma.stallCredential.findUniqueOrThrow({
+      where: { loginValue: 'new@vendor.example' },
+    });
+    expect(cred.confirmedAt).toBeNull();
+    expect(cred.loginKind).toBe('EMAIL');
+    expect(mail.sent).toHaveLength(1);
+    expect(mail.sent[0].to).toBe('new@vendor.example');
+  });
+
+  test('a free mobile is confirmed over WhatsApp, not email', async () => {
+    const res = await postRegister({
+      contact: '98400 12399',
+      password: 'hunter2hunter2',
+      displayName: 'Trader',
+    });
+    expect(res.statusCode).toBe(202);
+    expect(whatsapp.sent).toHaveLength(1);
+    expect(whatsapp.sent[0].to).toBe('9840012399');
+    expect(mail.sent).toHaveLength(0);
+
+    // The address column is non-null and unique, so a mobile registration gets
+    // a placeholder. Nothing may ever send to it.
+    const acct = await prisma.stallAccount.findFirstOrThrow();
+    expect(acct.email).toBe('mobile+9840012399@stalls.invalid');
+    expect(acct.phone).toBe('9840012399');
+  });
+
+  // 🔴 THE test for this feature. A taken contact, a free one and a string that
+  // is not a contact must be one response. Anything else and the route answers
+  // "has this shopkeeper applied?"
+  test('taken, free and malformed are byte-identical responses', async () => {
+    await account('taken@vendor.example', '9840012345');
+
+    const free = await postRegister({
+      contact: 'free@vendor.example',
+      password: 'hunter2hunter2',
+      displayName: 'A',
+    });
+    const taken = await postRegister({
+      contact: 'taken@vendor.example',
+      password: 'hunter2hunter2',
+      displayName: 'B',
+    });
+    const junk = await postRegister({
+      contact: 'not a contact',
+      password: 'hunter2hunter2',
+      displayName: 'C',
+    });
+
+    expect(taken.statusCode).toBe(free.statusCode);
+    expect(junk.statusCode).toBe(free.statusCode);
+    expect(taken.body).toBe(free.body);
+    expect(junk.body).toBe(free.body);
+  });
+
+  // 🔴 The refusal is real, it just travels by the account's own channel.
+  test('registering on a taken contact warns the ACCOUNT and makes no credential', async () => {
+    await account('taken@vendor.example', '9840012345');
+    await postRegister({
+      contact: 'taken@vendor.example',
+      password: 'hunter2hunter2',
+      displayName: 'Impostor',
+    });
+
+    expect(await prisma.stallCredential.count()).toBe(0);
+    expect(mail.sent).toHaveLength(1);
+    expect(mail.sent[0].to).toBe('taken@vendor.example');
+    expect(mail.sent[0].subject.toLowerCase()).toContain('stall team');
+    // The account also has a number, and the channel that works is the one the
+    // person attempting it did not choose.
+    expect(whatsapp.sent).toHaveLength(1);
+    expect(whatsapp.sent[0].to).toBe('9840012345');
+  });
+
+  test('a taken MOBILE warns the account behind it', async () => {
+    await account('taken@vendor.example', '9840012345');
+    await postRegister({
+      contact: '9840012345',
+      password: 'hunter2hunter2',
+      displayName: 'Impostor',
+    });
+    expect(await prisma.stallCredential.count()).toBe(0);
+    expect(mail.sent[0].to).toBe('taken@vendor.example');
+  });
+
+  test('a malformed contact sends nothing at all', async () => {
+    await postRegister({
+      contact: 'not a contact',
+      password: 'hunter2hunter2',
+      displayName: 'C',
+    });
+    expect(mail.sent).toHaveLength(0);
+    expect(whatsapp.sent).toHaveLength(0);
+    expect(await prisma.stallAccount.count()).toBe(0);
+  });
+
+  test('a second registration on the same contact does not replace the first', async () => {
+    await postRegister({
+      contact: 'first@vendor.example',
+      password: 'hunter2hunter2',
+      displayName: 'First',
+    });
+    const before = await prisma.stallCredential.findUniqueOrThrow({
+      where: { loginValue: 'first@vendor.example' },
+    });
+
+    await postRegister({
+      contact: 'first@vendor.example',
+      password: 'adifferentpassword',
+      displayName: 'Second',
+    });
+    const after = await prisma.stallCredential.findUniqueOrThrow({
+      where: { loginValue: 'first@vendor.example' },
+    });
+    expect(after.passwordHash).toBe(before.passwordHash);
+    expect(await prisma.stallCredential.count()).toBe(1);
+  });
+
+  test('a password under the floor is a validation error, not a silent 202', async () => {
+    const res = await postRegister({
+      contact: 'short@vendor.example',
+      password: 'short',
+      displayName: 'Short',
+    });
+    expect(res.statusCode).toBe(400);
   });
 });
