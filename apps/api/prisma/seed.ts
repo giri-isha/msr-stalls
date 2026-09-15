@@ -34,24 +34,24 @@ const SYSTEM = '00000000-0000-0000-0000-000000000000';
 const force = process.argv.includes('--force');
 
 const STAFF = [
-  { email: 'vikram.s@ishafoundation.org', displayName: 'Vikram Sethu', roles: ['stalls_admin'] },
-  { email: 'deepa.r@ishafoundation.org', displayName: 'Deepa Ramanathan', roles: ['stalls_lead'] },
-  { email: 'kavya.n@ishafoundation.org', displayName: 'Kavya Nair', roles: ['stalls_volunteer'] },
-  { email: 'meena.k@ishafoundation.org', displayName: 'Meena Krishnan', roles: ['stalls_finance'] },
+  { email: 'vikram.s@maildrop.cc', displayName: 'Vikram Sethu', roles: ['stalls_admin'] },
+  { email: 'deepa.r@maildrop.cc', displayName: 'Deepa Ramanathan', roles: ['stalls_lead'] },
+  { email: 'kavya.n@maildrop.cc', displayName: 'Kavya Nair', roles: ['stalls_volunteer'] },
+  { email: 'meena.k@maildrop.cc', displayName: 'Meena Krishnan', roles: ['stalls_finance'] },
   // The two narrow roles, seeded so their limits can be seen rather than taken
   // on trust: the local welfare team sees only their own requests, and the
   // electrical team sees only the sheet.
   {
-    email: 'lakshmi.p@ishafoundation.org',
+    email: 'lakshmi.p@maildrop.cc',
     displayName: 'Lakshmi Perumal',
     roles: ['stalls_local_welfare'],
   },
   {
-    email: 'suresh.k@ishafoundation.org',
+    email: 'suresh.k@maildrop.cc',
     displayName: 'Suresh Kumar',
     roles: ['stalls_electrical'],
   },
-  { email: 'arjun.b@ishafoundation.org', displayName: 'Arjun Balaji', roles: [] },
+  { email: 'arjun.b@maildrop.cc', displayName: 'Arjun Balaji', roles: [] },
 ];
 
 /** The 2025 planning sheet, per zone × category (from the prototype). */
@@ -142,7 +142,7 @@ const REQUESTS: Array<Record<string, unknown>> = [
   vendor({
     stallName: 'Green Leaf Organics',
     requesterName: 'Priya Venkat',
-    email: 'priya@greenleaf.example',
+    email: 'priya@maildrop.cc',
     contactNumber: '9840012345',
     preferredZoneCode: 'C1',
     itemsSelling: 'Organic spices, cold-pressed oils, honey',
@@ -150,7 +150,7 @@ const REQUESTS: Array<Record<string, unknown>> = [
   vendor({
     stallName: 'Coastal Spice Kitchen',
     requesterName: 'Rajendran',
-    email: 'orders@coastalspice.example',
+    email: 'orders@maildrop.cc',
     contactNumber: '9840023456',
     preferredZoneCode: 'B4',
     itemsSelling: 'Seafood biryani, fish fry, prawn curry',
@@ -160,7 +160,7 @@ const REQUESTS: Array<Record<string, unknown>> = [
   vendor({
     stallName: 'Little Wonders Toys',
     requesterName: 'Suresh Kumar',
-    email: 'hello@littlewonders.example',
+    email: 'hello@maildrop.cc',
     contactNumber: '9840034567',
     stallType: 'NON_FOOD',
     preferredZoneCode: 'A4',
@@ -169,7 +169,7 @@ const REQUESTS: Array<Record<string, unknown>> = [
   vendor({
     stallName: 'Bliss Bites Cafe',
     requesterName: 'Kavya Nair',
-    email: 'bliss@bites.example',
+    email: 'bliss@maildrop.cc',
     contactNumber: '9840045678',
     preferredZoneCode: 'C2',
     itemsSelling: 'Sandwiches, smoothies, cold coffee',
@@ -177,7 +177,7 @@ const REQUESTS: Array<Record<string, unknown>> = [
   vendor({
     stallName: 'Mahalakshmi Handicrafts',
     requesterName: 'Lakshmi Narayan',
-    email: 'shop@mahalakshmi.example',
+    email: 'shop@maildrop.cc',
     contactNumber: '9840056789',
     stallType: 'NON_FOOD',
     preferredZoneCode: 'C1',
@@ -186,7 +186,7 @@ const REQUESTS: Array<Record<string, unknown>> = [
   vendor({
     stallName: 'Rashi Sandwich Corner',
     requesterName: 'Rashi',
-    email: 'rashi@sandwich.example',
+    email: 'rashi@maildrop.cc',
     contactNumber: '9840067890',
     preferredZoneCode: 'B3',
     itemsSelling: 'Grilled sandwiches',
@@ -194,7 +194,7 @@ const REQUESTS: Array<Record<string, unknown>> = [
   vendor({
     stallName: 'Waffles Spot',
     requesterName: 'Arjun',
-    email: 'waffles@spot.example',
+    email: 'waffles@maildrop.cc',
     contactNumber: '9840078901',
     preferredZoneCode: 'A4',
     itemsSelling: 'Waffles, ice cream',
@@ -202,7 +202,7 @@ const REQUESTS: Array<Record<string, unknown>> = [
   lw({
     stallName: 'Seva Health Trust — Free Health Camp',
     requesterName: 'Gopal Krishnan',
-    email: 'seva@health.example',
+    email: 'seva@maildrop.cc',
     contactNumber: '9840089012',
     stallType: 'NON_FOOD',
     preferredZoneCode: 'A3',
@@ -212,7 +212,7 @@ const REQUESTS: Array<Record<string, unknown>> = [
   lw({
     stallName: 'School Fundraiser Stall',
     requesterName: 'Deepa Ramanathan',
-    email: 'cps@school.example',
+    email: 'cps@maildrop.cc',
     contactNumber: '9840090123',
     stallType: 'NON_FOOD',
     preferredZoneCode: 'C2',
@@ -221,7 +221,7 @@ const REQUESTS: Array<Record<string, unknown>> = [
   lw({
     stallName: 'Kodiveli Amman Idli Kadai',
     requesterName: 'Meena',
-    email: 'idli@kadai.example',
+    email: 'idli@maildrop.cc',
     contactNumber: '9840001234',
     preferredZoneCode: 'C1',
     itemsSelling: 'Idli, dosa, filter coffee',
@@ -234,7 +234,7 @@ const REQUESTS: Array<Record<string, unknown>> = [
   lw({
     stallName: 'SKS Fresh Juice and Snack',
     requesterName: 'Sankar',
-    email: 'sks@juice.example',
+    email: 'sks@maildrop.cc',
     contactNumber: '9840011111',
     preferredZoneCode: 'B4',
     itemsSelling: 'Fresh juice, snacks',
@@ -246,7 +246,7 @@ const REQUESTS: Array<Record<string, unknown>> = [
   ashram(
     {
       stallName: 'Ashram Publications Stall',
-      email: 'ashram.pub@example.org',
+      email: 'ashram.pub@maildrop.cc',
       preferredZoneCode: 'A4',
       itemsSelling: 'Books, calendars, audio CDs',
     },
@@ -261,7 +261,7 @@ const REQUESTS: Array<Record<string, unknown>> = [
   ashram(
     {
       stallName: 'Wellness Center Stall',
-      email: 'wellness@example.org',
+      email: 'wellness@maildrop.cc',
       preferredZoneCode: 'A4',
       itemsSelling: 'Wellness program brochures, consultation desk',
     },
@@ -278,7 +278,7 @@ const REQUESTS: Array<Record<string, unknown>> = [
   ashram(
     {
       stallName: 'Isha Bhiksha Promo',
-      email: 'bhiksha@example.org',
+      email: 'bhiksha@maildrop.cc',
       preferredZoneCode: 'B4',
       itemsSelling: 'Bhiksha — donation counter',
     },
@@ -296,7 +296,7 @@ const REQUESTS: Array<Record<string, unknown>> = [
     ...ashram(
       {
         stallName: 'Annapurna Kitchen',
-        email: 'annapurna@example.org',
+        email: 'annapurna@maildrop.cc',
         preferredZoneCode: 'B3',
         itemsSelling: 'South Indian meals, filter coffee',
         gasStoves: 2,
@@ -392,7 +392,7 @@ async function main() {
       });
     }
   }
-  const lead = people.get('deepa.r@ishafoundation.org') ?? SYSTEM;
+  const lead = people.get('deepa.r@maildrop.cc') ?? SYSTEM;
   console.log(`Staff: ${STAFF.length}`);
 
   // Edition + plan
@@ -485,7 +485,7 @@ async function main() {
   );
 
   await submitBankDetails(prisma, greenLeaf, {
-    email: 'priya@greenleaf.example',
+    email: 'priya@maildrop.cc',
     invoiceName: 'Green Leaf Organics Pvt Ltd',
     accountHolder: 'Green Leaf Organics Pvt Ltd',
     mobile: '9840012345',
@@ -526,7 +526,7 @@ async function main() {
     lead,
   );
 
-  const finance = people.get('meena.k@ishafoundation.org') ?? SYSTEM;
+  const finance = people.get('meena.k@maildrop.cc') ?? SYSTEM;
   const plan = await prisma.stallPaymentPlan.findUniqueOrThrow({
     where: { requestId: greenLeaf },
   });
@@ -599,7 +599,7 @@ async function main() {
     });
   }
 
-  const volunteer = people.get('kavya.n@ishafoundation.org') ?? SYSTEM;
+  const volunteer = people.get('kavya.n@maildrop.cc') ?? SYSTEM;
   await actOnEquipment(prisma, greenLeaf, 'DISTRIBUTE', volunteer);
   await patchEquipment(prisma, greenLeaf, { extraChairs: 2 }, volunteer);
   await actOnEquipment(prisma, greenLeaf, 'COLLECT_EXTRA_PAYMENT', volunteer);
