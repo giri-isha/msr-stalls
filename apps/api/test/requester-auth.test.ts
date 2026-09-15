@@ -357,3 +357,155 @@ describe('POST /public/register', () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+/** The confirmation token, taken from the message that carried it — the way a
+ *  vendor gets it. Only the hash is stored, so there is no reading it back out
+ *  of the table, and that is the point of storing it that way. */
+function tokenFromLastMessage(): string {
+  const text = mail.sent.at(-1)?.text ?? whatsapp.sent.at(-1)?.text ?? '';
+  const found = text.match(/https?:\/\/\S+\/(?:confirm|reset)\/([A-Za-z0-9_-]+)/);
+  if (!found) throw new Error(`no link in: ${text}`);
+  return found[1];
+}
+
+async function registered(contact = 'new@vendor.example', password = 'hunter2hunter2') {
+  mail.sent.length = 0;
+  whatsapp.sent.length = 0;
+  await postRegister({ contact, password, displayName: 'New Vendor' });
+  return tokenFromLastMessage();
+}
+
+async function loggedIn(contact = 'new@vendor.example', password = 'hunter2hunter2') {
+  const token = await registered(contact, password);
+  const res = await app.inject({
+    method: 'POST',
+    url: url('register/confirm'),
+    payload: { token },
+  });
+  return res.cookies.find((c) => c.name === 'msr_stall_requester')?.value ?? '';
+}
+
+describe('confirm, login, logout', () => {
+  beforeEach(() => {
+    mail.sent.length = 0;
+    whatsapp.sent.length = 0;
+  });
+
+  test('confirming the link logs them straight in', async () => {
+    const token = await registered();
+    const res = await app.inject({
+      method: 'POST',
+      url: url('register/confirm'),
+      payload: { token },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const cookie = res.cookies.find((c) => c.name === 'msr_stall_requester');
+    expect(cookie).toBeDefined();
+    expect(cookie?.httpOnly).toBe(true);
+    expect(cookie?.sameSite?.toLowerCase()).toBe('lax');
+
+    const cred = await prisma.stallCredential.findUniqueOrThrow({
+      where: { loginValue: 'new@vendor.example' },
+    });
+    expect(cred.confirmedAt).not.toBeNull();
+  });
+
+  // A forwarded confirmation email is not a spare key.
+  test('a confirmation link works once', async () => {
+    const token = await registered();
+    await app.inject({ method: 'POST', url: url('register/confirm'), payload: { token } });
+    const again = await app.inject({
+      method: 'POST',
+      url: url('register/confirm'),
+      payload: { token },
+    });
+    expect(again.statusCode).toBe(404);
+  });
+
+  test('an unconfirmed credential cannot log in', async () => {
+    await registered();
+    const res = await app.inject({
+      method: 'POST',
+      url: url('login'),
+      payload: { contact: 'new@vendor.example', password: 'hunter2hunter2' },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  test('login sets the session cookie and the session route answers', async () => {
+    const value = await loggedIn();
+    await app.inject({
+      method: 'POST',
+      url: url('logout'),
+      cookies: { msr_stall_requester: value },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: url('login'),
+      payload: { contact: 'new@vendor.example', password: 'hunter2hunter2' },
+    });
+    expect(res.statusCode).toBe(200);
+    const fresh = res.cookies.find((c) => c.name === 'msr_stall_requester')?.value ?? '';
+
+    const me = await app.inject({
+      method: 'GET',
+      url: url('session'),
+      cookies: { msr_stall_requester: fresh },
+    });
+    expect(me.statusCode).toBe(200);
+    expect(me.json()).toMatchObject({ displayName: 'New Vendor', email: 'new@vendor.example' });
+  });
+
+  // 🔴 Two different failures, one response, down to the byte.
+  test('a wrong password and an unknown contact are the same 401', async () => {
+    await loggedIn();
+    const unknown = await app.inject({
+      method: 'POST',
+      url: url('login'),
+      payload: { contact: 'nobody@vendor.example', password: 'hunter2hunter2' },
+    });
+    const wrong = await app.inject({
+      method: 'POST',
+      url: url('login'),
+      payload: { contact: 'new@vendor.example', password: 'wrongwrongwrong' },
+    });
+    expect(unknown.statusCode).toBe(401);
+    expect(wrong.statusCode).toBe(401);
+    expect(wrong.body).toBe(unknown.body);
+  });
+
+  // ⚠️ 404, not 401. A public page asks this on every render; a 401 would make
+  // the browser treat the apply form as something it must authenticate for.
+  test('the session route without a cookie is 404, not a hint', async () => {
+    const res = await app.inject({ method: 'GET', url: url('session') });
+    expect(res.statusCode).toBe(404);
+  });
+
+  test('a mobile registration reports no address, not a placeholder', async () => {
+    const value = await loggedIn('9840012399');
+    const me = await app.inject({
+      method: 'GET',
+      url: url('session'),
+      cookies: { msr_stall_requester: value },
+    });
+    expect(me.json().email).toBe('');
+    expect(me.json().phone).toBe('9840012399');
+  });
+
+  test('logout revokes the session', async () => {
+    const value = await loggedIn();
+    await app.inject({
+      method: 'POST',
+      url: url('logout'),
+      cookies: { msr_stall_requester: value },
+    });
+    const after = await app.inject({
+      method: 'GET',
+      url: url('session'),
+      cookies: { msr_stall_requester: value },
+    });
+    expect(after.statusCode).toBe(404);
+  });
+});

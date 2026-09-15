@@ -27,6 +27,8 @@ import {
   ContinueStepInput,
   PresignUploadInput,
   RATE_SCOPES,
+  ConfirmRegistrationInput,
+  LoginInput,
   RegisterInput,
   RegisterStaffInput,
   RequestAccessLinkInput,
@@ -43,7 +45,16 @@ import { getPublicConfig } from './config';
 import type { StallsDeps } from './deps';
 import { UnknownAccessLinkError } from './errors';
 import { registerStaff, resolveCoupon, submitFssai, toCouponView } from './onboarding';
-import { register } from './registration';
+import { authenticate } from './credentials';
+import { confirmRegistration, isPlaceholderEmail, register } from './registration';
+import {
+  REQUESTER_COOKIE,
+  clearSessionCookie,
+  endSession,
+  requireRequester,
+  setSessionCookie,
+  startSession,
+} from './session';
 import { sendAccessLink, statusView, stepLink } from './portal';
 import { submitRequest } from './submit';
 import { isOurKey, presignUpload } from './uploads';
@@ -88,6 +99,63 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
       return { ok: true };
     },
   );
+
+  /** Following the link is what proves the requester holds the contact, so it
+   *  is also what starts their first session. Single use — a forwarded
+   *  confirmation email is not a spare key. */
+  zod.post(
+    '/register/confirm',
+    {
+      schema: { body: ConfirmRegistrationInput },
+      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
+    },
+    async (req, reply) => {
+      const { accountId } = await confirmRegistration(prisma, req.body.token);
+      setSessionCookie(reply, await startSession(prisma, accountId));
+      return { ok: true };
+    },
+  );
+
+  /** ⚠️ One 401 for every way this fails — see `InvalidCredentialsError`. The
+   *  route does not know which half was wrong and must not learn. */
+  zod.post(
+    '/login',
+    {
+      schema: { body: LoginInput },
+      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
+    },
+    async (req, reply) => {
+      const cred = await authenticate(prisma, req.body);
+      setSessionCookie(reply, await startSession(prisma, cred.accountId));
+      return { ok: true };
+    },
+  );
+
+  app.post('/logout', async (req, reply) => {
+    const token = req.cookies[REQUESTER_COOKIE];
+    if (token) await endSession(prisma, token);
+    clearSessionCookie(reply);
+    return { ok: true };
+  });
+
+  /** Who is logged in, for a page that has to render either way.
+   *
+   *  ⚠️ 404 rather than 401 with no session. The apply page asks this on every
+   *  render and is public; a 401 would tell the browser it must authenticate
+   *  to read a form that anyone may read. */
+  app.get('/session', async (req, reply) => {
+    const account = await requireRequester(prisma, req).catch(() => null);
+    if (!account) return reply.status(404).send({ error: 'no session' });
+    return {
+      accountId: account.id,
+      displayName: account.displayName,
+      // A placeholder address is not an address. Reporting it would put
+      // `mobile+9840012399@stalls.invalid` in a form field a vendor then has
+      // to clear by hand.
+      email: isPlaceholderEmail(account.email) ? '' : account.email,
+      phone: account.phone,
+    };
+  });
 
   /** The one public write. Per-IP rate limit on top of the global one: a
    *  script cannot fill the pipeline with junk, and a real vendor never hits
