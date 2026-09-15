@@ -287,13 +287,19 @@ function FieldRow({
       style={{
         display: 'flex',
         alignItems: 'center',
+        // ⚠️ Wraps. A question, two tags and four controls do not fit across a
+        // 390px phone, and without this the label is squeezed to one word per
+        // line while the buttons stay put — which is the opposite of what
+        // should give way. `flex: 1` with a 160px floor on the label makes the
+        // controls drop to their own line instead.
+        flexWrap: 'wrap',
         gap: 10,
         padding: '10px 14px',
         borderBottom: '1px solid var(--line)',
         opacity: field.isActive ? 1 : 0.55,
       }}
     >
-      <div style={{ minWidth: 0, flex: 1 }}>
+      <div style={{ minWidth: 160, flex: 1 }}>
         <div style={{ fontSize: 13, fontWeight: 600 }}>
           {field.label}
           {field.required && <span style={{ color: 'var(--des)' }}> *</span>}
@@ -317,7 +323,7 @@ function FieldRow({
       {!field.isActive && <Tag size='sm'>Not asked</Tag>}
 
       {writable && (
-        <span style={{ display: 'inline-flex', gap: 4 }}>
+        <span style={{ display: 'inline-flex', gap: 4, flex: 'none' }}>
           <IconBtn label={`Move ${field.label} up`} glyph='chevron-up' onClick={onUp} />
           <IconBtn label={`Move ${field.label} down`} glyph='chevron-down' onClick={onDown} />
         </span>

@@ -20,6 +20,7 @@ import { NavLink, Outlet, useLocation } from 'react-router';
 import { apiFetch } from '@/modules/stalls/api-client';
 import { useTheme } from '@/modules/stalls/use-theme';
 import { MeProvider, STALLS_NAV, type StallsNavItem, useMe } from '@/modules/stalls';
+import { InstallPrompt } from './UpdateToast';
 import {
   Frame,
   Icon,
@@ -529,6 +530,11 @@ function Gate() {
             crumb={current?.group ?? 'Stalls'}
             title={current?.label ?? 'Stalls'}
           />
+          {/* ⚠️ The backoffice only. An installed app is installed by the team
+              who work it every day; a vendor fills one form once, from a link in
+              an email, and would be offered an icon for a screen they will
+              never open again. */}
+          <InstallPrompt />
           <div style={{ padding: mobile ? '14px 14px 72px' : '22px 26px 60px' }}>
             <Outlet />
           </div>
