@@ -291,3 +291,29 @@ export class UploadsUnavailableError extends Error {
     this.name = 'UploadsUnavailableError';
   }
 }
+
+// ── The users directory ─────────────────────────────────────────────────────
+
+/** A requester account id that matches nothing. Mapped to 404.
+ *
+ *  Named plainly, unlike `UnknownAccessLinkError` and `UnknownCouponError`
+ *  which are deliberately vague: those answer a public route where "no such
+ *  thing" is itself worth hiding. This one answers a staff route whose caller
+ *  is already reading the whole directory. */
+export class UnknownAccountError extends Error {
+  constructor(readonly accountId: string) {
+    super(`no requester account ${accountId}`);
+    this.name = 'UnknownAccountError';
+  }
+}
+
+/** A support action asked of an account it means nothing for — resending a
+ *  confirmation to somebody already confirmed, or to somebody who never
+ *  registered a password at all. Mapped to 409, so the screen can say which of
+ *  those it was instead of showing an error page. */
+export class NothingToSendError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = 'NothingToSendError';
+  }
+}

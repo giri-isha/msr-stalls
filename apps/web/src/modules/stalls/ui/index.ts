@@ -72,7 +72,7 @@ export {
   useLockScroll,
 } from './components/Overlay';
 export { pageSlice, Pager } from './components/Pager';
-export { OptionRow, Popover } from './components/Popover';
+export { OptionRow, PopHeader, Popover } from './components/Popover';
 export { RowCard, RowCardAction } from './components/RowCard';
 export { SearchList, matchLabel } from './components/SearchList';
 export { SearchSelect } from './components/SearchSelect';

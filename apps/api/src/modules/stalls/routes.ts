@@ -19,6 +19,7 @@ import {
   FlowInput,
   GrantRoleInput,
   ListRequestsQuery,
+  ListUsersQuery,
   LogReminderInput,
   type MeResponse,
   PatchRequestInput,
@@ -74,7 +75,9 @@ import {
   unshortlist,
 } from './selection';
 import * as signature from './signature';
+import { listUsers } from './directory';
 import { grantRole, listStaff, revokeRole, searchPeople } from './staff';
+import { resendConfirmation, sendAccountAccessLink, unlockAccount } from './support';
 
 const IdParams = z.object({ id: z.uuid() });
 const CodeParams = z.object({ code: ZoneCodeValue });
@@ -438,6 +441,53 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     const caller = await requireStaff(req, prisma);
     requireAction(caller, 'config:read');
     return listStaff(prisma);
+  });
+
+  // ── The users directory ───────────────────────────────────────────────────
+
+  /** Staff and requesters in one list, with the tile counts beside it.
+   *
+   *  `config:read`, the same guard `GET /staff` carries — this is the same
+   *  population plus the accounts, and reading who has applied is what every
+   *  request screen already does. */
+  zod.get('/users', { schema: { querystring: ListUsersQuery } }, async (req) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'config:read');
+    const edition = await activeEdition(prisma);
+    return listUsers(prisma, { ...req.query, editionId: edition.id });
+  });
+
+  /** The three support actions, all on a requester's account and all
+   *  `users:write` — the action that already governs who may change who can
+   *  reach this module.
+   *
+   *  ⚠️ Each sends to the contact the ACCOUNT holds and returns nothing. A
+   *  route here that handed the link back to the caller would turn "help a
+   *  vendor get in" into "read any vendor's private link", which is the one
+   *  thing the whole access-link design is built to prevent. */
+  zod.post('/users/:id/unlock', { schema: { params: IdParams } }, async (req, reply) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'users:write');
+    await unlockAccount(prisma, req.params.id, caller.personId);
+    reply.status(204);
+  });
+
+  zod.post(
+    '/users/:id/resend-confirmation',
+    { schema: { params: IdParams } },
+    async (req, reply) => {
+      const caller = await requireStaff(req, prisma);
+      requireAction(caller, 'users:write');
+      await resendConfirmation(prisma, deps, req.params.id, caller.personId);
+      reply.status(204);
+    },
+  );
+
+  zod.post('/users/:id/access-link', { schema: { params: IdParams } }, async (req, reply) => {
+    const caller = await requireStaff(req, prisma);
+    requireAction(caller, 'users:write');
+    await sendAccountAccessLink(prisma, deps, req.params.id, caller.personId);
+    reply.status(204);
   });
 
   zod.get(

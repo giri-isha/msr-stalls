@@ -1,12 +1,11 @@
 import type { RateCardEntry, RateScope } from '@msr/stalls';
-import { ROLES, formatInr, paiseToRupees, rupeesToPaise } from '@msr/stalls';
+import { formatInr, paiseToRupees, rupeesToPaise } from '@msr/stalls';
 import { Fragment, useEffect, useState } from 'react';
 import * as api from '../api';
 import { useLoad } from '../hooks';
 import { useMe } from '../me';
 import {
   Btn,
-  Card,
   Checkbox,
   Empty,
   ErrorBox,
@@ -16,7 +15,6 @@ import {
   IconBtn,
   Input,
   Loading,
-  Search,
   Select,
   TBody,
   TD,
@@ -28,6 +26,8 @@ import {
   toolBtnStyle,
   useToast,
 } from '../ui';
+import { Panel } from '../components/Panel';
+import { Users } from './Users';
 
 const TABS = [
   { label: 'Bays', glyph: 'map-pin' },
@@ -41,52 +41,6 @@ const TABS = [
   { label: 'Editions', glyph: 'calendar' },
 ] as const;
 type Tab = (typeof TABS)[number]['label'];
-
-/**
- * A titled panel.
- *
- * The reference system has no Card header component — its screens draw their
- * own — so this is that pattern, once, rather than eight times down this file.
- */
-function Panel({
-  title,
-  note,
-  children,
-  footer,
-}: {
-  title: string;
-  note?: React.ReactNode;
-  children: React.ReactNode;
-  footer?: React.ReactNode;
-}) {
-  return (
-    <Card pad={0} style={{ overflow: 'hidden' }}>
-      <div style={{ padding: '15px 18px 13px', borderBottom: '1px solid var(--line)' }}>
-        <div style={{ fontSize: 14, fontWeight: 700 }}>{title}</div>
-        {note && (
-          <div style={{ fontSize: 12, color: 'var(--mfg)', marginTop: 3, lineHeight: 1.55 }}>
-            {note}
-          </div>
-        )}
-      </div>
-      <div style={{ padding: 18 }}>{children}</div>
-      {footer && (
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: 8,
-            padding: '13px 18px',
-            borderTop: '1px solid var(--line)',
-            background: 'var(--rail)',
-          }}
-        >
-          {footer}
-        </div>
-      )}
-    </Card>
-  );
-}
 
 /** A grid of fields at the rhythm the panels use. */
 function Grid({ min = 220, children }: { min?: number; children: React.ReactNode }) {
@@ -1316,187 +1270,6 @@ function Flow({ c, writable, run }: PanelProps) {
         />
       </div>
     </Panel>
-  );
-}
-
-function Users({ writable }: { writable: boolean }) {
-  const toast = useToast();
-  const staff = useLoad(api.listStaff);
-  const [q, setQ] = useState('');
-  const [found, setFound] = useState<
-    Array<{ personId: string; email: string; displayName: string }>
-  >([]);
-  const [roleKey, setRoleKey] = useState(ROLES[1].roleKey);
-
-  const search = async () => {
-    if (!q.trim()) return setFound([]);
-    setFound(await api.searchPeople(q.trim()));
-  };
-  const grant = async (personId: string) => {
-    try {
-      await api.grantRole(personId, roleKey);
-      toast.ok('Granted');
-      setFound([]);
-      setQ('');
-      staff.reload();
-    } catch (e) {
-      toast.fail(e);
-    }
-  };
-  const revoke = async (personId: string, rk: string) => {
-    try {
-      await api.revokeRole(personId, rk);
-      toast.ok('Revoked');
-      staff.reload();
-    } catch (e) {
-      toast.fail(e);
-    }
-  };
-
-  return (
-    <div style={{ display: 'grid', gap: 14 }}>
-      <Panel
-        title='Roles'
-        note='What each role may do. Declared by the module, not by the platform.'
-      >
-        <Table>
-          <THead>
-            <TR>
-              <TH>Role</TH>
-              <TH>Access</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {ROLES.map((r) => (
-              <TR key={r.roleKey}>
-                <TD style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{r.name}</TD>
-                <TD muted>{r.description}</TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
-      </Panel>
-
-      <Panel title='Staff'>
-        {staff.data === null ? (
-          <Loading />
-        ) : staff.data.length === 0 ? (
-          <Empty>Nobody has a stalls role yet.</Empty>
-        ) : (
-          <Table>
-            <THead>
-              <TR>
-                <TH>Name</TH>
-                <TH>Email</TH>
-                <TH>Roles</TH>
-              </TR>
-            </THead>
-            <TBody>
-              {staff.data.map((s) => (
-                <TR key={s.personId}>
-                  <TD style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{s.displayName}</TD>
-                  <TD muted>{s.email}</TD>
-                  <TD>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {s.roleKeys.map((rk) => (
-                        <span
-                          key={rk}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                        >
-                          <Tag tone='violet' size='sm'>
-                            {ROLES.find((r) => r.roleKey === rk)?.name ?? rk}
-                          </Tag>
-                          {writable && (
-                            <button
-                              type='button'
-                              aria-label={`Revoke ${rk} from ${s.displayName}`}
-                              onClick={() => revoke(s.personId, rk)}
-                              style={{
-                                display: 'flex',
-                                border: 0,
-                                background: 'none',
-                                padding: 2,
-                                cursor: 'pointer',
-                                color: 'var(--mfg)',
-                              }}
-                            >
-                              <Icon name='x' size={13} />
-                            </button>
-                          )}
-                        </span>
-                      ))}
-                    </div>
-                  </TD>
-                </TR>
-              ))}
-            </TBody>
-          </Table>
-        )}
-
-        {writable && (
-          <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: '.6px',
-                textTransform: 'uppercase',
-                color: 'var(--mfg)',
-                marginBottom: 9,
-              }}
-            >
-              Add a staff member
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              <Search
-                label='Search people'
-                value={q}
-                onChange={setQ}
-                placeholder='Search name or email…'
-              />
-              <Btn onClick={search}>
-                <Icon name='search' size={14} /> Search
-              </Btn>
-              <Select
-                aria-label='Role'
-                value={roleKey}
-                onChange={(e) => setRoleKey(e.target.value)}
-                style={{ width: 'auto', minWidth: 200 }}
-              >
-                {ROLES.map((r) => (
-                  <option key={r.roleKey} value={r.roleKey}>
-                    {r.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div style={{ display: 'grid', gap: 6, marginTop: 10 }}>
-              {found.map((p) => (
-                <div
-                  key={p.personId}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    padding: '9px 12px',
-                    borderRadius: 'var(--r2)',
-                    background: 'var(--mut)',
-                    fontSize: 12.5,
-                  }}
-                >
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    {p.displayName} <span style={{ color: 'var(--mfg)' }}>· {p.email}</span>
-                  </span>
-                  <Btn kind='primary' onClick={() => grant(p.personId)}>
-                    Grant
-                  </Btn>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </Panel>
-    </div>
   );
 }
 

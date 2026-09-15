@@ -1,10 +1,9 @@
 import type { Prisma, PrismaClient, StallRequestType } from '@prisma/client';
-import { type SubmitRequestInput, formatReference } from '@msr/stalls';
+import { type SubmitRequestInput, formatReference, isPlaceholderEmail } from '@msr/stalls';
 import { mintAccessLink, normalizeEmail } from './accounts';
 import { type Db, activeEdition } from './editions';
 import { TooManyStallsRequestedError } from './errors';
 import type { Mailer } from './mailer';
-import { isPlaceholderEmail } from './registration';
 import type { WhatsAppSender } from './whatsapp';
 
 /** How long a status link stays live. Long: the vendor comes back to it in

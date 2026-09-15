@@ -1,4 +1,4 @@
-import type { RequestStatus } from '@msr/stalls';
+import type { RequestStage, RequestStatus } from '@msr/stalls';
 import { Tag, type Tone } from '../ui';
 
 /**
@@ -62,4 +62,63 @@ export const TYPE_LABEL: Record<string, string> = {
  */
 export function TypeBadge({ type }: { type: string }) {
   return <Tag tone='violet'>{TYPE_LABEL[type] ?? type}</Tag>;
+}
+
+/**
+ * What tone each onboarding stage wears.
+ *
+ * ⚠️ The vocabulary is WHOSE COURT THE BALL IS IN, not how far along the row
+ * is. `warn` is "we have asked and are waiting on the requester", `info` is
+ * "it is back with us", `ok` is "nothing outstanding". A gradient from grey to
+ * green would have read as progress and told a coordinator scanning the column
+ * nothing about who to chase — which is the only question this column is
+ * there to answer.
+ *
+ * ⚠️ None of these is `violet`: the type badge sits three columns away and
+ * owns that tone, for the same reason `STATUS_TONE` avoids it.
+ */
+const STAGE_TONE: Record<RequestStage, Tone> = {
+  NEW: 'neutral',
+  BANK_FORM_SENT: 'warn',
+  BANK_FORM_FILLED: 'info',
+  PAYMENT_SENT: 'warn',
+  PAYMENT_CONFIRMED: 'info',
+  FSSAI_PENDING: 'warn',
+  READY: 'ok',
+  CHECKED_IN: 'ok',
+};
+
+/**
+ * ⚠️ The words the coordinators use on the phone, not the enum tidied up.
+ * "Bank form sent" is what went out in an email and what they will say when
+ * they ring; `BANK_FORM_SENT` is only how it is stored. The stage filter's
+ * options and the column read from this one map, so the word in the dropdown
+ * is the word in the row.
+ */
+export const STAGE_LABEL: Record<RequestStage, string> = {
+  NEW: 'New',
+  BANK_FORM_SENT: 'Bank form sent',
+  BANK_FORM_FILLED: 'Bank form submitted',
+  PAYMENT_SENT: 'Payment letter sent',
+  PAYMENT_CONFIRMED: 'Payment confirmed',
+  FSSAI_PENDING: 'FSSAI form sent',
+  READY: 'Ready',
+  CHECKED_IN: 'Checked in',
+};
+
+export function StagePill({ stage }: { stage: RequestStage }) {
+  return <Tag tone={STAGE_TONE[stage]}>{STAGE_LABEL[stage]}</Tag>;
+}
+
+/**
+ * Whether the stage is worth drawing at all.
+ *
+ * 🔴 A request that has not been selected has no onboarding to be at a stage
+ * of, and the derived stage on it is `NEW` because nothing has been sent —
+ * not because it is waiting on anything. Drawing "New" on every Submitted row
+ * put a pill in a column that a coordinator reads to find who to chase, on
+ * rows nobody can chase yet. The column shows an em dash there instead.
+ */
+export function hasStage(status: RequestStatus): boolean {
+  return status === 'SELECTED';
 }

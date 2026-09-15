@@ -18,6 +18,8 @@ import type {
   EquipmentRow,
   FssaiFormView,
   ListRequestsQuery,
+  ListUsersQuery,
+  ListUsersResponse,
   LoginInput,
   MeResponse,
   OnboardingDetail,
@@ -277,6 +279,19 @@ export const grantRole = (personRef: string, roleKey: string) =>
   apiFetch<void>(`${BASE}/staff`, { method: 'POST', json: { personRef, roleKey } });
 export const revokeRole = (personRef: string, roleKey: string) =>
   apiFetch<void>(`${BASE}/staff/${personRef}/${roleKey}`, { method: 'DELETE' });
+
+/** The directory: staff and requesters in one list, with the tile counts. */
+export const listUsers = (q: Partial<ListUsersQuery> = {}) =>
+  apiFetch<ListUsersResponse>(`${BASE}/users${qs(q)}`);
+
+/** The three support actions. Each answers 204 and sends to the contact the
+ *  account already holds — none of them returns a link to the caller. */
+export const unlockAccount = (accountId: string) =>
+  apiFetch<void>(`${BASE}/users/${accountId}/unlock`, { method: 'POST' });
+export const resendConfirmation = (accountId: string) =>
+  apiFetch<void>(`${BASE}/users/${accountId}/resend-confirmation`, { method: 'POST' });
+export const sendAccessLinkTo = (accountId: string) =>
+  apiFetch<void>(`${BASE}/users/${accountId}/access-link`, { method: 'POST' });
 
 // ════════════════════════════════════════════════════════════════════════════
 // PHASE 2 — Onboarding & money

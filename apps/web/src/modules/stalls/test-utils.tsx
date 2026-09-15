@@ -297,6 +297,56 @@ export const ME_ADMIN = {
   ],
 };
 
+/**
+ * What the forms call returns for a request — the shape `GET /onboarding/:id`
+ * serves and the record page's form tabs read.
+ *
+ * ⚠️ `bankDetails`/`fssai` are the API's own answer to "does this form apply
+ * to this requester", already resolved against the edition's flow config. A
+ * test overriding one to `NOT_APPLICABLE` is saying the vendor was never
+ * asked, which is what makes the tab disappear rather than go empty.
+ */
+export function onboarding(over: Record<string, unknown> = {}) {
+  return {
+    requestId: '22222222-2222-4222-8222-222222222222',
+    reference: 'VEN-2026-0001',
+    stallName: 'Green Leaf Organics',
+    requesterName: 'Priya Venkat',
+    requestType: 'VENDOR',
+    stallNumbers: [],
+    bankDetails: 'RECEIVED',
+    gst: 'RECEIVED',
+    payment: 'PENDING',
+    fssai: 'PENDING',
+    staffRegistered: 0,
+    staffExpected: 8,
+    couponCode: 'GRE-2026-ABCD',
+    couponCapacity: 8,
+    stage: 'BANK_FORM_FILLED',
+    pending: [],
+    bank: {
+      invoiceName: 'Green Leaf Organics Pvt Ltd',
+      accountHolder: 'Green Leaf Organics Pvt Ltd',
+      bankName: 'HDFC Bank',
+      branch: 'RS Puram',
+      accountNumber: '50100123456789',
+      ifsc: 'HDFC0001234',
+      micr: null,
+      panNumber: 'ABCDE1234F',
+      gstNumber: '33ABCDE1234F1Z5',
+      address: '12 Mettupalayam Road',
+      pincode: '641043',
+      mobile: '9840012345',
+      submittedAt: '2026-09-05T10:00:00.000Z',
+      files: [],
+    },
+    staff: [],
+    fssaiFiles: [],
+    quote: null,
+    ...over,
+  };
+}
+
 export function recipient(over: Record<string, unknown> = {}) {
   return {
     id: '33333333-3333-4333-8333-333333333333',

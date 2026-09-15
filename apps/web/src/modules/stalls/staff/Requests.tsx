@@ -1,8 +1,16 @@
 import type { ListRequestsQuery, RequestSummary } from '@msr/stalls';
 import { useCallback, useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { listRequests, listZones } from '../api';
-import { STATUS_LABEL, StatusPill, TYPE_LABEL, TypeBadge } from '../components/StatusPill';
+import {
+  STAGE_LABEL,
+  STATUS_LABEL,
+  StagePill,
+  StatusPill,
+  TYPE_LABEL,
+  TypeBadge,
+  hasStage,
+} from '../components/StatusPill';
 import { formatDate, useLoad } from '../hooks';
 import {
   Btn,
@@ -24,7 +32,6 @@ import {
   Toolbar,
   useIsMobile,
 } from '../ui';
-import { RequestDetail } from './RequestDetail';
 
 type Mode = 'triage' | 'all';
 
@@ -45,7 +52,12 @@ export function Requests({ mode }: { mode: Mode }) {
   // redrawn every year, and a filter that cannot offer a new bay hides every
   // request standing in it.
   const { data: zones } = useLoad(() => listZones(), []);
-  const [selected, setSelected] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  // The record hangs one segment under this list, and the list's filters ride
+  // along in the query string so the back link lands where the reader left.
+  const base = mode === 'triage' ? '/m/stalls/requests' : '/m/stalls/all';
+  const to = (id: string) => ({ pathname: `${base}/${id}`, search: params.toString() });
 
   const [items, setItems] = useState<RequestSummary[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -98,7 +110,6 @@ export function Requests({ mode }: { mode: Mode }) {
     setParams(next, { replace: true });
   };
 
-  const onChanged = () => void load(false);
   // A table of eleven columns has no narrow form, so a phone gets the cards
   // whichever view is chosen. The toggle is still drawn — the choice is
   // remembered for when the window widens — it simply does not apply here.
@@ -177,6 +188,23 @@ export function Requests({ mode }: { mode: Mode }) {
         </Select>
         {mode === 'all' && (
           <>
+            {/* The stage filter. The query has always accepted `stage` and the
+                pipeline has always carried one — this is the control that was
+                missing, which is why "show me everyone still sitting on a bank
+                form" could be asked of the API but not of the screen. */}
+            <Select
+              aria-label='Stage'
+              value={stage}
+              onChange={(e) => setParam('stage', e.target.value)}
+              style={{ width: 'auto', minWidth: 170 }}
+            >
+              <option value=''>All stages</option>
+              {Object.entries(STAGE_LABEL).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </Select>
             <Select
               aria-label='Zone'
               value={zoneCode}
@@ -221,12 +249,7 @@ export function Requests({ mode }: { mode: Mode }) {
           }}
         >
           {items.map((r) => (
-            <RequestCard
-              key={r.id}
-              r={r}
-              selected={selected === r.id}
-              onOpen={() => setSelected(r.id)}
-            />
+            <RequestCard key={r.id} r={r} onOpen={() => navigate(to(r.id))} />
           ))}
         </div>
       ) : (
@@ -241,18 +264,33 @@ export function Requests({ mode }: { mode: Mode }) {
                 <TH>Zone</TH>
                 <TH align='right'>Stalls</TH>
                 <TH>Status</TH>
+                <TH>Stage</TH>
                 <TH>Allocated</TH>
                 <TH>Submitted</TH>
               </TR>
             </THead>
             <TBody>
               {items.map((r) => (
-                <TR key={r.id} selected={selected === r.id} onClick={() => setSelected(r.id)}>
+                <TR key={r.id} onClick={() => navigate(to(r.id))}>
                   <TD mono style={{ fontSize: 11.5 }}>
                     {r.flagged && <FlagMark />}
                     {r.reference}
                   </TD>
-                  <TD style={{ fontWeight: 600, fontSize: 13 }}>{r.stallName}</TD>
+                  {/* ⚠️ A real link inside the row, not just the row's own
+                      `onClick`. A `<tr>` takes no focus and answers no Enter,
+                      so while the record was a drawer the whole pipeline was
+                      unreachable without a mouse; now that opening one is a
+                      navigation, it can be the anchor it always should have
+                      been. The row click stays — it is the bigger target. */}
+                  <TD style={{ fontWeight: 600, fontSize: 13 }}>
+                    <Link
+                      to={to(r.id)}
+                      style={{ color: 'inherit', textDecoration: 'none' }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {r.stallName}
+                    </Link>
+                  </TD>
                   <TD>
                     <TypeBadge type={r.requestType} />
                   </TD>
@@ -264,6 +302,13 @@ export function Requests({ mode }: { mode: Mode }) {
                   <TD align='right'>{r.numStallsRequested}</TD>
                   <TD>
                     <StatusPill status={r.status} />
+                  </TD>
+                  <TD>
+                    {hasStage(r.status) ? (
+                      <StagePill stage={r.stage} />
+                    ) : (
+                      <span style={{ color: 'var(--mfg)' }}>—</span>
+                    )}
                   </TD>
                   <TD mono style={{ fontSize: 11.5, color: 'var(--ok-fg)', fontWeight: 600 }}>
                     {r.allocatedStalls.join(', ')}
@@ -296,10 +341,6 @@ export function Requests({ mode }: { mode: Mode }) {
           </Btn>
         )}
       </div>
-
-      {selected && (
-        <RequestDetail id={selected} onClose={() => setSelected(null)} onChanged={onChanged} />
-      )}
     </div>
   );
 }
@@ -368,15 +409,7 @@ function ViewBtn({
   );
 }
 
-function RequestCard({
-  r,
-  selected,
-  onOpen,
-}: {
-  r: RequestSummary;
-  selected: boolean;
-  onOpen: () => void;
-}) {
+function RequestCard({ r, onOpen }: { r: RequestSummary; onOpen: () => void }) {
   return (
     <Card
       pad={15}
@@ -387,8 +420,6 @@ function RequestCard({
         display: 'flex',
         flexDirection: 'column',
         gap: 9,
-        borderColor: selected ? 'var(--pri)' : undefined,
-        boxShadow: selected ? '0 0 0 1px var(--pri)' : undefined,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
@@ -416,7 +447,18 @@ function RequestCard({
             {r.stallName}
           </div>
         </div>
-        <StatusPill status={r.status} />
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'flex-end',
+            gap: 5,
+            flex: 'none',
+          }}
+        >
+          <StatusPill status={r.status} />
+          {hasStage(r.status) && <StagePill stage={r.stage} />}
+        </div>
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 7 }}>

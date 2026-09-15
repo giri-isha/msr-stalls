@@ -663,6 +663,104 @@ export interface StaffMember {
   roleKeys: string[];
 }
 
+// ── Staff: the users directory ──────────────────────────────────────────────
+
+/** Which population a directory row came from.
+ *
+ *  Staff hold this module's roles and live in the Foundation's `Person`;
+ *  requesters are `StallAccount`s a public form created. The two stay in
+ *  separate tables for the reason `ROLES` gives — that separation is what stops
+ *  a vendor ever being granted `config:write` — and are brought together only
+ *  here, for one screen, and only as a read. */
+export type DirectoryKind = 'STAFF' | 'REQUESTER';
+
+/**
+ * Whether this person can get in, and if not, why.
+ *
+ * ⚠️ `LINK_ONLY` IS NOT A FAULT. A requester who applied and never set a
+ * password is the ordinary case — the emailed status link is the whole of
+ * their login, and most vendors never register at all. It must never be
+ * counted under "Cannot sign in", or that tile reads as an outage every year.
+ *
+ * ⚠️ TEMPORARY, in the same breath as `credentials.ts`: every state but `OK`
+ * and `DISABLED` describes the requester password login that the host's Isha
+ * OIDC replaces. When that goes, this narrows to the two that are about a
+ * Foundation account, and the two tiles that read the rest go with it.
+ */
+export type SignInState = 'OK' | 'LINK_ONLY' | 'UNCONFIRMED' | 'LOCKED' | 'DISABLED';
+
+export interface DirectoryUser {
+  /** `personId` for staff, the account id for requesters. Both are UUIDs from
+   *  different tables, so `kind` — not the id — is what an action keys on. */
+  id: string;
+  kind: DirectoryKind;
+  displayName: string;
+  email: string;
+  /** Requesters only. The Foundation directory holds no number for staff. */
+  phone: string | null;
+  /** Staff only; empty for a requester, who holds no role by construction. */
+  roleKeys: string[];
+  /** Requesters only — their requests in the ACTIVE edition, which is the
+   *  edition every other staff screen is showing at the same moment. */
+  requestCount: number | null;
+  signInState: SignInState;
+  /** Set only when `signInState` is `LOCKED`, so the row can say until when. */
+  lockedUntil: string | null;
+}
+
+/**
+ * The tiles, which are also the views.
+ *
+ * ⚠️ These strings are the filter values the tile sends back — `StatTiles`
+ * passes the raw label to `onPick` precisely so the two cannot drift. Renaming
+ * one here renames the view on the wire.
+ */
+export const DIRECTORY_VIEWS = [
+  'All',
+  'Staff',
+  'Requesters',
+  'Cannot sign in',
+  'Locked out',
+] as const;
+export const DirectoryView = z.enum(DIRECTORY_VIEWS);
+export type DirectoryView = z.infer<typeof DirectoryView>;
+
+/** The finer sign-in states, for the Filter popover. The tiles flatten
+ *  `LINK_ONLY`, `UNCONFIRMED` and `DISABLED` into one coarse reading; this is
+ *  how a caller asks for one of them on its own. */
+export const SignInStateValue = z.enum(['OK', 'LINK_ONLY', 'UNCONFIRMED', 'LOCKED', 'DISABLED']);
+
+export const ListUsersQuery = z.object({
+  view: DirectoryView.default('All'),
+  q: z.string().trim().max(200).optional(),
+  /** Staff only, and it narrows to staff on its own — a requester holds no
+   *  role, so asking for one and for requesters is an empty question. */
+  roleKey: z.string().max(64).optional(),
+  signInState: SignInStateValue.optional(),
+  /** Zero-based, as every list endpoint in the module counts pages. */
+  page: z.coerce.number().int().min(0).default(0),
+  pageSize: z.coerce.number().int().min(1).max(500).default(50),
+});
+export type ListUsersQuery = z.infer<typeof ListUsersQuery>;
+
+export interface ListUsersResponse {
+  users: DirectoryUser[];
+  /**
+   * The tiles above the table.
+   *
+   * ⚠️ Narrowed by the search and the Filter popover, NEVER by the active
+   * view. A tile row that reacted to its own selection would zero the
+   * Requesters tile the moment you picked Staff — the numbers would then
+   * describe the slice you are already looking at rather than the ones you
+   * might move to, which is the opposite of what a view switcher is for.
+   */
+  counts: { label: DirectoryView; count: number }[];
+  /** Rows matching the view, the search and the filters — what the pager counts. */
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface MeResponse {
   personId: string;
   displayName: string;

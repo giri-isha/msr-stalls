@@ -184,4 +184,9 @@ export const GLYPH: Record<string, string> = {
   Present: 'circle-check',
   Absent: 'ban',
   Leave: 'calendar',
+  // The stalls users directory.
+  Staff: 'shield',
+  Requesters: 'ticket',
+  'Cannot sign in': 'alert-triangle',
+  'Locked out': 'ban',
 };

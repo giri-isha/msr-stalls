@@ -448,6 +448,15 @@ const STATUS_TONE: Record<string, Tone> = {
   Secondary: 'teal',
   'Since removed': 'neutral',
 
+  // ── The users directory ──
+  // Its tiles are a population split, not a status ramp: the two kinds of
+  // person are told apart by hue rather than ranked, and only the two readings
+  // that mean somebody is stuck carry a warning colour.
+  Staff: 'violet',
+  Requesters: 'teal',
+  'Cannot sign in': 'warn',
+  'Locked out': 'des',
+
   // ── Announcements ──
   Info: 'info',
   Warning: 'warn',

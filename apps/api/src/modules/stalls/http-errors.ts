@@ -10,6 +10,7 @@ import {
   InvalidTransitionError,
   LastAdminError,
   NoActiveEditionError,
+  NothingToSendError,
   StallAlreadyAllocatedError,
   StallBlockedError,
   RefundAlreadySubmittedError,
@@ -18,6 +19,7 @@ import {
   TooManyStallsError,
   TooManyStallsRequestedError,
   UnknownAccessLinkError,
+  UnknownAccountError,
   UnknownCouponError,
   UnknownPersonError,
   UnknownRequestError,
@@ -50,6 +52,7 @@ function statusFor(err: unknown): number | null {
     err instanceof UnknownStallError ||
     err instanceof UnknownZoneError ||
     err instanceof UnknownPersonError ||
+    err instanceof UnknownAccountError ||
     err instanceof UnknownCouponError ||
     err instanceof UnknownTemplateError
   ) {
@@ -67,6 +70,7 @@ function statusFor(err: unknown): number | null {
     err instanceof StepNotOpenError ||
     err instanceof RefundAlreadySubmittedError ||
     err instanceof DuplicatePaymentError ||
+    err instanceof NothingToSendError ||
     // Configuration that cannot be applied because something already stands on
     // it. A 409 rather than a 500 so the Admin screen can say "this bay has
     // stalls planned against it" instead of showing an error page.
