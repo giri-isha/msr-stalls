@@ -3,11 +3,15 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ME_LEAD, ZONES, detail, installFetch, renderAt, summary } from '../test-utils';
+import { RequestDetail } from './RequestDetail';
 import { Requests } from './Requests';
 
 afterEach(() => vi.unstubAllGlobals());
 
-const routes = [{ path: '/m/stalls/all', element: <Requests mode='all' /> }];
+const routes = [
+  { path: '/m/stalls/all', element: <Requests mode='all' /> },
+  { path: '/m/stalls/all/:id', element: <RequestDetail /> },
+];
 
 const stubs = (over: Record<string, unknown> = {}) =>
   [
@@ -21,7 +25,7 @@ const stubs = (over: Record<string, unknown> = {}) =>
 const openDetail = async () => {
   renderAt('/m/stalls/all', routes, { me: true });
   await userEvent.click(await screen.findByText('Green Leaf Organics'));
-  return screen.findByRole('complementary', { name: 'Request detail' });
+  return screen.findByRole('region', { name: 'Request detail' });
 };
 
 describe('the agreed bay on the record', () => {

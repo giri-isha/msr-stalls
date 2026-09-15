@@ -26,6 +26,7 @@ import { Equipment } from './staff/Equipment';
 import { Finance } from './staff/Finance';
 import { Onboarding } from './staff/Onboarding';
 import { Planning } from './staff/Planning';
+import { RequestDetail } from './staff/RequestDetail';
 import { Requests } from './staff/Requests';
 
 export const stallsPublicRoutes: RouteObject[] = [
@@ -57,6 +58,11 @@ export const stallsStaffRoutes: RouteObject[] = [
   { index: true, element: <Dashboard /> },
   { path: 'requests', element: <Requests mode='triage' /> },
   { path: 'all', element: <Requests mode='all' /> },
+  // One record, one page, hanging under whichever list opened it — so the
+  // breadcrumb and the back link both name the list the reader came from,
+  // and the URL is something a coordinator can paste to a colleague.
+  { path: 'requests/:id', element: <RequestDetail /> },
+  { path: 'all/:id', element: <RequestDetail /> },
   { path: 'planning', element: <Planning /> },
   { path: 'communication', element: <Communication /> },
   { path: 'onboarding', element: <Onboarding /> },
