@@ -654,7 +654,13 @@ export const CustomFieldPatch = CustomFieldInput.partial().extend({
 export const GrantRoleInput = z.object({
   personRef: z.uuid(),
   roleKey: z.string().min(1).max(64),
+  /** Which seasons this grant reaches. Empty — and absent — is every one,
+   *  including editions created after the grant was made. */
+  editionScope: z.array(z.uuid()).max(50).default([]),
+  /** Which bays this grant reaches, by zone code. Empty is every bay. */
+  zoneScope: z.array(ZoneCodeValue).max(100).default([]),
 });
+export type GrantRoleInput = z.infer<typeof GrantRoleInput>;
 
 /** A requester's own details, corrected by a desk.
  *
@@ -786,8 +792,74 @@ export interface MeResponse {
   personId: string;
   displayName: string;
   roleKeys: string[];
-  actions: string[];
+  /** The union of every privilege the caller's roles grant, resolved from the
+   *  tables. The web gates on these and never on `roleKeys` — once a role is
+   *  authored rather than shipped, a client-side role→screen map is not merely
+   *  stale, it is unknowable, because the client cannot learn a new role's
+   *  privileges (msr ADR 0065). */
+  privileges: string[];
 }
+
+/** A role as the Users screen lists it.
+ *
+ *  ⚠️ Served rather than imported. The screen used to render its picker from
+ *  the `ROLES` constant, which stopped being the truth the moment roles became
+ *  data: a role an admin creates is on no list the bundle ships. */
+export interface RoleSummary {
+  roleKey: string;
+  name: string;
+  description: string;
+  parentKey: string | null;
+  /** How deep the role sits, derived from the tree, for indenting the picker. */
+  depth: number;
+  isSystem: boolean;
+  /** Whether the CALLER may hand this role out. The picker offers only these,
+   *  so it cannot present a choice the server is about to refuse. */
+  assignable: boolean;
+}
+
+export interface ListRolesResponse {
+  roles: RoleSummary[];
+}
+
+/** One role, opened for editing. */
+export interface RoleDetail extends RoleSummary {
+  /** The privilege codes it bundles. Empty when `allPrivileges` is set — the
+   *  flag resolves against the live table instead, so there is nothing to list. */
+  privileges: string[];
+  allPrivileges: boolean;
+  canAssignSameLevel: boolean;
+  /** Empty means every requester type. */
+  requestTypeScope: string[];
+  /** How many people hold it. A role with holders cannot be deleted, and the
+   *  screen says so before the button is pressed rather than after. */
+  grantCount: number;
+}
+
+/** A role key is typed once and then referred to forever — by grants, and by
+ *  the host's participation rows after migration — so it is restricted to the
+ *  shape those can carry and never re-keyed afterwards. */
+export const RoleKey = z
+  .string()
+  .trim()
+  .min(3)
+  .max(60)
+  .regex(/^[a-z][a-z0-9_]*$/, 'lowercase letters, digits and underscores, starting with a letter');
+
+export const SaveRoleInput = z.object({
+  name: z.string().trim().min(1).max(80),
+  description: z.string().trim().max(300),
+  /** `null` puts the role at the root of the tree. */
+  parentKey: z.string().nullable(),
+  privileges: z.array(z.string()).max(200),
+  allPrivileges: z.boolean(),
+  canAssignSameLevel: z.boolean(),
+  requestTypeScope: z.array(z.string()).max(20),
+});
+export type SaveRoleInput = z.infer<typeof SaveRoleInput>;
+
+export const CreateRoleInput = SaveRoleInput.extend({ roleKey: RoleKey });
+export type CreateRoleInput = z.infer<typeof CreateRoleInput>;
 
 // ════════════════════════════════════════════════════════════════════════════
 // PHASE 2 — Onboarding & money

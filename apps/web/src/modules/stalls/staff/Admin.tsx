@@ -27,6 +27,7 @@ import {
   useToast,
 } from '../ui';
 import { Panel } from '../components/Panel';
+import { Roles } from './Roles';
 import { Users } from './Users';
 
 const TABS = [
@@ -38,6 +39,7 @@ const TABS = [
   { label: 'Custom fields', glyph: 'sliders' },
   { label: 'Flow', glyph: 'arrow-left-right' },
   { label: 'Users', glyph: 'users' },
+  { label: 'Roles', glyph: 'shield' },
   { label: 'Editions', glyph: 'calendar' },
 ] as const;
 type Tab = (typeof TABS)[number]['label'];
@@ -114,7 +116,7 @@ function RupeeInput({
 export function Admin() {
   const { can } = useMe();
   const toast = useToast();
-  const writable = can('config:write');
+  const writable = can('config.write');
   const [tab, setTab] = useState<Tab>('Bays');
   const cfg = useLoad(api.getConfig);
 
@@ -181,7 +183,8 @@ export function Admin() {
       {tab === 'Fines' && <Fines c={c} writable={writable} run={run} />}
       {tab === 'Custom fields' && <CustomFields c={c} writable={writable} run={run} />}
       {tab === 'Flow' && <Flow c={c} writable={writable} run={run} />}
-      {tab === 'Users' && <Users writable={can('users:write')} />}
+      {tab === 'Users' && <Users writable={can('users.write')} />}
+      {tab === 'Roles' && <Roles writable={can('roles.write')} />}
       {tab === 'Editions' && (
         <div style={{ display: 'grid', gap: 16 }}>
           <EditionSettings c={c} writable={writable} run={run} />

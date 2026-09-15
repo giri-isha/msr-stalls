@@ -101,6 +101,131 @@ export class InvalidTransitionError extends Error {
   }
 }
 
+/** A request in a bay this caller's grant does not reach. Mapped to 403, the
+ *  same as every other refusal — which half of the rule stopped them is not the
+ *  caller's business. */
+export class ZoneForbiddenError extends Error {
+  constructor(readonly zoneCode: string | null) {
+    super(`this request is not in a bay you cover`);
+    this.name = 'ZoneForbiddenError';
+  }
+}
+
+/** A season this caller's grant does not reach. Mapped to 403.
+ *
+ *  ⚠️ Not 404 and not an empty list: a volunteer whose grant covered only last
+ *  year needs to be told that their access has lapsed, not shown an event with
+ *  nothing in it. */
+export class EditionForbiddenError extends Error {
+  constructor(readonly editionId: string) {
+    super('your access does not cover the season currently running');
+    this.name = 'EditionForbiddenError';
+  }
+}
+
+/** A role key that no longer names a role. Mapped to 404.
+ *
+ *  Reachable now that roles are data: an admin may retire one between a screen
+ *  loading its picker and somebody choosing from it. */
+export class UnknownRoleError extends Error {
+  constructor(readonly roleKey: string) {
+    super(`no stalls role ${roleKey}`);
+    this.name = 'UnknownRoleError';
+  }
+}
+
+/** A grant refused because the role sits above the grantor in the hierarchy.
+ *  Mapped to 403.
+ *
+ *  Carries the wording from `cannotAssign` rather than building its own: an
+ *  admin who meets this on two screens should read the same sentence. */
+export class RoleAboveYouError extends Error {
+  constructor(
+    readonly roleKey: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'RoleAboveYouError';
+  }
+}
+
+/** An account refused because its holder sits above the caller. Mapped to 403.
+ *
+ *  Distinct from `RoleAboveYouError` because it is a wider refusal: not "you
+ *  cannot give them that role" but "you cannot touch this account at all". */
+export class PersonAboveYouError extends Error {
+  constructor(
+    readonly personRef: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'PersonAboveYouError';
+  }
+}
+
+/** A role key somebody already used. Mapped to 409. */
+export class RoleKeyTakenError extends Error {
+  constructor(readonly roleKey: string) {
+    super(`a stalls role called ${roleKey} already exists`);
+    this.name = 'RoleKeyTakenError';
+  }
+}
+
+/** A role that people still hold. Mapped to 409.
+ *
+ *  Deleting it would strand their grants, so the grant table refuses it at the
+ *  foreign key too. This is the readable version of that refusal, raised before
+ *  the database has to. */
+export class RoleInUseError extends Error {
+  constructor(
+    readonly roleKey: string,
+    readonly grantCount: number,
+  ) {
+    super(
+      `${roleKey} is held by ${grantCount} ${grantCount === 1 ? 'person' : 'people'} — ` +
+        'revoke it from them before deleting it',
+    );
+    this.name = 'RoleInUseError';
+  }
+}
+
+/** A shipped role somebody tried to delete or re-key. Mapped to 409.
+ *
+ *  ⚠️ Its PRIVILEGES stay editable. Retuning what Lead grants is the whole
+ *  point of roles being data; what cannot change is the key, because grants and
+ *  the host's participation rows refer to it, and the role's existence, because
+ *  the seed would put it straight back. */
+export class SystemRoleError extends Error {
+  constructor(
+    readonly roleKey: string,
+    what: string,
+  ) {
+    super(`${roleKey} ships with the module and ${what}`);
+    this.name = 'SystemRoleError';
+  }
+}
+
+/** A parent that would make the hierarchy loop back on itself. Mapped to 409. */
+export class RoleCycleError extends Error {
+  constructor() {
+    super('that would make the role hierarchy loop back on itself');
+    this.name = 'RoleCycleError';
+  }
+}
+
+/** An attempt to put something into a role that the author does not hold.
+ *  Mapped to 403.
+ *
+ *  🔴 The guard that stops `roles.write` being a route to every other
+ *  privilege. Whoever can author a role can, with `users.write`, hand it to
+ *  themselves — so a role may never carry more than its author already carries. */
+export class PrivilegeEscalationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PrivilegeEscalationError';
+  }
+}
+
 /** Removing the last admin would lock the whole team out. Mapped to 409. */
 export class LastAdminError extends Error {
   constructor() {

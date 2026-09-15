@@ -29,4 +29,4 @@ export function registerStallsModule(app: FastifyInstance, deps: StallsDeps): vo
 
 export type { StallsDeps } from './deps';
 export type { Mailer, OutboundMail } from './mailer';
-export { MODULE_KEY, ROLES } from './roles';
+export { MODULE_KEY } from './roles';

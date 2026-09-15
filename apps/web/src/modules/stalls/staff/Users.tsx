@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import {
-  ROLES,
   type DirectoryUser,
   type DirectoryView,
   type SignInState,
+  type RoleSummary,
   isPlaceholderEmail,
 } from '@msr/stalls';
 import * as api from '../api';
@@ -49,7 +49,7 @@ import {
  * ⚠️ **Two populations, one table, and the difference is not cosmetic.** Staff
  * are Foundation people holding this module's roles; requesters are accounts a
  * public form created. They are kept in separate tables precisely so a vendor
- * can never be granted `config:write` — see `ROLES` — and the fact that they
+ * can never be granted `config.write` — a requester row has no role at all —
  * appear in one list here changes nothing about that: a requester row has no
  * role to grant and no control that would grant one.
  *
@@ -59,9 +59,87 @@ import {
  * narrowed by the search and the Filter popover but never by the active view —
  * the server's doing, and the reason is written where it happens.
  */
+/**
+ * One axis of a grant's reach.
+ *
+ * ⚠️ Nothing ticked means EVERYTHING, which is the opposite of how a filter
+ * usually reads — so the empty state says so in words rather than leaving the
+ * blank row to be guessed at.
+ */
+function ScopePicker({
+  label,
+  all,
+  options,
+  chosen,
+  onChange,
+}: {
+  label: string;
+  all: string;
+  options: Array<{ value: string; label: string }>;
+  chosen: string[];
+  onChange: (next: string[]) => void;
+}) {
+  if (options.length === 0) return null;
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--mfg)' }}>{label}</div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
+        {options.map((o) => (
+          <label
+            key={o.value}
+            htmlFor={`scope-${label}-${o.value}`}
+            style={{ display: 'flex', gap: 5 }}
+          >
+            <Checkbox
+              id={`scope-${label}-${o.value}`}
+              checked={chosen.includes(o.value)}
+              onChange={() =>
+                onChange(
+                  chosen.includes(o.value)
+                    ? chosen.filter((v) => v !== o.value)
+                    : [...chosen, o.value],
+                )
+              }
+            />
+            <span style={{ fontSize: 12 }}>{o.label}</span>
+          </label>
+        ))}
+      </div>
+      <div style={{ fontSize: 11.5, color: 'var(--mfg)', marginTop: 3 }}>
+        {chosen.length === 0 ? all : `Limited to ${chosen.length}`}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The roles, from the server.
+ *
+ * ⚠️ This screen used to render its pickers from the `ROLES` constant. That
+ * stopped being the truth when roles became data: a role an admin creates is on
+ * no list this bundle ships, so a compiled-in copy is not merely stale — it
+ * cannot know. Each row also carries `assignable`, computed for THIS caller
+ * against the role hierarchy, so a picker never offers a role the grant route
+ * is about to refuse.
+ */
+function useRoles() {
+  const { data } = useLoad(() => api.listRoles(), []);
+  const roles = data?.roles ?? [];
+  return { roles, assignable: roles.filter((r) => r.assignable) };
+}
+
+/** The role's name as an admin reads it, falling back to the key.
+ *
+ *  A grant can name a role this list has not loaded yet, and a half-drawn table
+ *  showing a key is better than one showing a blank. */
+function roleName(roles: RoleSummary[], roleKey: string): string {
+  return roles.find((r) => r.roleKey === roleKey)?.name ?? roleKey;
+}
+
 export function Users({ writable }: { writable: boolean }) {
   const toast = useToast();
   const mobile = useIsMobile();
+  const { roles } = useRoles();
 
   const [view, setView] = useState<DirectoryView>('All');
   const [typed, setTyped] = useState('');
@@ -125,7 +203,7 @@ export function Users({ writable }: { writable: boolean }) {
             </TR>
           </THead>
           <TBody>
-            {ROLES.map((r) => (
+            {roles.map((r) => (
               <TR key={r.roleKey}>
                 <TD style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{r.name}</TD>
                 <TD muted>{r.description}</TD>
@@ -158,7 +236,7 @@ export function Users({ writable }: { writable: boolean }) {
                 action={roleKey ? 'Clear' : undefined}
                 onAction={() => narrow(() => setRoleKey(''))}
               />
-              {ROLES.map((r) => (
+              {roles.map((r) => (
                 <OptionRow
                   key={r.roleKey}
                   ticked={roleKey === r.roleKey}
@@ -243,7 +321,7 @@ export function Users({ writable }: { writable: boolean }) {
                   .filter((c) => c.key !== 'email')
                   .map((c) => ({
                     label: c.label,
-                    value: cell(c.key, u),
+                    value: cell(c.key, u, roles),
                   }))}
                 actions={
                   <Actions user={u} writable={writable} onAsk={setAsk} onEdit={setEditing} />
@@ -275,7 +353,7 @@ export function Users({ writable }: { writable: boolean }) {
                   </TD>
                   {cols.map((c) => (
                     <TD key={c.key} align={c.align} muted={c.muted}>
-                      {cell(c.key, u)}
+                      {cell(c.key, u, roles)}
                     </TD>
                   ))}
                   <TD align='right'>
@@ -486,7 +564,7 @@ const COLUMNS: Array<{ key: ColKey; label: string; align?: 'left' | 'right'; mut
  *  is empty for half the directory costs more width than it returns. */
 const DEFAULT_COLUMNS: ColKey[] = ['email', 'type', 'roles', 'requests', 'signIn'];
 
-function cell(key: ColKey, u: DirectoryUser): React.ReactNode {
+function cell(key: ColKey, u: DirectoryUser, roles: RoleSummary[]): React.ReactNode {
   switch (key) {
     case 'email':
       return u.email;
@@ -508,7 +586,7 @@ function cell(key: ColKey, u: DirectoryUser): React.ReactNode {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {u.roleKeys.map((rk) => (
             <Tag key={rk} tone='violet' size='sm'>
-              {ROLES.find((r) => r.roleKey === rk)?.name ?? rk}
+              {roleName(roles, rk)}
             </Tag>
           ))}
         </div>
@@ -667,6 +745,18 @@ function EditRoles({
   onChanged: () => void;
 }) {
   const toast = useToast();
+  const { roles } = useRoles();
+  /**
+   * Every role this person holds, plus every role the caller may hand out.
+   *
+   * ⚠️ A role they hold that the caller may NOT assign is listed and disabled
+   * rather than hidden. Hiding it would draw an account that is missing a role
+   * it actually has — and the first thing an admin would do is tick the boxes
+   * they can see and press Save, believing they had described the person. The
+   * server refuses the change either way; this is about the dialog telling the
+   * truth about who it is editing.
+   */
+  const shown = roles.filter((r) => r.assignable || user.roleKeys.includes(r.roleKey));
   const [held, setHeld] = useState<string[]>(user.roleKeys);
   const [ticked, setTicked] = useState<Set<string>>(() => new Set(user.roleKeys));
   const [saving, setSaving] = useState(false);
@@ -720,7 +810,7 @@ function EditRoles({
     >
       {error && <ErrorBox>{error}</ErrorBox>}
       <div style={{ display: 'grid', gap: 2 }}>
-        {ROLES.map((r) => (
+        {shown.map((r) => (
           <label
             key={r.roleKey}
             htmlFor={`role-${r.roleKey}`}
@@ -778,7 +868,36 @@ function AddStaff({ onClose, onGranted }: { onClose: () => void; onGranted: () =
     email: string;
     displayName: string;
   }> | null>(null);
-  const [roleKey, setRoleKey] = useState(ROLES[1].roleKey);
+  const { assignable } = useRoles();
+  /**
+   * The bays and seasons a grant can be narrowed to.
+   *
+   * ⚠️ Both default to EVERYTHING, and that is the safe direction here rather
+   * than the permissive one: an empty list means "every season", so a person
+   * given the whole event does not lose next year the moment somebody creates
+   * it, with nothing watching. A seasonal helper gets an explicit list instead.
+   *
+   * Loaded best-effort. `/zones` needs one of the request or planning reads and
+   * `/editions` needs `config.read`; somebody holding `users.write` and neither
+   * simply grants unscoped, which is what they could do before this existed.
+   */
+  const zones = useLoad(() => api.listZones().catch(() => []), []);
+  const editions = useLoad(() => api.listEditions().catch(() => []), []);
+  const [zoneScope, setZoneScope] = useState<string[]>([]);
+  const [editionScope, setEditionScope] = useState<string[]>([]);
+  /**
+   * Deliberately NO default role.
+   *
+   * ⚠️ This used to open on `ROLES[1]` — Lead — a fixed index that skipped
+   * Admin on purpose. That index cannot survive roles becoming data: the list
+   * is now the caller's assignable set, ordered by the tree, so position 0 is
+   * the MOST privileged role they hold and any positional default makes Admin
+   * the thing granted by an admin who never touched the dropdown.
+   *
+   * There is no honest default left to pick — the app cannot know which role is
+   * meant — so Grant stays disabled until somebody chooses one.
+   */
+  const [roleKey, setRoleKey] = useState('');
 
   const search = async () => {
     if (!q.trim()) return setFound(null);
@@ -791,7 +910,7 @@ function AddStaff({ onClose, onGranted }: { onClose: () => void; onGranted: () =
 
   const grant = async (personId: string) => {
     try {
-      await api.grantRole(personId, roleKey);
+      await api.grantRole(personId, roleKey, { editionScope, zoneScope });
       toast.ok('Granted');
       onGranted();
     } catch (e) {
@@ -822,13 +941,31 @@ function AddStaff({ onClose, onGranted }: { onClose: () => void; onGranted: () =
           onChange={(e) => setRoleKey(e.target.value)}
           style={{ width: 'auto', minWidth: 200 }}
         >
-          {ROLES.map((r) => (
+          <option value=''>Choose a role…</option>
+          {assignable.map((r) => (
             <option key={r.roleKey} value={r.roleKey}>
               {r.name}
             </option>
           ))}
         </Select>
       </div>
+
+      {/* Ticking nothing is "everything", so an admin who ignores these two
+          rows grants exactly what they granted before grant scope existed. */}
+      <ScopePicker
+        label='Bays'
+        all='Every bay'
+        options={(zones.data ?? []).map((z) => ({ value: z.code, label: `${z.code} — ${z.name}` }))}
+        chosen={zoneScope}
+        onChange={setZoneScope}
+      />
+      <ScopePicker
+        label='Seasons'
+        all='Every season, including ones created later'
+        options={(editions.data ?? []).map((e) => ({ value: e.id, label: String(e.year) }))}
+        chosen={editionScope}
+        onChange={setEditionScope}
+      />
 
       <div style={{ display: 'grid', gap: 6, marginTop: 12 }}>
         {found !== null && found.length === 0 && (
@@ -850,7 +987,7 @@ function AddStaff({ onClose, onGranted }: { onClose: () => void; onGranted: () =
             <span style={{ flex: 1, minWidth: 0 }}>
               {p.displayName} <span style={{ color: 'var(--mfg)' }}>· {p.email}</span>
             </span>
-            <Btn kind='primary' onClick={() => grant(p.personId)}>
+            <Btn kind='primary' disabled={!roleKey} onClick={() => grant(p.personId)}>
               Grant
             </Btn>
           </div>

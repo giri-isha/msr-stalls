@@ -1,4 +1,4 @@
-import { ROLES, type StallAction } from '@msr/stalls';
+import { PRIVILEGE_CATEGORIES, type StallPrivilege } from '@msr/stalls';
 import { Fragment } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
@@ -38,11 +38,15 @@ import { Tabs } from './Communication';
  * changes; the components under them only decide how a step, a screen or a rule
  * is drawn.
  *
- * ⚠️ Anything the app already knows is IMPORTED rather than retyped: the role
- * table is `ROLES` from `@msr/stalls`, the status words are the same
- * `STATUS_LABEL` the pills use. Documentation that restates a constant is
- * documentation that goes stale on the first commit that changes it, silently,
- * because nothing tests prose.
+ * ⚠️ Anything the app already knows is IMPORTED rather than retyped: the
+ * privilege table is `PRIVILEGE_CATEGORIES` from `@msr/stalls`, the status words
+ * are the same `STATUS_LABEL` the pills use. Documentation that restates a
+ * constant is documentation that goes stale on the first commit that changes it,
+ * silently, because nothing tests prose.
+ *
+ * The same rule is why this screen documents privileges and not ROLES: roles
+ * became data, so there is no constant left to import, and a list compiled in
+ * here could only ever describe the day it was built.
  */
 
 // ── The process, in one column ──────────────────────────────────────────────
@@ -226,7 +230,7 @@ interface ScreenDoc {
   to: string;
   glyph: string;
   /** The action the nav item is gated on, where it has one. */
-  requires?: StallAction;
+  requires?: StallPrivilege;
   purpose: string;
   steps: string[];
   notes?: string[];
@@ -275,7 +279,7 @@ const SCREENS: ScreenDoc[] = [
     label: 'Planning & Zones',
     to: '/m/stalls/planning',
     glyph: 'layers',
-    requires: 'planning:read',
+    requires: 'planning.read',
     purpose: 'How many stalls each bay should carry, and the numbers themselves.',
     steps: [
       'Enter the expected crowd for a zone and the people-per-stall divisor. The suggestion is crowd ÷ divisor, rounded up.',
@@ -292,7 +296,7 @@ const SCREENS: ScreenDoc[] = [
     label: 'Communication',
     to: '/m/stalls/communication',
     glyph: 'megaphone',
-    requires: 'comms:write',
+    requires: 'comms.write',
     purpose: 'The letters, who has had which, and the calls chasing the rest.',
     steps: [
       'Templates: edit the subject and body for this edition and attach one file. Placeholders such as {{stallNumbers}} are filled per recipient, and the editor warns about a placeholder it does not recognise.',
@@ -326,7 +330,7 @@ const SCREENS: ScreenDoc[] = [
     label: 'Finance',
     to: '/m/stalls/finance',
     glyph: 'bar-chart',
-    requires: 'finance:read',
+    requires: 'finance.read',
     purpose: 'What is due, what has landed, and what goes back.',
     steps: [
       'Payment details: the quote per selected request — stall fee, plug points, chairs and tables, GST on the fee, then the refundable deposit kept separate. Send the payment letter from here; the figures freeze at that moment.',
@@ -344,7 +348,7 @@ const SCREENS: ScreenDoc[] = [
     label: 'Electrical & Venue',
     to: '/m/stalls/electrical',
     glyph: 'sliders',
-    requires: 'planning:read',
+    requires: 'planning.read',
     purpose: 'The stall-wise plug and appliance sheet, per bay.',
     steps: [
       'Pick a zone. The sheet lists every allocated stall in it with its 5A and 15A plugs, gas stoves, the appliances the vendor declared and the total load.',
@@ -391,7 +395,7 @@ const SCREENS: ScreenDoc[] = [
     label: 'Admin',
     to: '/m/stalls/admin',
     glyph: 'settings',
-    requires: 'config:read',
+    requires: 'config.read',
     purpose: 'Everything the edition is configured with.',
     steps: [
       'Zones: the bays, their expected crowd, and whether they are closed to vendors.',
@@ -1573,23 +1577,36 @@ function ReferencePanel() {
         </Table>
       </Panel>
 
+      {/*
+        ⚠️ The PRIVILEGES, not the roles.
+        This panel used to list the six shipped roles and what each granted.
+        Roles are data now — an admin composes them in Admin → Users without a
+        deploy — so a list compiled into this bundle would describe whatever was
+        true on the day it was built, and would say nothing at all about a role
+        somebody created afterwards. The vocabulary is the half that IS still
+        code, because a privilege means nothing unless a route enforces it, so
+        it is the half this screen can document truthfully.
+      */}
       <Panel
-        title='Roles'
-        note='Granted in Admin → Users. The nav hides what a role does not carry, and the API refuses it regardless.'
+        title='Privileges'
+        note='The fixed vocabulary roles are composed from, in Admin → Users. The nav hides what a role does not carry, and the API refuses it regardless.'
       >
         <div style={{ display: 'grid', gap: 12 }}>
-          {ROLES.map((role) => (
-            <div key={role.roleKey}>
+          {PRIVILEGE_CATEGORIES.map((category) => (
+            <div key={category.key}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 13, fontWeight: 700 }}>{role.name}</span>
-                <code style={pathChip}>{role.roleKey}</code>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>{category.name}</span>
+                <code style={pathChip}>{category.key}</code>
               </div>
-              <div style={{ ...bodyText, margin: '2px 0 6px' }}>{role.description}</div>
-              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                {role.actions.map((a) => (
-                  <Tag key={a} size='sm'>
-                    {a}
-                  </Tag>
+              <div style={{ display: 'grid', gap: 4, marginTop: 4 }}>
+                {category.items.map((item) => (
+                  <div
+                    key={item.code}
+                    style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}
+                  >
+                    <Tag size='sm'>{item.code}</Tag>
+                    <span style={bodyText}>{item.description}</span>
+                  </div>
                 ))}
               </div>
             </div>

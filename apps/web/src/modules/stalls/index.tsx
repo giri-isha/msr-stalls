@@ -2,7 +2,7 @@
 // list. The host mounts `stallsStaffRoutes` under its /m/stalls and
 // `stallsPublicRoutes` wherever it serves public pages. Nothing here knows
 // which shell it is inside.
-import type { StallAction } from '@msr/stalls';
+import type { StallPrivilege } from '@msr/stalls';
 import { Navigate, type RouteObject } from 'react-router';
 import { AccessLink } from './public/AccessLink';
 import { BankForm } from './public/BankForm';
@@ -94,7 +94,7 @@ export interface StallsNavItem {
   group?: string;
   end?: boolean;
   /** Hidden unless the caller holds this action. */
-  requires?: StallAction;
+  requires?: StallPrivilege;
 }
 
 /** The whole of the prototype's nav, grouped by where in the event timeline a
@@ -114,14 +114,14 @@ export const STALLS_NAV: StallsNavItem[] = [
     to: '/m/stalls/planning',
     glyph: 'layers',
     group: 'Requests & Selection',
-    requires: 'planning:read',
+    requires: 'planning.read',
   },
   {
     label: 'Communication',
     to: '/m/stalls/communication',
     glyph: 'megaphone',
     group: 'Onboarding & Money',
-    requires: 'comms:write',
+    requires: 'comms.write',
   },
   {
     label: 'Vendor Onboarding',
@@ -134,7 +134,7 @@ export const STALLS_NAV: StallsNavItem[] = [
     to: '/m/stalls/finance',
     glyph: 'bar-chart',
     group: 'Onboarding & Money',
-    requires: 'finance:read',
+    requires: 'finance.read',
   },
   {
     label: 'Electrical & Venue',
@@ -143,7 +143,7 @@ export const STALLS_NAV: StallsNavItem[] = [
     group: 'Event Operations',
     // Its own action, so the electrical and venue-prep teams can be given the
     // sheet without the planning grid and every requester's details with it.
-    requires: 'electrical:read',
+    requires: 'electrical.read',
   },
   {
     label: 'Check-in',
@@ -162,7 +162,7 @@ export const STALLS_NAV: StallsNavItem[] = [
     to: '/m/stalls/admin',
     glyph: 'settings',
     group: 'Configuration',
-    requires: 'config:read',
+    requires: 'config.read',
   },
   // ⚠️ No `requires`. The manual is the one screen everybody gets: a volunteer
   // who holds only `checkin:write` is exactly the reader who has never seen the

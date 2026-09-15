@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { ROLES, actionsFor, parseContact, requestTypeScopeFor } from '@msr/stalls';
+import { type HeldRole, parseContact, unionPrivileges, unionRequestTypeScope } from '@msr/stalls';
 import { hashPassword } from '../src/modules/stalls/credentials';
 import { prisma } from '../src/prisma';
 
@@ -42,8 +42,41 @@ function assertLocalDatabase(url: string | undefined): void {
 async function listStaff(): Promise<void> {
   const people = await prisma.person.findMany({ orderBy: { email: 'asc' } });
   const grants = await prisma.stallStaffRole.findMany({
-    select: { personRef: true, roleKey: true },
+    select: {
+      personRef: true,
+      roleKey: true,
+      role: {
+        select: {
+          name: true,
+          allPrivileges: true,
+          requestTypeScope: true,
+          privileges: {
+            where: { privilege: { isActive: true } },
+            select: { privilege: { select: { code: true } } },
+          },
+        },
+      },
+    },
   });
+  // Roles are data now, so what each one grants is read back from the tables
+  // rather than looked up in a constant this script could ship a stale copy of.
+  const activePrivileges = (
+    await prisma.stallPrivilege.findMany({ where: { isActive: true }, select: { code: true } })
+  ).map((r) => r.code);
+  const heldByPerson = new Map<string, HeldRole[]>();
+  const roleNames = new Map<string, string>();
+  for (const g of grants) {
+    roleNames.set(g.roleKey, g.role.name);
+    heldByPerson.set(g.personRef, [
+      ...(heldByPerson.get(g.personRef) ?? []),
+      {
+        roleKey: g.roleKey,
+        allPrivileges: g.role.allPrivileges,
+        privileges: g.role.privileges.map((rp) => rp.privilege.code),
+        requestTypeScope: g.role.requestTypeScope.length === 0 ? null : g.role.requestTypeScope,
+      },
+    ]);
+  }
   const byPerson = new Map<string, string[]>();
   for (const g of grants) {
     byPerson.set(g.personRef, [...(byPerson.get(g.personRef) ?? []), g.roleKey]);
@@ -54,10 +87,11 @@ async function listStaff(): Promise<void> {
 
   for (const p of people) {
     const roleKeys = byPerson.get(p.personId) ?? [];
-    const names = roleKeys.map((k) => ROLES.find((r) => r.roleKey === k)?.name ?? k);
-    const actions = actionsFor(roleKeys);
+    const names = roleKeys.map((k) => roleNames.get(k) ?? k);
+    const held = heldByPerson.get(p.personId) ?? [];
+    const actions = unionPrivileges(held, activePrivileges);
     // `null` means every requester type; `[]` means they hold no role at all.
-    const scope = requestTypeScopeFor(roleKeys);
+    const scope = unionRequestTypeScope(held);
 
     console.log(`  ${p.email}`);
     console.log(`    ${p.displayName}${p.signInDisabled ? '  [SIGN-IN DISABLED]' : ''}`);

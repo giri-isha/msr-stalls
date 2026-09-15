@@ -11,7 +11,7 @@ import { recordActivity } from '../../activity';
 import type { Db } from './editions';
 import { UnknownRequestError, UnknownZoneError } from './errors';
 import { MODULE_KEY } from './roles';
-import { type RequestScope, narrowType, scopeWhere } from './scope';
+import { type RequestScope, UNSCOPED, narrowType, scopeWhere } from './scope';
 
 const summaryInclude = {
   allocations: {
@@ -68,7 +68,7 @@ export async function listRequests(
   db: Db,
   editionId: string,
   q: ListRequestsQuery,
-  scope: RequestScope = null,
+  scope: RequestScope = UNSCOPED,
 ): Promise<RequestPage> {
   // A caller asking for a type their roles do not cover gets an empty page, not
   // an error: the filter matches nothing they may see, which is what "no
@@ -285,7 +285,7 @@ export async function unflagRequest(db: PrismaClient, id: string, by: string) {
 export async function dashboardCounts(
   db: Db,
   editionId: string,
-  scope: RequestScope = null,
+  scope: RequestScope = UNSCOPED,
 ): Promise<DashboardCounts> {
   // The stall counts are the venue's, not any one requester's, so they are not
   // narrowed — a scoped caller sees how much ground exists, and whose it is

@@ -53,7 +53,7 @@ export function Finance() {
   const [tab, setTab] = useState<'due' | 'confirm' | 'refund'>('due');
   const { can } = useMe();
 
-  if (!can('finance:read')) {
+  if (!can('finance.read')) {
     return (
       <div>
         <H1 icon={<Icon name='bar-chart' size={18} />}>Finance</H1>
@@ -144,7 +144,7 @@ function DuePanel() {
             <Card key={r.requestId} pad={14} style={{ display: 'grid', gap: 8 }}>
               <div style={{ fontWeight: 600 }}>{r.stallName}</div>
               <Money row={r} />
-              {can('comms:write') && !r.paymentEmailSentAt && (
+              {can('comms.write') && !r.paymentEmailSentAt && (
                 <Btn kind='primary' onClick={() => sendPayment(r)} disabled={busy === r.requestId}>
                   Send payment email
                 </Btn>
@@ -223,7 +223,7 @@ function DuePanel() {
                     )}
                   </TD>
                   <TD align='right'>
-                    {can('comms:write') && !r.paymentEmailSentAt && (
+                    {can('comms.write') && !r.paymentEmailSentAt && (
                       <Btn onClick={() => sendPayment(r)} disabled={busy === r.requestId}>
                         Send
                       </Btn>
@@ -272,7 +272,7 @@ function ConfirmPanel() {
   const { data, error, loading, reload } = useLoad(listPayments);
   const { q, setQ, filtered } = useSearch(data, matchPayment);
   const [open, setOpen] = useState<PaymentRow | null>(null);
-  const canWrite = can('finance:write');
+  const canWrite = can('finance.write');
 
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox>{error.message}</ErrorBox>;
@@ -645,7 +645,7 @@ function RefundPanel() {
       r.stallName.toLowerCase().includes(t) || r.requesterName.toLowerCase().includes(t),
   );
   const [open, setOpen] = useState<RefundRow | null>(null);
-  const canWrite = can('finance:write');
+  const canWrite = can('finance.write');
 
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox>{error.message}</ErrorBox>;

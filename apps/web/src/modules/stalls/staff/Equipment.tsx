@@ -49,7 +49,7 @@ export function Equipment() {
   const [filter, setFilter] = useState<'all' | 'todo' | 'out' | 'flagged'>('all');
   const [challan, setChallan] = useState<ChallanView | null>(null);
   const mobile = useIsMobile();
-  const canWrite = can('checkin:write');
+  const canWrite = can('checkin.write');
 
   const rows = useMemo(() => {
     const term = q.trim().toLowerCase();

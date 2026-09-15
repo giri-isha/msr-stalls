@@ -53,7 +53,8 @@ function Sidebar({
 }) {
   const { me } = useMe();
   const groups = [...new Set(STALLS_NAV.map((n) => n.group))];
-  const visible = (n: StallsNavItem) => !n.requires || (me?.actions.includes(n.requires) ?? false);
+  const visible = (n: StallsNavItem) =>
+    !n.requires || (me?.privileges.includes(n.requires) ?? false);
 
   return (
     // ⚠️ A `<nav>`, where the module this chrome was copied from uses `<aside>`.

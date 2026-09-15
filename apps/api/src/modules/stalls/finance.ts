@@ -18,7 +18,7 @@ import { DuplicatePaymentError, RefundAlreadySubmittedError, UnknownRequestError
 import { allocatedNumbers, factsInclude, refreshStage, type RequestWithFacts } from './facts';
 import { planToView, quoteContext, quoteFor, toQuoteView } from './quotes';
 import { MODULE_KEY } from './roles';
-import type { RequestScope } from './scope';
+import { type RequestScope, UNSCOPED } from './scope';
 
 /** Finance: what is owed, what has come in, and what goes back.
  *
@@ -105,7 +105,8 @@ async function toPaymentRow(
  *  so the intersection is taken here rather than adding a second clause. */
 function payingTypes(scope: RequestScope): StallRequestType[] {
   const paying: StallRequestType[] = ['VENDOR', 'LOCAL_WELFARE'];
-  return scope === null ? paying : paying.filter((t) => scope.includes(t));
+  const types = scope.requestTypes;
+  return types === null ? paying : paying.filter((t) => types.includes(t));
 }
 
 /** Everyone who owes money: selected vendors and local welfare stalls. Ashram
@@ -114,7 +115,7 @@ function payingTypes(scope: RequestScope): StallRequestType[] {
 export async function listPayments(
   db: Db,
   editionId: string,
-  scope: RequestScope = null,
+  scope: RequestScope = UNSCOPED,
 ): Promise<PaymentRow[]> {
   const rows = await db.stallRequest.findMany({
     where: {
@@ -361,7 +362,7 @@ async function toRefundRow(
 export async function listRefunds(
   db: Db,
   editionId: string,
-  scope: RequestScope = null,
+  scope: RequestScope = UNSCOPED,
 ): Promise<RefundRow[]> {
   const rows = await db.stallRequest.findMany({
     where: {

@@ -53,9 +53,40 @@ function page(users: unknown[], counts = COUNTS) {
 const routes = [{ path: '/m/stalls/admin', element: <Users writable /> }];
 const render = () => renderAt('/m/stalls/admin', routes, { me: false });
 
+/**
+ * The roles, as the server now sends them.
+ *
+ * ⚠️ Served, not imported. The screen used to render its pickers from the
+ * `ROLES` constant; roles are data now, so the list is fetched and each row
+ * carries whether THIS caller may hand it out. Every role here is assignable
+ * because these tests act as an admin — the role hierarchy itself is exercised
+ * against the tree in `rbac.test.ts` and against the API in `directory.test.ts`.
+ */
+const ROLE_ROWS = [
+  ['stalls_admin', 'Admin', 'Full access, including module configuration', null, 0],
+  ['stalls_lead', 'Lead (Stall Coordinator)', 'Planning, selection and finance', 'stalls_admin', 1],
+  ['stalls_volunteer', 'Volunteer', 'Check-in, chairs and tables', 'stalls_lead', 2],
+  ['stalls_finance', 'Finance', 'Payment confirmation and refunds', 'stalls_lead', 2],
+  ['stalls_electrical', 'Electrical & Venue Prep', 'The electrical sheet', 'stalls_lead', 2],
+  ['stalls_local_welfare', 'Local Welfare', 'Local welfare stalls only', 'stalls_lead', 2],
+] as const;
+
+const ROLES_BODY = {
+  roles: ROLE_ROWS.map(([roleKey, name, description, parentKey, depth]) => ({
+    roleKey,
+    name,
+    description,
+    parentKey,
+    depth,
+    isSystem: true,
+    assignable: true,
+  })),
+};
+
 const base = (body: unknown, extra: ReadonlyArray<readonly [string, RegExp, unknown]> = []) =>
   installFetch([
     ['GET', /\/users$/, () => body],
+    ['GET', /\/roles$/, () => ROLES_BODY],
     ...(extra as ReadonlyArray<readonly [string, RegExp, () => unknown]>),
   ]);
 
@@ -262,6 +293,33 @@ describe('support actions', () => {
 });
 
 describe('granting a role', () => {
+  // Position 0 of the assignable list is the caller's MOST privileged role, so
+  // any positional default would make Admin the thing granted by an admin who
+  // never touched the dropdown. There is no honest default left, so there is
+  // none.
+  test('will not grant until a role is actually chosen', async () => {
+    base(page([staff()]), [
+      [
+        'GET',
+        /\/staff\/search$/,
+        () => [
+          { personId: 'p-new', displayName: 'Kavya Nair', email: 'kavya.n@ishafoundation.org' },
+        ],
+      ],
+    ]);
+    render();
+    const user = userEvent.setup();
+
+    await screen.findByText('Vikram Sethu');
+    await user.click(screen.getByRole('button', { name: /Add a staff member/ }));
+    await user.type(screen.getByLabelText('Search people'), 'kavya');
+    await user.click(screen.getByRole('button', { name: /^Search$/ }));
+
+    expect(await screen.findByRole('button', { name: 'Grant' })).toBeDisabled();
+    await user.selectOptions(screen.getByLabelText('Role'), 'stalls_volunteer');
+    expect(screen.getByRole('button', { name: 'Grant' })).toBeEnabled();
+  });
+
   test('searches the directory and grants, then reloads the list', async () => {
     const fetch = base(page([staff()]), [
       [
@@ -281,6 +339,10 @@ describe('granting a role', () => {
     await user.type(screen.getByLabelText('Search people'), 'kavya');
     await user.click(screen.getByRole('button', { name: /^Search$/ }));
 
+    // No default role: the picker opens on a placeholder, because position 0 of
+    // the assignable list is the caller's MOST privileged role and defaulting
+    // to it would grant Admin to anyone who never touched the dropdown.
+    await user.selectOptions(await screen.findByLabelText('Role'), 'stalls_lead');
     await user.click(await screen.findByRole('button', { name: 'Grant' }));
 
     await waitFor(() => {

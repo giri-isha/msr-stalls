@@ -48,6 +48,16 @@ export async function resetDatabase(): Promise<void> {
     where table_schema in ('stalls', 'foundation')
       and table_type = 'BASE TABLE'
       and table_name <> '_prisma_migrations'
+      -- The RBAC vocabulary is REFERENCE DATA, installed by the migration that
+      -- created it, not a fixture any test writes. Truncating it would empty
+      -- stall_role, and every seedStaff call would then violate the foreign key
+      -- on stall_staff_role.role_key -- the suite would be exercising a module
+      -- with no roles in it at all.
+      --
+      -- Safe only while nothing AUTHORS a role at runtime. When the role editor
+      -- lands, a test that creates one must clean it up, or this exclusion
+      -- becomes leakage between tests.
+      and table_name not in ('stall_privilege', 'stall_role', 'stall_role_privilege')
   `;
   if (rows.length === 0) return;
   const list = rows.map((r) => `"${r.table_schema}"."${r.table_name}"`).join(', ');

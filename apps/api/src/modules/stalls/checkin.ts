@@ -13,7 +13,7 @@ import {
   staffExpected,
 } from './facts';
 import { MODULE_KEY } from './roles';
-import { type RequestScope, scopeWhere } from './scope';
+import { type RequestScope, UNSCOPED, scopeWhere } from './scope';
 
 /** The check-in counter.
  *
@@ -57,7 +57,7 @@ export async function listCheckIns(
   db: Db,
   editionId: string,
   q?: string,
-  scope: RequestScope = null,
+  scope: RequestScope = UNSCOPED,
 ): Promise<CheckInRow[]> {
   const term = q?.trim();
   const [rows, flow] = await Promise.all([

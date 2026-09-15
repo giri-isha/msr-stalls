@@ -7,7 +7,7 @@ import type { Db } from './editions';
 import { UnknownRequestError } from './errors';
 import { allocatedNumbers } from './facts';
 import { MODULE_KEY } from './roles';
-import { type RequestScope, scopeWhere } from './scope';
+import { type RequestScope, UNSCOPED, scopeWhere } from './scope';
 
 /** The chairs-and-tables counter, over two days.
  *
@@ -115,7 +115,7 @@ async function ensureIssue(db: PrismaClient, r: Row): Promise<StallEquipmentIssu
 export async function listEquipment(
   db: PrismaClient,
   editionId: string,
-  scope: RequestScope = null,
+  scope: RequestScope = UNSCOPED,
 ): Promise<EquipmentRow[]> {
   const rows = await db.stallRequest.findMany({
     where: {

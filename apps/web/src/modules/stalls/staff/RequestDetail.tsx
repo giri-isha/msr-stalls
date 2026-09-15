@@ -133,8 +133,8 @@ export function RequestDetail() {
     else await run('Flagged', () => api.flagRequest(r.id, text));
   };
 
-  const canSelect = can('selection:write');
-  const canWrite = can('requests:write');
+  const canSelect = can('selection.write');
+  const canWrite = can('requests.write');
 
   /**
    * ⚠️ A tab is present when the form is part of THIS requester's flow, not

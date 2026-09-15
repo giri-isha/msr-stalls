@@ -24,6 +24,7 @@ import {
   verifyFssai,
 } from '../src/modules/stalls/onboarding';
 import { applyPlan, writePlan } from '../src/modules/stalls/planning';
+import { seedRbac } from '../src/modules/stalls/seed-rbac';
 import { flagRequest } from '../src/modules/stalls/requests';
 import { selectRequest, shortlist } from '../src/modules/stalls/selection';
 import { submitRequest } from '../src/modules/stalls/submit';
@@ -384,6 +385,13 @@ async function main() {
     );
     console.log('Wiped.');
   }
+
+  // The roles themselves, before anybody is granted one.
+  //
+  // The migration installs them, so this is a top-up rather than the only
+  // source — but the seed truncates the stalls tables when run with --force,
+  // and a grant cannot be written against a role table that is not there.
+  await seedRbac(prisma);
 
   // Staff
   const people = new Map<string, string>();
