@@ -85,7 +85,13 @@ async function staffRows(db: Db): Promise<DirectoryUser[]> {
         displayName: p.displayName,
         email: p.email,
         phone: null,
-        roleKeys: grants.filter((g) => g.personRef === ref).map((g) => g.roleKey),
+        grants: grants
+          .filter((g) => g.personRef === ref)
+          .map((g) => ({
+            roleKey: g.roleKey,
+            editionScope: g.editionScope,
+            zoneScope: g.zoneScope,
+          })),
         requestCount: null,
         signInState: p.signInDisabled ? ('DISABLED' as const) : ('OK' as const),
         lockedUntil: null,
@@ -111,7 +117,7 @@ async function requesterRows(db: Db, editionId: string): Promise<DirectoryUser[]
       displayName: a.displayName,
       email: a.email,
       phone: a.phone || null,
-      roleKeys: [],
+      grants: [],
       requestCount: a._count.requests,
       signInState: state,
       lockedUntil:
@@ -179,7 +185,7 @@ function matchesSearch(u: DirectoryUser, q: string | undefined): boolean {
 
 function matchesRole(u: DirectoryUser, roleKey: string | undefined): boolean {
   if (!roleKey) return true;
-  return u.roleKeys.includes(roleKey);
+  return u.grants.some((g) => g.roleKey === roleKey);
 }
 
 function matchesState(u: DirectoryUser, state: SignInState | undefined): boolean {

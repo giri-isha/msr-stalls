@@ -1,11 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import {
-  type RoleSummary,
-  type StaffMember,
-  cannotAssign,
-  cannotEdit,
-  roleDepth,
-} from '@msr/stalls';
+import { type RoleSummary, type StaffMember, cannotAssign, cannotEdit } from '@msr/stalls';
 import { recordActivity } from '../../activity';
 import type { Db } from './editions';
 import {
@@ -26,23 +20,31 @@ import { MODULE_KEY, type StaffCaller, assignableRolesFor, editableRolesFor } fr
  *  holds (msr ADR 0065). `assignable` is computed per caller so the picker
  *  cannot offer a choice the grant route is about to refuse. */
 export async function listRoles(db: PrismaClient, caller: StaffCaller): Promise<RoleSummary[]> {
-  const [rows, assignable] = await Promise.all([
-    db.stallRole.findMany({ orderBy: { sortOrder: 'asc' } }),
+  const [rows, assignable, activePrivileges] = await Promise.all([
+    db.stallRole.findMany({
+      orderBy: { sortOrder: 'asc' },
+      // Counted here rather than per card. The grid draws every role at once,
+      // so a count fetched on open would be a request per role.
+      include: { _count: { select: { privileges: true, grants: true } } },
+    }),
     assignableRolesFor(db, caller),
+    db.stallPrivilege.count({ where: { isActive: true } }),
   ]);
-  const tree = rows.map((r) => ({
-    roleKey: r.roleKey,
-    parentKey: r.parentKey,
-    canAssignSameLevel: r.canAssignSameLevel,
-  }));
   return rows.map((r) => ({
     roleKey: r.roleKey,
     name: r.name,
     description: r.description,
     parentKey: r.parentKey,
-    depth: roleDepth(tree, r.roleKey),
+    level: r.level,
     isSystem: r.isSystem,
     assignable: assignable.has(r.roleKey),
+    // ⚠️ A role carrying the flag has NO join rows — it resolves against the
+    // live table — so counting its rows would say "0 privileges" on the most
+    // powerful card in the grid.
+    privilegeCount: r.allPrivileges ? activePrivileges : r._count.privileges,
+    grantCount: r._count.grants,
+    allPrivileges: r.allPrivileges,
+    requestTypeScope: r.requestTypeScope,
   }));
 }
 

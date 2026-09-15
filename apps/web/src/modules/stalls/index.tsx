@@ -18,6 +18,8 @@ import { StaffRegistration } from './public/StaffRegistration';
 import { StatusPage } from './public/StatusPage';
 import { Submitted } from './public/Submitted';
 import { Admin } from './staff/Admin';
+import { RolesPrivileges } from './staff/access/RolesPrivileges';
+import { Users } from './staff/access/Users';
 import { CheckIn } from './staff/CheckIn';
 import { Communication } from './staff/Communication';
 import { Dashboard } from './staff/Dashboard';
@@ -76,6 +78,11 @@ export const stallsStaffRoutes: RouteObject[] = [
   { path: 'equipment', element: <Equipment /> },
   { path: 'finance', element: <Finance /> },
   { path: 'admin', element: <Admin /> },
+  // Access: who may reach the module, and what each role may do. Two screens
+  // rather than two tabs inside Admin — each is a full page with its own
+  // toolbar, and Admin's strip had grown to ten items.
+  { path: 'access/roles', element: <RolesPrivileges /> },
+  { path: 'access/users', element: <Users /> },
   { path: 'docs', element: <Documentation /> },
 ];
 
@@ -162,6 +169,24 @@ export const STALLS_NAV: StallsNavItem[] = [
     to: '/m/stalls/admin',
     glyph: 'settings',
     group: 'Configuration',
+    requires: 'config.read',
+  },
+  // ⚠️ Gated on `config.read`, not on `roles.write` or `users.write`. Both
+  // screens are readable before they are writable — the catalogue is reference
+  // material and the directory names who holds what — and each hides its own
+  // writes behind the privilege that authorises them.
+  {
+    label: 'Roles & Privileges',
+    to: '/m/stalls/access/roles',
+    glyph: 'shield',
+    group: 'Access',
+    requires: 'config.read',
+  },
+  {
+    label: 'Users',
+    to: '/m/stalls/access/users',
+    glyph: 'users',
+    group: 'Access',
     requires: 'config.read',
   },
   // ⚠️ No `requires`. The manual is the one screen everybody gets: a volunteer

@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { installFetch, renderAt } from '../test-utils';
+import { ME_ADMIN, ME_LEAD, installFetch, renderAt } from '../../test-utils';
 import { Users } from './Users';
 
 beforeEach(() => vi.unstubAllGlobals());
@@ -13,7 +13,7 @@ function staff(over: Record<string, unknown> = {}) {
     displayName: 'Vikram Sethu',
     email: 'vikram.s@ishafoundation.org',
     phone: null,
-    roleKeys: ['stalls_admin'],
+    grants: [{ roleKey: 'stalls_admin', editionScope: [], zoneScope: [] }],
     requestCount: null,
     signInState: 'OK',
     lockedUntil: null,
@@ -28,7 +28,7 @@ function requester(over: Record<string, unknown> = {}) {
     displayName: 'Priya Venkat',
     email: 'priya@greenleaf.example',
     phone: '9840012345',
-    roleKeys: [],
+    grants: [],
     requestCount: 2,
     signInState: 'LINK_ONLY',
     lockedUntil: null,
@@ -50,8 +50,11 @@ function page(users: unknown[], counts = COUNTS) {
   return { users, counts, total: users.length, page: 0, pageSize: 50 };
 }
 
-const routes = [{ path: '/m/stalls/admin', element: <Users writable /> }];
-const render = () => renderAt('/m/stalls/admin', routes, { me: false });
+const routes = [{ path: '/m/stalls/access/users', element: <Users /> }];
+/** ⚠️ `me: true` now. The screen is its own route rather than a tab Admin
+ *  handed a `writable` prop to, so it reads the caller's privileges itself —
+ *  the same way every other staff screen does. */
+const render = () => renderAt('/m/stalls/access/users', routes, { me: true });
 
 /**
  * The roles, as the server now sends them.
@@ -72,22 +75,49 @@ const ROLE_ROWS = [
 ] as const;
 
 const ROLES_BODY = {
-  roles: ROLE_ROWS.map(([roleKey, name, description, parentKey, depth]) => ({
+  roles: ROLE_ROWS.map(([roleKey, name, description, parentKey, level]) => ({
     roleKey,
     name,
     description,
     parentKey,
-    depth,
+    level,
     isSystem: true,
     assignable: true,
+    privilegeCount: 4,
+    grantCount: 1,
+    allPrivileges: false,
+    requestTypeScope: [],
   })),
 };
 
-const base = (body: unknown, extra: ReadonlyArray<readonly [string, RegExp, unknown]> = []) =>
+/** The two axes a grant can be narrowed to. Loaded best-effort by the dialog —
+ *  somebody holding `users.write` and neither read simply grants unscoped. */
+const ZONES = [
+  { id: 'z-a1', code: 'A1', name: 'Bay A1' },
+  { id: 'z-b2', code: 'B2', name: 'Bay B2' },
+];
+const EDITIONS = [
+  { id: 'e-2026', year: 2026, name: 'MSR 2026', isActive: true },
+  { id: 'e-2025', year: 2025, name: 'MSR 2025', isActive: false },
+];
+
+/** ⚠️ Extras FIRST. `installFetch` takes the first route that matches, so a
+ *  stub appended after the defaults would never be reached — and a test that
+ *  thought it had overridden one would quietly assert against the default. */
+const base = (
+  body: unknown,
+  extra: ReadonlyArray<readonly [string, RegExp, unknown]> = [],
+  /** Who is looking. A lead holds no `users.write`, which is how the read-only
+   *  cases are expressed now that the screen reads its own gate. */
+  me: unknown = ME_ADMIN,
+) =>
   installFetch([
+    ...(extra as ReadonlyArray<readonly [string, RegExp, () => unknown]>),
+    ['GET', /\/me$/, () => me],
     ['GET', /\/users$/, () => body],
     ['GET', /\/roles$/, () => ROLES_BODY],
-    ...(extra as ReadonlyArray<readonly [string, RegExp, () => unknown]>),
+    ['GET', /\/zones$/, () => ZONES],
+    ['GET', /\/editions$/, () => EDITIONS],
   ]);
 
 /** The one row whose name cell contains `name` — rows are found by who they
@@ -282,13 +312,13 @@ describe('support actions', () => {
   });
 
   test('a read-only caller gets no actions at all', async () => {
-    base(page([requester({ signInState: 'LOCKED' })]));
-    renderAt('/m/stalls/admin', [{ path: '/m/stalls/admin', element: <Users writable={false} /> }]);
+    base(page([requester({ signInState: 'LOCKED' })]), [], ME_LEAD);
+    render();
 
     await screen.findByText('Priya Venkat');
     expect(screen.queryByLabelText('Unlock Priya Venkat')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Send Priya Venkat their access link')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Add a staff member/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Add user/ })).not.toBeInTheDocument();
   });
 });
 
@@ -311,13 +341,14 @@ describe('granting a role', () => {
     const user = userEvent.setup();
 
     await screen.findByText('Vikram Sethu');
-    await user.click(screen.getByRole('button', { name: /Add a staff member/ }));
+    await user.click(screen.getByRole('button', { name: /Add user/ }));
     await user.type(screen.getByLabelText('Search people'), 'kavya');
     await user.click(screen.getByRole('button', { name: /^Search$/ }));
 
-    expect(await screen.findByRole('button', { name: 'Grant' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Assign' })).toBeDisabled();
+    await user.click(await screen.findByLabelText('Kavya Nair'));
     await user.selectOptions(screen.getByLabelText('Role'), 'stalls_volunteer');
-    expect(screen.getByRole('button', { name: 'Grant' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Assign' })).toBeEnabled();
   });
 
   test('searches the directory and grants, then reloads the list', async () => {
@@ -335,15 +366,16 @@ describe('granting a role', () => {
     const user = userEvent.setup();
 
     await screen.findByText('Vikram Sethu');
-    await user.click(screen.getByRole('button', { name: /Add a staff member/ }));
+    await user.click(screen.getByRole('button', { name: /Add user/ }));
     await user.type(screen.getByLabelText('Search people'), 'kavya');
     await user.click(screen.getByRole('button', { name: /^Search$/ }));
 
     // No default role: the picker opens on a placeholder, because position 0 of
     // the assignable list is the caller's MOST privileged role and defaulting
     // to it would grant Admin to anyone who never touched the dropdown.
-    await user.selectOptions(await screen.findByLabelText('Role'), 'stalls_lead');
-    await user.click(await screen.findByRole('button', { name: 'Grant' }));
+    await user.click(await screen.findByLabelText('Kavya Nair'));
+    await user.selectOptions(screen.getByLabelText('Role'), 'stalls_lead');
+    await user.click(screen.getByRole('button', { name: 'Assign' }));
 
     await waitFor(() => {
       const call = fetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/staff'));
@@ -364,38 +396,65 @@ describe("editing a staff member's roles", () => {
 
     await open(user);
 
-    expect(await screen.findByRole('checkbox', { name: 'Admin' })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'Volunteer' })).not.toBeChecked();
+    expect(await screen.findByRole('radio', { name: 'Admin' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Volunteer' })).not.toBeChecked();
   });
 
-  /** ⚠️ The difference only. A Save that re-granted everything ticked would
-   *  write an activity row per role on every visit, and the trail is the one
-   *  place "who gave this person finance" gets answered. */
-  test('saves only what changed — one grant, one revoke', async () => {
-    const fetch = base(page([staff({ roleKeys: ['stalls_admin', 'stalls_finance'] })]), [
-      ['POST', /\/staff$/, () => [204, null]],
-      ['DELETE', /\/staff\/p-admin\/stalls_finance$/, () => [204, null]],
-    ]);
+  /**
+   * 🔴 ONE role at a time. Choosing another does not add to what somebody
+   * holds — it replaces it, because a person in this module holds exactly one
+   * role and the screen would otherwise quietly build up a union nobody asked
+   * for. Every role they held that is not the chosen one is revoked.
+   *
+   * ⚠️ Grant BEFORE revoke. The calls are not atomic, so the order decides what
+   * a refusal leaves behind: this way a failure leaves them holding both, which
+   * an admin can see and fix, rather than holding nothing.
+   */
+  test('choosing another role replaces the one they hold', async () => {
+    const fetch = base(
+      page([
+        staff({
+          grants: [
+            { roleKey: 'stalls_admin', editionScope: [], zoneScope: [] },
+            { roleKey: 'stalls_finance', editionScope: [], zoneScope: [] },
+          ],
+        }),
+      ]),
+      [
+        ['POST', /\/staff$/, () => [204, null]],
+        ['DELETE', /\/staff\/p-admin\/[a-z_]+$/, () => [204, null]],
+      ],
+    );
     render();
     const user = userEvent.setup();
 
     await open(user);
-    await user.click(await screen.findByRole('checkbox', { name: 'Volunteer' }));
-    await user.click(screen.getByRole('checkbox', { name: 'Finance' }));
+    await user.click(await screen.findByRole('radio', { name: 'Volunteer' }));
     await user.click(screen.getByRole('button', { name: /^Save$/ }));
 
     await waitFor(() => {
       const granted = fetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/staff'));
       expect(granted?.body).toMatchObject({ personRef: 'p-admin', roleKey: 'stalls_volunteer' });
     });
-    expect(
-      fetch.calls.some(
-        (c) => c.method === 'DELETE' && c.url.endsWith('/staff/p-admin/stalls_finance'),
-      ),
-    ).toBe(true);
+    // Both of the old ones go, and exactly one grant is asked for.
+    const revoked = fetch.calls.filter((c) => c.method === 'DELETE').map((c) => c.url);
+    expect(revoked).toContain('/api/m/stalls/staff/p-admin/stalls_admin');
+    expect(revoked).toContain('/api/m/stalls/staff/p-admin/stalls_finance');
     expect(fetch.calls.filter((c) => c.method === 'POST' && c.url.endsWith('/staff'))).toHaveLength(
       1,
     );
+  });
+
+  // ⚠️ Says so in words. "Pick one" is a rule a reader should not have to infer
+  // from the shape of the controls.
+  test('says that a role replaces the one they hold rather than adding to it', async () => {
+    base(page([staff()]));
+    render();
+    const user = userEvent.setup();
+
+    await open(user);
+
+    expect(await screen.findByText(/one role at a time/i)).toBeInTheDocument();
   });
 
   test('a Save that changed nothing asks the server for nothing', async () => {
@@ -411,33 +470,42 @@ describe("editing a staff member's roles", () => {
 
   /** ⚠️ The dialog claims no rollback, so it must not claim the opposite
    *  either: after a refusal part-way through, what already stuck is gone, and
-   *  a second Save must not ask for it again — every revoke writes to the
-   *  trail, and a repeated one writes that a role was taken away twice. */
+   *  a second Save must not ask for it again — every grant writes to the trail,
+   *  and a repeated one writes that a role was given twice. */
   test('a refusal part-way leaves the dialog describing what actually stuck', async () => {
-    const fetch = base(page([staff({ roleKeys: ['stalls_admin', 'stalls_finance'] })]), [
-      ['DELETE', /\/staff\/p-admin\/stalls_admin$/, () => [204, null]],
+    const fetch = base(
+      page([
+        staff({
+          grants: [
+            { roleKey: 'stalls_admin', editionScope: [], zoneScope: [] },
+            { roleKey: 'stalls_finance', editionScope: [], zoneScope: [] },
+          ],
+        }),
+      ]),
       [
-        'DELETE',
-        /\/staff\/p-admin\/stalls_finance$/,
-        () => [409, { error: 'cannot remove the last stalls admin' }],
+        ['POST', /\/staff$/, () => [204, null]],
+        ['DELETE', /\/staff\/p-admin\/stalls_finance$/, () => [204, null]],
+        [
+          'DELETE',
+          /\/staff\/p-admin\/stalls_admin$/,
+          () => [409, { error: 'cannot remove the last stalls admin' }],
+        ],
       ],
-    ]);
+    );
     render();
     const user = userEvent.setup();
 
     await open(user);
-    await user.click(await screen.findByRole('checkbox', { name: 'Admin' }));
-    await user.click(screen.getByRole('checkbox', { name: 'Finance' }));
+    await user.click(await screen.findByRole('radio', { name: 'Volunteer' }));
     await user.click(screen.getByRole('button', { name: /^Save$/ }));
 
     await screen.findByText(/last stalls admin/);
     await user.click(screen.getByRole('button', { name: /^Save$/ }));
 
+    // The grant stuck on the first attempt; the second Save must not repeat it.
     await waitFor(() =>
       expect(
-        fetch.calls.filter(
-          (c) => c.method === 'DELETE' && c.url.endsWith('/staff/p-admin/stalls_admin'),
-        ),
+        fetch.calls.filter((c) => c.method === 'POST' && c.url.endsWith('/staff')),
       ).toHaveLength(1),
     );
   });
@@ -452,6 +520,134 @@ describe("editing a staff member's roles", () => {
     expect(
       screen.queryByLabelText('Revoke stalls_admin from Vikram Sethu'),
     ).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * 🔴 Scope, on the dialog that grants.
+ *
+ * The two dialogs this replaced disagreed: the one that ADDED a staff member
+ * offered seasons and bays, and the one that edited an existing person's roles
+ * did not — it called `grantRole` with no scope at all. Empty means EVERY
+ * season and EVERY bay, so the most-used of the two silently handed out the
+ * widest grant the module can express, with nothing on screen saying so.
+ */
+describe('what a grant reaches', () => {
+  const open = async (user: ReturnType<typeof userEvent.setup>, name = 'Vikram Sethu') => {
+    await user.click(await screen.findByLabelText(`Edit ${name}`));
+  };
+
+  test('a role granted to somebody already in the list carries the bays chosen for it', async () => {
+    const fetch = base(page([staff()]), [['POST', /\/staff$/, () => [204, null]]]);
+    render();
+    const user = userEvent.setup();
+
+    await open(user);
+    await user.click(await screen.findByRole('radio', { name: 'Volunteer' }));
+    await user.click(screen.getByRole('combobox', { name: 'Bays for Volunteer' }));
+    await user.click(await screen.findByRole('option', { name: 'A1 — Bay A1' }));
+    await user.click(screen.getByRole('button', { name: /^Save$/ }));
+
+    await waitFor(() => {
+      const call = fetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/staff'));
+      expect(call?.body).toMatchObject({
+        personRef: 'p-admin',
+        roleKey: 'stalls_volunteer',
+        zoneScope: ['A1'],
+      });
+    });
+  });
+
+  test('the scope a grant already has is shown, not silently reset', async () => {
+    base(
+      page([
+        staff({
+          grants: [{ roleKey: 'stalls_admin', editionScope: ['e-2026'], zoneScope: ['B2'] }],
+        }),
+      ]),
+    );
+    render();
+    const user = userEvent.setup();
+
+    await open(user);
+
+    // The chosen bay reads off the closed control, so what a grant reaches is
+    // legible without opening anything.
+    expect(await screen.findByRole('combobox', { name: 'Bays for Admin' })).toHaveTextContent(
+      'B2 — Bay B2',
+    );
+    expect(screen.getByRole('combobox', { name: 'Seasons for Admin' })).toHaveTextContent('2026');
+  });
+
+  // ⚠️ A re-grant RESETS scope on the server, so narrowing one has to travel as
+  // a whole grant — and a role nobody touched must not travel at all.
+  test('narrowing the role somebody already holds re-sends that one grant', async () => {
+    const fetch = base(page([staff()]), [['POST', /\/staff$/, () => [204, null]]]);
+    render();
+    const user = userEvent.setup();
+
+    await open(user);
+    await user.click(await screen.findByRole('combobox', { name: 'Bays for Admin' }));
+    await user.click(await screen.findByRole('option', { name: 'A1 — Bay A1' }));
+    await user.click(screen.getByRole('button', { name: /^Save$/ }));
+
+    await waitFor(() => {
+      const sent = fetch.calls.filter((c) => c.method === 'POST' && c.url.endsWith('/staff'));
+      expect(sent).toHaveLength(1);
+      expect(sent[0]?.body).toMatchObject({ roleKey: 'stalls_admin', zoneScope: ['A1'] });
+    });
+    // Nothing was revoked: the role did not change, only how far it reaches.
+    expect(fetch.calls.some((c) => c.method === 'DELETE')).toBe(false);
+  });
+
+  // ⚠️ Empty is EVERYTHING on both axes, which is the opposite of how a picker
+  // usually reads — so the control SAYS it while empty rather than sitting
+  // blank and leaving the reader to guess which way round it is.
+  test('an empty scope says it means every season and every bay', async () => {
+    base(page([staff()]));
+    render();
+    const user = userEvent.setup();
+
+    await open(user);
+
+    expect(await screen.findByRole('combobox', { name: 'Bays for Admin' })).toHaveTextContent(
+      'Every bay',
+    );
+    expect(screen.getByRole('combobox', { name: 'Seasons for Admin' })).toHaveTextContent(
+      'Every season, including ones created later',
+    );
+  });
+
+  // The dialog that adds somebody is the same dialog, so it narrows the same
+  // way — this is the half that used to be the only one that could.
+  test('a grant made from the add dialog carries its scope too', async () => {
+    const fetch = base(page([staff()]), [
+      [
+        'GET',
+        /\/staff\/search$/,
+        () => [
+          { personId: 'p-new', displayName: 'Kavya Nair', email: 'kavya.n@ishafoundation.org' },
+        ],
+      ],
+      ['POST', /\/staff$/, () => [204, null]],
+    ]);
+    render();
+    const user = userEvent.setup();
+
+    await screen.findByText('Vikram Sethu');
+    await user.click(screen.getByRole('button', { name: /Add user/ }));
+    await user.type(screen.getByLabelText('Search people'), 'kavya');
+    await user.click(screen.getByRole('button', { name: /^Search$/ }));
+    await user.click(await screen.findByLabelText('Kavya Nair'));
+    await user.selectOptions(screen.getByLabelText('Role'), 'stalls_volunteer');
+    await user.click(screen.getByRole('combobox', { name: 'Bays' }));
+    await user.click(await screen.findByRole('option', { name: 'B2 — Bay B2' }));
+    await user.click(screen.getByRole('button', { name: 'Assign' }));
+
+    await waitFor(() => {
+      const call = fetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/staff'));
+      expect(call?.body).toMatchObject({ roleKey: 'stalls_volunteer', zoneScope: ['B2'] });
+    });
   });
 });
 
@@ -529,8 +725,8 @@ describe('editing a requester', () => {
   });
 
   test('a reader who may not write is offered no Edit at all', async () => {
-    base(page([staff(), requester()]));
-    renderAt('/m/stalls/admin', [{ path: '/m/stalls/admin', element: <Users writable={false} /> }]);
+    base(page([staff(), requester()]), [], ME_LEAD);
+    render();
 
     await screen.findByText('Priya Venkat');
     expect(screen.queryByLabelText('Edit Priya Venkat')).not.toBeInTheDocument();

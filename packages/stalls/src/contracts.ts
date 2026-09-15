@@ -716,6 +716,19 @@ export type DirectoryKind = 'STAFF' | 'REQUESTER';
  */
 export type SignInState = 'OK' | 'LINK_ONLY' | 'UNCONFIRMED' | 'LOCKED' | 'DISABLED';
 
+/** One role somebody holds, and how far it reaches.
+ *
+ *  ⚠️ An empty list on either axis means EVERYTHING — every season, every bay —
+ *  which is the opposite of how a filter reads. The screens that show these say
+ *  so in words rather than leaving a blank row to be guessed at. */
+export interface DirectoryGrant {
+  roleKey: string;
+  /** Edition ids. Empty is every season, including ones created later. */
+  editionScope: string[];
+  /** Zone CODES, not ids — a bay marshal who runs A1 runs A1 every season. */
+  zoneScope: string[];
+}
+
 export interface DirectoryUser {
   /** `personId` for staff, the account id for requesters. Both are UUIDs from
    *  different tables, so `kind` — not the id — is what an action keys on. */
@@ -725,8 +738,16 @@ export interface DirectoryUser {
   email: string;
   /** Requesters only. The Foundation directory holds no number for staff. */
   phone: string | null;
-  /** Staff only; empty for a requester, who holds no role by construction. */
-  roleKeys: string[];
+  /**
+   * The roles this person holds, each with what it reaches. Empty for a
+   * requester, who holds no role by construction.
+   *
+   * ⚠️ The whole grant rather than the key alone. The dialog that edits
+   * somebody's roles sends the whole grant back, because a re-grant RESETS
+   * scope — so without the scope on the row, adding one role would silently
+   * widen every role the person already held to every season and every bay.
+   */
+  grants: DirectoryGrant[];
   /** Requesters only — their requests in the ACTIVE edition, which is the
    *  edition every other staff screen is showing at the same moment. */
   requestCount: number | null;
@@ -800,6 +821,33 @@ export interface MeResponse {
   privileges: string[];
 }
 
+/**
+ * One privilege, as the catalogue lists it.
+ *
+ * ⚠️ Read-only, and served from the TABLE rather than read off
+ * `PRIVILEGE_CATEGORIES` in the bundle. The difference is `isActive`: a
+ * privilege is retired by clearing that flag — never by deleting a row roles
+ * still bundle — and the compiled-in list cannot know it happened.
+ *
+ * ⚠️ There is no write. The vocabulary is code: a privilege means nothing
+ * unless a route enforces it, so one invented from a screen would be a code
+ * that grants nothing. What is authored is the COMPOSITION — see `RoleDetail`.
+ */
+export interface PrivilegeCatalogEntry {
+  code: string;
+  label: string;
+  category: string;
+  /** view / action / config / sensitive / export. Presentation only — nothing
+   *  branches on it at runtime. */
+  kind: string;
+  description: string;
+  isActive: boolean;
+}
+
+export interface ListPrivilegesResponse {
+  privileges: PrivilegeCatalogEntry[];
+}
+
 /** A role as the Users screen lists it.
  *
  *  ⚠️ Served rather than imported. The screen used to render its picker from
@@ -810,12 +858,35 @@ export interface RoleSummary {
   name: string;
   description: string;
   parentKey: string | null;
-  /** How deep the role sits, derived from the tree, for indenting the picker. */
-  depth: number;
+  /**
+   * The rank an admin typed, 0 being the top.
+   *
+   * ⚠️ STORED, not derived from the parent chain — the reference module does
+   * the same. It is a LABEL: assignability comes from `parentKey` and nothing
+   * else, so a level that disagrees with the tree reads oddly and changes
+   * nobody's reach.
+   */
+  level: number;
   isSystem: boolean;
   /** Whether the CALLER may hand this role out. The picker offers only these,
    *  so it cannot present a choice the server is about to refuse. */
   assignable: boolean;
+  /** How many privileges it bundles.
+   *
+   *  ⚠️ For a role carrying `allPrivileges` this is the count of ACTIVE
+   *  privileges, not the count of its join rows — which is zero, because the
+   *  flag resolves against the live table instead. Counting rows would draw
+   *  "0 privileges" on the most powerful card in the grid. */
+  privilegeCount: number;
+  /** How many people hold it. A role with holders cannot be deleted, and the
+   *  card says so before the button is pressed rather than after. */
+  grantCount: number;
+  /** Carries every ACTIVE privilege, including ones added in a later release. */
+  allPrivileges: boolean;
+  /** Which requester types it reaches. Empty is EVERY type — see
+   *  `unionRequestTypeScope`, which unions across the roles a person holds so a
+   *  narrow role can never take access away from a broad one. */
+  requestTypeScope: string[];
 }
 
 export interface ListRolesResponse {
@@ -827,13 +898,8 @@ export interface RoleDetail extends RoleSummary {
   /** The privilege codes it bundles. Empty when `allPrivileges` is set — the
    *  flag resolves against the live table instead, so there is nothing to list. */
   privileges: string[];
-  allPrivileges: boolean;
+  /** May hand out its own role as well as the ones under it. Never a sibling. */
   canAssignSameLevel: boolean;
-  /** Empty means every requester type. */
-  requestTypeScope: string[];
-  /** How many people hold it. A role with holders cannot be deleted, and the
-   *  screen says so before the button is pressed rather than after. */
-  grantCount: number;
 }
 
 /** A role key is typed once and then referred to forever — by grants, and by
@@ -851,6 +917,8 @@ export const SaveRoleInput = z.object({
   description: z.string().trim().max(300),
   /** `null` puts the role at the root of the tree. */
   parentKey: z.string().nullable(),
+  /** 0 is the top. A label, not a rule — see `RoleSummary.level`. */
+  level: z.number().int().min(0).max(9),
   privileges: z.array(z.string()).max(200),
   allPrivileges: z.boolean(),
   canAssignSameLevel: z.boolean(),

@@ -241,6 +241,22 @@ export const PRIVILEGE_CATEGORIES: readonly PrivilegeCategory[] = [
   },
 ];
 
+/**
+ * The name a reader sees for the category a privilege row stores.
+ *
+ * ⚠️ The table holds the KEY (`finance`), because a name is copy and a key is
+ * an identity; the screens that group by it — the role editor's tree and the
+ * privilege catalogue — resolve it here rather than each keeping a map, which
+ * is how two headings for one category start to drift.
+ *
+ * A key the code no longer names falls back to itself. A category can be
+ * retired from the vocabulary while rows still carry it, and an ugly-but-true
+ * heading keeps those rows readable where a blank one would lose them.
+ */
+export function privilegeCategoryName(key: string): string {
+  return PRIVILEGE_CATEGORIES.find((c) => c.key === key)?.name ?? key;
+}
+
 /* ── The seed ───────────────────────────────────────────────────────────────*/
 
 /** A role as it ships. The table is authoritative once seeded — this is the
@@ -248,6 +264,8 @@ export const PRIVILEGE_CATEGORIES: readonly PrivilegeCategory[] = [
 export interface SeedRole {
   roleKey: string;
   name: string;
+  /** Where the shipped tree puts it. 0 is the top. */
+  level: number;
   description: string;
   /** The role this one sits under. `null` is the root of a branch. */
   parentKey: string | null;
@@ -297,6 +315,7 @@ const LEAD_PRIVILEGES = [
 export const SEED_ROLES: readonly SeedRole[] = [
   {
     roleKey: 'stalls_admin',
+    level: 0,
     name: 'Admin',
     description: 'Full access, including module configuration',
     parentKey: null,
@@ -309,6 +328,7 @@ export const SEED_ROLES: readonly SeedRole[] = [
   },
   {
     roleKey: 'stalls_lead',
+    level: 1,
     name: 'Lead (Stall Coordinator)',
     description: 'Planning, selection, communication and finance visibility',
     parentKey: 'stalls_admin',
@@ -320,6 +340,7 @@ export const SEED_ROLES: readonly SeedRole[] = [
   },
   {
     roleKey: 'stalls_volunteer',
+    level: 2,
     name: 'Volunteer',
     description: 'Check-in, chairs and tables',
     parentKey: 'stalls_lead',
@@ -331,6 +352,7 @@ export const SEED_ROLES: readonly SeedRole[] = [
   },
   {
     roleKey: 'stalls_finance',
+    level: 2,
     name: 'Finance',
     description: 'Payment confirmation and refunds',
     parentKey: 'stalls_lead',
@@ -342,6 +364,7 @@ export const SEED_ROLES: readonly SeedRole[] = [
   },
   {
     roleKey: 'stalls_electrical',
+    level: 2,
     name: 'Electrical & Venue Prep',
     description: 'The stall-wise electrical and layout sheet, read only',
     parentKey: 'stalls_lead',
@@ -353,6 +376,7 @@ export const SEED_ROLES: readonly SeedRole[] = [
   },
   {
     roleKey: 'stalls_local_welfare',
+    level: 2,
     name: 'Local Welfare',
     description: 'Files and follows up local welfare stalls, and nothing else',
     parentKey: 'stalls_lead',
@@ -551,23 +575,6 @@ export function editableRoleKeys(
   const keys = assignableRoleKeys(roles, heldKeys);
   for (const key of heldKeys) keys.add(key);
   return keys;
-}
-
-/** How deep a role sits, for display. Derived rather than stored: msr carries a
- *  `level` column beside `parentId` and the two are free to disagree. Returns 0
- *  for a root, and for a role caught in a cycle — which is a tangle to show, not
- *  a reason to throw inside a list renderer. */
-export function roleDepth(roles: readonly RoleNode[], roleKey: string): number {
-  const byKey = new Map(roles.map((r) => [r.roleKey, r]));
-  const seen = new Set<string>();
-  let depth = 0;
-  let current = byKey.get(roleKey)?.parentKey ?? null;
-  while (current && !seen.has(current)) {
-    seen.add(current);
-    depth += 1;
-    current = byKey.get(current)?.parentKey ?? null;
-  }
-  return depth;
 }
 
 /** One wording for all three write paths. They refuse for the same reason and

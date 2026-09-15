@@ -16,7 +16,6 @@ import {
   type SaveRoleInput,
   assignableRoleKeys,
   cannotAssign,
-  roleDepth,
 } from '@msr/stalls';
 import { recordActivity } from '../../activity';
 import {
@@ -38,22 +37,29 @@ export async function getRole(
 ): Promise<RoleDetail> {
   const role = await db.stallRole.findUnique({
     where: { roleKey },
-    include: { privileges: { include: { privilege: true } }, _count: { select: { grants: true } } },
+    include: {
+      privileges: { include: { privilege: true } },
+      _count: { select: { grants: true, privileges: true } },
+    },
   });
   if (!role) throw new UnknownRoleError(roleKey);
-  const [tree, assignable] = await Promise.all([roleTree(db), assignableRolesFor(db, caller)]);
+  const [assignable, activePrivileges] = await Promise.all([
+    assignableRolesFor(db, caller),
+    db.stallPrivilege.count({ where: { isActive: true } }),
+  ]);
   return {
     roleKey: role.roleKey,
     name: role.name,
     description: role.description,
     parentKey: role.parentKey,
-    depth: roleDepth(tree, role.roleKey),
+    level: role.level,
     isSystem: role.isSystem,
     assignable: assignable.has(role.roleKey),
     privileges: role.privileges.map((rp) => rp.privilege.code),
     allPrivileges: role.allPrivileges,
     canAssignSameLevel: role.canAssignSameLevel,
     requestTypeScope: role.requestTypeScope,
+    privilegeCount: role.allPrivileges ? activePrivileges : role._count.privileges,
     grantCount: role._count.grants,
   };
 }
@@ -214,6 +220,7 @@ export async function createRole(
       name: input.name,
       description: input.description,
       parentKey: input.parentKey,
+      level: input.level,
       isSystem: false,
       allPrivileges: input.allPrivileges,
       canAssignSameLevel: input.canAssignSameLevel,
@@ -258,6 +265,7 @@ export async function updateRole(
       name: input.name,
       description: input.description,
       parentKey: input.parentKey,
+      level: input.level,
       allPrivileges: input.allPrivileges,
       canAssignSameLevel: input.canAssignSameLevel,
       requestTypeScope: input.requestTypeScope,

@@ -66,6 +66,7 @@ const body = (over: Record<string, unknown> = {}) => ({
   name: 'Bay Marshal',
   description: 'Runs one bay on the day',
   parentKey: 'stalls_lead',
+  level: 2,
   privileges: ['requests.read', 'checkin.write'],
   allPrivileges: false,
   canAssignSameLevel: false,
@@ -285,5 +286,171 @@ describe('deleting a role', () => {
     await remove(admin, 'bay_marshal');
     const child = await prisma.stallRole.findUniqueOrThrow({ where: { roleKey: 'bay_helper' } });
     expect(child.parentKey).toBeNull();
+  });
+});
+
+/**
+ * The privilege CATALOGUE, read-only.
+ *
+ * ⚠️ Served from the table rather than read off `PRIVILEGE_CATEGORIES` in the
+ * bundle, and the difference is `isActive`: a privilege is retired by setting
+ * that flag, and the compiled-in list cannot know it happened. Nothing here
+ * writes — the vocabulary is code, and a privilege invented from the screen
+ * would be a code no route enforces.
+ */
+describe('the privilege catalogue', () => {
+  test('lists the vocabulary, with what each one is for', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/m/stalls/privileges',
+      headers: admin.headers,
+    });
+    expect(res.statusCode).toBe(200);
+    const { privileges } = res.json();
+    const confirm = privileges.find((p: { code: string }) => p.code === 'finance.write');
+    expect(confirm).toMatchObject({ isActive: true, category: expect.any(String) });
+    expect(confirm.label.length).toBeGreaterThan(0);
+    expect(confirm.kind.length).toBeGreaterThan(0);
+  });
+
+  test('a retired privilege is listed as retired, not dropped', async () => {
+    await prisma.stallPrivilege.update({
+      where: { code: 'finance.write' },
+      data: { isActive: false },
+    });
+    try {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/m/stalls/privileges',
+        headers: admin.headers,
+      });
+      const row = res.json().privileges.find((p: { code: string }) => p.code === 'finance.write');
+      expect(row.isActive).toBe(false);
+    } finally {
+      // `seedRbac` deliberately never resets `isActive`, so this file would
+      // otherwise retire the privilege for every test that runs after it.
+      await prisma.stallPrivilege.update({
+        where: { code: 'finance.write' },
+        data: { isActive: true },
+      });
+    }
+  });
+
+  test('somebody who cannot read the configuration cannot read the catalogue', async () => {
+    const volunteer = await seedStaff(['stalls_volunteer'], 'vol@example.org');
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/m/stalls/privileges',
+      headers: volunteer.headers,
+    });
+    expect(res.statusCode).toBe(403);
+  });
+});
+
+/**
+ * What the role CARDS say under each role.
+ *
+ * ⚠️ On the summary, not only on the detail: the grid draws every role at once,
+ * and a count per card fetched one at a time is a request per role.
+ */
+describe('the role list carries its counts', () => {
+  const rolesFor = async (by: Staff) => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/m/stalls/roles',
+      headers: by.headers,
+    });
+    return res.json().roles as Array<{
+      roleKey: string;
+      privilegeCount: number;
+      grantCount: number;
+    }>;
+  };
+
+  test('each role says how many privileges it bundles and how many people hold it', async () => {
+    const roles = await rolesFor(admin);
+    const volunteer = roles.find((r) => r.roleKey === 'stalls_volunteer');
+    const bundled = await prisma.stallRolePrivilege.count({
+      where: { role: { roleKey: 'stalls_volunteer' } },
+    });
+    expect(volunteer?.privilegeCount).toBe(bundled);
+    // `author` holds stalls_lead and nobody holds stalls_volunteer.
+    expect(volunteer?.grantCount).toBe(0);
+    expect(roles.find((r) => r.roleKey === 'stalls_lead')?.grantCount).toBe(1);
+  });
+
+  /**
+   * The level an admin TYPES, not one derived from the parent chain.
+   *
+   * ⚠️ Stored, and deliberately independent of `parentKey` — the reference
+   * module does the same (`VolunteeringRole.level` sits beside `parentId`).
+   * Assignability still comes from the TREE, never from this number, so a level
+   * that disagrees with the parent is a label that reads oddly and nothing
+   * more: it can neither widen a role's reach nor narrow it.
+   */
+  test('the level an admin sets is the level the role keeps', async () => {
+    await create(admin, { level: 7 });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/m/stalls/roles',
+      headers: admin.headers,
+    });
+    const roles = res.json().roles as Array<{ roleKey: string; level: number }>;
+    expect(roles.find((r) => r.roleKey === 'bay_marshal')?.level).toBe(7);
+    // The shipped tree keeps the levels it ships with.
+    expect(roles.find((r) => r.roleKey === 'stalls_admin')?.level).toBe(0);
+    expect(roles.find((r) => r.roleKey === 'stalls_lead')?.level).toBe(1);
+  });
+
+  test('a level outside 0–9 is refused before it reaches the table', async () => {
+    expect((await create(admin, { level: 12 })).statusCode).toBe(400);
+  });
+
+  // ⚠️ The number is a LABEL. Changing it must not move a role in the tree —
+  // who may hand out what is decided by `parentKey` and nothing else.
+  test('a level that disagrees with the parent changes nobody\u2019s reach', async () => {
+    // Labelled 0 — the same as Admin — but parented under Lead.
+    await create(admin, { level: 0, parentKey: 'stalls_lead' });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/m/stalls/roles',
+      headers: author.headers,
+    });
+    const roles = res.json().roles as Array<{ roleKey: string; assignable: boolean }>;
+    // The lead may still hand out a role beneath them, however it is labelled —
+    // and still may not hand out Admin, which wears the same number.
+    expect(roles.find((r) => r.roleKey === 'bay_marshal')?.assignable).toBe(true);
+    expect(roles.find((r) => r.roleKey === 'stalls_admin')?.assignable).toBe(false);
+  });
+
+  // The card draws a badge for each of these, so they belong on the row the grid
+  // is drawn from rather than behind a click on every card.
+  test('each role says how far it reaches, and whether it carries everything', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/m/stalls/roles',
+      headers: admin.headers,
+    });
+    const roles = res.json().roles as Array<{
+      roleKey: string;
+      allPrivileges: boolean;
+      requestTypeScope: string[];
+    }>;
+    expect(roles.find((r) => r.roleKey === 'stalls_admin')?.allPrivileges).toBe(true);
+    expect(roles.find((r) => r.roleKey === 'stalls_lead')?.allPrivileges).toBe(false);
+    // Empty is EVERY type, and the shipped local-welfare role is the one that
+    // is narrowed — so the pair proves the field is carried, not defaulted.
+    expect(roles.find((r) => r.roleKey === 'stalls_lead')?.requestTypeScope).toEqual([]);
+    expect(roles.find((r) => r.roleKey === 'stalls_local_welfare')?.requestTypeScope).toEqual([
+      'LOCAL_WELFARE',
+    ]);
+  });
+
+  // A role carrying the flag holds no join rows at all — counting those would
+  // draw "0 privileges" on the most powerful card in the grid.
+  test('a role that carries everything counts every active privilege', async () => {
+    const active = await prisma.stallPrivilege.count({ where: { isActive: true } });
+    const roles = await rolesFor(admin);
+    expect(roles.find((r) => r.roleKey === 'stalls_admin')?.privilegeCount).toBe(active);
   });
 });

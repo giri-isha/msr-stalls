@@ -22,6 +22,7 @@ import {
   ListUsersQuery,
   LogReminderInput,
   CreateRoleInput,
+  type ListPrivilegesResponse,
   type ListRolesResponse,
   SaveRoleInput,
   type MeResponse,
@@ -83,6 +84,7 @@ import {
 } from './selection';
 import * as signature from './signature';
 import { listUsers } from './directory';
+import { listPrivileges } from './privileges';
 import { createRole, deleteRole, getRole, updateRole } from './roles-admin';
 import { grantRole, listRoles, listStaff, revokeRole, searchPeople } from './staff';
 import { resendConfirmation, sendAccountAccessLink, unlockAccount, updateAccount } from './support';
@@ -142,6 +144,24 @@ export function registerStallsStaffRoutes(app: FastifyInstance, deps: StallsDeps
     requirePrivilege(caller, 'roles.write');
     await deleteRole(prisma, req.params.roleKey, caller);
     reply.status(204);
+  });
+
+  /**
+   * The privilege catalogue — what the vocabulary MEANS, for the reader
+   * composing a role.
+   *
+   * ⚠️ Read only, and there is no sibling that writes. The vocabulary is code;
+   * see `privileges.ts` for why a privilege authored from a screen would be a
+   * code no route enforces.
+   *
+   * `config.read` rather than `roles.write`: this is reference material, and the
+   * same guard `GET /users` carries. Somebody who may read the configuration may
+   * read what the privileges in it mean without being able to compose anything.
+   */
+  zod.get('/privileges', async (req): Promise<ListPrivilegesResponse> => {
+    const caller = await requireStaff(req, prisma);
+    requirePrivilege(caller, 'config.read');
+    return { privileges: await listPrivileges(prisma) };
   });
 
   // ── Dashboard ─────────────────────────────────────────────────────────────
