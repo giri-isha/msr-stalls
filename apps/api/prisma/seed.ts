@@ -465,6 +465,72 @@ async function main() {
   }
   console.log(`Requests: ${ids.length} (each requester logs in with ${DEV_PASSWORD})`);
 
+  // Two requesters who cannot get in, and one who never tried.
+  //
+  // ⚠️ Without these the Users directory's "Cannot sign in" and "Locked out"
+  // tiles read zero on every developer's machine, so the states — and the
+  // support actions that clear them — are first seen in production, on a call
+  // from a vendor. A seed that only shows the happy path hides exactly the
+  // screens built for the unhappy one.
+  const stuck = await prisma.stallAccount.upsert({
+    where: { email: 'unconfirmed.vendor@maildrop.cc' },
+    update: {},
+    create: {
+      email: 'unconfirmed.vendor@maildrop.cc',
+      phone: '9840099001',
+      displayName: 'Ramesh Iyer',
+    },
+  });
+  await prisma.stallCredential.upsert({
+    where: { loginValue: stuck.email },
+    update: {},
+    create: {
+      accountId: stuck.id,
+      loginValue: stuck.email,
+      loginKind: 'EMAIL',
+      passwordHash: await hashPassword(DEV_PASSWORD),
+      // Registered, never followed the link. Cannot sign in, and says so.
+      confirmedAt: null,
+    },
+  });
+
+  const locked = await prisma.stallAccount.upsert({
+    where: { email: 'locked.vendor@maildrop.cc' },
+    update: {},
+    create: {
+      email: 'locked.vendor@maildrop.cc',
+      phone: '9840099002',
+      displayName: 'Sunita Rao',
+    },
+  });
+  await prisma.stallCredential.upsert({
+    where: { loginValue: locked.email },
+    update: {},
+    create: {
+      accountId: locked.id,
+      loginValue: locked.email,
+      loginKind: 'EMAIL',
+      passwordHash: await hashPassword(DEV_PASSWORD),
+      confirmedAt: new Date(),
+      failedCount: 10,
+      lockedUntil: new Date(Date.now() + 15 * 60_000),
+    },
+  });
+
+  // No credential at all — the ORDINARY requester, who uses the emailed status
+  // link and nothing else. Here so "Link only" is visibly the common case
+  // rather than an edge one.
+  await prisma.stallAccount.upsert({
+    where: { email: 'linkonly.vendor@maildrop.cc' },
+    update: {},
+    create: {
+      email: 'linkonly.vendor@maildrop.cc',
+      phone: '9840099003',
+      displayName: 'Anand Prakash',
+    },
+  });
+  console.log('Users: 1 unconfirmed, 1 locked out, 1 link-only (for the Users directory)');
+
   // A realistic pipeline state
   await shortlist(prisma, ids[1], lead); // Coastal Spice
   await shortlist(prisma, ids[3], lead); // Bliss Bites

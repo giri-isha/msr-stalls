@@ -1,5 +1,11 @@
 import type { StallAccount } from '@prisma/client';
-import { type Contact, type RegisterInput, parseContact } from '@msr/stalls';
+import {
+  PLACEHOLDER_EMAIL_DOMAIN,
+  isPlaceholderEmail,
+  type Contact,
+  type RegisterInput,
+  parseContact,
+} from '@msr/stalls';
 import { findAccountByContact, mintAccessLink, resolveAccessLink } from './accounts';
 import { confirmCredential, createCredential, setPassword } from './credentials';
 import type { StallsDeps } from './deps';
@@ -27,21 +33,11 @@ const RESET_TTL_DAYS = 1;
 
 type SendDeps = Pick<StallsDeps, 'mail' | 'whatsapp' | 'registerConfirmUrl' | 'passwordResetUrl'>;
 
-/** The domain for an account registered on a mobile.
- *
- *  `StallAccount.email` is non-null and unique, and a village trader
- *  registering on a number has no address. A namespaced placeholder keeps the
- *  column honest without pretending it is reachable — `.invalid` is reserved
- *  by RFC 2606 precisely so it can never resolve. Nothing sends to it:
- *  delivery is chosen by the credential's `loginKind`, not by this column. */
-const PLACEHOLDER_DOMAIN = 'stalls.invalid';
-
-export function isPlaceholderEmail(email: string): boolean {
-  return email.endsWith(`@${PLACEHOLDER_DOMAIN}`);
-}
-
+/** Nothing sends to a placeholder address: delivery is chosen by the
+ *  credential's `loginKind`, not by this column. The domain itself lives in
+ *  `@msr/stalls` because the Users screen needs it too — see there. */
 function placeholderEmail(mobile: string): string {
-  return `mobile+${mobile}@${PLACEHOLDER_DOMAIN}`;
+  return `mobile+${mobile}@${PLACEHOLDER_EMAIL_DOMAIN}`;
 }
 
 export async function register(db: Db, deps: SendDeps, input: RegisterInput): Promise<void> {
@@ -76,8 +72,25 @@ export async function register(db: Db, deps: SendDeps, input: RegisterInput): Pr
     contact,
     password: input.password,
   });
+  await sendConfirmation(db, deps, account.id, contact);
+}
+
+/**
+ * Mints a confirmation link and sends it over the channel the credential was
+ * registered on.
+ *
+ * Shared by `register` and the staff-side resend. The channel comes from the
+ * CONTACT, never from the account row: an account registered on a mobile
+ * carries a placeholder email that nothing can deliver to.
+ */
+export async function sendConfirmation(
+  db: Db,
+  deps: SendDeps,
+  accountId: string,
+  contact: Contact,
+): Promise<void> {
   const { token } = await mintAccessLink(db, {
-    accountId: account.id,
+    accountId,
     purpose: 'REGISTER_CONFIRM',
     ttlDays: CONFIRM_TTL_DAYS,
   });
@@ -87,6 +100,8 @@ export async function register(db: Db, deps: SendDeps, input: RegisterInput): Pr
     body: `Confirm your stall account and you are signed in: ${deps.registerConfirmUrl(token)}`,
   });
 }
+
+export type { SendDeps };
 
 /** Tells the person who actually holds the contact that someone tried to use
  *  it — over every channel the account has, because the one that works is the

@@ -35,26 +35,42 @@ const STEP_LINK_TTL_DAYS = 180;
  *  happened — a caller must not be able to use this to learn whether an address
  *  has applied, and a timing difference is not worth defending against here
  *  because the two paths differ by one indexed lookup. */
-export async function sendAccessLink(
-  db: Db,
-  deps: { mail: Mailer; statusUrl(token: string): string },
-  contact: string,
-): Promise<void> {
+export async function sendAccessLink(db: Db, deps: AccessLinkDeps, contact: string): Promise<void> {
   const account = await findAccountByContact(db, contact);
   if (!account) return;
 
+  try {
+    await deliverAccessLink(db, deps, account);
+  } catch {
+    // Logged by the mailer. A transport failure must not become a different
+    // response from "no such account" — the vendor asks again, or calls.
+  }
+}
+
+export type AccessLinkDeps = { mail: Mailer; statusUrl(token: string): string };
+
+/**
+ * Mints a status link for an account already in hand, and mails it.
+ *
+ * ⚠️ This one THROWS where `sendAccessLink` swallows, and the difference is
+ * the whole reason it is a separate function. The public route must answer
+ * identically whether or not the contact matched, so a send failure there has
+ * to look like a miss. The staff route above it is called by someone already
+ * holding `config:read` and already looking at the whole directory — there is
+ * nothing left for them to learn — so it may say plainly that the mail did not
+ * go, which is the only useful thing to tell a person who pressed Send.
+ */
+export async function deliverAccessLink(
+  db: Db,
+  deps: AccessLinkDeps,
+  account: StallAccount,
+): Promise<void> {
   const { token } = await mintAccessLink(db, {
     accountId: account.id,
     purpose: 'STATUS',
     ttlDays: STATUS_LINK_TTL_DAYS,
   });
-
-  try {
-    await deps.mail.send(accessLinkMail(account, deps.statusUrl(token)));
-  } catch {
-    // Logged by the mailer. A transport failure must not become a different
-    // response from "no such account" — the vendor asks again, or calls.
-  }
+  await deps.mail.send(accessLinkMail(account, deps.statusUrl(token)));
 }
 
 function accessLinkMail(account: StallAccount, statusUrl: string) {

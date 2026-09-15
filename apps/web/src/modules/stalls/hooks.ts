@@ -42,3 +42,20 @@ export function formatDateTime(iso: string): string {
     minute: '2-digit',
   });
 }
+
+/**
+ * A value that settles before anything acts on it.
+ *
+ * For a search box whose every keystroke would otherwise be a request. The
+ * pipeline's own search does fire per key — it filters a list already held —
+ * but the users directory asks the server each time, and a directory search is
+ * typed a name at a time rather than a reference at a time.
+ */
+export function useDebounced<T>(value: T, ms = 250): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setSettled(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return settled;
+}

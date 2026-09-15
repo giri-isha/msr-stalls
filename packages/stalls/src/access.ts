@@ -105,3 +105,23 @@ export interface RequesterSession {
   email: string;
   phone: string;
 }
+
+/**
+ * The domain an account registered on a mobile number carries instead of an
+ * address.
+ *
+ * `StallAccount.email` is non-null and unique, and a village trader
+ * registering on a number has no address. A namespaced placeholder keeps the
+ * column honest without pretending it is reachable — `.invalid` is reserved by
+ * RFC 2606 precisely so it can never resolve.
+ *
+ * ⚠️ Here rather than in the API module because BOTH sides need it: the API to
+ * decide it must not send mail there, and the Users screen to name the contact
+ * a support action will actually reach. A second copy of this string on the
+ * web is how a screen comes to promise a letter to an address nothing delivers.
+ */
+export const PLACEHOLDER_EMAIL_DOMAIN = 'stalls.invalid';
+
+export function isPlaceholderEmail(email: string): boolean {
+  return email.endsWith(`@${PLACEHOLDER_EMAIL_DOMAIN}`);
+}

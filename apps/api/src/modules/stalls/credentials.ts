@@ -127,3 +127,28 @@ export async function authenticate(
   }
   return cred;
 }
+
+/**
+ * Lets a locked-out requester try again now, rather than in fifteen minutes.
+ *
+ * Clears the lockout on EVERY credential the account holds: an account
+ * registered on both an address and a number has two, and unlocking the one a
+ * desk happened to look at leaves the person still locked out of the other.
+ *
+ * Returns how many were actually locked, so the caller can tell "unlocked"
+ * from "there was nothing to unlock" without reading the table again.
+ *
+ * ⚠️ The `lockedUntil: { not: null }` is what makes that number mean anything.
+ * `updateMany` reports rows MATCHED, not rows changed, so scoping this to the
+ * account alone returned 1 for a credential that was never locked — and the
+ * caller, which reports 0 as a 409, answered 204 to an unlock that did
+ * nothing. An expired-but-unreset lockout is included deliberately: clearing
+ * it is what the row would have asked for a minute earlier.
+ */
+export async function clearLockout(db: Db, accountId: string): Promise<number> {
+  const { count } = await db.stallCredential.updateMany({
+    where: { accountId, lockedUntil: { not: null } },
+    data: { failedCount: 0, lockedUntil: null },
+  });
+  return count;
+}

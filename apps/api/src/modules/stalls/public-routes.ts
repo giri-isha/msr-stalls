@@ -46,6 +46,7 @@ import {
   SubmitBankDetailsInput,
   SubmitFssaiInput,
   SubmitRequestInput,
+  isPlaceholderEmail,
 } from '@msr/stalls';
 import { prisma } from '../../prisma';
 import type { ZodTypeProvider } from '../../zod-validation';
@@ -59,7 +60,6 @@ import { authenticate } from './credentials';
 import {
   completePasswordReset,
   confirmRegistration,
-  isPlaceholderEmail,
   register,
   requestPasswordReset,
 } from './registration';
