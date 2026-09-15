@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 import { type RouteObject, RouterProvider, createMemoryRouter } from 'react-router';
 import { vi } from 'vitest';
 import { MeProvider } from './me';
+import { RequesterProvider } from './requester';
 import { ToastProvider } from './ui';
 
 export interface Call {
@@ -56,15 +57,18 @@ export function installFetch(routes: ReadonlyArray<readonly [string, RegExp, Han
  * there: the gate swaps its whole subtree once the session lands, and a toast
  * host inside it would unmount on that transition and drop what it was holding.
  */
-export function renderAt(path: string, routes: RouteObject[], opts: { me?: boolean } = {}) {
+export function renderAt(
+  path: string,
+  routes: RouteObject[],
+  opts: { me?: boolean; requester?: boolean } = {},
+) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
-  const inner: ReactElement = opts.me ? (
-    <MeProvider>
-      <RouterProvider router={router} />
-    </MeProvider>
-  ) : (
-    <RouterProvider router={router} />
-  );
+  let inner: ReactElement = <RouterProvider router={router} />;
+  // ⚠️ The requester provider is the PUBLIC session and `MeProvider` is the
+  // staff one. A screen never needs both, and nesting them here would let a
+  // test pass while reading the wrong one.
+  if (opts.requester) inner = <RequesterProvider>{inner}</RequesterProvider>;
+  if (opts.me) inner = <MeProvider>{inner}</MeProvider>;
   return { ...render(<ToastProvider>{inner}</ToastProvider>), router };
 }
 

@@ -3,6 +3,7 @@ import {
   type FormField,
   type PublicConfig,
   type RateScope,
+  type RequesterSession,
   type StallRequestType,
   SubmitRequestInput,
   zoneOptions,
@@ -15,6 +16,7 @@ import { type ApplianceRow, ApplianceRows } from '../components/ApplianceRows';
 import { BilingualLabel } from '../components/BilingualLabel';
 import { ZoneSelect } from '../components/ZoneSelect';
 import { useLoad } from '../hooks';
+import { useRequester } from '../requester';
 import {
   Card,
   Checkbox,
@@ -24,6 +26,7 @@ import {
   FormField as Labelled,
   Icon,
   Input,
+  Loading,
   Radio,
   Select,
   Textarea,
@@ -125,12 +128,18 @@ function isEmpty(v: unknown): boolean {
 
 export function RequestForm() {
   const { type: slug } = useParams();
+  const { requester, status } = useRequester();
   const type = slug ? SLUG_TYPE[slug] : undefined;
   if (!type) return <Navigate to='/stalls/apply' replace />;
-  return <Form type={type} />;
+  // ⚠️ The API refuses an unauthenticated submission regardless — this only
+  // saves a vendor filling in two pages of form before being told. Wait for the
+  // session to land first, or a signed-in reader is bounced on every refresh.
+  if (status === 'loading') return <Loading />;
+  if (!requester) return <Navigate to='/stalls/apply' replace />;
+  return <Form type={type} requester={requester} />;
 }
 
-function Form({ type }: { type: StallRequestType }) {
+function Form({ type, requester }: { type: StallRequestType; requester: RequesterSession }) {
   const def = FORM_DEFINITIONS[type];
   const navigate = useNavigate();
   // ⚠️ Quoted at THIS form's scope. A local welfare requester asking after A3
@@ -144,7 +153,22 @@ function Form({ type }: { type: StallRequestType }) {
     [config.data, type],
   );
 
-  const [values, setValues] = useState<Values>({ appliances: [] });
+  // Prefilled from the account, and every one of them still editable: a
+  // department files for several contact people under one login, so these are
+  // facts about THIS request. Since the gate landed they select nothing — the
+  // session decides which account the request belongs to.
+  //
+  // `email` is blank when the account was registered on a mobile: the column
+  // holds a placeholder that is not an address, and the session route already
+  // reports it as empty rather than handing it back to be cleared by hand.
+  const [values, setValues] = useState<Values>({
+    appliances: [],
+    requesterName: requester.displayName,
+    requestedBy: requester.displayName,
+    email: requester.email,
+    contactNumber: requester.phone,
+    requesterContact: requester.phone,
+  });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [topError, setTopError] = useState<string | null>(null);

@@ -217,6 +217,17 @@ the team was waiting on even though `pendingSteps` already knew.
     the page is used to FIND an account and is never written to, never echoed,
     and never mailed to; the link goes where the account already says.
 
+    **Superseded 2026-09-15.** A requester login with a password now exists —
+    see `2026-09-15-stalls-vendor-login-design.md`. It is a stopgap until the
+    host's Isha OIDC, which is why the session is an access link carrying a
+    `SESSION` purpose and the password lives in a table of its own: SSO deletes
+    the table and the six routes, and mints the same session.
+
+    Decision 17 below is NOT superseded. It is the reason the new register and
+    password-reset routes answer 202 to a hit, a miss and a malformed contact
+    alike, and the reason a registration has to be confirmed before it can
+    start a session.
+
 17. **The response is identical for a hit, a miss and a malformed contact.**
     Anything else makes the route a way of asking whether a particular person
     applied. The page's copy is written to be true when nothing matched, which

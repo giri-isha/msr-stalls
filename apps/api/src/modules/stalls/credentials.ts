@@ -1,0 +1,129 @@
+import { randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
+import type { StallCredential } from '@prisma/client';
+import { type Contact, parseContact } from '@msr/stalls';
+import type { Db } from './editions';
+import { InvalidCredentialsError } from './errors';
+
+/** A requester's password.
+ *
+ *  ⚠️ TEMPORARY. The host's Isha OIDC replaces all of this — see the
+ *  2026-09-15 design. That is why there is no dependency here, no password
+ *  policy beyond a length floor, and no account-settings surface: everything
+ *  in this file is written to be deleted rather than extended.
+ */
+
+const scrypt = promisify(scryptCb) as (
+  password: string,
+  salt: Buffer,
+  keylen: number,
+) => Promise<Buffer>;
+
+/** A floor, and nothing more. A policy demanding a symbol and a digit would
+ *  outlive the mechanism it protects and buy nothing a length floor does not. */
+export const MIN_PASSWORD_LENGTH = 8;
+export const MAX_FAILED = 10;
+export const LOCKOUT_MINUTES = 15;
+
+const KEYLEN = 64;
+
+/** Stored as `scrypt$<salt hex>$<key hex>`, so the scheme travels with the hash
+ *  and a later change of cost or algorithm does not invalidate the rows already
+ *  written — the verifier reads what each row says it is. */
+export async function hashPassword(plain: string): Promise<string> {
+  const salt = randomBytes(16);
+  const key = await scrypt(plain, salt, KEYLEN);
+  return `scrypt$${salt.toString('hex')}$${key.toString('hex')}`;
+}
+
+export async function verifyPassword(plain: string, stored: string): Promise<boolean> {
+  const [scheme, saltHex, keyHex] = stored.split('$');
+  if (scheme !== 'scrypt' || !saltHex || !keyHex) return false;
+  const expected = Buffer.from(keyHex, 'hex');
+  if (expected.length === 0) return false;
+  const actual = await scrypt(plain, Buffer.from(saltHex, 'hex'), expected.length);
+  return timingSafeEqual(expected, actual);
+}
+
+export async function createCredential(
+  db: Db,
+  input: { accountId: string; contact: Contact; password: string },
+): Promise<StallCredential> {
+  return db.stallCredential.create({
+    data: {
+      accountId: input.accountId,
+      loginValue: input.contact.value,
+      loginKind: input.contact.kind,
+      passwordHash: await hashPassword(input.password),
+    },
+  });
+}
+
+export async function confirmCredential(
+  db: Db,
+  credentialId: string,
+  now: Date = new Date(),
+): Promise<void> {
+  await db.stallCredential.update({
+    where: { id: credentialId },
+    data: { confirmedAt: now, failedCount: 0, lockedUntil: null },
+  });
+}
+
+export async function setPassword(db: Db, credentialId: string, password: string): Promise<void> {
+  await db.stallCredential.update({
+    where: { id: credentialId },
+    data: {
+      passwordHash: await hashPassword(password),
+      failedCount: 0,
+      lockedUntil: null,
+      // A reset also confirms. Following the link proved the contact, which is
+      // the same thing the confirmation link proves.
+      confirmedAt: new Date(),
+    },
+  });
+}
+
+/** The credential behind a contact and a password, or `InvalidCredentialsError`.
+ *
+ *  ⚠️ EVERY failure raises that one error — no contact, no credential, not yet
+ *  confirmed, locked out, wrong password. A reader looking for the branch that
+ *  reports "no such account" will not find one, and must not add it. */
+export async function authenticate(
+  db: Db,
+  input: { contact: string; password: string },
+  now: Date = new Date(),
+): Promise<StallCredential> {
+  const contact = parseContact(input.contact);
+  if (!contact) throw new InvalidCredentialsError();
+
+  const cred = await db.stallCredential.findUnique({ where: { loginValue: contact.value } });
+  if (!cred) throw new InvalidCredentialsError();
+  if (!cred.confirmedAt) throw new InvalidCredentialsError();
+  if (cred.lockedUntil && cred.lockedUntil.getTime() > now.getTime()) {
+    throw new InvalidCredentialsError();
+  }
+
+  if (!(await verifyPassword(input.password, cred.passwordHash))) {
+    const failedCount = cred.failedCount + 1;
+    await db.stallCredential.update({
+      where: { id: cred.id },
+      data: {
+        failedCount,
+        lockedUntil:
+          failedCount >= MAX_FAILED
+            ? new Date(now.getTime() + LOCKOUT_MINUTES * 60_000)
+            : cred.lockedUntil,
+      },
+    });
+    throw new InvalidCredentialsError();
+  }
+
+  if (cred.failedCount !== 0 || cred.lockedUntil) {
+    await db.stallCredential.update({
+      where: { id: cred.id },
+      data: { failedCount: 0, lockedUntil: null },
+    });
+  }
+  return cred;
+}

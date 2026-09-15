@@ -12,13 +12,14 @@ import { buildApp } from '../src/app';
 import { selectRequest } from '../src/modules/stalls/selection';
 import { submitRequest } from '../src/modules/stalls/submit';
 import {
+  accountFor,
   LogMailer,
-  SYSTEM,
-  type Staff,
   prisma,
   resetDatabase,
   seedEdition,
   seedStaff,
+  SYSTEM,
+  type Staff,
   vendorBody,
 } from './helpers/db';
 import { makeStalls } from './helpers/plan';
@@ -34,11 +35,16 @@ beforeAll(async () => {
 });
 afterAll(() => app.close());
 
-const submit = (body: Record<string, unknown>) =>
-  submitRequest(prisma, SubmitRequestInput.parse(vendorBody(body)), {
-    mail: new LogMailer(),
-    statusUrl: (t) => t,
-  });
+const submit = async (body: Record<string, unknown>) =>
+  submitRequest(
+    prisma,
+    SubmitRequestInput.parse(vendorBody(body)),
+    {
+      mail: new LogMailer(),
+      statusUrl: (t) => t,
+    },
+    await accountFor(body),
+  );
 
 beforeEach(async () => {
   await resetDatabase();

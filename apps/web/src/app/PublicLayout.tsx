@@ -6,11 +6,24 @@
 // thing to get wrong. What it does share is the token scope — `Frame` is the
 // same, so the card, the type and the palette are the product's, not a second
 // look grown for the public side.
-import { Link, Outlet } from 'react-router';
+import { Link, Outlet, useNavigate } from 'react-router';
+import { RequesterProvider, useRequester } from '@/modules/stalls';
+import { logoutRequester } from '@/modules/stalls/api';
 import { Frame, Icon, useIsMobile } from '@/modules/stalls/ui';
 import { useTheme } from '@/modules/stalls/use-theme';
 
+/** ⚠️ The provider wraps the whole public tree, not just the apply page. The
+ *  header's "signed in as" reads it, and so does the gate on `FormPicker` and
+ *  on `RequestForm` — one fetch for the lot rather than one per screen. */
 export function PublicLayout() {
+  return (
+    <RequesterProvider>
+      <PublicChrome />
+    </RequesterProvider>
+  );
+}
+
+function PublicChrome() {
   const mobile = useIsMobile();
   const { theme, toggle } = useTheme();
 
@@ -75,6 +88,7 @@ export function PublicLayout() {
               </span>
             </Link>
             <div style={{ flex: 1 }} />
+            <SignedInAs />
             {/* The one control that stays. A form filled in at night on a
                 phone is the case dark mode exists for, and the page has no
                 other chrome to put it in. */}
@@ -112,5 +126,70 @@ export function PublicLayout() {
         </main>
       </div>
     </Frame>
+  );
+}
+
+/** Who is signed in, and the way out.
+ *
+ *  Nothing at all when signed out — the shell's whole point is that a vendor
+ *  with a link from an email meets no chrome they have to understand, and a
+ *  "Log in" button in the header would put a second, competing entry point
+ *  beside the gate on the page itself. */
+function SignedInAs() {
+  const { requester, reload } = useRequester();
+  const nav = useNavigate();
+  const mobile = useIsMobile();
+
+  if (!requester) return null;
+
+  const signOut = async () => {
+    try {
+      await logoutRequester();
+    } catch {
+      // Nothing useful to say. The cookie is cleared server-side or it is not,
+      // and `reload()` below settles what the page shows either way.
+    }
+    reload();
+    nav('/stalls/apply');
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+      {!mobile && (
+        <span
+          style={{
+            fontSize: 12,
+            color: 'var(--mfg)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            maxWidth: 180,
+          }}
+        >
+          {requester.displayName}
+        </span>
+      )}
+      <button
+        type='button'
+        onClick={() => void signOut()}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 5,
+          height: 30,
+          padding: '0 10px',
+          borderRadius: 'var(--r2)',
+          border: '1px solid var(--bd)',
+          background: 'var(--card)',
+          color: 'var(--mfg)',
+          fontSize: 12,
+          cursor: 'pointer',
+          flex: 'none',
+        }}
+      >
+        <Icon name='log-out' size={14} />
+        Log out
+      </button>
+    </div>
   );
 }

@@ -1,3 +1,4 @@
+import type { FastifyInstance } from 'fastify';
 import type { StallEdition } from '@prisma/client';
 import { LogMailer } from '../../src/email';
 import { createEdition } from '../../src/modules/stalls/config';
@@ -70,3 +71,67 @@ export function vendorBody(overrides: Record<string, unknown> = {}) {
 }
 
 export { LogMailer, prisma };
+
+/** A confirmed, logged-in requester, with the cookie jar `app.inject` wants.
+ *
+ *  The stall request form sits behind a session now, so every test that submits
+ *  needs one of these.
+ *
+ *  ⚠️ It flips `confirmedAt` directly rather than following the confirmation
+ *  link. The raw token exists only in the message the app's own mailer was
+ *  handed, which this helper cannot reach from another test file — and the
+ *  confirm route is covered end to end, link and all, in
+ *  `requester-auth.test.ts`. What this helper must exercise is the part its
+ *  callers depend on: that a real session cookie comes back from the login
+ *  route. */
+export async function seedRequester(
+  app: FastifyInstance,
+  contact = 'priya@greenleaf.example',
+  password = 'hunter2hunter2',
+  displayName = 'Priya Venkat',
+): Promise<{ accountId: string; cookies: Record<string, string> }> {
+  await app.inject({
+    method: 'POST',
+    url: '/api/m/stalls/public/register',
+    payload: { contact, password, displayName },
+  });
+  const cred = await prisma.stallCredential.findUniqueOrThrow({ where: { loginValue: contact } });
+  await prisma.stallCredential.update({
+    where: { id: cred.id },
+    data: { confirmedAt: new Date() },
+  });
+
+  const login = await app.inject({
+    method: 'POST',
+    url: '/api/m/stalls/public/login',
+    payload: { contact, password },
+  });
+  const value = login.cookies.find((c) => c.name === 'msr_stall_requester')?.value;
+  if (!value) throw new Error(`seedRequester could not log in: ${login.statusCode} ${login.body}`);
+
+  return { accountId: cred.accountId, cookies: { msr_stall_requester: value } };
+}
+
+/** The account a test submits against when it calls `submitRequest` directly
+ *  rather than through the route.
+ *
+ *  Keyed on the body's own email, which is exactly what `findOrCreateAccount`
+ *  did before the session gate: two submissions under one address land on one
+ *  account, two addresses make two. Tests written against that behaviour keep
+ *  meaning what they meant — the gate changed where the account comes from in
+ *  PRODUCTION, and this helper stands in for the session a test has not got. */
+export async function accountFor(body: Record<string, unknown> = {}): Promise<string> {
+  const email = String(body.email ?? 'priya@greenleaf.example')
+    .trim()
+    .toLowerCase();
+  const account = await prisma.stallAccount.upsert({
+    where: { email },
+    update: {},
+    create: {
+      email,
+      phone: String(body.contactNumber ?? '9840012345'),
+      displayName: String(body.requesterName ?? 'Priya Venkat'),
+    },
+  });
+  return account.id;
+}

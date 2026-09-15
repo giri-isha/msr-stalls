@@ -2,19 +2,27 @@
 // session can reach lives in this file and nowhere else, so the boundary is one
 // screen to review.
 //
-// Every route here is gated by one of exactly two credentials:
+// Every route here is gated by one of exactly three credentials:
 //
 //   • a signed access LINK  — status page, bank form, FSSAI upload. The token
 //     names the request; nothing in a body ever does, so holding one link can
 //     never write to another vendor's record.
 //   • a staff COUPON        — staff registration. Same rule: the coupon names
 //     the stall.
+//   • a requester SESSION   — the stall request form and the submission behind
+//     it. A password today, the host's Isha OIDC when it lands; `session.ts` is
+//     the seam and no route here knows which it was.
 //
-// Three routes take no credential: `GET /config`, which is the public form's
-// own configuration and contains no vendor data; `POST /requests`, the one open
-// write in the system; and `POST /access-link`, which reads nothing back to the
-// caller and can only ever send a link to the address already on the account.
-// All three are rate-limited per IP.
+// Four routes take no credential: `GET /config`, which is the public form's own
+// configuration and contains no vendor data; `POST /access-link`; `POST
+// /register`; and `POST /password-reset`. The last three read nothing back to
+// the caller and answer identically to a hit, a miss and a malformed contact —
+// anything else would make them a way of asking whether a particular person has
+// applied. All are rate-limited per IP.
+//
+// ⚠️ `POST /requests` used to be in that list. It is not any more: the account a
+// request belongs to now comes from the session rather than from the email typed
+// into the form.
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
@@ -27,6 +35,11 @@ import {
   ContinueStepInput,
   PresignUploadInput,
   RATE_SCOPES,
+  ConfirmRegistrationInput,
+  LoginInput,
+  PasswordResetConfirmInput,
+  PasswordResetInput,
+  RegisterInput,
   RegisterStaffInput,
   RequestAccessLinkInput,
   type SubmitRequestResponse,
@@ -42,6 +55,22 @@ import { getPublicConfig } from './config';
 import type { StallsDeps } from './deps';
 import { UnknownAccessLinkError } from './errors';
 import { registerStaff, resolveCoupon, submitFssai, toCouponView } from './onboarding';
+import { authenticate } from './credentials';
+import {
+  completePasswordReset,
+  confirmRegistration,
+  isPlaceholderEmail,
+  register,
+  requestPasswordReset,
+} from './registration';
+import {
+  REQUESTER_COOKIE,
+  clearSessionCookie,
+  endSession,
+  requireRequester,
+  setSessionCookie,
+  startSession,
+} from './session';
 import { sendAccessLink, statusView, stepLink } from './portal';
 import { submitRequest } from './submit';
 import { isOurKey, presignUpload } from './uploads';
@@ -67,6 +96,111 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
     getPublicConfig(prisma, req.query.scope),
   );
 
+  /** Registration.
+   *
+   *  ⚠️ 202 `{ ok: true }` for a free contact, for one that already has an
+   *  account, and for a string that is not a contact at all. The three differ
+   *  only in which message goes out and to whom — see `registration.ts`. A
+   *  route that answered "that number is already registered" would be a way of
+   *  asking whether a particular shopkeeper had applied. */
+  zod.post(
+    '/register',
+    {
+      schema: { body: RegisterInput },
+      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
+    },
+    async (req, reply) => {
+      await register(prisma, deps, req.body);
+      reply.status(202);
+      return { ok: true };
+    },
+  );
+
+  /** Following the link is what proves the requester holds the contact, so it
+   *  is also what starts their first session. Single use — a forwarded
+   *  confirmation email is not a spare key. */
+  zod.post(
+    '/register/confirm',
+    {
+      schema: { body: ConfirmRegistrationInput },
+      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
+    },
+    async (req, reply) => {
+      const { accountId } = await confirmRegistration(prisma, req.body.token);
+      setSessionCookie(reply, await startSession(prisma, accountId));
+      return { ok: true };
+    },
+  );
+
+  /** ⚠️ One 401 for every way this fails — see `InvalidCredentialsError`. The
+   *  route does not know which half was wrong and must not learn. */
+  zod.post(
+    '/login',
+    {
+      schema: { body: LoginInput },
+      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
+    },
+    async (req, reply) => {
+      const cred = await authenticate(prisma, req.body);
+      setSessionCookie(reply, await startSession(prisma, cred.accountId));
+      return { ok: true };
+    },
+  );
+
+  app.post('/logout', async (req, reply) => {
+    const token = req.cookies[REQUESTER_COOKIE];
+    if (token) await endSession(prisma, token);
+    clearSessionCookie(reply);
+    return { ok: true };
+  });
+
+  /** Who is logged in, for a page that has to render either way.
+   *
+   *  ⚠️ 404 rather than 401 with no session. The apply page asks this on every
+   *  render and is public; a 401 would tell the browser it must authenticate
+   *  to read a form that anyone may read. */
+  app.get('/session', async (req, reply) => {
+    const account = await requireRequester(prisma, req).catch(() => null);
+    if (!account) return reply.status(404).send({ error: 'no session' });
+    return {
+      accountId: account.id,
+      displayName: account.displayName,
+      // A placeholder address is not an address. Reporting it would put
+      // `mobile+9840012399@stalls.invalid` in a form field a vendor then has
+      // to clear by hand.
+      email: isPlaceholderEmail(account.email) ? '' : account.email,
+      phone: account.phone,
+    };
+  });
+
+  /** ⚠️ 202 whatever happens, for the same reason `/register` does. Exactly one
+   *  message goes out — to the contact that has an account behind it. */
+  zod.post(
+    '/password-reset',
+    {
+      schema: { body: PasswordResetInput },
+      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
+    },
+    async (req, reply) => {
+      await requestPasswordReset(prisma, deps, req.body.contact);
+      reply.status(202);
+      return { ok: true };
+    },
+  );
+
+  zod.post(
+    '/password-reset/confirm',
+    {
+      schema: { body: PasswordResetConfirmInput },
+      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
+    },
+    async (req, reply) => {
+      const { accountId } = await completePasswordReset(prisma, req.body.token, req.body.password);
+      setSessionCookie(reply, await startSession(prisma, accountId));
+      return { ok: true };
+    },
+  );
+
   /** The one public write. Per-IP rate limit on top of the global one: a
    *  script cannot fill the pipeline with junk, and a real vendor never hits
    *  the cap. Strict Zod; nothing in the body reaches status, stage or money. */
@@ -79,10 +213,13 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
       },
     },
     async (req, reply): Promise<SubmitRequestResponse> => {
-      const { reference, statusToken } = await submitRequest(prisma, req.body, {
-        mail: deps.mail,
-        statusUrl: deps.statusUrl,
-      });
+      const requester = await requireRequester(prisma, req);
+      const { reference, statusToken } = await submitRequest(
+        prisma,
+        req.body,
+        { mail: deps.mail, whatsapp: deps.whatsapp, statusUrl: deps.statusUrl },
+        requester.id,
+      );
       reply.status(201);
       return { reference, statusToken };
     },

@@ -2,7 +2,15 @@ import { beforeEach, describe, expect, test } from 'vitest';
 import { SubmitRequestInput } from '@msr/stalls';
 import { createCustomField } from '../src/modules/stalls/config';
 import { submitRequest } from '../src/modules/stalls/submit';
-import { LogMailer, SYSTEM, prisma, resetDatabase, seedEdition, vendorBody } from './helpers/db';
+import {
+  accountFor,
+  LogMailer,
+  prisma,
+  resetDatabase,
+  seedEdition,
+  SYSTEM,
+  vendorBody,
+} from './helpers/db';
 
 beforeEach(resetDatabase);
 
@@ -14,8 +22,13 @@ const deps = () => {
   };
 };
 
-const submit = (body: Record<string, unknown> = {}) =>
-  submitRequest(prisma, SubmitRequestInput.parse(vendorBody(body)), deps().deps);
+const submit = async (body: Record<string, unknown> = {}) =>
+  submitRequest(
+    prisma,
+    SubmitRequestInput.parse(vendorBody(body)),
+    deps().deps,
+    await accountFor(body),
+  );
 
 describe('submitRequest', () => {
   test('ten concurrent submissions take ten distinct, consecutive references', async () => {
@@ -107,6 +120,7 @@ describe('submitRequest', () => {
       prisma,
       SubmitRequestInput.parse(vendorBody({ email: 'Priya@GreenLeaf.example' })),
       d,
+      await accountFor({ email: 'Priya@GreenLeaf.example' }),
     );
     expect(mail.sent).toHaveLength(1);
     expect(mail.sent[0].to).toBe('priya@greenleaf.example');
@@ -121,10 +135,12 @@ describe('submitRequest', () => {
         throw new Error('smtp down');
       },
     };
-    const r = await submitRequest(prisma, SubmitRequestInput.parse(vendorBody()), {
-      mail: failing,
-      statusUrl: (t) => t,
-    });
+    const r = await submitRequest(
+      prisma,
+      SubmitRequestInput.parse(vendorBody()),
+      { mail: failing, statusUrl: (t) => t },
+      await accountFor(),
+    );
     expect(await prisma.stallRequest.findUnique({ where: { id: r.requestId } })).not.toBeNull();
   });
 

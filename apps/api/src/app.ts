@@ -135,6 +135,8 @@ export async function buildApp(opts: BuildOptions = {}): Promise<FastifyInstance
     signer: opts.signer ?? createUnconfiguredSigner(),
     statusUrl: (token) => `${webOrigin}/stalls/status/${token}`,
     bankFormUrl: (token) => `${webOrigin}/stalls/bank/${token}`,
+    registerConfirmUrl: (token) => `${webOrigin}/stalls/confirm/${token}`,
+    passwordResetUrl: (token) => `${webOrigin}/stalls/reset/${token}`,
     fssaiUrl: (token) => `${webOrigin}/stalls/fssai/${token}`,
     staffRegistrationUrl: (code) => `${webOrigin}/stalls/staff/${encodeURIComponent(code)}`,
     signatureUrl: (token) => `${webOrigin}/stalls/sign/${token}`,

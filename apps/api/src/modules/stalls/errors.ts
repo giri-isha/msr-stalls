@@ -25,6 +25,20 @@ export class UnknownAccessLinkError extends Error {
   }
 }
 
+/** Every way a password login can fail, as ONE error.
+ *
+ *  ⚠️ Unknown contact, wrong password, a credential that was never confirmed,
+ *  a locked-out credential and a string that is not a contact at all ALL raise
+ *  this, with this message. Telling them apart would make the login route a
+ *  way of asking whether a particular shopkeeper has applied — which is the
+ *  question the whole public surface is built to refuse. */
+export class InvalidCredentialsError extends Error {
+  constructor() {
+    super('that login is not valid');
+    this.name = 'InvalidCredentialsError';
+  }
+}
+
 export class UnknownRequestError extends Error {
   constructor(readonly requestId: string) {
     super(`no stall request ${requestId}`);

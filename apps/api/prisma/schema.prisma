@@ -158,6 +158,19 @@ enum StallAccessPurpose {
   BANK_FORM
   FSSAI_UPLOAD
   STAFF_REGISTRATION
+  /// A logged-in requester. Minted by the password login today; by the OIDC
+  /// callback when SSO lands, which is the whole point of putting it here
+  /// rather than building a session table beside it.
+  SESSION
+  REGISTER_CONFIRM
+  PASSWORD_RESET
+
+  @@schema("stalls")
+}
+
+enum StallLoginKind {
+  EMAIL
+  MOBILE
 
   @@schema("stalls")
 }
@@ -445,8 +458,38 @@ model StallAccount {
 
   requests    StallRequest[]
   accessLinks StallAccessLink[]
+  credentials StallCredential[]
 
   @@map("stall_account")
+  @@schema("stalls")
+}
+
+/// A requester's password. TEMPORARY — the host's Isha OIDC replaces it, and
+/// this table is then dropped whole.
+///
+/// ⚠️ Deliberately NOT columns on `StallAccount`. `phone` there is not unique
+/// and cannot become so — two stalls can share a shopkeeper's number under
+/// different addresses, which `accounts.ts` relies on — so login identity has
+/// to live where uniqueness can actually hold, and that is only among the
+/// people who registered.
+model StallCredential {
+  id           String         @id @default(uuid()) @db.Uuid
+  accountId    String         @map("account_id") @db.Uuid
+  /// Normalised by `parseContact`: a lowercased email, or bare ten digits.
+  loginValue   String         @unique @map("login_value")
+  loginKind    StallLoginKind @map("login_kind")
+  passwordHash String         @map("password_hash")
+  /// Null until the confirmation link is followed. An unconfirmed credential
+  /// cannot log in, and says so with the same error as a wrong password.
+  confirmedAt  DateTime?      @map("confirmed_at") @db.Timestamptz
+  failedCount  Int            @default(0) @map("failed_count")
+  lockedUntil  DateTime?      @map("locked_until") @db.Timestamptz
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+
+  account StallAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("stall_credential")
   @@schema("stalls")
 }
 

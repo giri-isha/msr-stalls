@@ -7,12 +7,13 @@ import { buildApp } from '../src/app';
 import { planCategoriesFor, rateCardFor } from '../src/modules/stalls/config';
 import { submitRequest } from '../src/modules/stalls/submit';
 import {
+  accountFor,
   LogMailer,
-  type Staff,
   prisma,
   resetDatabase,
   seedEdition,
   seedStaff,
+  type Staff,
   vendorBody,
 } from './helpers/db';
 import { makeStalls } from './helpers/plan';
@@ -195,10 +196,8 @@ describe('custom fields', () => {
     await submitRequest(
       prisma,
       SubmitRequestInput.parse(vendorBody({ customFields: { [id]: '@x' } })),
-      {
-        mail: new LogMailer(),
-        statusUrl: (t) => t,
-      },
+      { mail: new LogMailer(), statusUrl: (t) => t },
+      await accountFor(),
     );
     const d = await app.inject({
       method: 'DELETE',

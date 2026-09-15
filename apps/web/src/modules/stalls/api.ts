@@ -18,6 +18,7 @@ import type {
   EquipmentRow,
   FssaiFormView,
   ListRequestsQuery,
+  LoginInput,
   MeResponse,
   OnboardingDetail,
   OnboardingRow,
@@ -34,11 +35,13 @@ import type {
   SignatureView,
   RequestAccessLinkResponse,
   RefundRow,
+  RegisterInput,
   RegisterStaffInput,
   ReminderKind,
   ReminderRow,
   RequestDetail,
   RequestPage,
+  RequesterSession,
   SendEmailResult,
   SetDiscretionaryFeeInput,
   StaffMember,
@@ -282,6 +285,39 @@ export const revokeRole = (personRef: string, roleKey: string) =>
 // ── Public: the pages a vendor reaches from a link ──────────────────────────
 
 const P = `${BASE}/public`;
+
+/* ── The requester login ────────────────────────────────────────────────────
+ *
+ * ⚠️ TEMPORARY, until the host's Isha OIDC. `getRequesterSession` is the only
+ * one of these the rest of the web module touches; when SSO lands the other
+ * six go and that one stays.
+ */
+
+export const registerRequester = (body: RegisterInput) =>
+  apiFetch<{ ok: true }>(`${P}/register`, { method: 'POST', json: body });
+
+export const confirmRegistration = (token: string) =>
+  apiFetch<{ ok: true }>(`${P}/register/confirm`, { method: 'POST', json: { token } });
+
+export const loginRequester = (body: LoginInput) =>
+  apiFetch<{ ok: true }>(`${P}/login`, { method: 'POST', json: body });
+
+export const logoutRequester = () =>
+  apiFetch<{ ok: true }>(`${P}/logout`, { method: 'POST', json: {} });
+
+/** ⚠️ Rejects with a 404 `ApiError` when nobody is logged in — that is the
+ *  normal case on a public page, not a fault. `RequesterProvider` treats it as
+ *  "signed out" and renders. */
+export const getRequesterSession = () => apiFetch<RequesterSession>(`${P}/session`);
+
+export const requestPasswordReset = (contact: string) =>
+  apiFetch<{ ok: true }>(`${P}/password-reset`, { method: 'POST', json: { contact } });
+
+export const completePasswordReset = (token: string, password: string) =>
+  apiFetch<{ ok: true }>(`${P}/password-reset/confirm`, {
+    method: 'POST',
+    json: { token, password },
+  });
 
 export const getBankForm = (token: string) =>
   apiFetch<BankFormView>(`${P}/bank/${encodeURIComponent(token)}`);

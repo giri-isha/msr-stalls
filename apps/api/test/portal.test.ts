@@ -2,7 +2,15 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { buildApp } from '../src/app';
 import { confirmPayment } from '../src/modules/stalls/finance';
-import { LogMailer, SYSTEM, prisma, resetDatabase, seedEdition, vendorBody } from './helpers/db';
+import {
+  LogMailer,
+  prisma,
+  resetDatabase,
+  seedEdition,
+  seedRequester,
+  SYSTEM,
+  vendorBody,
+} from './helpers/db';
 import { selected } from './helpers/onboarding';
 import { makeStalls } from './helpers/plan';
 
@@ -116,6 +124,7 @@ describe('GET /public/status/:token', () => {
       method: 'POST',
       url: '/api/m/stalls/public/requests',
       payload: vendorBody(),
+      cookies: (await seedRequester(app)).cookies,
     });
     mail.sent.length = 0;
     await askForLink('priya@greenleaf.example');

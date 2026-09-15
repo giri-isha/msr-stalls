@@ -7,7 +7,7 @@ import { submitRequest } from '../../src/modules/stalls/submit';
 import type { OutboundWhatsApp, WhatsAppSender } from '../../src/modules/stalls/whatsapp';
 import { DiskMediaStore } from '../../src/storage/disk-media-store';
 import type { MediaStore } from '../../src/storage/media-namespace';
-import { LogMailer, SYSTEM, prisma, vendorBody } from './db';
+import { accountFor, LogMailer, prisma, SYSTEM, vendorBody } from './db';
 
 /** A media store that presigns without a disk behind it. The Phase 2 tests
  *  care that a key is minted, checked against the namespace and handed back —
@@ -86,6 +86,8 @@ export interface TestDeps extends StallsDeps {
     fssai: string[];
     staff: string[];
     signature: string[];
+    confirm: string[];
+    reset: string[];
   };
 }
 
@@ -96,6 +98,8 @@ export function testDeps(overrides: Partial<TestDeps> = {}): TestDeps {
     fssai: [],
     staff: [],
     signature: [],
+    confirm: [],
+    reset: [],
   };
   const capture = (bucket: string[], prefix: string) => (token: string) => {
     bucket.push(token);
@@ -112,6 +116,8 @@ export function testDeps(overrides: Partial<TestDeps> = {}): TestDeps {
     fssaiUrl: capture(links.fssai, 'https://web.test/stalls/fssai'),
     staffRegistrationUrl: capture(links.staff, 'https://web.test/stalls/staff'),
     signatureUrl: capture(links.signature, 'https://web.test/stalls/sign'),
+    registerConfirmUrl: capture(links.confirm, 'https://web.test/stalls/confirm'),
+    passwordResetUrl: capture(links.reset, 'https://web.test/stalls/reset'),
     publicRateLimitMax: 10_000,
     ...overrides,
   };
@@ -124,10 +130,12 @@ export async function selected(
   stallNumbers: string[],
   overrides: Record<string, unknown> = {},
 ): Promise<{ requestId: string; reference: string }> {
-  const r = await submitRequest(prisma, SubmitRequestInput.parse(vendorBody(overrides)), {
-    mail: new LogMailer(),
-    statusUrl: (t) => t,
-  });
+  const r = await submitRequest(
+    prisma,
+    SubmitRequestInput.parse(vendorBody(overrides)),
+    { mail: new LogMailer(), statusUrl: (t) => t },
+    await accountFor(overrides),
+  );
   await selectRequest(prisma, { requestId: r.requestId, stallNumbers }, SYSTEM);
   return { requestId: r.requestId, reference: r.reference };
 }
