@@ -140,24 +140,36 @@ function SendPanel() {
   const [templateKey, setTemplateKey] = useState<TemplateKeyValue>('SELECTION_VENDOR');
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [q, setQ] = useState('');
+  const [sentFilter, setSentFilter] = useState<'all' | 'sent' | 'unsent'>('all');
   const [busy, setBusy] = useState(false);
   const mobile = useIsMobile();
-
-  const rows = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    return (data ?? []).filter(
-      (r) =>
-        !term ||
-        r.stallName.toLowerCase().includes(term) ||
-        r.requesterName.toLowerCase().includes(term) ||
-        r.reference.toLowerCase().includes(term),
-    );
-  }, [data, q]);
 
   const sentAt = useCallback(
     (r: CommRecipient) => r.sentTemplates.find((t) => t.key === templateKey)?.sentAt ?? null,
     [templateKey],
   );
+
+  const rows = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    return (data ?? []).filter((r) => {
+      if (
+        term &&
+        !r.stallName.toLowerCase().includes(term) &&
+        !r.requesterName.toLowerCase().includes(term) &&
+        !r.reference.toLowerCase().includes(term)
+      ) {
+        return false;
+      }
+      // ⚠️ Per LETTER, not per vendor. "Already sent" is a fact about this
+      // template and this row together — the same vendor is sent and unsent at
+      // the same moment for two different letters — so the filter has to move
+      // when the letter picker does, and it does because `sentAt` closes over
+      // `templateKey`.
+      if (sentFilter === 'sent') return sentAt(r) !== null;
+      if (sentFilter === 'unsent') return sentAt(r) === null;
+      return true;
+    });
+  }, [data, q, sentFilter, sentAt]);
 
   // A row already sent this letter cannot be ticked — the send would skip it,
   // and offering the tick would make the result read as a failure.
@@ -228,6 +240,16 @@ function SendPanel() {
           ))}
         </Select>
         <Search value={q} onChange={setQ} placeholder='Search vendors…' />
+        <Select
+          aria-label='Sent'
+          value={sentFilter}
+          onChange={(e) => setSentFilter(e.target.value as typeof sentFilter)}
+          style={{ width: 'auto', minWidth: 150 }}
+        >
+          <option value='all'>All vendors</option>
+          <option value='unsent'>Not sent yet</option>
+          <option value='sent'>Already sent</option>
+        </Select>
         <div style={{ flex: 1 }} />
         {/* ⚠️ Both of these are hidden rather than disabled for a reader who
             may only LOOK at this screen. Ticking rows is the first half of

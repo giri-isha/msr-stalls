@@ -37,6 +37,7 @@ export {
 } from './ui';
 export { useBreakpoint, useIsMobile, useIsNarrow, type BP } from './useBreakpoint';
 export { useListView, type ListView } from './useListView';
+export { useColumns, type ColumnDef, type ColumnState } from './useColumns';
 export { usePageSize } from './usePageSize';
 export { useSidebarRail } from './useSidebarRail';
 export {
@@ -75,6 +76,7 @@ export {
   useTopmostOverlay,
 } from './components/Overlay';
 export { pageSlice, Pager } from './components/Pager';
+export { ColumnsButton } from './components/ColumnsButton';
 export { OptionRow, PopHeader, Popover } from './components/Popover';
 export { RowCard, RowCardAction } from './components/RowCard';
 export { SearchList, matchLabel } from './components/SearchList';

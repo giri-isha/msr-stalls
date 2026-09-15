@@ -123,6 +123,68 @@ describe('Requests', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
+  describe('the column picker', () => {
+    const open = async (user: ReturnType<typeof userEvent.setup>) => {
+      await screen.findByText('VEN-2026-0001');
+      await user.click(screen.getByRole('button', { name: /Columns/ }));
+      return within(await screen.findByRole('listbox', { name: 'Columns' }));
+    };
+
+    test('hides a column from the table, and remembers it', async () => {
+      installFetch(base());
+      renderAt('/m/stalls/requests', routes, { me: true });
+      const user = userEvent.setup();
+
+      expect(await screen.findByRole('columnheader', { name: 'Stage' })).toBeInTheDocument();
+      await user.click((await open(user)).getByRole('option', { name: /Stage$/ }));
+      expect(screen.queryByRole('columnheader', { name: 'Stage' })).not.toBeInTheDocument();
+      // Every row lost the cell too, not just the header.
+      expect(screen.queryByText('Bank form')).not.toBeInTheDocument();
+
+      cleanup();
+      installFetch(base());
+      renderAt('/m/stalls/requests', routes, { me: true });
+      await screen.findByText('VEN-2026-0001');
+      expect(screen.queryByRole('columnheader', { name: 'Stage' })).not.toBeInTheDocument();
+    });
+
+    /** ⚠️ Without these two a reader can reach a pipeline of statuses belonging
+     *  to nobody, and the way back is the picker they would have to find. */
+    test('offers no way to hide the two columns that say which row this is', async () => {
+      installFetch(base());
+      renderAt('/m/stalls/requests', routes, { me: true });
+      const box = await open(userEvent.setup());
+
+      expect(box.queryByRole('option', { name: /Reference$/ })).not.toBeInTheDocument();
+      expect(box.queryByRole('option', { name: /Stall$/ })).not.toBeInTheDocument();
+      expect(box.getByRole('option', { name: /Status$/ })).toBeInTheDocument();
+    });
+
+    test('the button counts what is hidden, and reset puts it back', async () => {
+      installFetch(base());
+      renderAt('/m/stalls/requests', routes, { me: true });
+      const user = userEvent.setup();
+
+      await user.click((await open(user)).getByRole('option', { name: /Zone$/ }));
+      expect(screen.getByRole('button', { name: /Columns/ })).toHaveTextContent('1');
+
+      await user.click(screen.getByRole('button', { name: 'Reset' }));
+      expect(await screen.findByRole('columnheader', { name: 'Zone' })).toBeInTheDocument();
+    });
+
+    /** The cards read a fixed set of fields, so a picker there would be a
+     *  control that changes nothing on the screen it is sitting on. */
+    test('is not offered with the cards', async () => {
+      installFetch(base());
+      renderAt('/m/stalls/requests', routes, { me: true });
+      const user = userEvent.setup();
+      await screen.findByText('VEN-2026-0001');
+
+      await user.click(screen.getByRole('button', { name: 'Card view' }));
+      expect(screen.queryByRole('button', { name: /Columns/ })).not.toBeInTheDocument();
+    });
+  });
+
   test('clicking a row navigates to the record page', async () => {
     const fx = installFetch(base());
     const { router } = renderAt('/m/stalls/requests', routes, { me: true });

@@ -26,6 +26,9 @@ import {
   TR,
   Table,
   toolBtnStyle,
+  ColumnsButton,
+  useColumns,
+  type ColumnDef,
   useIsMobile,
   useToast,
 } from '../ui';
@@ -43,6 +46,20 @@ import {
  * printed challan; if the request were edited that evening the paper and the
  * screen would disagree, and the paper is what was signed.
  */
+/** ⚠️ The actions column has no entry and cannot be hidden. It is not a fact
+ *  about the stall, it is the way to act on it — a counter that hid it would
+ *  have a table it can read and cannot use, and no way back but the picker it
+ *  would have to find first. */
+const COLUMNS: ColumnDef[] = [
+  { key: 'stall', label: 'Stall', locked: true },
+  { key: 'ordered', label: 'Ordered' },
+  { key: 'extraChairs', label: 'Extra chairs' },
+  { key: 'extraTables', label: 'Extra tables' },
+  { key: 'cash', label: 'Cash due' },
+  { key: 'returned', label: 'Returned' },
+  { key: 'condition', label: 'Condition' },
+];
+
 export function Equipment() {
   const toast = useToast();
   const { can } = useMe();
@@ -55,6 +72,7 @@ export function Equipment() {
   const [editing, setEditing] = useState<EquipmentRow | null>(null);
   const mobile = useIsMobile();
   const canWrite = can('equipment.write');
+  const columns = useColumns('equipment', COLUMNS);
 
   const rows = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -125,6 +143,8 @@ export function Equipment() {
             {label}
           </button>
         ))}
+        <div style={{ flex: 1 }} />
+        {!mobile && <ColumnsButton state={columns} />}
       </div>
 
       {error && <ErrorBox>{error.message}</ErrorBox>}
@@ -151,12 +171,12 @@ export function Equipment() {
             <THead>
               <TR>
                 <TH>Stall</TH>
-                <TH align='right'>Ordered</TH>
-                <TH align='right'>Extra chairs</TH>
-                <TH align='right'>Extra tables</TH>
-                <TH align='right'>Cash due</TH>
-                <TH>Returned</TH>
-                <TH>Condition</TH>
+                {columns.shown('ordered') && <TH align='right'>Ordered</TH>}
+                {columns.shown('extraChairs') && <TH align='right'>Extra chairs</TH>}
+                {columns.shown('extraTables') && <TH align='right'>Extra tables</TH>}
+                {columns.shown('cash') && <TH align='right'>Cash due</TH>}
+                {columns.shown('returned') && <TH>Returned</TH>}
+                {columns.shown('condition') && <TH>Condition</TH>}
                 <TH> </TH>
               </TR>
             </THead>
@@ -182,31 +202,43 @@ export function Equipment() {
                       {r.stallNumbers.join(', ') || '—'}
                     </div>
                   </TD>
-                  <TD align='right' style={{ whiteSpace: 'nowrap' }}>
-                    {r.chairsRequested} ch / {r.tablesRequested} tb
-                  </TD>
-                  <TD align='right' style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {r.extraChairs || <span style={{ color: 'var(--mfg)' }}>—</span>}
-                  </TD>
-                  <TD align='right' style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {r.extraTables || <span style={{ color: 'var(--mfg)' }}>—</span>}
-                  </TD>
-                  <TD align='right'>
-                    {r.extraChargePaise > 0 ? (
-                      <Tag tone={r.extraCollectedAt ? 'ok' : 'warn'} size='sm'>
-                        {formatInr(r.extraChargePaise)}
-                        {r.extraCollectedAt ? ' paid' : ''}
-                      </Tag>
-                    ) : (
-                      <span style={{ color: 'var(--mfg)' }}>—</span>
-                    )}
-                  </TD>
-                  <TD>
-                    <StageTag row={r} />
-                  </TD>
-                  <TD>
-                    <ConditionSummary row={r} />
-                  </TD>
+                  {columns.shown('ordered') && (
+                    <TD align='right' style={{ whiteSpace: 'nowrap' }}>
+                      {r.chairsRequested} ch / {r.tablesRequested} tb
+                    </TD>
+                  )}
+                  {columns.shown('extraChairs') && (
+                    <TD align='right' style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      {r.extraChairs || <span style={{ color: 'var(--mfg)' }}>—</span>}
+                    </TD>
+                  )}
+                  {columns.shown('extraTables') && (
+                    <TD align='right' style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      {r.extraTables || <span style={{ color: 'var(--mfg)' }}>—</span>}
+                    </TD>
+                  )}
+                  {columns.shown('cash') && (
+                    <TD align='right'>
+                      {r.extraChargePaise > 0 ? (
+                        <Tag tone={r.extraCollectedAt ? 'ok' : 'warn'} size='sm'>
+                          {formatInr(r.extraChargePaise)}
+                          {r.extraCollectedAt ? ' paid' : ''}
+                        </Tag>
+                      ) : (
+                        <span style={{ color: 'var(--mfg)' }}>—</span>
+                      )}
+                    </TD>
+                  )}
+                  {columns.shown('returned') && (
+                    <TD>
+                      <StageTag row={r} />
+                    </TD>
+                  )}
+                  {columns.shown('condition') && (
+                    <TD>
+                      <ConditionSummary row={r} />
+                    </TD>
+                  )}
                   <TD align='right'>
                     <Actions
                       row={r}

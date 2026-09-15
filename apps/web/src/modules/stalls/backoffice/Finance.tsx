@@ -21,6 +21,10 @@ import {
   Dialog,
   EditBtn,
   Empty,
+  ColumnsButton,
+  useColumns,
+  type ColumnDef,
+  Toolbar,
   ErrorBox,
   FormField,
   H1,
@@ -103,6 +107,25 @@ const matchPayment = (r: PaymentRow, t: string) =>
 
 // ── Tab 1: what is due ──────────────────────────────────────────────────────
 
+/** ⚠️ The five money columns are ONE group as far as the unpriced row is
+ *  concerned — it draws a single cell spanning all of them — so hiding any of
+ *  them has to narrow that span too. `PRICED` names them once; `DuePanel`
+ *  counts how many are showing rather than writing `colSpan={5}`, which was
+ *  what the row said before any of this was hideable and would now leave a
+ *  cell hanging off the end of its own table. */
+const PRICED = ['stallFee', 'plugs', 'equipment', 'gst', 'total'] as const;
+
+const DUE_COLUMNS: ColumnDef[] = [
+  { key: 'vendor', label: 'Vendor', locked: true },
+  { key: 'stallFee', label: 'Stall fee' },
+  { key: 'plugs', label: 'Plugs' },
+  { key: 'equipment', label: 'Chairs/tables' },
+  { key: 'gst', label: 'GST' },
+  { key: 'total', label: 'Total due' },
+  { key: 'bank', label: 'Bank details' },
+  { key: 'email', label: 'Payment email' },
+];
+
 function DuePanel() {
   const toast = useToast();
   const { can } = useMe();
@@ -110,6 +133,17 @@ function DuePanel() {
   const { q, setQ, filtered } = useSearch(data, matchPayment);
   const mobile = useIsMobile();
   const [busy, setBusy] = useState<string | null>(null);
+  const [outstanding, setOutstanding] = useState('');
+  const columns = useColumns('finance-due', DUE_COLUMNS);
+  const pricedSpan = PRICED.filter((k) => columns.shown(k)).length;
+
+  const rows = filtered.filter((r) => {
+    if (outstanding === 'bank') return r.bankDetailsReceivedAt === null;
+    if (outstanding === 'email') return r.paymentEmailSentAt === null;
+    // Both in, so the only thing left to wait for is the money itself.
+    if (outstanding === 'ready') return r.bankDetailsReceivedAt !== null && !r.paymentEmailSentAt;
+    return true;
+  });
 
   const sendPayment = async (row: PaymentRow) => {
     setBusy(row.requestId);
@@ -135,13 +169,28 @@ function DuePanel() {
         below. Payment is made by NEFT to the Isha Foundation account sent separately — nothing is
         collected here.
       </div>
-      <Search value={q} onChange={setQ} placeholder='Search vendor…' />
+      <Toolbar>
+        <Search value={q} onChange={setQ} placeholder='Search vendor…' />
+        <Select
+          aria-label='Outstanding'
+          value={outstanding}
+          onChange={(e) => setOutstanding(e.target.value)}
+          style={{ width: 'auto', minWidth: 200 }}
+        >
+          <option value=''>Everyone who owes</option>
+          <option value='bank'>Waiting on bank details</option>
+          <option value='ready'>Ready to be told what to pay</option>
+          <option value='email'>Not yet told what to pay</option>
+        </Select>
+        <div style={{ flex: 1 }} />
+        {!mobile && <ColumnsButton state={columns} />}
+      </Toolbar>
 
-      {filtered.length === 0 ? (
+      {rows.length === 0 ? (
         <Empty>No selected vendors owe anything yet.</Empty>
       ) : mobile ? (
         <div style={{ display: 'grid', gap: 10 }}>
-          {filtered.map((r) => (
+          {rows.map((r) => (
             <Card key={r.requestId} pad={14} style={{ display: 'grid', gap: 8 }}>
               <div style={{ fontWeight: 600 }}>{r.stallName}</div>
               <Money row={r} />
@@ -160,18 +209,18 @@ function DuePanel() {
             <THead>
               <TR>
                 <TH>Vendor</TH>
-                <TH align='right'>Stall fee</TH>
-                <TH align='right'>Plugs</TH>
-                <TH align='right'>Chairs/tables</TH>
-                <TH align='right'>GST</TH>
-                <TH align='right'>Total due</TH>
-                <TH>Bank details</TH>
-                <TH>Payment email</TH>
+                {columns.shown('stallFee') && <TH align='right'>Stall fee</TH>}
+                {columns.shown('plugs') && <TH align='right'>Plugs</TH>}
+                {columns.shown('equipment') && <TH align='right'>Chairs/tables</TH>}
+                {columns.shown('gst') && <TH align='right'>GST</TH>}
+                {columns.shown('total') && <TH align='right'>Total due</TH>}
+                {columns.shown('bank') && <TH>Bank details</TH>}
+                {columns.shown('email') && <TH>Payment email</TH>}
                 <TH> </TH>
               </TR>
             </THead>
             <TBody>
-              {filtered.map((r) => (
+              {rows.map((r) => (
                 <TR key={r.requestId}>
                   <TD>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{r.stallName}</div>
@@ -180,50 +229,69 @@ function DuePanel() {
                     </div>
                   </TD>
                   {r.quote.unpriced ? (
-                    <TD colSpan={5} muted>
-                      No rent is quoted for this zone — priced by the team.
-                    </TD>
+                    // Nothing at all when every priced column is hidden — a
+                    // `colSpan={0}` is not a narrower cell, it is a cell that
+                    // spans to the end of the row.
+                    pricedSpan > 0 && (
+                      <TD colSpan={pricedSpan} muted>
+                        No rent is quoted for this zone — priced by the team.
+                      </TD>
+                    )
                   ) : (
                     <>
-                      <TD align='right'>{formatInr(r.quote.stallFeePaise)}</TD>
-                      <TD align='right'>{formatInr(r.quote.plugFeePaise)}</TD>
-                      <TD align='right'>{formatInr(r.quote.equipmentFeePaise)}</TD>
-                      <TD align='right' muted>
-                        {formatInr(r.quote.gstPaise)}
-                      </TD>
-                      <TD align='right' style={{ fontWeight: 700 }}>
-                        {formatInr(r.quote.grandTotalPaise)}
-                        <div style={{ fontSize: 10.5, color: 'var(--mfg)', fontWeight: 400 }}>
-                          incl. {formatInr(r.quote.depositTotalPaise)} deposit
-                        </div>
-                        {/* The total already follows the concession. Without
+                      {columns.shown('stallFee') && (
+                        <TD align='right'>{formatInr(r.quote.stallFeePaise)}</TD>
+                      )}
+                      {columns.shown('plugs') && (
+                        <TD align='right'>{formatInr(r.quote.plugFeePaise)}</TD>
+                      )}
+                      {columns.shown('equipment') && (
+                        <TD align='right'>{formatInr(r.quote.equipmentFeePaise)}</TD>
+                      )}
+                      {columns.shown('gst') && (
+                        <TD align='right' muted>
+                          {formatInr(r.quote.gstPaise)}
+                        </TD>
+                      )}
+                      {columns.shown('total') && (
+                        <TD align='right' style={{ fontWeight: 700 }}>
+                          {formatInr(r.quote.grandTotalPaise)}
+                          <div style={{ fontSize: 10.5, color: 'var(--mfg)', fontWeight: 400 }}>
+                            incl. {formatInr(r.quote.depositTotalPaise)} deposit
+                          </div>
+                          {/* The total already follows the concession. Without
                             this line it silently disagrees with the itemised
                             columns beside it, which still show the card rate. */}
-                        {r.quote.discretionaryFeePaise !== null && (
-                          <div style={{ fontSize: 10.5, color: 'var(--mfg)', fontWeight: 400 }}>
-                            Agreed fee {formatInr(r.quote.payableFeePaise)} —{' '}
-                            {r.quote.discretionaryReason}
-                          </div>
-                        )}
-                      </TD>
+                          {r.quote.discretionaryFeePaise !== null && (
+                            <div style={{ fontSize: 10.5, color: 'var(--mfg)', fontWeight: 400 }}>
+                              Agreed fee {formatInr(r.quote.payableFeePaise)} —{' '}
+                              {r.quote.discretionaryReason}
+                            </div>
+                          )}
+                        </TD>
+                      )}
                     </>
                   )}
-                  <TD>
-                    <Tag tone={r.bankDetailsReceivedAt ? 'ok' : 'warn'} size='sm'>
-                      {r.bankDetailsReceivedAt ? 'Received' : 'Pending'}
-                    </Tag>
-                  </TD>
-                  <TD>
-                    {r.paymentEmailSentAt ? (
-                      <Tag tone='ok' size='sm'>
-                        Sent {formatDate(r.paymentEmailSentAt)}
+                  {columns.shown('bank') && (
+                    <TD>
+                      <Tag tone={r.bankDetailsReceivedAt ? 'ok' : 'warn'} size='sm'>
+                        {r.bankDetailsReceivedAt ? 'Received' : 'Pending'}
                       </Tag>
-                    ) : (
-                      <Tag tone='neutral' size='sm'>
-                        Not sent
-                      </Tag>
-                    )}
-                  </TD>
+                    </TD>
+                  )}
+                  {columns.shown('email') && (
+                    <TD>
+                      {r.paymentEmailSentAt ? (
+                        <Tag tone='ok' size='sm'>
+                          Sent {formatDate(r.paymentEmailSentAt)}
+                        </Tag>
+                      ) : (
+                        <Tag tone='neutral' size='sm'>
+                          Not sent
+                        </Tag>
+                      )}
+                    </TD>
+                  )}
                   <TD align='right'>
                     {can('comms.write') && !r.paymentEmailSentAt && (
                       <Btn onClick={() => sendPayment(r)} disabled={busy === r.requestId}>

@@ -8,7 +8,8 @@ import {
   setCouponCapacity,
   verifyFssai,
 } from '../api';
-import { TypeBadge } from '../components/StatusPill';
+import { ONBOARDING_STEPS } from '@msr/stalls';
+import { TYPE_LABEL, TypeBadge } from '../components/StatusPill';
 import { formatDate, formatDateTime, useLoad } from '../hooks';
 import { listOnboarding } from '../api';
 import { useMe } from '../me';
@@ -28,6 +29,11 @@ import {
   Loading,
   Search,
   Section,
+  Select,
+  Toolbar,
+  ColumnsButton,
+  useColumns,
+  type ColumnDef,
   Tag,
   TBody,
   TD,
@@ -49,23 +55,68 @@ import {
  * "pending" is what turns this table into a list of things that will never be
  * ticked off.
  */
+/** ⚠️ The four step columns are what this screen IS — the question it answers
+ *  is "who is holding us up" — so none of them is optional. `requestType` and
+ *  `reference` are the two facts the table never showed and readers kept going
+ *  to the pipeline for, and they ship hidden rather than making a seven-column
+ *  table a nine-column one for everybody. */
+const COLUMNS: ColumnDef[] = [
+  { key: 'vendor', label: 'Vendor', locked: true },
+  { key: 'reference', label: 'Reference', optional: true },
+  { key: 'stall', label: 'Stall' },
+  { key: 'requestType', label: 'Type', optional: true },
+  { key: 'bank', label: 'Bank' },
+  { key: 'gst', label: 'GST' },
+  { key: 'payment', label: 'Payment' },
+  { key: 'fssai', label: 'FSSAI' },
+  { key: 'staff', label: 'Backoffice' },
+];
+
+/** What is still outstanding, as a filter.
+ *
+ *  ⚠️ Built from `ONBOARDING_STEPS`, not retyped. The step keys are the shared
+ *  vocabulary `pendingSteps` emits — four of them, and GST is NOT one: it
+ *  arrives with the bank form and has a column but never its own step. A
+ *  hand-written list here would offer "waiting on GST", match nothing ever, and
+ *  read as an empty queue rather than as a filter that cannot work. */
+const STEP_FILTER_LABEL: Record<(typeof ONBOARDING_STEPS)[number], string> = {
+  BANK_FORM: 'bank details',
+  PAYMENT: 'payment',
+  FSSAI: 'FSSAI',
+  STAFF_REGISTRATION: 'staff registration',
+};
+
 export function Onboarding() {
   const { data, error, loading, reload } = useLoad(listOnboarding);
   const [open, setOpen] = useState<string | null>(null);
   const [q, setQ] = useState('');
+  const [outstanding, setOutstanding] = useState('');
+  const [requestType, setRequestType] = useState('');
   const mobile = useIsMobile();
+  const columns = useColumns('onboarding', COLUMNS);
 
   const rows = useMemo(() => {
     const term = q.trim().toLowerCase();
-    return (data ?? []).filter(
-      (r) =>
-        !term ||
-        r.stallName.toLowerCase().includes(term) ||
-        r.requesterName.toLowerCase().includes(term) ||
-        r.reference.toLowerCase().includes(term) ||
-        r.stallNumbers.some((n) => n.toLowerCase().includes(term)),
-    );
-  }, [data, q]);
+    return (data ?? []).filter((r) => {
+      if (
+        term &&
+        !r.stallName.toLowerCase().includes(term) &&
+        !r.requesterName.toLowerCase().includes(term) &&
+        !r.reference.toLowerCase().includes(term) &&
+        !r.stallNumbers.some((n) => n.toLowerCase().includes(term))
+      ) {
+        return false;
+      }
+      if (requestType && r.requestType !== requestType) return false;
+      // ⚠️ Read off `pending`, which the API already computes, rather than
+      // re-deriving "is this step outstanding" from the four status fields.
+      // The rule for what counts as pending — NOT_APPLICABLE is not pending,
+      // UPLOADED-but-unverified is — lives there and must not be guessed at
+      // twice.
+      if (outstanding && !r.pending.some((step) => step.step === outstanding)) return false;
+      return true;
+    });
+  }, [data, q, outstanding, requestType]);
 
   return (
     <div>
@@ -76,9 +127,39 @@ export function Onboarding() {
         Vendor Onboarding
       </H1>
 
-      <div style={{ marginBottom: 12 }}>
+      <Toolbar>
         <Search value={q} onChange={setQ} placeholder='Search stall, vendor or stall number…' />
-      </div>
+        <Select
+          aria-label='Outstanding'
+          value={outstanding}
+          onChange={(e) => setOutstanding(e.target.value)}
+          style={{ width: 'auto', minWidth: 170 }}
+        >
+          <option value=''>Anything outstanding</option>
+          {ONBOARDING_STEPS.map((step) => (
+            <option key={step} value={step}>
+              Waiting on {STEP_FILTER_LABEL[step]}
+            </option>
+          ))}
+        </Select>
+        <Select
+          aria-label='Type'
+          value={requestType}
+          onChange={(e) => setRequestType(e.target.value)}
+          style={{ width: 'auto', minWidth: 150 }}
+        >
+          <option value=''>All types</option>
+          {Object.entries(TYPE_LABEL).map(([k, v]) => (
+            <option key={k} value={k}>
+              {v}
+            </option>
+          ))}
+        </Select>
+        <div style={{ flex: 1 }} />
+        {/* Cards on a phone read a fixed set of fields, so the picker is drawn
+            only where it changes something. */}
+        {!mobile && <ColumnsButton state={columns} />}
+      </Toolbar>
 
       {error && <ErrorBox>{error.message}</ErrorBox>}
       {loading && !data ? (
@@ -114,12 +195,14 @@ export function Onboarding() {
             <THead>
               <TR>
                 <TH>Vendor</TH>
-                <TH>Stall</TH>
-                <TH>Bank</TH>
-                <TH>GST</TH>
-                <TH>Payment</TH>
-                <TH>FSSAI</TH>
-                <TH align='right'>Backoffice</TH>
+                {columns.shown('reference') && <TH>Reference</TH>}
+                {columns.shown('stall') && <TH>Stall</TH>}
+                {columns.shown('requestType') && <TH>Type</TH>}
+                {columns.shown('bank') && <TH>Bank</TH>}
+                {columns.shown('gst') && <TH>GST</TH>}
+                {columns.shown('payment') && <TH>Payment</TH>}
+                {columns.shown('fssai') && <TH>FSSAI</TH>}
+                {columns.shown('staff') && <TH align='right'>Backoffice</TH>}
               </TR>
             </THead>
             <TBody>
@@ -129,24 +212,46 @@ export function Onboarding() {
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{r.stallName}</div>
                     <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>{r.requesterName}</div>
                   </TD>
-                  <TD mono style={{ fontSize: 11.5 }}>
-                    {r.stallNumbers.join(', ') || '—'}
-                  </TD>
-                  <TD>
-                    <StatusTag value={r.bankDetails} />
-                  </TD>
-                  <TD>
-                    <StatusTag value={r.gst} />
-                  </TD>
-                  <TD>
-                    <StatusTag value={r.payment} />
-                  </TD>
-                  <TD>
-                    <StatusTag value={r.fssai} />
-                  </TD>
-                  <TD align='right'>
-                    <StaffCount row={r} />
-                  </TD>
+                  {columns.shown('reference') && (
+                    <TD mono style={{ fontSize: 11.5 }}>
+                      {r.reference}
+                    </TD>
+                  )}
+                  {columns.shown('stall') && (
+                    <TD mono style={{ fontSize: 11.5 }}>
+                      {r.stallNumbers.join(', ') || '—'}
+                    </TD>
+                  )}
+                  {columns.shown('requestType') && (
+                    <TD>
+                      <TypeBadge type={r.requestType} />
+                    </TD>
+                  )}
+                  {columns.shown('bank') && (
+                    <TD>
+                      <StatusTag value={r.bankDetails} />
+                    </TD>
+                  )}
+                  {columns.shown('gst') && (
+                    <TD>
+                      <StatusTag value={r.gst} />
+                    </TD>
+                  )}
+                  {columns.shown('payment') && (
+                    <TD>
+                      <StatusTag value={r.payment} />
+                    </TD>
+                  )}
+                  {columns.shown('fssai') && (
+                    <TD>
+                      <StatusTag value={r.fssai} />
+                    </TD>
+                  )}
+                  {columns.shown('staff') && (
+                    <TD align='right'>
+                      <StaffCount row={r} />
+                    </TD>
+                  )}
                 </TR>
               ))}
             </TBody>

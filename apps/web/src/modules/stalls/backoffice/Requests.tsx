@@ -32,7 +32,33 @@ import {
   Toolbar,
   useListView,
   ViewToggle,
+  ColumnsButton,
+  useColumns,
+  type ColumnDef,
 } from '../ui';
+
+/** The pipeline's columns, in the order the table draws them.
+ *
+ *  ⚠️ `reference` and `stallName` are LOCKED. They are the two things that say
+ *  which request a row is, and a pipeline with both hidden is ten rows of
+ *  statuses belonging to nobody — reachable in two clicks and remembered until
+ *  somebody works out how to undo it.
+ *
+ *  `contactNumber` rides inside the requester cell rather than being a column
+ *  of its own, so it is not listed here; hiding the requester takes it too,
+ *  which is what somebody hiding "Requester" means. */
+const COLUMNS: ColumnDef[] = [
+  { key: 'reference', label: 'Reference', locked: true },
+  { key: 'stallName', label: 'Stall', locked: true },
+  { key: 'requestType', label: 'Type' },
+  { key: 'requester', label: 'Requester' },
+  { key: 'zone', label: 'Zone' },
+  { key: 'stalls', label: 'Stalls' },
+  { key: 'status', label: 'Status' },
+  { key: 'stage', label: 'Stage' },
+  { key: 'allocated', label: 'Allocated' },
+  { key: 'submitted', label: 'Submitted' },
+];
 
 /** Every request in the pipeline, with every filter.
  *
@@ -51,6 +77,7 @@ export function Requests() {
   const zoneCode = params.get('zoneCode') ?? '';
   const flagged = params.get('flagged') === 'true';
   const [view, setView] = useListView('requests');
+  const columns = useColumns('requests', COLUMNS);
   // The bays are the edition's own rows, not a list in this file: the venue is
   // redrawn every year, and a filter that cannot offer a new bay hides every
   // request standing in it.
@@ -128,7 +155,16 @@ export function Requests() {
       <H1
         icon={<Icon name='list-view' size={18} />}
         sub='Every request in the pipeline. Click one to see its full application.'
-        actions={<ViewToggle view={view} onChange={setView} />}
+        actions={
+          <>
+            {/* ⚠️ Only with the table. The cards are a fixed layout — they read
+                the same fields whatever the picker says — so offering it there
+                would be a control that changes nothing on the screen it is
+                sitting on. */}
+            {view === 'table' && <ColumnsButton state={columns} />}
+            <ViewToggle view={view} onChange={setView} />
+          </>
+        }
       >
         All Requests
       </H1>
@@ -235,14 +271,14 @@ export function Requests() {
               <TR>
                 <TH>Reference</TH>
                 <TH>Stall</TH>
-                <TH>Type</TH>
-                <TH>Requester</TH>
-                <TH>Zone</TH>
-                <TH align='right'>Stalls</TH>
-                <TH>Status</TH>
-                <TH>Stage</TH>
-                <TH>Allocated</TH>
-                <TH>Submitted</TH>
+                {columns.shown('requestType') && <TH>Type</TH>}
+                {columns.shown('requester') && <TH>Requester</TH>}
+                {columns.shown('zone') && <TH>Zone</TH>}
+                {columns.shown('stalls') && <TH align='right'>Stalls</TH>}
+                {columns.shown('status') && <TH>Status</TH>}
+                {columns.shown('stage') && <TH>Stage</TH>}
+                {columns.shown('allocated') && <TH>Allocated</TH>}
+                {columns.shown('submitted') && <TH>Submitted</TH>}
               </TR>
             </THead>
             <TBody>
@@ -267,31 +303,43 @@ export function Requests() {
                       {r.stallName}
                     </Link>
                   </TD>
-                  <TD>
-                    <TypeBadge type={r.requestType} />
-                  </TD>
-                  <TD>
-                    <div>{r.requesterName}</div>
-                    <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>{r.contactNumber}</div>
-                  </TD>
-                  <TD>{r.preferredZoneCode}</TD>
-                  <TD align='right'>{r.numStallsRequested}</TD>
-                  <TD>
-                    <StatusPill status={r.status} />
-                  </TD>
-                  <TD>
-                    {hasStage(r.status) ? (
-                      <StagePill stage={r.stage} />
-                    ) : (
-                      <span style={{ color: 'var(--mfg)' }}>—</span>
-                    )}
-                  </TD>
-                  <TD mono style={{ fontSize: 11.5, color: 'var(--ok-fg)', fontWeight: 600 }}>
-                    {r.allocatedStalls.join(', ')}
-                  </TD>
-                  <TD muted style={{ fontSize: 11.5, whiteSpace: 'nowrap' }}>
-                    {formatDate(r.submittedAt)}
-                  </TD>
+                  {columns.shown('requestType') && (
+                    <TD>
+                      <TypeBadge type={r.requestType} />
+                    </TD>
+                  )}
+                  {columns.shown('requester') && (
+                    <TD>
+                      <div>{r.requesterName}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>{r.contactNumber}</div>
+                    </TD>
+                  )}
+                  {columns.shown('zone') && <TD>{r.preferredZoneCode}</TD>}
+                  {columns.shown('stalls') && <TD align='right'>{r.numStallsRequested}</TD>}
+                  {columns.shown('status') && (
+                    <TD>
+                      <StatusPill status={r.status} />
+                    </TD>
+                  )}
+                  {columns.shown('stage') && (
+                    <TD>
+                      {hasStage(r.status) ? (
+                        <StagePill stage={r.stage} />
+                      ) : (
+                        <span style={{ color: 'var(--mfg)' }}>—</span>
+                      )}
+                    </TD>
+                  )}
+                  {columns.shown('allocated') && (
+                    <TD mono style={{ fontSize: 11.5, color: 'var(--ok-fg)', fontWeight: 600 }}>
+                      {r.allocatedStalls.join(', ')}
+                    </TD>
+                  )}
+                  {columns.shown('submitted') && (
+                    <TD muted style={{ fontSize: 11.5, whiteSpace: 'nowrap' }}>
+                      {formatDate(r.submittedAt)}
+                    </TD>
+                  )}
                 </TR>
               ))}
             </TBody>

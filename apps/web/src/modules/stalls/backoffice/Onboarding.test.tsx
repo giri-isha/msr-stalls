@@ -108,6 +108,83 @@ describe('the onboarding table', () => {
   });
 });
 
+describe('the onboarding filters', () => {
+  const two = () =>
+    installFetch([
+      ['GET', /\/me$/, () => ME_ADMIN],
+      [
+        'GET',
+        /\/onboarding$/,
+        () => [
+          row(),
+          row({
+            requestId: '88888888-8888-4888-8888-888888888888',
+            reference: 'LWS-2026-0001',
+            stallName: 'Seva Health Camp',
+            requestType: 'LOCAL_WELFARE',
+            pending: [{ step: 'PAYMENT', label: 'Payment pending' }],
+          }),
+        ],
+      ],
+    ]);
+
+  test('narrows the list to the step being waited on', async () => {
+    two();
+    render();
+    const user = userEvent.setup();
+    await screen.findByText('Green Leaf Organics');
+
+    await user.selectOptions(screen.getByLabelText('Outstanding'), 'PAYMENT');
+    expect(screen.queryByText('Green Leaf Organics')).not.toBeInTheDocument();
+    expect(screen.getByText('Seva Health Camp')).toBeInTheDocument();
+  });
+
+  /** 🔴 The filter reads `pending`, which the API computes. Deriving "is this
+   *  outstanding" from the four status columns instead would have to re-answer
+   *  what NOT_APPLICABLE means, and that rule already lives in one place. */
+  test('uses the API’s own pending list, not the status columns', async () => {
+    two();
+    render();
+    const user = userEvent.setup();
+    await screen.findByText('Green Leaf Organics');
+
+    // Both rows show `payment: 'PENDING'` in their column; only one of them is
+    // actually WAITING on payment, and the filter follows the latter.
+    await user.selectOptions(screen.getByLabelText('Outstanding'), 'BANK_FORM');
+    expect(screen.getByText('Green Leaf Organics')).toBeInTheDocument();
+    expect(screen.queryByText('Seva Health Camp')).not.toBeInTheDocument();
+  });
+
+  test('and by requester type', async () => {
+    two();
+    render();
+    const user = userEvent.setup();
+    await screen.findByText('Green Leaf Organics');
+
+    await user.selectOptions(screen.getByLabelText('Type'), 'LOCAL_WELFARE');
+    expect(screen.queryByText('Green Leaf Organics')).not.toBeInTheDocument();
+    expect(screen.getByText('Seva Health Camp')).toBeInTheDocument();
+  });
+
+  /** ⚠️ GST has a COLUMN and is not a step — it arrives with the bank form. An
+   *  "outstanding" list written by hand would have offered it and matched
+   *  nothing ever, which reads as an empty queue rather than a broken filter. */
+  test('offers no step the API never emits', async () => {
+    two();
+    render();
+    await screen.findByText('Green Leaf Organics');
+
+    const options = within(screen.getByLabelText('Outstanding')).getAllByRole('option');
+    expect(options.map((o) => o.textContent)).toEqual([
+      'Anything outstanding',
+      'Waiting on bank details',
+      'Waiting on payment',
+      'Waiting on FSSAI',
+      'Waiting on staff registration',
+    ]);
+  });
+});
+
 describe('the vendor detail', () => {
   test('reads the bank details back with short-lived links to the files', async () => {
     installFetch([
