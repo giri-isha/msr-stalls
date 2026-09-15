@@ -5,7 +5,14 @@ import {
   hashPassword,
   verifyPassword,
 } from '../src/modules/stalls/credentials';
-import { InvalidCredentialsError } from '../src/modules/stalls/errors';
+import { mintAccessLink, resolveAccessLink } from '../src/modules/stalls/accounts';
+import { InvalidCredentialsError, UnknownAccessLinkError } from '../src/modules/stalls/errors';
+import {
+  endAllSessions,
+  endSession,
+  requireRequester,
+  startSession,
+} from '../src/modules/stalls/session';
 import { prisma, resetDatabase, seedEdition } from './helpers/db';
 
 beforeEach(async () => {
@@ -121,5 +128,74 @@ describe('authenticate', () => {
 
     const after = await prisma.stallCredential.findUniqueOrThrow({ where: { id: cred.id } });
     expect(after.failedCount).toBe(0);
+  });
+});
+
+describe('session', () => {
+  test('a started session resolves back to its account', async () => {
+    const acct = await account();
+    const token = await startSession(prisma, acct.id);
+    const got = await requireRequester(prisma, { cookies: { msr_stall_requester: token } });
+    expect(got.id).toBe(acct.id);
+  });
+
+  test('no cookie is refused', async () => {
+    await expect(requireRequester(prisma, { cookies: {} })).rejects.toBeInstanceOf(
+      UnknownAccessLinkError,
+    );
+  });
+
+  test('ending a session revokes it', async () => {
+    const acct = await account();
+    const token = await startSession(prisma, acct.id);
+    await endSession(prisma, token);
+    await expect(
+      requireRequester(prisma, { cookies: { msr_stall_requester: token } }),
+    ).rejects.toBeInstanceOf(UnknownAccessLinkError);
+  });
+
+  test('ending every session evicts them all at once', async () => {
+    const acct = await account();
+    const first = await startSession(prisma, acct.id);
+    const second = await startSession(prisma, acct.id);
+    await endAllSessions(prisma, acct.id);
+    for (const token of [first, second]) {
+      await expect(
+        requireRequester(prisma, { cookies: { msr_stall_requester: token } }),
+      ).rejects.toBeInstanceOf(UnknownAccessLinkError);
+    }
+  });
+
+  // 🔴 The purpose is the wall between the two credentials. A session cookie
+  // must not open a bank form, and a bank-form token must not act as a session.
+  // `resolveAccessLink` already refuses to cross; this is the test that says so
+  // out loud, because the whole SSO swap rests on that one function.
+  test('a session token cannot open a bank form, and a bank token is not a session', async () => {
+    const acct = await account();
+    const session = await startSession(prisma, acct.id);
+    await expect(resolveAccessLink(prisma, session, 'BANK_FORM')).rejects.toBeInstanceOf(
+      UnknownAccessLinkError,
+    );
+
+    const { token: bank } = await mintAccessLink(prisma, {
+      accountId: acct.id,
+      purpose: 'BANK_FORM',
+      ttlDays: 180,
+    });
+    await expect(
+      requireRequester(prisma, { cookies: { msr_stall_requester: bank } }),
+    ).rejects.toBeInstanceOf(UnknownAccessLinkError);
+  });
+
+  test('an expired session is refused', async () => {
+    const acct = await account();
+    const token = await startSession(prisma, acct.id);
+    await prisma.stallAccessLink.updateMany({
+      where: { accountId: acct.id, purpose: 'SESSION' },
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    });
+    await expect(
+      requireRequester(prisma, { cookies: { msr_stall_requester: token } }),
+    ).rejects.toBeInstanceOf(UnknownAccessLinkError);
   });
 });
