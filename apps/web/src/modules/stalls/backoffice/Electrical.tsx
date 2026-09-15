@@ -40,7 +40,7 @@ export function Electrical() {
   const { data, error, loading } = useLoad(() => getElectrical(zone || undefined), [zone]);
   // The bays are the edition's own rows, not a constant: the venue layout is
   // redrawn every year, and a filter built from a fixed list would quietly
-  // offer no way to print a bay that was added this season.
+  // offer no way to print a bay that was added this edition.
   // ⚠️ The bays alone, not the whole config: the electrical and venue-prep
   // teams hold `electrical:read` and nothing else, and `/config` is Admin's.
   const config = useLoad(listZones);

@@ -79,7 +79,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<FastifyInstance
       { schema: { body: z.object({ email: z.email() }) } },
       async (req, reply) => {
         const r = await devLogin(prisma, req.body.email);
-        if (!r) return reply.status(404).send({ error: 'no such staff member' });
+        if (!r) return reply.status(404).send({ error: 'no such backoffice member' });
         reply.setCookie(SESSION_COOKIE, r.token, {
           httpOnly: true,
           sameSite: 'lax',

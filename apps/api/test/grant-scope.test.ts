@@ -4,18 +4,18 @@ import { buildApp } from '../src/app';
 import { SubmitRequestInput } from '@msr/stalls';
 import { submitRequest } from '../src/modules/stalls/submit';
 import {
-  type Staff,
+  type Backoffice,
   LogMailer,
   accountFor,
   prisma,
   resetDatabase,
   seedEdition,
-  seedStaff,
+  seedBackoffice,
   vendorBody,
 } from './helpers/db';
 
 /**
- * Grant-level scope: which SEASON and which BAY a grant reaches.
+ * Grant-level scope: which EDITION and which BAY a grant reaches.
  *
  * ⚠️ These two sit on the grant, not the role, because two people can hold the
  * same role for different years or different bays. The requester-type axis is
@@ -23,7 +23,7 @@ import {
  * `scope.test.ts`.
  */
 let app: FastifyInstance;
-let admin: Staff;
+let admin: Backoffice;
 
 beforeAll(async () => {
   app = await buildApp({ logger: false, mail: new LogMailer(), webOrigin: 'http://web.example' });
@@ -33,17 +33,17 @@ afterAll(() => app.close());
 beforeEach(async () => {
   await resetDatabase();
   await seedEdition();
-  admin = await seedStaff(['stalls_admin'], 'admin@example.org');
+  admin = await seedBackoffice(['stalls_admin'], 'admin@example.org');
 });
 
-/** A staff member holding one role, scoped as given. */
-async function scopedStaff(
+/** A backoffice member holding one role, scoped as given. */
+async function scopedBackoffice(
   roleKey: string,
   scope: { editionScope?: string[]; zoneScope?: string[] },
   email: string,
-): Promise<Staff> {
-  const who = await seedStaff([], email);
-  await prisma.stallStaffRole.create({
+): Promise<Backoffice> {
+  const who = await seedBackoffice([], email);
+  await prisma.stallBackofficeRole.create({
     data: {
       personRef: who.personId,
       roleKey,
@@ -57,18 +57,18 @@ async function scopedStaff(
 
 const activeEdition = () => prisma.stallEdition.findFirstOrThrow({ where: { isActive: true } });
 
-const listRequests = (who: Staff) =>
+const listRequests = (who: Backoffice) =>
   app.inject({ method: 'GET', url: '/api/m/stalls/requests', headers: who.headers });
 
 describe('edition scope', () => {
-  test('an unscoped grant reaches the season that is running', async () => {
-    const who = await scopedStaff('stalls_lead', {}, 'open@example.org');
+  test('an unscoped grant reaches the edition that is running', async () => {
+    const who = await scopedBackoffice('stalls_lead', {}, 'open@example.org');
     expect((await listRequests(who)).statusCode).toBe(200);
   });
 
-  test('a grant naming this season reaches it', async () => {
+  test('a grant naming this edition reaches it', async () => {
     const edition = await activeEdition();
-    const who = await scopedStaff(
+    const who = await scopedBackoffice(
       'stalls_lead',
       { editionScope: [edition.id] },
       'thisyear@example.org',
@@ -79,24 +79,24 @@ describe('edition scope', () => {
   // 🔴 A refusal, not an empty list. A volunteer whose grant covered only last
   // year needs to be told their access has lapsed, not shown an event with
   // nothing in it and left to guess why.
-  test('a grant naming only another season is refused, and says so', async () => {
+  test('a grant naming only another edition is refused, and says so', async () => {
     const other = await prisma.stallEdition.create({
       data: { year: 2099, name: 'MSR 2099', isActive: false },
     });
-    const who = await scopedStaff(
+    const who = await scopedBackoffice(
       'stalls_lead',
       { editionScope: [other.id] },
       'lastyear@example.org',
     );
     const res = await listRequests(who);
     expect(res.statusCode).toBe(403);
-    expect(res.json().error).toContain('season');
+    expect(res.json().error).toContain('edition');
   });
 
   // The whole reason empty means "all": a person given the event must not lose
   // next year the moment somebody creates it, with nothing watching.
-  test('an unscoped grant follows the module into a season created later', async () => {
-    const who = await scopedStaff('stalls_lead', {}, 'always@example.org');
+  test('an unscoped grant follows the module into an edition created later', async () => {
+    const who = await scopedBackoffice('stalls_lead', {}, 'always@example.org');
     const next = await prisma.stallEdition.create({
       data: { year: 2098, name: 'MSR 2098', isActive: false },
     });
@@ -125,7 +125,7 @@ describe('zone scope', () => {
   test('a bay-scoped grant lists only its own bays', async () => {
     await requestIn('A1', 'Bay One Traders');
     await requestIn('B2', 'Bay Two Traders');
-    const marshal = await scopedStaff('stalls_lead', { zoneScope: ['A1'] }, 'a1@example.org');
+    const marshal = await scopedBackoffice('stalls_lead', { zoneScope: ['A1'] }, 'a1@example.org');
 
     const res = await listRequests(marshal);
     const names = res.json().items.map((r: { stallName: string }) => r.stallName);
@@ -136,7 +136,7 @@ describe('zone scope', () => {
   test('an unscoped grant lists every bay', async () => {
     await requestIn('A1', 'Bay One Traders');
     await requestIn('B2', 'Bay Two Traders');
-    const lead = await scopedStaff('stalls_lead', {}, 'all@example.org');
+    const lead = await scopedBackoffice('stalls_lead', {}, 'all@example.org');
 
     const names = (await listRequests(lead))
       .json()
@@ -149,7 +149,7 @@ describe('zone scope', () => {
   // is decoration.
   test('a request in another bay is refused by id, not merely hidden', async () => {
     const elsewhere = await requestIn('B2', 'Bay Two Traders');
-    const marshal = await scopedStaff('stalls_lead', { zoneScope: ['A1'] }, 'a1@example.org');
+    const marshal = await scopedBackoffice('stalls_lead', { zoneScope: ['A1'] }, 'a1@example.org');
 
     const res = await app.inject({
       method: 'GET',
@@ -167,7 +167,7 @@ describe('zone scope', () => {
     const row = await prisma.stallRequest.findUniqueOrThrow({ where: { id: request.requestId } });
     expect(row.agreedZoneCode).toBeNull();
 
-    const marshal = await scopedStaff('stalls_lead', { zoneScope: ['A1'] }, 'a1@example.org');
+    const marshal = await scopedBackoffice('stalls_lead', { zoneScope: ['A1'] }, 'a1@example.org');
     const res = await app.inject({
       method: 'GET',
       url: `/api/m/stalls/requests/${request.requestId}`,
@@ -179,7 +179,7 @@ describe('zone scope', () => {
   // Narrowing by type is not permission to leave your own bays.
   test('filtering by requester type does not widen the bays', async () => {
     await requestIn('B2', 'Bay Two Traders');
-    const marshal = await scopedStaff('stalls_lead', { zoneScope: ['A1'] }, 'a1@example.org');
+    const marshal = await scopedBackoffice('stalls_lead', { zoneScope: ['A1'] }, 'a1@example.org');
 
     const res = await app.inject({
       method: 'GET',
@@ -191,11 +191,11 @@ describe('zone scope', () => {
 });
 
 describe('granting scope', () => {
-  const grant = (by: Staff, payload: Record<string, unknown>) =>
-    app.inject({ method: 'POST', url: '/api/m/stalls/staff', headers: by.headers, payload });
+  const grant = (by: Backoffice, payload: Record<string, unknown>) =>
+    app.inject({ method: 'POST', url: '/api/m/stalls/backoffice', headers: by.headers, payload });
 
   test('an admin grants a bay-scoped role', async () => {
-    const who = await seedStaff([], 'new@example.org');
+    const who = await seedBackoffice([], 'new@example.org');
     const res = await grant(admin, {
       personRef: who.personId,
       roleKey: 'stalls_volunteer',
@@ -203,7 +203,7 @@ describe('granting scope', () => {
     });
     expect(res.statusCode).toBe(204);
 
-    const row = await prisma.stallStaffRole.findFirstOrThrow({
+    const row = await prisma.stallBackofficeRole.findFirstOrThrow({
       where: { personRef: who.personId },
     });
     expect(row.zoneScope).toEqual(['A1']);
@@ -212,11 +212,11 @@ describe('granting scope', () => {
   // Re-granting sends the whole picture, so a narrowed grant that silently kept
   // last year's wider reach would be the one failure nobody would look for.
   test('re-granting resets the scope rather than leaving the old one', async () => {
-    const who = await seedStaff([], 'new@example.org');
+    const who = await seedBackoffice([], 'new@example.org');
     await grant(admin, { personRef: who.personId, roleKey: 'stalls_volunteer', zoneScope: ['A1'] });
     await grant(admin, { personRef: who.personId, roleKey: 'stalls_volunteer', zoneScope: ['B2'] });
 
-    const row = await prisma.stallStaffRole.findFirstOrThrow({
+    const row = await prisma.stallBackofficeRole.findFirstOrThrow({
       where: { personRef: who.personId },
     });
     expect(row.zoneScope).toEqual(['B2']);
@@ -225,8 +225,12 @@ describe('granting scope', () => {
   // Empty means "every bay", so an unscoped grant made by a bay-scoped marshal
   // would reach past the person making it.
   test('a scoped grantor cannot hand out a wider grant than their own', async () => {
-    const marshal = await scopedStaff('stalls_admin', { zoneScope: ['A1'] }, 'a1admin@example.org');
-    const who = await seedStaff([], 'new@example.org');
+    const marshal = await scopedBackoffice(
+      'stalls_admin',
+      { zoneScope: ['A1'] },
+      'a1admin@example.org',
+    );
+    const who = await seedBackoffice([], 'new@example.org');
 
     expect(
       (await grant(marshal, { personRef: who.personId, roleKey: 'stalls_volunteer' })).statusCode,

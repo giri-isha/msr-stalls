@@ -50,8 +50,8 @@ export async function resetDatabase(): Promise<void> {
       and table_name <> '_prisma_migrations'
       -- The RBAC vocabulary is REFERENCE DATA, installed by the migration that
       -- created it, not a fixture any test writes. Truncating it would empty
-      -- stall_role, and every seedStaff call would then violate the foreign key
-      -- on stall_staff_role.role_key -- the suite would be exercising a module
+      -- stall_role, and every seedBackoffice call would then violate the foreign key
+      -- on stall_backoffice_role.role_key -- the suite would be exercising a module
       -- with no roles in it at all.
       --
       -- Safe only while nothing AUTHORS a role at runtime. When the role editor
@@ -82,21 +82,21 @@ export async function seedEdition(year = 2026): Promise<StallEdition> {
   return createEdition(prisma, { year, name: `MSR ${year}`, activate: true }, SYSTEM);
 }
 
-export interface Staff {
+export interface Backoffice {
   personId: string;
   email: string;
   /** Pass as `headers` on `app.inject` to act as this person. */
   headers: { cookie: string };
 }
 
-/** A signed-in staff member holding the given stalls roles. */
-export async function seedStaff(roleKeys: string[], email?: string): Promise<Staff> {
-  const addr = email ?? `staff-${Math.random().toString(36).slice(2, 8)}@example.org`;
+/** A signed-in backoffice member holding the given stalls roles. */
+export async function seedBackoffice(roleKeys: string[], email?: string): Promise<Backoffice> {
+  const addr = email ?? `backoffice-${Math.random().toString(36).slice(2, 8)}@example.org`;
   const person = await prisma.person.create({
     data: { email: addr, displayName: addr.split('@')[0] },
   });
   for (const roleKey of roleKeys) {
-    await prisma.stallStaffRole.create({
+    await prisma.stallBackofficeRole.create({
       data: { personRef: person.personId, roleKey, grantedBy: SYSTEM },
     });
   }

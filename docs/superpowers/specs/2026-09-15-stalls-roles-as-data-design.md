@@ -50,7 +50,7 @@ seed writes it to `StallPrivilege`. Codes are re-prefixed from `a:b` to `a.b` to
 match msr's shape. This is free **now** and expensive later: the codes are a
 `StallPrivilege` string-literal union threaded through `requirePrivilege`, the web's
 `can()`, nav entries and `Documentation.tsx`, so the compiler finds every call
-site — and no code is stored in any row yet, because `stall_staff_role` holds
+site — and no code is stored in any row yet, because `stall_backoffice_role` holds
 role *keys*. Once codes become table rows, a re-prefix needs msr's `legacyCode`
 escape hatch. Doing it before the migration is the last cheap moment.
 
@@ -85,7 +85,7 @@ Four in the `stalls` schema, `Stall`-prefixed per the existing convention.
   (self-relation), `isSystem`, `allPrivileges`, `canAssignSameLevel`,
   `requestTypeScope`, `sortOrder`.
 - **`StallRolePrivilege`** — the join.
-- **`StallStaffRole`** — the grant; `roleKey` gains a real FK to `StallRole`,
+- **`StallBackofficeRole`** — the grant; `roleKey` gains a real FK to `StallRole`,
   and phase D adds `editionScope` / `zoneScope`. `personRef` stays a non-FK:
   Person belongs to another module.
 
@@ -97,8 +97,8 @@ rows misses it.
 
 ## Resolution
 
-`requireStaff` already queries the grant table. It now joins through to roles and
-privileges in one query, and `StaffCaller` gains:
+`requireBackoffice` already queries the grant table. It now joins through to roles and
+privileges in one query, and `BackofficeCaller` gains:
 
 ```ts
 privileges: string[]              // union across held roles
@@ -169,7 +169,7 @@ database. Privileges come from `PRIVILEGE_CATEGORIES`; the six roles seed with
 `isSystem` blocks deletion and the editing of `roleKey`, not the editing of
 privileges — an admin retuning what Lead grants is the point of the feature.
 
-Existing `stall_staff_role` rows need no migration: role keys are unchanged.
+Existing `stall_backoffice_role` rows need no migration: role keys are unchanged.
 The migration inserts the privilege and role rows in the same transaction that
 adds the FK, so the FK can never be added against an empty role table.
 
@@ -271,7 +271,7 @@ year's wider reach is the one failure nobody would look for.
   existing grant's scope. A dedicated per-grant scope editor in the Roles dialog
   is not built.
 - **`resetDatabase` leaves the RBAC tables alone**, because truncating them
-  breaks the foreign key every `seedStaff` call depends on. Any test that mutates
+  breaks the foreign key every `seedBackoffice` call depends on. Any test that mutates
   a shipped role must restore it with `seedRbac`, or it leaks into every file
   that runs afterwards. This bit once, in exactly that way.
 

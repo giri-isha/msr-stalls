@@ -60,7 +60,7 @@ export class UnknownZoneError extends Error {
   }
 }
 
-/** Two staff selected the same stall at once and the database constraint
+/** Two backoffice members selected the same stall at once and the database constraint
  *  refused the second. Mapped to 409. The route relies on the constraint, not
  *  on a read-then-write check — see `StallAllocation.activeStallId`. */
 export class StallAlreadyAllocatedError extends Error {
@@ -111,14 +111,14 @@ export class ZoneForbiddenError extends Error {
   }
 }
 
-/** A season this caller's grant does not reach. Mapped to 403.
+/** An edition this caller's grant does not reach. Mapped to 403.
  *
  *  ⚠️ Not 404 and not an empty list: a volunteer whose grant covered only last
  *  year needs to be told that their access has lapsed, not shown an event with
  *  nothing in it. */
 export class EditionForbiddenError extends Error {
   constructor(readonly editionId: string) {
-    super('your access does not cover the season currently running');
+    super('your access does not cover the edition currently running');
     this.name = 'EditionForbiddenError';
   }
 }
@@ -301,7 +301,7 @@ export class TooManyStallsRequestedError extends Error {
   }
 }
 
-/** A requester type this staff member's roles do not reach. Mapped to 403.
+/** A requester type this backoffice member's roles do not reach. Mapped to 403.
  *
  *  Distinct from "no permission at all": the local welfare team holds real
  *  write access, just not to anybody else's requests. */
@@ -322,7 +322,7 @@ export class SignatureProviderError extends Error {
 
 export class UnknownPersonError extends Error {
   constructor(readonly ref: string) {
-    super(`no staff member ${ref}`);
+    super(`no backoffice member ${ref}`);
     this.name = 'UnknownPersonError';
   }
 }
@@ -423,7 +423,7 @@ export class UploadsUnavailableError extends Error {
  *
  *  Named plainly, unlike `UnknownAccessLinkError` and `UnknownCouponError`
  *  which are deliberately vague: those answer a public route where "no such
- *  thing" is itself worth hiding. This one answers a staff route whose caller
+ *  thing" is itself worth hiding. This one answers a backoffice route whose caller
  *  is already reading the whole directory. */
 export class UnknownAccountError extends Error {
   constructor(readonly accountId: string) {
@@ -454,5 +454,21 @@ export class AccountEmailTakenError extends Error {
   constructor(readonly heldBy: string) {
     super(`${heldBy} already uses this email — a requester's address is their identity here`);
     this.name = 'AccountEmailTakenError';
+  }
+}
+
+/** A password a desk cannot set for a requester. Mapped to 409.
+ *
+ *  Two conditions reach it, and both are answerable on the screen that raised
+ *  them: the account carries no address or number to register a login against,
+ *  and the contact it does carry is already another account's login. Neither
+ *  is a bug in the request — the desk's next move is to correct the requester's
+ *  details, which is the dialog one row over.
+ *
+ *  ⚠️ TEMPORARY, with the rest of the requester password login. */
+export class CannotSetPasswordError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = 'CannotSetPasswordError';
   }
 }

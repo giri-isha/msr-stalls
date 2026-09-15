@@ -1,4 +1,4 @@
-// SHELL — the standalone stand-in for Isha SSO. Lists the seeded staff and
+// SHELL — the standalone stand-in for Isha SSO. Lists the seeded backoffice and
 // signs in as one of them with a single click. Discarded at migration; the
 // API route it calls exists only outside production.
 import { useEffect, useState } from 'react';
@@ -77,7 +77,7 @@ export function DevSignIn({ onSignedIn }: { onSignedIn: () => void }) {
             Sign in — development
           </div>
           <div style={{ fontSize: 12.5, color: 'var(--mfg)', marginTop: 4, lineHeight: 1.5 }}>
-            In the host this is Isha SSO. Here, pick a seeded staff member. Run{' '}
+            In the host this is Isha SSO. Here, pick a seeded backoffice member. Run{' '}
             <code
               style={{
                 fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace',
@@ -127,7 +127,9 @@ export function DevSignIn({ onSignedIn }: { onSignedIn: () => void }) {
             </button>
           ))}
           {people?.length === 0 && !error && (
-            <div style={{ fontSize: 13, color: 'var(--mfg)' }}>No staff seeded yet.</div>
+            <div style={{ fontSize: 13, color: 'var(--mfg)' }}>
+              Nobody in the backoffice seeded yet.
+            </div>
           )}
           {error && <ErrorBox>{error}</ErrorBox>}
         </div>

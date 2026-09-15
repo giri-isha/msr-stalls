@@ -65,7 +65,7 @@ describe('the amend dialog', () => {
     expect(patch?.body).toEqual({ contactNumber: '9876543210' });
   });
 
-  test('offers the season’s own bays, and records the one agreed', async () => {
+  test('offers the edition’s own bays, and records the one agreed', async () => {
     const fx = installFetch(stubs());
     await openDetail();
     await userEvent.click(await screen.findByRole('button', { name: /Amend/ }));

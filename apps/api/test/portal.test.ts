@@ -114,7 +114,7 @@ describe('GET /public/status/:token', () => {
 
     const body = (await statusOf(mailedToken())).json();
     const steps = body.requests[0].pending.map((p: { step: string }) => p.step);
-    // A food vendor: bank details, money, certificate. No staff step — this
+    // A food vendor: bank details, money, certificate. No staff-registration step — this
     // request asked for no staff passes.
     expect(steps).toEqual(['BANK_FORM', 'PAYMENT', 'FSSAI']);
   });
@@ -247,7 +247,7 @@ describe('POST /public/status/:token/continue', () => {
   });
 });
 
-describe('the portal and the staff screens agree', () => {
+describe('the portal and the backoffice screens agree', () => {
   test('a confirmed payment drops off the vendor’s list too', async () => {
     const { requestId } = await selected(['C1-1']);
     const t = await (async () => {

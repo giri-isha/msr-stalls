@@ -56,7 +56,7 @@ const LABEL: Record<OnboardingStep, string> = {
   BANK_FORM: 'Bank details pending',
   PAYMENT: 'Payment pending',
   FSSAI: 'FSSAI certificate pending',
-  STAFF_REGISTRATION: 'Staff not fully registered',
+  STAFF_REGISTRATION: 'Backoffice not fully registered',
 };
 
 /** Ordered: the first entry is what the vendor's portal should open next, and
@@ -110,7 +110,7 @@ export function deriveStage(facts: StageFacts, flow: FlowConfig): DerivedStage {
   if (has('BANK_FORM')) return facts.selectionEmailSent ? 'BANK_FORM_SENT' : 'NEW';
   if (has('PAYMENT')) return facts.paymentEmailSent ? 'PAYMENT_SENT' : 'BANK_FORM_FILLED';
   if (has('FSSAI')) return 'FSSAI_PENDING';
-  // Money and certificates are settled; only staff are still trickling in.
+  // Money and certificates are settled; only the vendor's own staff are still trickling in.
   // That is `PAYMENT_CONFIRMED` rather than `READY` because the check-in
   // counter has to be able to tell the two apart at a glance.
   if (has('STAFF_REGISTRATION')) return 'PAYMENT_CONFIRMED';

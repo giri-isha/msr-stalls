@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ME_LEAD, installFetch, renderAt } from '../test-utils';
@@ -71,29 +71,37 @@ describe('Planning', () => {
       ['GET', /\/planning$/, () => plan],
     ]);
     renderAt('/m/stalls/planning', routes, { me: true });
-    expect(await screen.findByLabelText('A4 expected crowd')).toHaveValue(25000);
+    // `closest` matches attributes, not implicit ARIA roles, and a native <tr>
+    // carries its row role without spelling it out. Selecting the element is
+    // the right way to reach it; a redundant role= on every row would not be.
+    const a4row = (await screen.findByLabelText('Edit A4')).closest('tr') as HTMLElement;
+    expect(a4row).toHaveTextContent('25,000');
     expect(screen.getByTestId('grand-total')).toHaveTextContent('17');
   });
 
-  test('editing the crowd updates the suggestion; editing a count updates the total — live', async () => {
+  // The counts are typed in the box the pencil opens; the suggestion moves with
+  // them there, and the grid's totals catch up when it closes.
+  test('the dialog re-suggests as the crowd is typed, and the grid totals follow Done', async () => {
     installFetch([
       ['GET', /\/me$/, () => ME_LEAD],
       ['GET', /\/planning$/, () => plan],
     ]);
     renderAt('/m/stalls/planning', routes, { me: true });
     const user = userEvent.setup();
-    const crowd = await screen.findByLabelText('A4 expected crowd');
+    await user.click(await screen.findByLabelText('Edit A4'));
+
+    const box = within(screen.getByRole('dialog'));
+    const crowd = box.getByLabelText('Expected crowd');
     await user.clear(crowd);
     await user.type(crowd, '50000');
-    // `closest` matches attributes, not implicit ARIA roles, and a native <tr>
-    // carries its row role without spelling it out. Selecting the element is
-    // the right way to reach it; a redundant role= on every row would not be.
-    const a4row = crowd.closest('tr') as HTMLElement;
-    expect(a4row).toHaveTextContent('50');
+    // 50,000 ÷ 1,000 people per stall.
+    expect(box.getByText('Suggested from the crowd').parentElement).toHaveTextContent('50');
 
-    const vf = screen.getByLabelText('A4 Vendor food');
+    const vf = box.getByLabelText('Vendor food');
     await user.clear(vf);
     await user.type(vf, '8');
+    await user.click(box.getByRole('button', { name: 'Done' }));
+
     expect(screen.getByTestId('grand-total')).toHaveTextContent('20');
   });
 
@@ -105,9 +113,11 @@ describe('Planning', () => {
     ]);
     renderAt('/m/stalls/planning', routes, { me: true });
     const user = userEvent.setup();
-    const vf = await screen.findByLabelText('A4 Vendor food');
-    await user.clear(vf);
-    await user.type(vf, '8');
+    await user.click(await screen.findByLabelText('Edit A4'));
+    const box = within(screen.getByRole('dialog'));
+    await user.clear(box.getByLabelText('Vendor food'));
+    await user.type(box.getByLabelText('Vendor food'), '8');
+    await user.click(box.getByRole('button', { name: 'Done' }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(fx.calls.some((c) => c.method === 'PUT')).toBe(true));
     const put = fx.calls.find((c) => c.method === 'PUT')?.body as {
@@ -126,9 +136,12 @@ describe('Planning', () => {
     ]);
     renderAt('/m/stalls/planning', routes, { me: true });
     const user = userEvent.setup();
-    const vf = await screen.findByLabelText('A4 Vendor food');
-    await user.clear(vf);
-    await user.type(vf, '1');
+    await user.click(await screen.findByLabelText('Edit A4'));
+    const box = within(screen.getByRole('dialog'));
+    await user.clear(box.getByLabelText('Vendor food'));
+    await user.type(box.getByLabelText('Vendor food'), '1');
+    await user.click(box.getByRole('button', { name: 'Done' }));
+
     await user.click(screen.getByRole('button', { name: 'Apply plan' }));
     expect(await screen.findByRole('dialog')).toHaveTextContent(/fewer stalls than exist/);
   });
@@ -147,7 +160,9 @@ describe('Planning', () => {
       ['GET', /\/planning$/, () => plan],
     ]);
     renderAt('/m/stalls/planning', routes, { me: true });
-    expect(await screen.findByLabelText('A4 expected crowd')).toBeDisabled();
+    // The grid reads the same to everybody; what a volunteer does not get is
+    // the way in to change it.
+    expect(await screen.findByLabelText('Edit A4')).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Apply plan' })).toBeDisabled();
   });
 });

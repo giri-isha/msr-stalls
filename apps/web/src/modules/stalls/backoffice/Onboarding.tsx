@@ -116,7 +116,7 @@ export function Onboarding() {
                 <TH>GST</TH>
                 <TH>Payment</TH>
                 <TH>FSSAI</TH>
-                <TH align='right'>Staff</TH>
+                <TH align='right'>Backoffice</TH>
               </TR>
             </THead>
             <TBody>

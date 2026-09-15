@@ -24,7 +24,7 @@ The whole requirement, from stall request to check-in and refund.
   outstanding, and the bank form or FSSAI upload opened straight from it. Lost
   the email? An address or a mobile number gets the link sent back to the
   account's own address, which is the whole of "login" here.
-- **Staff pipeline**: dashboard, request list with filters/search/cards,
+- **Backoffice pipeline**: dashboard, request list with filters/search/cards,
   full application detail, flag for follow-up.
 - **Planning & Zones**: crowd-driven stall suggestions per zone, a category
   grid, and stall-number generation that never removes an allocated stall.
@@ -79,7 +79,7 @@ cp apps/api/.env.test.example apps/api/.env.test  # edit DATABASE_URL
 
 npm run db:migrate                                # dev database
 npm run db:test:deploy --workspace=apps/api       # test database
-npm run db:seed                                   # 2026 edition, staff, a full pipeline
+npm run db:seed                                   # 2026 edition, the backoffice, a full pipeline
 
 npm run dev                                       # api :3000, web :5173
 ```
@@ -87,11 +87,11 @@ npm run dev                                       # api :3000, web :5173
 Then:
 
 - Public forms: <http://localhost:5173/stalls/apply>
-- Staff: <http://localhost:5173/m/stalls> — pick a seeded staff member to sign
+- Backoffice: <http://localhost:5173/m/stalls> — pick a seeded backoffice member to sign
   in (the dev stand-in for Isha SSO). The seed prints who has which role.
 - The manual: <http://localhost:5173/m/stalls/docs> — the process end to end, a
   flow chart per stage (including how a stage is derived and which steps apply
-  to whom), the vendor's journey, every staff screen and how it is used, and the
+  to whom), the vendor's journey, every backoffice screen and how it is used, and the
   reference tables for statuses, stages, roles and money. It is a nav item like any other
   and needs no role, so a volunteer who can only reach the check-in counter can
   still read where that counter sits in the whole thing.
@@ -132,7 +132,7 @@ docs/                         specs, plans, migration checklist
   billed, because ashram departments are exempt, and it is kept because it is
   what the form quoted.
 - **Bays and planning columns are per-edition rows, not constants.** The venue
-  is redrawn every season and the planning sheet's columns are a judgement the
+  is redrawn every edition and the planning sheet's columns are a judgement the
   team makes each year, so both are added and removed from Admin. Nothing in the
   code may hold its own list of either.
 - **Rent is per bay × food/non-food × requester scope**, and each rate row
@@ -159,7 +159,7 @@ docs/                         specs, plans, migration checklist
   Admin, and enforced on the public write.
 - **A role may be scoped to a requester type.** The local welfare team files
   inside this application, on behalf of village traders who have no email
-  address — which makes them staff holding real `requests:write`, with no
+  address — which makes them backoffice members holding real `requests:write`, with no
   business in a commercial vendor's bank details. Every list narrows to the
   scope and every request-addressed route checks it (`scope.ts`).
 - **A coupon's capacity is the coupon's own** — eight by default, raised case by
@@ -190,3 +190,19 @@ docs/                         specs, plans, migration checklist
 - **Files never pass through the API.** The browser presigns and PUTs at the
   store; keys are minted from a UUID, never from what the vendor called the
   file.
+- **"Backoffice" is the team; "staff" is the vendor's.** One word used to mean
+  both — the people running the stalls and the people a vendor registers to
+  work at their own stall — which is how a privilege named for one ends up read
+  as the other. The team is the BACKOFFICE everywhere: `StallBackofficeRole`,
+  `requireBackoffice`, `/api/m/stalls/backoffice`, the Users directory's
+  Backoffice tile. "Staff" is left to the vendor alone — the coupon, the staff
+  passes, the staff-registration page — and means exactly one thing now.
+- **A backoffice desk can set a requester's password, and that is
+  TEMPORARY.** It is the only action in the module that hands somebody a way
+  into an account rather than causing the account holder to be sent one, which
+  is why it holds its own `passwords.write` and not `users.write`: a support
+  desk can mail a vendor their link without being able to walk into their
+  account. It exists for the village trader with no address and no smartphone,
+  and it goes — privilege, route, dialog and all — when the host signs
+  requesters in through Isha SSO. See step 3c of
+  [`docs/migration-to-host.md`](docs/migration-to-host.md).

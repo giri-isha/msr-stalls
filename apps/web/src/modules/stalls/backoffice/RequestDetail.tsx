@@ -89,7 +89,7 @@ export function RequestDetail() {
   const toast = useToast();
   const mobile = useIsMobile();
   const { data: r, error, loading, reload } = useLoad(() => api.getRequest(id), [id]);
-  // The forms the requester filled AFTER applying — bank, FSSAI, staff. A
+  // The forms the requester filled AFTER applying — bank, FSSAI, backoffice. A
   // second call rather than a fatter `/requests/:id`, because this is the
   // shape Onboarding already reads and a second copy of it on the request
   // would be two answers to "what has come back" waiting to disagree.
@@ -670,7 +670,7 @@ function StaffPanel({ forms }: { forms: OnboardingDetail | null }) {
   return (
     <Section
       icon='users'
-      title='Staff'
+      title='Backoffice'
       note='Who the stall has registered against its coupon.'
       count={forms.staff.length}
       last

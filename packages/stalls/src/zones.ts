@@ -112,7 +112,7 @@ export const ZONE_BLURB_2025: Record<string, string> = {
  *
  *  ⚠️ Also DATA, and for the same reason as the zones: the planning sheet is
  *  redrawn every year, and which columns it carries is a judgement the stall
- *  team makes each season, not a fact about the software. These live in
+ *  team makes each edition, not a fact about the software. These live in
  *  `StallPlanCategory`; the list below seeds a new edition.
  *
  *  `BACKUP` is a planned category, not a status: the sheet reserves positions

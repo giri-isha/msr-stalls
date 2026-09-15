@@ -5,6 +5,7 @@ import {
   type DirectoryView,
   type SignInState,
   type RoleSummary,
+  MIN_PASSWORD_LENGTH,
   isPlaceholderEmail,
 } from '@msr/stalls';
 import * as api from '../../api';
@@ -50,7 +51,7 @@ import {
 /**
  * Everyone who can reach this module, in one directory.
  *
- * ⚠️ **Two populations, one table, and the difference is not cosmetic.** Staff
+ * ⚠️ **Two populations, one table, and the difference is not cosmetic.** Backoffice
  * are Foundation people holding this module's roles; requesters are accounts a
  * public form created. They are kept in separate tables precisely so a vendor
  * can never be granted `config.write` — a requester row has no role at all —
@@ -85,7 +86,7 @@ function ScopeField({
   chosen: string[];
   onChange: (next: string[]) => void;
   /**
-   * The role these bays or seasons belong to.
+   * The role these bays or editions belong to.
    *
    * ⚠️ Not decoration. The dialog draws one of these per axis UNDER EVERY ROLE
    * a person holds, so "Bays" alone names four different controls on one
@@ -103,7 +104,7 @@ function ScopeField({
         onChange={onChange}
         options={options}
         // ⚠️ The placeholder IS the explanation. Empty means EVERY bay and
-        // EVERY season — the opposite of how a picker usually reads — so the
+        // EVERY edition — the opposite of how a picker usually reads — so the
         // control says so while empty rather than sitting blank under a
         // sentence somebody has to find.
         placeholder={all}
@@ -136,8 +137,9 @@ function useRoles() {
  */
 function scopeSummary(g: DirectoryGrant): string {
   const bays = g.zoneScope.length === 0 ? 'every bay' : g.zoneScope.join(', ');
-  const seasons = g.editionScope.length === 0 ? 'every season' : `${g.editionScope.length} seasons`;
-  return `Reaches ${bays}, ${seasons}`;
+  const editions =
+    g.editionScope.length === 0 ? 'every edition' : `${g.editionScope.length} editions`;
+  return `Reaches ${bays}, ${editions}`;
 }
 
 /** The role's name as an admin reads it, falling back to the key.
@@ -151,6 +153,10 @@ function roleName(roles: RoleSummary[], roleKey: string): string {
 export function Users() {
   const { can } = useMe();
   const writable = can('users.write');
+  /** ⚠️ Its own privilege, deliberately separate from `users.write`: every other
+   *  row action sends a vendor their own way in, this one hands one over. A
+   *  support desk can hold all of those and none of this. */
+  const canSetPassword = can('passwords.write');
   const toast = useToast();
   const mobile = useIsMobile();
   const { roles } = useRoles();
@@ -166,6 +172,7 @@ export function Users() {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<DirectoryUser | null>(null);
   const [ask, setAsk] = useState<Ask | null>(null);
+  const [settingPassword, setSettingPassword] = useState<DirectoryUser | null>(null);
 
   const query = {
     view,
@@ -320,7 +327,14 @@ export function Users() {
                     value: cell(c.key, u, roles),
                   }))}
                 actions={
-                  <Actions user={u} writable={writable} onAsk={setAsk} onEdit={setEditing} />
+                  <Actions
+                    user={u}
+                    writable={writable}
+                    canSetPassword={canSetPassword}
+                    onAsk={setAsk}
+                    onEdit={setEditing}
+                    onSetPassword={setSettingPassword}
+                  />
                 }
               />
             ))}
@@ -354,7 +368,14 @@ export function Users() {
                   ))}
                   <TD align='right'>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                      <Actions user={u} writable={writable} onAsk={setAsk} onEdit={setEditing} />
+                      <Actions
+                        user={u}
+                        writable={writable}
+                        canSetPassword={canSetPassword}
+                        onAsk={setAsk}
+                        onEdit={setEditing}
+                        onSetPassword={setSettingPassword}
+                      />
                     </div>
                   </TD>
                 </TR>
@@ -398,7 +419,7 @@ export function Users() {
         />
       )}
 
-      {editing?.kind === 'STAFF' && (
+      {editing?.kind === 'BACKOFFICE' && (
         <AssignDialog
           user={editing}
           onClose={() => setEditing(null)}
@@ -407,6 +428,17 @@ export function Users() {
             dir.reload();
           }}
           onChanged={dir.reload}
+        />
+      )}
+
+      {settingPassword && (
+        <SetPassword
+          user={settingPassword}
+          onClose={() => setSettingPassword(null)}
+          onSaved={() => {
+            setSettingPassword(null);
+            dir.reload();
+          }}
         />
       )}
 
@@ -448,37 +480,48 @@ interface Ask {
  *
  * ⚠️ `IconBtn` rather than an overflow menu, and deliberately: it already
  * carries the 44px touch target and the `stopPropagation` a row action needs,
- * and at most three of these are ever shown at once — Unlock appears only on a
- * locked row, Resend only on an unconfirmed one. A menu would be a click in
- * front of every one of them to hide a crowd that does not form.
+ * and at most four of these are ever shown at once — Unlock appears only on a
+ * locked row, Resend only on an unconfirmed one, and the key only for a caller
+ * holding `passwords.write`. A menu would be a click in front of every one of
+ * them to hide a crowd that does not form.
  *
  * ⚠️ Both mail actions ask first. They put a letter in a vendor's inbox, and a
  * mis-click on a dense row should not be able to do that.
  *
  * ⚠️ **Edit means a different thing per population, and that is not a
  * shortcut.** A requester's name, address and number are this module's own
- * (`StallAccount`), so they are edited here. A staff member's are the
+ * (`StallAccount`), so they are edited here. A backoffice member's are the
  * Foundation's, which a module reads and never writes — so their Edit opens
  * the roles this module DID grant, and nothing else.
  */
 function Actions({
   user,
   writable,
+  canSetPassword,
   onAsk,
   onEdit,
+  onSetPassword,
 }: {
   user: DirectoryUser;
   writable: boolean;
+  /** `passwords.write`, which is not `users.write` — see the Users screen. */
+  canSetPassword: boolean;
   onAsk: (ask: Ask) => void;
   onEdit: (user: DirectoryUser) => void;
+  onSetPassword: (user: DirectoryUser) => void;
 }) {
-  if (!writable) return null;
+  // ⚠️ Two privileges, not one. Somebody may hold `passwords.write` alone, and
+  // returning early on `writable` would leave their rows with no controls at
+  // all — every one of which they are allowed to press.
+  if (!writable && !canSetPassword) return null;
 
-  const edit = (
+  const edit = writable ? (
     <IconBtn label={`Edit ${user.displayName}`} glyph='pencil' onClick={() => onEdit(user)} />
-  );
+  ) : null;
 
-  if (user.kind === 'STAFF') return edit;
+  // A backoffice member holds no password here — they sign in through the
+  // Foundation — so the key never appears on their row.
+  if (user.kind === 'BACKOFFICE') return edit;
 
   // An account registered on a number carries an address nothing delivers to.
   // Naming it on the confirm dialog would promise a letter that never arrives.
@@ -487,7 +530,14 @@ function Actions({
   return (
     <>
       {edit}
-      {user.signInState === 'LOCKED' && (
+      {canSetPassword && (
+        <IconBtn
+          label={`Set a password for ${user.displayName}`}
+          glyph='key'
+          onClick={() => onSetPassword(user)}
+        />
+      )}
+      {writable && user.signInState === 'LOCKED' && (
         <IconBtn
           label={`Unlock ${user.displayName}`}
           glyph='lock-open'
@@ -502,7 +552,7 @@ function Actions({
           }
         />
       )}
-      {user.signInState === 'UNCONFIRMED' && (
+      {writable && user.signInState === 'UNCONFIRMED' && (
         <IconBtn
           label={`Resend confirmation to ${user.displayName}`}
           glyph='refresh'
@@ -518,20 +568,22 @@ function Actions({
           }
         />
       )}
-      <IconBtn
-        label={`Send ${user.displayName} their access link`}
-        glyph='mail'
-        onClick={() =>
-          onAsk({
-            title: 'Send the access link?',
-            note: `Goes to ${where}`,
-            body: `This mails ${user.displayName} a fresh link to their own stall requests. It needs no password, which makes it the way back in for a requester who never registered one. The link goes to the address on their account and is never shown here.`,
-            confirm: 'Send link',
-            done: 'Link sent',
-            run: () => api.sendAccessLinkTo(user.id),
-          })
-        }
-      />
+      {writable && (
+        <IconBtn
+          label={`Send ${user.displayName} their access link`}
+          glyph='mail'
+          onClick={() =>
+            onAsk({
+              title: 'Send the access link?',
+              note: `Goes to ${where}`,
+              body: `This mails ${user.displayName} a fresh link to their own stall requests. It needs no password, which makes it the way back in for a requester who never registered one. The link goes to the address on their account and is never shown here.`,
+              confirm: 'Send link',
+              done: 'Link sent',
+              run: () => api.sendAccessLinkTo(user.id),
+            })
+          }
+        />
+      )}
     </>
   );
 }
@@ -557,7 +609,7 @@ const COLUMNS: Array<{ key: ColKey; label: string; align?: 'left' | 'right'; mut
   { key: 'signIn', label: 'Sign-in' },
 ];
 
-/** Phone is off by default: it is blank for every staff row, and a column that
+/** Phone is off by default: it is blank for every backoffice row, and a column that
  *  is empty for half the directory costs more width than it returns. */
 const DEFAULT_COLUMNS: ColKey[] = ['email', 'type', 'roles', 'requests', 'signIn'];
 
@@ -567,8 +619,8 @@ function cell(key: ColKey, u: DirectoryUser, roles: RoleSummary[]): React.ReactN
       return u.email;
     case 'type':
       return (
-        <Tag tone={u.kind === 'STAFF' ? 'violet' : 'teal'} size='sm'>
-          {u.kind === 'STAFF' ? 'Staff' : 'Requester'}
+        <Tag tone={u.kind === 'BACKOFFICE' ? 'violet' : 'teal'} size='sm'>
+          {u.kind === 'BACKOFFICE' ? 'Backoffice' : 'Requester'}
         </Tag>
       );
     case 'roles':
@@ -595,7 +647,9 @@ function cell(key: ColKey, u: DirectoryUser, roles: RoleSummary[]): React.ReactN
     case 'signIn':
       return (
         <Tag tone={STATE_TONE[u.signInState]} size='sm'>
-          {u.kind === 'STAFF' && u.signInState === 'OK' ? 'Active' : STATE_LABEL[u.signInState]}
+          {u.kind === 'BACKOFFICE' && u.signInState === 'OK'
+            ? 'Active'
+            : STATE_LABEL[u.signInState]}
         </Tag>
       );
   }
@@ -713,6 +767,101 @@ function EditRequester({
   );
 }
 
+// ── Setting a password ──────────────────────────────────────────────────────
+
+/**
+ * A password chosen at a desk for a requester who cannot get in.
+ *
+ * 🔴 **TEMPORARY, and the only screen in the module that hands over a way in.**
+ * Everything else here causes a vendor to receive their own link; this one puts
+ * a working password in front of whoever is on the phone to them. It is why
+ * `passwords.write` exists as a separate privilege, and it is the first thing
+ * deleted when the host's Isha SSO signs requesters in — at which point no
+ * password in this module is anyone's to set.
+ *
+ * ⚠️ **The field is not masked, and that is the design.** The desk is reading
+ * this aloud down a phone line to somebody writing it on the back of a
+ * receipt. Dots would hide it from the one person who has to say it correctly,
+ * and hide nothing from anyone else — the vendor is being told it either way.
+ * A second "confirm" box, which exists to catch what masking hides, buys
+ * nothing once the first box is legible.
+ */
+function SetPassword({
+  user,
+  onClose,
+  onSaved,
+}: {
+  user: DirectoryUser;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const toast = useToast();
+  const [password, setPassword] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const tooShort = password.length > 0 && password.length < MIN_PASSWORD_LENGTH;
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await api.setRequesterPassword(user.id, password);
+      toast.ok('Password set');
+      onSaved();
+    } catch (e) {
+      // In the dialog, not only as a toast: the two failures — no contact to
+      // register a login against, and a contact another account already signs
+      // in with — are both answered on this screen, and the message says which.
+      setError(e instanceof Error ? e.message : String(e));
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog
+      title='Set a password'
+      note={`${user.displayName} signs in with ${isPlaceholderEmail(user.email) && user.phone ? user.phone : user.email}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Btn onClick={onClose}>Cancel</Btn>
+          <Btn
+            kind='primary'
+            onClick={save}
+            disabled={password.length < MIN_PASSWORD_LENGTH || saving}
+          >
+            Set password
+          </Btn>
+        </>
+      }
+    >
+      {error && <ErrorBox>{error}</ErrorBox>}
+      <Field label='New password'>
+        {/* `type='text'`: see the note on this component. */}
+        <Input
+          aria-label='New password'
+          type='text'
+          autoComplete='off'
+          spellCheck={false}
+          value={password}
+          invalid={tooShort}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <div style={{ fontSize: 11.5, color: 'var(--mfg)', marginTop: 5, lineHeight: 1.5 }}>
+          {tooShort
+            ? `At least ${MIN_PASSWORD_LENGTH} characters.`
+            : `At least ${MIN_PASSWORD_LENGTH} characters. Read it to them and tell them to change it. It works straight away, it is never emailed, and this is the only time anyone here can see it.`}
+        </div>
+      </Field>
+      <div style={{ fontSize: 11.5, color: 'var(--mfg)', lineHeight: 1.6 }}>
+        Any session they already have open is signed out. If they never registered, this creates
+        their login.
+      </div>
+    </Dialog>
+  );
+}
+
 // ── Assigning roles ─────────────────────────────────────────────────────────
 
 /** One role a person holds, as the dialog is editing it. */
@@ -729,14 +878,14 @@ const sameScope = (a: Draft, b: DirectoryGrant): boolean =>
 /**
  * Granting and revoking, in one dialog.
  *
- * 🔴 **One, because two disagreed.** Adding a staff member offered seasons and
+ * 🔴 **One, because two disagreed.** Adding a backoffice member offered editions and
  * bays; editing an existing person's roles called `grantRole` with no scope at
- * all. Empty means EVERY season and EVERY bay, so the more-used of the two
+ * all. Empty means EVERY edition and EVERY bay, so the more-used of the two
  * silently handed out the widest grant the module can express, with nothing on
  * screen saying so. A single dialog cannot drift from itself.
  *
- * ⚠️ **Roles only.** A staff member's name and address are the Foundation's,
- * and a module reads that directory without ever writing it — see `staff.ts`.
+ * ⚠️ **Roles only.** A backoffice member's name and address are the Foundation's,
+ * and a module reads that directory without ever writing it — see `backoffice.ts`.
  * Fields for them here would offer an edit this application cannot make, which
  * is also why there is no "add them to the directory" link: this module grants
  * the role; it never creates the person.
@@ -771,7 +920,7 @@ function AssignDialog({
   const { roles, assignable } = useRoles();
 
   /**
-   * The bays and seasons a grant can be narrowed to.
+   * The bays and editions a grant can be narrowed to.
    *
    * Loaded best-effort. `/zones` needs one of the request or planning reads and
    * `/editions` needs `config.read`; somebody holding `users.write` and neither
@@ -862,7 +1011,7 @@ function AssignDialog({
   const setScope = (patch: Partial<Draft>) =>
     setChosen((prev) => (prev ? { ...prev, ...patch } : prev));
 
-  /** A newly chosen role starts unscoped — every season and every bay, which is
+  /** A newly chosen role starts unscoped — every edition and every bay, which is
    *  what it would have been granted as before scope existed, and what the two
    *  placeholders beneath it say. Re-picking the role they already hold brings
    *  its existing scope back rather than clearing it. */
@@ -943,9 +1092,9 @@ function AssignDialog({
         onChange={(zoneScope) => setScope({ zoneScope })}
       />
       <ScopeField
-        label='Seasons'
+        label='Editions'
         forName={roleLabel}
-        all='Every season, including ones created later'
+        all='Every edition, including ones created later'
         options={editionOptions}
         chosen={draft.editionScope}
         onChange={(editionScope) => setScope({ editionScope })}
@@ -1072,8 +1221,8 @@ function AssignDialog({
                 onChange={(zoneScope) => setNewScope((prev) => ({ ...prev, zoneScope }))}
               />
               <ScopeField
-                label='Seasons'
-                all='Every season, including ones created later'
+                label='Editions'
+                all='Every edition, including ones created later'
                 options={editionOptions}
                 chosen={newScope.editionScope}
                 onChange={(editionScope) => setNewScope((prev) => ({ ...prev, editionScope }))}

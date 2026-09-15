@@ -10,7 +10,7 @@ import type { StallsDeps } from './deps';
 import { useStallsErrorHandler } from './http-errors';
 import { registerStallsPublicRoutes } from './public-routes';
 import { MODULE_KEY, MODULE_NAME } from './roles';
-import { registerStallsStaffRoutes } from './routes';
+import { registerStallsBackofficeRoutes } from './routes';
 
 /** What this module declares to the Foundation's registry: key + name, nothing
  *  more (host ADR 0016). */
@@ -21,7 +21,7 @@ export function registerStallsModule(app: FastifyInstance, deps: StallsDeps): vo
     async (mod) => {
       useStallsErrorHandler(mod);
       mod.register(async (pub) => registerStallsPublicRoutes(pub, deps), { prefix: '/public' });
-      registerStallsStaffRoutes(mod, deps);
+      registerStallsBackofficeRoutes(mod, deps);
     },
     { prefix: `/api/m/${MODULE_KEY}` },
   );

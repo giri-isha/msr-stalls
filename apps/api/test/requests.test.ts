@@ -11,15 +11,15 @@ import {
   prisma,
   resetDatabase,
   seedEdition,
-  seedStaff,
+  seedBackoffice,
   SYSTEM,
-  type Staff,
+  type Backoffice,
   vendorBody,
 } from './helpers/db';
 
 let app: FastifyInstance;
-let lead: Staff;
-let volunteer: Staff;
+let lead: Backoffice;
+let volunteer: Backoffice;
 
 beforeAll(async () => {
   app = await buildApp({ logger: false, mail: new LogMailer() });
@@ -28,8 +28,8 @@ afterAll(() => app.close());
 beforeEach(async () => {
   await resetDatabase();
   await seedEdition();
-  lead = await seedStaff(['stalls_lead']);
-  volunteer = await seedStaff(['stalls_volunteer']);
+  lead = await seedBackoffice(['stalls_lead']);
+  volunteer = await seedBackoffice(['stalls_volunteer']);
 });
 
 const submit = async (body: Record<string, unknown>) =>
@@ -43,8 +43,8 @@ const submit = async (body: Record<string, unknown>) =>
     await accountFor(body),
   );
 
-const list = (staff: Staff, qs = '') =>
-  app.inject({ method: 'GET', url: `/api/m/stalls/requests${qs}`, headers: staff.headers });
+const list = (backoffice: Backoffice, qs = '') =>
+  app.inject({ method: 'GET', url: `/api/m/stalls/requests${qs}`, headers: backoffice.headers });
 
 describe('authentication and authorisation', () => {
   test('no session is a 401', async () => {
@@ -53,7 +53,7 @@ describe('authentication and authorisation', () => {
   });
 
   test('a signed-in person with no stalls role is a 403, not a 401', async () => {
-    const nobody = await seedStaff([]);
+    const nobody = await seedBackoffice([]);
     const res = await list(nobody);
     expect(res.statusCode).toBe(403);
   });

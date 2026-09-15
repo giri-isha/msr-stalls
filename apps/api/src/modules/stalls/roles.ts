@@ -30,7 +30,7 @@ import { EditionForbiddenError } from './errors';
 export { MODULE_KEY };
 export const MODULE_NAME = 'Stalls';
 
-export interface StaffCaller {
+export interface BackofficeCaller {
   personId: string;
   displayName: string;
   roleKeys: string[];
@@ -39,13 +39,13 @@ export interface StaffCaller {
   /** The requester types these roles reach, or `null` for all of them. From the
    *  ROLE — it is what the role is for. */
   requestTypeScope: string[] | null;
-  /** The seasons these GRANTS reach, or `null` for every one. */
+  /** The editions these GRANTS reach, or `null` for every one. */
   editionScope: string[] | null;
   /** The bays these GRANTS reach, by zone code, or `null` for every bay. */
   zoneScope: string[] | null;
 }
 
-/** Thrown by `requireStaff` when there is no session at all. Mapped to 401 —
+/** Thrown by `requireBackoffice` when there is no session at all. Mapped to 401 —
  *  distinct from `NotAuthorizedError` (403), because "sign in" and "you may
  *  not" are different instructions to the caller. */
 export class NotSignedInError extends Error {
@@ -71,11 +71,14 @@ function scopeOfRow(column: string[]): string[] | null {
  *  foreign key. A role holding a RETIRED privilege still resolves, minus that
  *  privilege, because the join filters on `isActive` — retiring one must narrow
  *  access quietly rather than 500 every request made by anyone holding it. */
-export async function requireStaff(req: FastifyRequest, db: PrismaClient): Promise<StaffCaller> {
+export async function requireBackoffice(
+  req: FastifyRequest,
+  db: PrismaClient,
+): Promise<BackofficeCaller> {
   const person = await getCurrentPerson(req, db);
   if (!person) throw new NotSignedInError();
 
-  const grants = await db.stallStaffRole.findMany({
+  const grants = await db.stallBackofficeRole.findMany({
     where: { personRef: person.personId },
     select: {
       roleKey: true,
@@ -122,19 +125,19 @@ export async function requireStaff(req: FastifyRequest, db: PrismaClient): Promi
   };
 }
 
-/** Refuses a caller whose grants do not cover this season.
+/** Refuses a caller whose grants do not cover this edition.
  *
- *  ⚠️ The edition is not a `where` clause like the other two axes. Every staff
+ *  ⚠️ The edition is not a `where` clause like the other two axes. Every backoffice
  *  query in the module already runs against the ACTIVE edition, so a grant that
  *  does not cover it does not narrow what the caller sees — it means they have
  *  no business here at all this year. A refusal says that; an empty list would
  *  show a volunteer whose access lapsed an event with nothing in it and leave
  *  them to guess why. */
-export function requireEditionReach(caller: StaffCaller, editionId: string): void {
+export function requireEditionReach(caller: BackofficeCaller, editionId: string): void {
   if (!canReach(caller.editionScope, editionId)) throw new EditionForbiddenError(editionId);
 }
 
-export function requirePrivilege(caller: StaffCaller, privilege: StallPrivilege): void {
+export function requirePrivilege(caller: BackofficeCaller, privilege: StallPrivilege): void {
   if (!can(caller.privileges, privilege)) {
     throw new NotAuthorizedError(`${privilege} requires a stalls role that grants it`);
   }
@@ -145,7 +148,7 @@ export function requirePrivilege(caller: StaffCaller, privilege: StallPrivilege)
  *  `config.read` for. Not a general escape hatch: a write always names one
  *  privilege, because "any of these may change it" is how a guard stops meaning
  *  anything. */
-export function requireAnyPrivilege(caller: StaffCaller, privileges: StallPrivilege[]): void {
+export function requireAnyPrivilege(caller: BackofficeCaller, privileges: StallPrivilege[]): void {
   if (!privileges.some((p) => can(caller.privileges, p))) {
     throw new NotAuthorizedError(
       `${privileges.join(' or ')} requires a stalls role that grants it`,
@@ -171,7 +174,7 @@ export async function roleTree(db: PrismaClient): Promise<RoleNode[]> {
 /** Which roles this caller may hand out. */
 export async function assignableRolesFor(
   db: PrismaClient,
-  caller: StaffCaller,
+  caller: BackofficeCaller,
 ): Promise<Set<string>> {
   return assignableRoleKeys(await roleTree(db), caller.roleKeys);
 }
@@ -180,7 +183,7 @@ export async function assignableRolesFor(
  *  their own, so the top of a branch can still fix its own account. */
 export async function editableRolesFor(
   db: PrismaClient,
-  caller: StaffCaller,
+  caller: BackofficeCaller,
 ): Promise<Set<string>> {
   return editableRoleKeys(await roleTree(db), caller.roleKeys);
 }

@@ -175,7 +175,7 @@ export async function submitRequest(
   });
 
   // After commit. A mail failure must not roll back a request that is already
-  // real — the vendor can be re-sent the link by staff. Swallowed deliberately.
+  // real — the vendor can be re-sent the link by backoffice. Swallowed deliberately.
   //
   // ⚠️ To the ACCOUNT's contact, never to `input.email`. This letter carries a
   // status link, and a status link is a credential for the whole account — so

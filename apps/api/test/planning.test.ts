@@ -12,16 +12,16 @@ import {
   prisma,
   resetDatabase,
   seedEdition,
-  seedStaff,
+  seedBackoffice,
   SYSTEM,
-  type Staff,
+  type Backoffice,
   vendorBody,
 } from './helpers/db';
 import { counts, makeStalls } from './helpers/plan';
 
 let app: FastifyInstance;
 let edition: StallEdition;
-let lead: Staff;
+let lead: Backoffice;
 
 beforeAll(async () => {
   app = await buildApp({ logger: false, mail: new LogMailer() });
@@ -30,7 +30,7 @@ afterAll(() => app.close());
 beforeEach(async () => {
   await resetDatabase();
   edition = await seedEdition();
-  lead = await seedStaff(['stalls_lead']);
+  lead = await seedBackoffice(['stalls_lead']);
 });
 
 describe('readPlan', () => {
@@ -152,7 +152,7 @@ describe('planning routes', () => {
   });
 
   test('a volunteer may not write the plan', async () => {
-    const volunteer = await seedStaff(['stalls_volunteer']);
+    const volunteer = await seedBackoffice(['stalls_volunteer']);
     const res = await app.inject({
       method: 'PUT',
       url: '/api/m/stalls/planning',

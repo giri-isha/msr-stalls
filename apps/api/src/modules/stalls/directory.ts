@@ -12,8 +12,8 @@ import type { Db } from './editions';
 /**
  * Everyone who can reach this module, in one list.
  *
- * Two populations that the database deliberately keeps apart — staff are
- * Foundation `Person`s holding a `StallStaffRole`, requesters are
+ * Two populations that the database deliberately keeps apart — backoffice members are
+ * Foundation `Person`s holding a `StallBackofficeRole`, requesters are
  * `StallAccount`s a public form created — joined here and ONLY here, as a
  * read, for the Users screen.
  *
@@ -26,7 +26,7 @@ import type { Db } from './editions';
  *
  * ⚠️ **What that costs.** Both tables are read WHOLE on every call, so this
  * holds while the directory is thousands of rows, not hundreds of thousands.
- * One MSR edition is a few hundred accounts and a few dozen staff. If an
+ * One MSR edition is a few hundred accounts and a few dozen backoffice members. If an
  * edition ever arrives where that is wrong, the fix is a real paged query per
  * population with the counts computed separately — not a bigger `take`.
  */
@@ -34,7 +34,7 @@ export async function listUsers(
   db: Db,
   input: ListUsersQuery & { editionId: string },
 ): Promise<ListUsersResponse> {
-  const everyone = [...(await staffRows(db)), ...(await requesterRows(db, input.editionId))];
+  const everyone = [...(await backofficeRows(db)), ...(await requesterRows(db, input.editionId))];
 
   // Search and the Filter popover narrow the counts; the VIEW does not — see
   // `ListUsersResponse.counts`. So the tiles are computed from this list and
@@ -67,11 +67,11 @@ export async function listUsers(
   };
 }
 
-/** Staff, by the same route `listStaff` takes: the grants are this module's,
+/** Backoffice, by the same route `listBackoffice` takes: the grants are this module's,
  *  the name and email are the Foundation's, and a grant whose person has gone
  *  from the directory is dropped rather than shown as a blank row. */
-async function staffRows(db: Db): Promise<DirectoryUser[]> {
-  const grants = await db.stallStaffRole.findMany({ orderBy: { createdAt: 'asc' } });
+async function backofficeRows(db: Db): Promise<DirectoryUser[]> {
+  const grants = await db.stallBackofficeRole.findMany({ orderBy: { createdAt: 'asc' } });
   const refs = [...new Set(grants.map((g) => g.personRef))];
   const people = await db.person.findMany({ where: { personId: { in: refs } } });
   const byId = new Map(people.map((p) => [p.personId, p]));
@@ -81,7 +81,7 @@ async function staffRows(db: Db): Promise<DirectoryUser[]> {
     return [
       {
         id: p.personId,
-        kind: 'STAFF' as const,
+        kind: 'BACKOFFICE' as const,
         displayName: p.displayName,
         email: p.email,
         phone: null,
@@ -101,7 +101,7 @@ async function staffRows(db: Db): Promise<DirectoryUser[]> {
 }
 
 /** Requesters, with their credentials and their count of requests in the
- *  edition every other staff screen is showing. */
+ *  edition every other backoffice screen is showing. */
 async function requesterRows(db: Db, editionId: string): Promise<DirectoryUser[]> {
   const accounts = await db.stallAccount.findMany({
     include: {
@@ -160,8 +160,8 @@ function inView(u: DirectoryUser, view: DirectoryView): boolean {
   switch (view) {
     case 'All':
       return true;
-    case 'Staff':
-      return u.kind === 'STAFF';
+    case 'Backoffice':
+      return u.kind === 'BACKOFFICE';
     case 'Requesters':
       return u.kind === 'REQUESTER';
     case 'Cannot sign in':
@@ -171,8 +171,8 @@ function inView(u: DirectoryUser, view: DirectoryView): boolean {
   }
 }
 
-/** Name, email or number. A staff row has no number, so a numeric search
- *  simply finds no staff rather than being rejected. */
+/** Name, email or number. A backoffice row has no number, so a numeric search
+ *  simply finds no backoffice member rather than being rejected. */
 function matchesSearch(u: DirectoryUser, q: string | undefined): boolean {
   if (!q) return true;
   const needle = q.toLowerCase();

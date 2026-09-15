@@ -1,4 +1,4 @@
-/** A request's human-facing handle. Staff read these aloud on the phone and
+/** A request's human-facing handle. Backoffice read these aloud on the phone and
  *  write them on paper challans, so the prefix has to say what kind of request
  *  it is without a lookup. */
 export type StallRequestType = 'ASHRAM' | 'ASHRAM_FOOD' | 'LOCAL_WELFARE' | 'VENDOR';

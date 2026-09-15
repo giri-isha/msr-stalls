@@ -2,7 +2,14 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { buildApp } from '../src/app';
 import { seedRbac } from '../src/modules/stalls/seed-rbac';
-import { type Staff, LogMailer, prisma, resetDatabase, seedEdition, seedStaff } from './helpers/db';
+import {
+  type Backoffice,
+  LogMailer,
+  prisma,
+  resetDatabase,
+  seedEdition,
+  seedBackoffice,
+} from './helpers/db';
 
 /**
  * Authoring roles.
@@ -13,8 +20,8 @@ import { type Staff, LogMailer, prisma, resetDatabase, seedEdition, seedStaff } 
  * already carries. Every other rule in this file is housekeeping beside that.
  */
 let app: FastifyInstance;
-let admin: Staff;
-let author: Staff;
+let admin: Backoffice;
+let author: Backoffice;
 
 beforeAll(async () => {
   app = await buildApp({ logger: false, mail: new LogMailer(), webOrigin: 'http://web.example' });
@@ -24,8 +31,8 @@ afterAll(() => app.close());
 beforeEach(async () => {
   await resetDatabase();
   await seedEdition();
-  admin = await seedStaff(['stalls_admin'], 'admin@example.org');
-  author = await seedStaff(['stalls_lead'], 'author@example.org');
+  admin = await seedBackoffice(['stalls_admin'], 'admin@example.org');
+  author = await seedBackoffice(['stalls_lead'], 'author@example.org');
 });
 
 /** Give a role a privilege, the way the editor will. */
@@ -46,7 +53,7 @@ async function givePrivilege(roleKey: string, code: string) {
  *
  * ⚠️ NOT optional, and not a tidy-up. `resetDatabase` deliberately leaves the
  * RBAC tables alone — they are reference data the migration installed, and
- * truncating them would break the foreign key every `seedStaff` call depends
+ * truncating them would break the foreign key every `seedBackoffice` call depends
  * on — so anything this file does to a shipped role survives into every test
  * file that runs afterwards. The tests below retune `stalls_volunteer`, and
  * without this the volunteer loses `checkin.write` for the rest of the suite
@@ -57,7 +64,7 @@ async function givePrivilege(roleKey: string, code: string) {
  * cleanup does not.
  */
 afterEach(async () => {
-  await prisma.stallStaffRole.deleteMany({ where: { role: { isSystem: false } } });
+  await prisma.stallBackofficeRole.deleteMany({ where: { role: { isSystem: false } } });
   await prisma.stallRole.deleteMany({ where: { isSystem: false } });
   await seedRbac(prisma);
 });
@@ -74,7 +81,7 @@ const body = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const create = (by: Staff, over: Record<string, unknown> = {}) =>
+const create = (by: Backoffice, over: Record<string, unknown> = {}) =>
   app.inject({
     method: 'POST',
     url: '/api/m/stalls/roles',
@@ -90,10 +97,10 @@ describe('authoring a role', () => {
 
     // The point of the whole exercise: a person granted the new role resolves
     // its privileges on their very next request.
-    const marshal = await seedStaff([], 'marshal@example.org');
+    const marshal = await seedBackoffice([], 'marshal@example.org');
     await app.inject({
       method: 'POST',
-      url: '/api/m/stalls/staff',
+      url: '/api/m/stalls/backoffice',
       headers: admin.headers,
       payload: { personRef: marshal.personId, roleKey: 'bay_marshal' },
     });
@@ -168,7 +175,7 @@ describe('escalation', () => {
   // requester type through a role they built for themselves.
   test('a scoped author cannot give a role wider reach than their own', async () => {
     await givePrivilege('stalls_local_welfare', 'roles.write');
-    const welfare = await seedStaff(['stalls_local_welfare'], 'welfare@example.org');
+    const welfare = await seedBackoffice(['stalls_local_welfare'], 'welfare@example.org');
     const res = await app.inject({
       method: 'POST',
       url: '/api/m/stalls/roles',
@@ -195,7 +202,7 @@ describe('escalation', () => {
 });
 
 describe('editing a role', () => {
-  const save = (by: Staff, roleKey: string, over: Record<string, unknown> = {}) =>
+  const save = (by: Backoffice, roleKey: string, over: Record<string, unknown> = {}) =>
     app.inject({
       method: 'PUT',
       url: `/api/m/stalls/roles/${roleKey}`,
@@ -245,7 +252,7 @@ describe('editing a role', () => {
 });
 
 describe('deleting a role', () => {
-  const remove = (by: Staff, roleKey: string) =>
+  const remove = (by: Backoffice, roleKey: string) =>
     app.inject({
       method: 'DELETE',
       url: `/api/m/stalls/roles/${roleKey}`,
@@ -261,10 +268,10 @@ describe('deleting a role', () => {
   // version, raised before the database has to.
   test('a role people still hold is refused, and says how many', async () => {
     await create(admin);
-    const marshal = await seedStaff([], 'marshal@example.org');
+    const marshal = await seedBackoffice([], 'marshal@example.org');
     await app.inject({
       method: 'POST',
-      url: '/api/m/stalls/staff',
+      url: '/api/m/stalls/backoffice',
       headers: admin.headers,
       payload: { personRef: marshal.personId, roleKey: 'bay_marshal' },
     });
@@ -337,7 +344,7 @@ describe('the privilege catalogue', () => {
   });
 
   test('somebody who cannot read the configuration cannot read the catalogue', async () => {
-    const volunteer = await seedStaff(['stalls_volunteer'], 'vol@example.org');
+    const volunteer = await seedBackoffice(['stalls_volunteer'], 'vol@example.org');
     const res = await app.inject({
       method: 'GET',
       url: '/api/m/stalls/privileges',
@@ -354,7 +361,7 @@ describe('the privilege catalogue', () => {
  * and a count per card fetched one at a time is a request per role.
  */
 describe('the role list carries its counts', () => {
-  const rolesFor = async (by: Staff) => {
+  const rolesFor = async (by: Backoffice) => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/m/stalls/roles',

@@ -1550,8 +1550,8 @@ Reached at `/stalls/status/:token`. Shows the vendor's requests with a status pi
 ## Task 21: Staff dashboard and request screens
 
 **Files:**
-- Create: `apps/web/src/modules/stalls/staff/{Dashboard,Requests,AllRequests,RequestDetail}.tsx`
-- Create: `apps/web/src/modules/stalls/staff/Requests.test.tsx`
+- Create: `apps/web/src/modules/stalls/backoffice/{Dashboard,Requests,AllRequests,RequestDetail}.tsx`
+- Create: `apps/web/src/modules/stalls/backoffice/Requests.test.tsx`
 
 Dashboard tiles from the prototype: total requests, by type, pending selection, pending bank details, FSSAI pending, stalls not checked in (the last three read zero in Phase 1 and are labelled as such rather than hidden). Requests screen carries the prototype's card/table toggle, the type/status/stage filters and the search box. Detail is a drawer with an Application Details tab showing every submitted field including appliances and custom fields.
 
@@ -1566,8 +1566,8 @@ Dashboard tiles from the prototype: total requests, by type, pending selection, 
 ## Task 22: Planning, selection and admin screens
 
 **Files:**
-- Create: `apps/web/src/modules/stalls/staff/{Planning,Selection,Admin}.tsx`
-- Create: `apps/web/src/modules/stalls/staff/Planning.test.tsx`, `Selection.test.tsx`
+- Create: `apps/web/src/modules/stalls/backoffice/{Planning,Selection,Admin}.tsx`
+- Create: `apps/web/src/modules/stalls/backoffice/Planning.test.tsx`, `Selection.test.tsx`
 
 Planning is the prototype's grid: a row per zone, a column per category, an editable crowd figure and a crowd-per-stall divisor, live totals, and an Apply button that warns before removing stalls. Selection is shortlist → select with a zone and stall-number picker that shows only free stalls. Admin carries the settings tabs: zones, rates, charges, fines, custom fields, flow toggles, users.
 

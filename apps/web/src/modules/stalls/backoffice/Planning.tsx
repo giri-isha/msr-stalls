@@ -10,6 +10,7 @@ import {
   ErrorBox,
   H1,
   Icon,
+  IconBtn,
   Input,
   Loading,
   TBody,
@@ -54,6 +55,125 @@ const cellInput: React.CSSProperties = {
   fontSize: 12.5,
 };
 
+/** The same tabular figures, now that the grid reads rather than takes them. */
+const cellFigure: React.CSSProperties = { fontVariantNumeric: 'tabular-nums' };
+
+/**
+ * One bay's row of the plan, in a box.
+ *
+ * ⚠️ Local state applied on Save. The grid is a DRAFT that its own Save writes
+ * whole — the totals, the suggestion and the shrink warning all read off it —
+ * so the dialog hands back a patch and the page's Save is still the only thing
+ * that crosses the wire. The footer says as much.
+ */
+function ZonePlanDialog({
+  row,
+  columns,
+  divisor,
+  existing,
+  onApply,
+  onClose,
+}: {
+  row: Draft['rows'][number];
+  columns: Column[];
+  divisor: number;
+  existing: number;
+  onApply: (patch: Partial<Draft['rows'][number]>) => void;
+  onClose: () => void;
+}) {
+  const [crowd, setCrowd] = useState(row.expectedCrowd);
+  const [counts, setCounts] = useState(row.counts);
+
+  const total = columns.reduce((t, c) => t + n(counts[c.key]), 0);
+  const suggested = suggestStallCount(n(crowd), divisor);
+
+  return (
+    <Dialog
+      title={`${row.zoneCode} — planned stalls`}
+      note='Nothing is written until Save, and no stall exists until Apply plan.'
+      onClose={onClose}
+      width={520}
+      footer={
+        <>
+          <Btn onClick={onClose}>Cancel</Btn>
+          <Btn kind='primary' onClick={() => onApply({ expectedCrowd: crowd, counts })}>
+            Done
+          </Btn>
+        </>
+      }
+    >
+      <div style={{ display: 'grid', gap: 12 }}>
+        <label
+          htmlFor='zp-crowd'
+          style={{ display: 'grid', gap: 5, fontSize: 12.5, fontWeight: 600 }}
+        >
+          Expected crowd
+          <Input
+            id='zp-crowd'
+            type='number'
+            min={0}
+            value={crowd}
+            onChange={(e) => setCrowd(e.target.value)}
+          />
+        </label>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))',
+            gap: 10,
+          }}
+        >
+          {columns.map((c) => (
+            <label
+              key={c.key}
+              htmlFor={`zp-${c.key}`}
+              style={{ display: 'grid', gap: 5, fontSize: 12.5, fontWeight: 600 }}
+            >
+              {c.name}
+              <Input
+                id={`zp-${c.key}`}
+                type='number'
+                min={0}
+                value={counts[c.key] ?? '0'}
+                onChange={(e) => setCounts({ ...counts, [c.key]: e.target.value })}
+              />
+            </label>
+          ))}
+        </div>
+
+        {/* The two figures the row is judged against, kept in view while the
+            counts are being typed — otherwise the suggestion is behind the
+            dialog at exactly the moment it is wanted. */}
+        <Card pad={12} style={{ display: 'grid', gap: 6, fontSize: 12.5 }}>
+          <Line label='Suggested from the crowd' value={String(suggested)} />
+          <Line
+            label='Planned here'
+            value={String(total)}
+            tone={total < suggested ? 'var(--warn-fg)' : undefined}
+          />
+          <Line
+            label='Stalls standing today'
+            value={String(existing)}
+            tone={total < existing ? 'var(--warn-fg)' : undefined}
+          />
+        </Card>
+      </div>
+    </Dialog>
+  );
+}
+
+function Line({ label, value, tone }: { label: string; value: string; tone?: string }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+      <span style={{ color: 'var(--mfg)' }}>{label}</span>
+      <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: tone }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
 /** The prototype's planning grid: a row per zone, a column per category, an
  *  expected crowd and a people-per-stall divisor that drive a suggestion, and
  *  live totals. Save writes the plan; Apply turns it into stalls. */
@@ -64,6 +184,10 @@ export function Planning() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmApply, setConfirmApply] = useState(false);
+  // Which row's dialog is open, by index into the draft. Held here rather than
+  // in the row, because a dialog is a <div> and a <div> inside a <tr> is markup
+  // React will not have.
+  const [editing, setEditing] = useState<number | null>(null);
   const writable = can('planning.write');
 
   useEffect(() => {
@@ -85,16 +209,10 @@ export function Planning() {
     return d && rowTotal(d) < r.stallsExisting;
   });
 
+  // One patch for the whole row now — the counts come back from the dialog
+  // together rather than a cell at a time.
   const setRow = (i: number, patch: Partial<Draft['rows'][number]>) =>
     setDraft((d) => d && { ...d, rows: d.rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
-  const setCount = (i: number, c: string, v: string) =>
-    setDraft(
-      (d) =>
-        d && {
-          ...d,
-          rows: d.rows.map((r, j) => (j === i ? { ...r, counts: { ...r.counts, [c]: v } } : r)),
-        },
-    );
 
   const save = async () => {
     setSaving(true);
@@ -196,6 +314,7 @@ export function Planning() {
               <TH align='right'>Total</TH>
               <TH align='right'>Existing</TH>
               <TH align='right'>Allocated</TH>
+              <TH />
             </TR>
           </THead>
           <TBody>
@@ -211,16 +330,8 @@ export function Planning() {
                       {live.isClosedToVendors ? 'closed to vendors' : 'open'}
                     </div>
                   </TD>
-                  <TD align='right'>
-                    <Input
-                      aria-label={`${r.zoneCode} expected crowd`}
-                      type='number'
-                      min={0}
-                      style={{ width: 92, ...cellInput }}
-                      value={r.expectedCrowd}
-                      disabled={!writable}
-                      onChange={(e) => setRow(i, { expectedCrowd: e.target.value })}
-                    />
+                  <TD align='right' style={cellFigure}>
+                    {n(r.expectedCrowd).toLocaleString('en-IN')}
                   </TD>
                   {/* ⚠️ `--warn`, not `--des`. Planning fewer stalls than the
                       crowd suggests is a judgement somebody may have made on
@@ -233,16 +344,8 @@ export function Planning() {
                     {suggested}
                   </TD>
                   {columns.map((c) => (
-                    <TD key={c.key} align='right'>
-                      <Input
-                        aria-label={`${r.zoneCode} ${c.name}`}
-                        type='number'
-                        min={0}
-                        style={{ width: 64, ...cellInput }}
-                        value={r.counts[c.key] ?? '0'}
-                        disabled={!writable}
-                        onChange={(e) => setCount(i, c.key, e.target.value)}
-                      />
+                    <TD key={c.key} align='right' style={cellFigure}>
+                      {n(r.counts[c.key] ?? '0')}
                     </TD>
                   ))}
                   <TD align='right' style={{ fontWeight: 700 }}>
@@ -255,6 +358,14 @@ export function Planning() {
                     {live.stallsExisting}
                   </TD>
                   <TD align='right'>{live.stallsAllocated}</TD>
+                  <TD align='right'>
+                    <IconBtn
+                      label={`Edit ${r.zoneCode}`}
+                      glyph='pencil'
+                      disabled={!writable}
+                      onClick={() => setEditing(i)}
+                    />
+                  </TD>
                 </TR>
               );
             })}
@@ -276,10 +387,25 @@ export function Planning() {
               </TD>
               <TD align='right'>{data.rows.reduce((t, r) => t + r.stallsExisting, 0)}</TD>
               <TD align='right'>{data.rows.reduce((t, r) => t + r.stallsAllocated, 0)}</TD>
+              <TD />
             </TR>
           </TBody>
         </Table>
       </Card>
+
+      {editing !== null && draft.rows[editing] && (
+        <ZonePlanDialog
+          row={draft.rows[editing]}
+          columns={columns}
+          divisor={divisor}
+          existing={data.rows[editing].stallsExisting}
+          onClose={() => setEditing(null)}
+          onApply={(patch) => {
+            setRow(editing, patch);
+            setEditing(null);
+          }}
+        />
+      )}
 
       {confirmApply && (
         <Dialog

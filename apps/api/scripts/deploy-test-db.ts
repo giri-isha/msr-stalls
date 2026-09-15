@@ -19,8 +19,8 @@ execSync('npx prisma migrate deploy', { stdio: 'inherit' });
 //
 // `migrate deploy` will not replay a migration already recorded as applied, so
 // a test database that has had its `stall_role` rows removed stays empty and
-// every `seedStaff` call then violates the foreign key on
-// `stall_staff_role.role_key`. This makes the vocabulary a guarantee of running
+// every `seedBackoffice` call then violates the foreign key on
+// `stall_backoffice_role.role_key`. This makes the vocabulary a guarantee of running
 // this script rather than a side effect of which migrations happened to run.
 const { PrismaPg } = await import('@prisma/adapter-pg');
 const { PrismaClient } = await import('@prisma/client');

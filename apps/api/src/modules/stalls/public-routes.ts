@@ -89,7 +89,7 @@ const PublicConfigQuery = z.object({
 export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDeps): void {
   const zod = app.withTypeProvider<ZodTypeProvider>();
 
-  /** What the form needs to render. No staff data.
+  /** What the form needs to render. No backoffice data.
    *
    *  ⚠️ `scope` is not optional decoration. The same bay is priced differently
    *  for trade and for local welfare, and A3 and B2 are priced for one and
@@ -231,7 +231,7 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
   );
 
   /** That vendor's own requests, and nothing else. A wrong token is a 404 —
-   *  never a 403, which would confirm the token exists. Fields staff use
+   *  never a 403, which would confirm the token exists. Fields backoffice use
    *  internally (flag reason, reject reason, notes) are not here. */
   zod.get(
     '/status/:token',

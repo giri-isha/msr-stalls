@@ -41,7 +41,7 @@ const post = async (body: Record<string, unknown>) => {
 };
 
 describe('GET /public/config', () => {
-  test('answers the form what it needs, and nothing staff-only', async () => {
+  test('answers the form what it needs, and nothing backoffice-only', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/m/stalls/public/config' });
     expect(res.statusCode).toBe(200);
     const body = res.json();

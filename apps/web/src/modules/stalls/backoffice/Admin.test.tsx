@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ME_ADMIN, installFetch, renderAt } from '../test-utils';
@@ -6,7 +6,7 @@ import { Admin } from './Admin';
 
 beforeEach(() => vi.unstubAllGlobals());
 
-/** What the staff config endpoint answers. Every list here is the edition's own
+/** What the backoffice config endpoint answers. Every list here is the edition's own
  *  configuration — bays and planning columns are rows, not constants — so the
  *  screen has to draw itself from this payload and nothing else. */
 const CONFIG = {
@@ -108,7 +108,7 @@ describe('bays', () => {
     render();
     const user = userEvent.setup();
 
-    await screen.findByLabelText('C1 name');
+    await screen.findByLabelText('Edit C1');
     await user.type(screen.getByLabelText('Code'), 'D1');
     await user.type(screen.getByLabelText('Name'), 'D1 — new lawn');
     await user.type(screen.getByLabelText('Expected crowd'), '8000');
@@ -126,10 +126,38 @@ describe('bays', () => {
   test('a bay with stalls in it cannot be removed, and says why', async () => {
     base();
     render();
-    await screen.findByLabelText('C1 name');
+    await screen.findByLabelText('Edit C1');
 
     expect(screen.getByLabelText('Remove C1')).toBeEnabled();
     expect(screen.getByLabelText(/A3 has 6 stalls and cannot be removed/)).toBeDisabled();
+  });
+
+  // The figures are read in the row and changed in the box the pencil opens —
+  // so what the row shows and what the dialog sends are one assertion apart.
+  test('editing a bay sends what the dialog was left holding', async () => {
+    const fetch = base([['PUT', /\/config\/zones\/C1$/, () => ({})]]);
+    render();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByLabelText('Edit C1'));
+    // ⚠️ Scoped to the dialog. "Add a bay" is still on the page behind it with
+    // a Name and an Expected crowd of its own, and an unscoped query would be
+    // ambiguous at best and typing into the wrong form at worst.
+    const box = within(screen.getByRole('dialog'));
+    await user.clear(box.getByLabelText('Name'));
+    await user.type(box.getByLabelText('Name'), 'C1 — Moon side, widened');
+    await user.clear(box.getByLabelText('Expected crowd'));
+    await user.type(box.getByLabelText('Expected crowd'), '31000');
+    await user.click(box.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      const call = fetch.calls.find((c) => c.method === 'PUT');
+      expect(call?.body).toMatchObject({
+        name: 'C1 — Moon side, widened',
+        expectedCrowd: 31000,
+        isClosedToVendors: false,
+      });
+    });
   });
 
   test('removing an empty bay asks the API to delete it', async () => {
@@ -137,7 +165,7 @@ describe('bays', () => {
     render();
     const user = userEvent.setup();
 
-    await screen.findByLabelText('C1 name');
+    await screen.findByLabelText('Edit C1');
     await user.click(screen.getByLabelText('Remove C1'));
 
     await waitFor(() =>
@@ -150,7 +178,7 @@ describe('bays', () => {
 
 describe('planning columns', () => {
   const open = async (user: ReturnType<typeof userEvent.setup>) => {
-    await screen.findByLabelText('C1 name');
+    await screen.findByLabelText('Edit C1');
     await user.click(screen.getByRole('tab', { name: /planning columns/i }));
   };
 
@@ -206,13 +234,13 @@ describe('planning columns', () => {
   });
 });
 
-describe('season settings', () => {
+describe('edition settings', () => {
   test('sends the account prefixes Finance issues, and empty means not issued', async () => {
     const fetch = base([['PATCH', /\/editions\/e1\/settings$/, () => ({})]]);
     render();
     const user = userEvent.setup();
 
-    await screen.findByLabelText('C1 name');
+    await screen.findByLabelText('Edit C1');
     await user.click(screen.getByRole('tab', { name: /editions/i }));
     await user.type(screen.getByLabelText('Virtual account prefix — rent'), 'MSRRENT');
     await user.click(screen.getByRole('button', { name: /save settings/i }));
@@ -223,7 +251,7 @@ describe('season settings', () => {
         name: 'MSR 2026',
         virtualAccountRentPrefix: 'MSRRENT',
         // Never issued, and sent as null rather than an empty string — the API
-        // reads null as "Finance has not issued one for this season".
+        // reads null as "Finance has not issued one for this edition".
         virtualAccountDepositPrefix: null,
         maxStallsPerRequest: 3,
       });
@@ -237,15 +265,19 @@ describe('the rent matrix', () => {
     render();
     const user = userEvent.setup();
 
-    await screen.findByLabelText('C1 name');
+    await screen.findByLabelText('Edit C1');
     await user.click(screen.getByRole('tab', { name: /rates/i }));
 
-    // Closed to trade, so no vendor inputs at all…
+    // Closed to trade, so the row says so where the two vendor figures would be…
     expect(screen.getAllByText('Closed to trade').length).toBeGreaterThan(0);
-    expect(screen.queryByLabelText('A3 vendor rent')).not.toBeInTheDocument();
-    // …and priced for local welfare, which is the whole point of the rework.
-    expect(screen.getByLabelText('A3 local welfare rent')).toHaveValue(12000);
-    expect(screen.getByLabelText('A3 local welfare advance')).toHaveValue(4000);
+
+    await user.click(screen.getByLabelText('Edit A3 food rates'));
+    // …and the box offers no vendor fields at all, rather than empty ones
+    // nobody may fill.
+    expect(screen.queryByLabelText('Vendor rent')).not.toBeInTheDocument();
+    // …and it is priced for local welfare, which is the whole point of the rework.
+    expect(screen.getByLabelText('Local welfare rent')).toHaveValue(12000);
+    expect(screen.getByLabelText('Local welfare advance')).toHaveValue(4000);
   });
 
   test('a row left at zero is dropped rather than saved as a free stall', async () => {
@@ -253,9 +285,11 @@ describe('the rent matrix', () => {
     render();
     const user = userEvent.setup();
 
-    await screen.findByLabelText('C1 name');
+    await screen.findByLabelText('Edit C1');
     await user.click(screen.getByRole('tab', { name: /rates/i }));
-    await user.clear(screen.getByLabelText('C1 vendor rent'));
+    await user.click(screen.getByLabelText('Edit C1 food rates'));
+    await user.clear(screen.getByLabelText('Vendor rent'));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
     await user.click(screen.getByRole('button', { name: /save rates/i }));
 
     await waitFor(() => {

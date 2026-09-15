@@ -101,7 +101,7 @@ describe('deriveStage', () => {
     ).toBe('FSSAI_PENDING');
   });
 
-  it('distinguishes "only staff outstanding" from READY', () => {
+  it('distinguishes "only backoffice outstanding" from READY', () => {
     const cleared = {
       selectionEmailSent: true,
       paymentEmailSent: true,

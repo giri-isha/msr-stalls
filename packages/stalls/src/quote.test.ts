@@ -177,7 +177,7 @@ describe('the discretionary fee', () => {
 
   // 🔴 Without this, a local welfare stall that paid the agreed 5,000 against a
   // 10,000 quote is never "paid in full" — it sits on Finance's list and shows
-  // "payment pending" to the requester for the rest of the season.
+  // "payment pending" to the requester for the rest of the edition.
   it('is what was agreed, once it is agreed', () => {
     expect(payableFeePaise({ feeTotalPaise: 1_000_000, discretionaryFeePaise: 500_000 })).toBe(
       500_000,

@@ -50,7 +50,7 @@ export function installFetch(routes: ReadonlyArray<readonly [string, RegExp, Han
  * ⚠️ `ToastProvider` wraps every render, `me` or not, because `useToast()`
  * THROWS outside it — that is the component's contract, and it is the right one:
  * a screen whose confirmations go nowhere should fail at mount rather than
- * swallow them. It is what `StaffLayout` mounts in the real shell, so this is
+ * swallow them. It is what `BackofficeLayout` mounts in the real shell, so this is
  * the harness matching the app rather than the harness being generous.
  *
  * ⚠️ It is OUTSIDE `MeProvider`, matching the shell for the same reason given
@@ -65,7 +65,7 @@ export function renderAt(
   const router = createMemoryRouter(routes, { initialEntries: [path] });
   let inner: ReactElement = <RouterProvider router={router} />;
   // ⚠️ The requester provider is the PUBLIC session and `MeProvider` is the
-  // staff one. A screen never needs both, and nesting them here would let a
+  // backoffice one. A screen never needs both, and nesting them here would let a
   // test pass while reading the wrong one.
   if (opts.requester) inner = <RequesterProvider>{inner}</RequesterProvider>;
   if (opts.me) inner = <MeProvider>{inner}</MeProvider>;
@@ -192,7 +192,7 @@ export function publicConfigFor(scope: string | null) {
   };
 }
 
-/** The edition's bays, as `GET /zones` returns them. Every staff screen that
+/** The edition's bays, as `GET /zones` returns them. Every backoffice screen that
  *  filters or assigns by bay reads this rather than a list of its own. */
 export const ZONES = [
   {
@@ -297,6 +297,10 @@ export const ME_ADMIN = {
     'roles.write',
     'refunds.write',
     'electrical.read',
+    // ⚠️ TEMPORARY, with the requester password login. An admin holds it
+    // because Admin carries every active privilege — not because it is part of
+    // `users.write`, which is the whole point of it being separate.
+    'passwords.write',
   ],
 };
 

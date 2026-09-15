@@ -13,15 +13,15 @@ import {
   prisma,
   resetDatabase,
   seedEdition,
-  seedStaff,
-  type Staff,
+  seedBackoffice,
+  type Backoffice,
   vendorBody,
 } from './helpers/db';
 import { makeStalls } from './helpers/plan';
 
 let app: FastifyInstance;
-let admin: Staff;
-let lead: Staff;
+let admin: Backoffice;
+let lead: Backoffice;
 let edition: StallEdition;
 
 beforeAll(async () => {
@@ -31,8 +31,8 @@ afterAll(() => app.close());
 beforeEach(async () => {
   await resetDatabase();
   edition = await seedEdition();
-  admin = await seedStaff(['stalls_admin'], 'admin@example.org');
-  lead = await seedStaff(['stalls_lead'], 'lead@example.org');
+  admin = await seedBackoffice(['stalls_admin'], 'admin@example.org');
+  lead = await seedBackoffice(['stalls_lead'], 'lead@example.org');
 });
 
 const charges = {
@@ -76,7 +76,7 @@ describe('authorisation', () => {
       }),
       app.inject({
         method: 'POST',
-        url: '/api/m/stalls/staff',
+        url: '/api/m/stalls/backoffice',
         headers: lead.headers,
         payload: { personRef: lead.personId, roleKey: 'stalls_admin' },
       }),
@@ -218,11 +218,11 @@ describe('custom fields', () => {
   });
 });
 
-describe('staff roles', () => {
+describe('backoffice roles', () => {
   test('lists who holds what', async () => {
     const res = await app.inject({
       method: 'GET',
-      url: '/api/m/stalls/staff',
+      url: '/api/m/stalls/backoffice',
       headers: admin.headers,
     });
     const byEmail = new Map(
@@ -235,14 +235,14 @@ describe('staff roles', () => {
   test('grants and revokes', async () => {
     const grant = await app.inject({
       method: 'POST',
-      url: '/api/m/stalls/staff',
+      url: '/api/m/stalls/backoffice',
       headers: admin.headers,
       payload: { personRef: lead.personId, roleKey: 'stalls_finance' },
     });
     expect(grant.statusCode).toBe(204);
     const revoke = await app.inject({
       method: 'DELETE',
-      url: `/api/m/stalls/staff/${lead.personId}/stalls_finance`,
+      url: `/api/m/stalls/backoffice/${lead.personId}/stalls_finance`,
       headers: admin.headers,
     });
     expect(revoke.statusCode).toBe(204);
@@ -253,7 +253,7 @@ describe('staff roles', () => {
   test('refuses to remove the last admin', async () => {
     const res = await app.inject({
       method: 'DELETE',
-      url: `/api/m/stalls/staff/${admin.personId}/stalls_admin`,
+      url: `/api/m/stalls/backoffice/${admin.personId}/stalls_admin`,
       headers: admin.headers,
     });
     expect(res.statusCode).toBe(409);
@@ -264,13 +264,13 @@ describe('staff roles', () => {
   test('with two admins, one may step down', async () => {
     await app.inject({
       method: 'POST',
-      url: '/api/m/stalls/staff',
+      url: '/api/m/stalls/backoffice',
       headers: admin.headers,
       payload: { personRef: lead.personId, roleKey: 'stalls_admin' },
     });
     const res = await app.inject({
       method: 'DELETE',
-      url: `/api/m/stalls/staff/${admin.personId}/stalls_admin`,
+      url: `/api/m/stalls/backoffice/${admin.personId}/stalls_admin`,
       headers: admin.headers,
     });
     expect(res.statusCode).toBe(204);
@@ -279,7 +279,7 @@ describe('staff roles', () => {
   test('an unknown person cannot be granted a role', async () => {
     const res = await app.inject({
       method: 'POST',
-      url: '/api/m/stalls/staff',
+      url: '/api/m/stalls/backoffice',
       headers: admin.headers,
       payload: { personRef: randomUUID(), roleKey: 'stalls_lead' },
     });
@@ -321,10 +321,10 @@ describe('the role hierarchy', () => {
     });
   }
 
-  const grant = (by: Staff, personRef: string, roleKey: string) =>
+  const grant = (by: Backoffice, personRef: string, roleKey: string) =>
     app.inject({
       method: 'POST',
-      url: '/api/m/stalls/staff',
+      url: '/api/m/stalls/backoffice',
       headers: by.headers,
       payload: { personRef, roleKey },
     });
@@ -333,7 +333,7 @@ describe('the role hierarchy', () => {
    *
    *  ⚠️ NOT optional. `resetDatabase` deliberately leaves the RBAC tables alone
    *  — they are reference data the migration installed, and truncating them
-   *  would break the foreign key every `seedStaff` call depends on — so the
+   *  would break the foreign key every `seedBackoffice` call depends on — so the
    *  privilege added above survives into every test file that runs afterwards.
    *  Left in place it silently hands `users.write` to the Lead role for the
    *  rest of the suite, and the tests asserting a lead CANNOT do something
@@ -345,13 +345,13 @@ describe('the role hierarchy', () => {
   afterEach(() => seedRbac(prisma));
 
   test('a lead may staff their own team', async () => {
-    const newcomer = await seedStaff([], 'newcomer@example.org');
+    const newcomer = await seedBackoffice([], 'newcomer@example.org');
     const res = await grant(lead, newcomer.personId, 'stalls_volunteer');
     expect(res.statusCode).toBe(204);
   });
 
   test('a lead may not mint an admin', async () => {
-    const newcomer = await seedStaff([], 'newcomer@example.org');
+    const newcomer = await seedBackoffice([], 'newcomer@example.org');
     const res = await grant(lead, newcomer.personId, 'stalls_admin');
     expect(res.statusCode).toBe(403);
     expect(res.json().error).toContain('above you in the role hierarchy');
@@ -360,7 +360,7 @@ describe('the role hierarchy', () => {
   // Handing out your own role is a promotion, and only Admin carries the flag
   // that permits it.
   test('a lead may not hand out their own role either', async () => {
-    const newcomer = await seedStaff([], 'newcomer@example.org');
+    const newcomer = await seedBackoffice([], 'newcomer@example.org');
     const res = await grant(lead, newcomer.personId, 'stalls_lead');
     expect(res.statusCode).toBe(403);
   });
@@ -378,32 +378,32 @@ describe('the role hierarchy', () => {
     await grant(admin, admin.personId, 'stalls_volunteer');
     const res = await app.inject({
       method: 'DELETE',
-      url: `/api/m/stalls/staff/${admin.personId}/stalls_volunteer`,
+      url: `/api/m/stalls/backoffice/${admin.personId}/stalls_volunteer`,
       headers: lead.headers,
     });
     expect(res.statusCode).toBe(403);
   });
 
   test('taking a role away is gated exactly as handing it out is', async () => {
-    const newcomer = await seedStaff(['stalls_volunteer'], 'newcomer@example.org');
+    const newcomer = await seedBackoffice(['stalls_volunteer'], 'newcomer@example.org');
     await grant(admin, newcomer.personId, 'stalls_admin');
     const res = await app.inject({
       method: 'DELETE',
-      url: `/api/m/stalls/staff/${newcomer.personId}/stalls_volunteer`,
+      url: `/api/m/stalls/backoffice/${newcomer.personId}/stalls_volunteer`,
       headers: lead.headers,
     });
     expect(res.statusCode).toBe(403);
   });
 
   test('a role that no longer exists is a 404, not a 500', async () => {
-    const newcomer = await seedStaff([], 'newcomer@example.org');
+    const newcomer = await seedBackoffice([], 'newcomer@example.org');
     const res = await grant(admin, newcomer.personId, 'stalls_nonexistent');
     expect(res.statusCode).toBe(404);
   });
 });
 
 describe('the roles endpoint', () => {
-  const roles = async (who: Staff) => {
+  const roles = async (who: Backoffice) => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/m/stalls/roles',
@@ -587,7 +587,7 @@ describe('the planning grid’s columns', () => {
   });
 });
 
-describe('the season’s own settings', () => {
+describe('the edition’s own settings', () => {
   test('an admin sets the name, the account prefixes and the stall cap', async () => {
     const res = await app.inject({
       method: 'PATCH',
@@ -609,7 +609,7 @@ describe('the season’s own settings', () => {
     expect(pub.json().edition.name).toBe('Maha Shivratri 2026');
   });
 
-  test('the season’s terms document is set here and reaches the form that asks for consent', async () => {
+  test('the edition’s terms document is set here and reaches the form that asks for consent', async () => {
     const settings = (termsUrl: string | null) =>
       app.inject({
         method: 'PATCH',
@@ -628,7 +628,7 @@ describe('the season’s own settings', () => {
     const row = await prisma.stallEdition.findUniqueOrThrow({ where: { id: edition.id } });
     expect(row.termsUrl).toBe('https://isha.test/stalls/terms-2026.pdf');
 
-    // Blank is "no document this season", not a link to nowhere — the bank form
+    // Blank is "no document this edition", not a link to nowhere — the bank form
     // then shows the consent without a link rather than a href that 404s.
     expect((await settings('')).statusCode).toBe(200);
     expect(

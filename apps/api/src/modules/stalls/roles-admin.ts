@@ -27,12 +27,12 @@ import {
   SystemRoleError,
   UnknownRoleError,
 } from './errors';
-import { MODULE_KEY, type StaffCaller, assignableRolesFor, roleTree } from './roles';
+import { MODULE_KEY, type BackofficeCaller, assignableRolesFor, roleTree } from './roles';
 
 /** One role, opened for editing. */
 export async function getRole(
   db: PrismaClient,
-  caller: StaffCaller,
+  caller: BackofficeCaller,
   roleKey: string,
 ): Promise<RoleDetail> {
   const role = await db.stallRole.findUnique({
@@ -80,7 +80,7 @@ export async function getRole(
  */
 async function assertNoEscalation(
   db: PrismaClient,
-  caller: StaffCaller,
+  caller: BackofficeCaller,
   input: SaveRoleInput,
 ): Promise<void> {
   const mine = new Set(caller.privileges);
@@ -127,7 +127,7 @@ async function assertNoEscalation(
  *  may hand out (in the shipped tree, an Admin) can make another. */
 async function assertParentAllowed(
   db: PrismaClient,
-  caller: StaffCaller,
+  caller: BackofficeCaller,
   roleKey: string | null,
   parentKey: string | null,
 ): Promise<void> {
@@ -205,7 +205,7 @@ const bundleFor = (input: SaveRoleInput) => (input.allPrivileges ? [] : input.pr
 export async function createRole(
   db: PrismaClient,
   input: CreateRoleInput,
-  caller: StaffCaller,
+  caller: BackofficeCaller,
 ): Promise<RoleDetail> {
   const existing = await db.stallRole.findUnique({ where: { roleKey: input.roleKey } });
   if (existing) throw new RoleKeyTakenError(input.roleKey);
@@ -244,7 +244,7 @@ export async function updateRole(
   db: PrismaClient,
   roleKey: string,
   input: SaveRoleInput,
-  caller: StaffCaller,
+  caller: BackofficeCaller,
 ): Promise<RoleDetail> {
   const role = await db.stallRole.findUnique({ where: { roleKey } });
   if (!role) throw new UnknownRoleError(roleKey);
@@ -286,7 +286,7 @@ export async function updateRole(
 export async function deleteRole(
   db: PrismaClient,
   roleKey: string,
-  caller: StaffCaller,
+  caller: BackofficeCaller,
 ): Promise<void> {
   const role = await db.stallRole.findUnique({
     where: { roleKey },

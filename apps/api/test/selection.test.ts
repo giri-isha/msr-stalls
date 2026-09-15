@@ -52,13 +52,13 @@ const liveAllocations = (stallNumber: string) =>
   prisma.stallAllocation.count({ where: { stall: { number: stallNumber }, releasedAt: null } });
 
 describe('the single-occupant guarantee', () => {
-  test('two staff selecting the same stall at once: exactly one succeeds', async () => {
+  test('two backoffice members selecting the same stall at once: exactly one succeeds', async () => {
     const a = await submit({ email: 'a@x.com' });
     const b = await submit({ email: 'b@x.com' });
 
     const results = await Promise.allSettled([
-      selectRequest(prisma, { requestId: a.requestId, stallNumbers: ['A4-1'] }, 'staff-1'),
-      selectRequest(prisma, { requestId: b.requestId, stallNumbers: ['A4-1'] }, 'staff-2'),
+      selectRequest(prisma, { requestId: a.requestId, stallNumbers: ['A4-1'] }, 'backoffice-1'),
+      selectRequest(prisma, { requestId: b.requestId, stallNumbers: ['A4-1'] }, 'backoffice-2'),
     ]);
 
     const ok = results.filter((r) => r.status === 'fulfilled');

@@ -15,17 +15,17 @@ import { UnknownAccessLinkError } from './errors';
  *  ⚠️ This matters beyond tidiness. The password login is TEMPORARY — the
  *  host's Isha OIDC replaces it. When it does, the OIDC callback calls
  *  `startSession` and every other line in the module stays where it is: the
- *  portal, the pending steps, the staff screens, the guard below. The seam is
+ *  portal, the pending steps, the backoffice screens, the guard below. The seam is
  *  one function, and it is already covered by the access-link tests.
  */
 
-/** ⚠️ NOT `msr_session`. That cookie is the STAFF session and the host's own
- *  auth reads it; a requester holding one would be a staff member. Two
+/** ⚠️ NOT `msr_session`. That cookie is the BACKOFFICE session and the host's own
+ *  auth reads it; a requester holding one would be a backoffice member. Two
  *  populations, two cookies, and the names must never converge. */
 export const REQUESTER_COOKIE = 'msr_stall_requester';
 
 /** Long, because the alternative is a vendor locked out of their own
- *  onboarding halfway through a season. Revocation is the real control —
+ *  onboarding halfway through an edition. Revocation is the real control —
  *  logout ends one, a password reset ends all of them. */
 export const SESSION_TTL_DAYS = 30;
 

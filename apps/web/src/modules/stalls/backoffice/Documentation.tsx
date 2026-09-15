@@ -26,7 +26,7 @@ import { Tabs } from './Communication';
  * The manual, inside the app.
  *
  * The process this module runs is nine months long, touches four kinds of
- * requester and five staff roles, and every year it is handed to volunteers who
+ * requester and five backoffice roles, and every year it is handed to volunteers who
  * were not there for the last one. A README in a repository is read by whoever
  * deploys the thing; the person at the chairs counter at six in the morning
  * needs the same answer on the screen in front of them.
@@ -160,7 +160,7 @@ interface JourneyStep {
   /** Where it happens: a path for a page, or the word for a letter. */
   where: string;
   body: string;
-  /** What the staff side should know about this step. */
+  /** What the backoffice side should know about this step. */
   note?: string;
 }
 
@@ -223,7 +223,7 @@ const JOURNEY: JourneyStep[] = [
   },
 ];
 
-// ── The staff side, screen by screen ────────────────────────────────────────
+// ── The backoffice side, screen by screen ────────────────────────────────────────
 
 interface ScreenDoc {
   label: string;
@@ -404,7 +404,7 @@ const SCREENS: ScreenDoc[] = [
       'Fines: penalty reasons and their default amounts, offered when a refund is prepared.',
       'Custom fields: extra questions appended to any of the four request forms, with a Tamil label where you have one.',
       'Flow: three switches for the whole edition — bank step, payment step, FSSAI step.',
-      'Users: grant a staff member one of the four roles.',
+      'Users: grant a backoffice member one of the four roles.',
       'Editions: the year everything else hangs off.',
     ],
     notes: [
@@ -483,14 +483,14 @@ const TROUBLE: Array<{ q: string; a: string }> = [
  * Down the page a branch becomes a stacked pair of columns and nothing is lost.
  */
 
-type Actor = 'requester' | 'staff' | 'system' | 'finance' | 'volunteer' | 'guard';
+type Actor = 'requester' | 'backoffice' | 'system' | 'finance' | 'volunteer' | 'guard';
 
 /** Who acts, in the colour they wear everywhere in these charts. `guard` is not
  *  a person: it is the system refusing something, which is worth its own colour
  *  because half the questions about this pipeline are "why did it not let me". */
 const ACTOR: Record<Actor, { label: string; tone: Tone }> = {
   requester: { label: 'Requester', tone: 'violet' },
-  staff: { label: 'Stall team', tone: 'info' },
+  backoffice: { label: 'Stall team', tone: 'info' },
   system: { label: 'Automatic', tone: 'teal' },
   finance: { label: 'Finance', tone: 'ok' },
   volunteer: { label: 'At the counter', tone: 'warn' },
@@ -642,14 +642,14 @@ const END_TO_END: FlowItem[] = [
     lands: 'Status: Submitted',
   },
   {
-    actor: 'staff',
+    actor: 'backoffice',
     glyph: 'check-square',
     title: 'Triaged, then selected onto a stall',
     detail: 'Shortlist, then a zone and a stall number.',
     lands: 'Status: Selected',
   },
   {
-    actor: 'staff',
+    actor: 'backoffice',
     glyph: 'megaphone',
     title: 'The selection letter goes out',
     detail: 'Once per request, carrying the links that apply to them.',
@@ -724,7 +724,7 @@ const INTAKE: FlowItem[] = [
     lands: 'Status: Submitted',
   },
   {
-    actor: 'staff',
+    actor: 'backoffice',
     glyph: 'search',
     title: 'Triaged in Stall Requests',
     detail: 'Filtered, searched, and read in full.',
@@ -736,7 +736,7 @@ const INTAKE: FlowItem[] = [
         label: 'Needs a call first',
         nodes: [
           {
-            actor: 'staff',
+            actor: 'backoffice',
             glyph: 'phone-call',
             title: 'Flagged with a reason',
             detail: 'The reason shows in the list until it is cleared.',
@@ -747,9 +747,9 @@ const INTAKE: FlowItem[] = [
       {
         label: 'Worth a stall',
         nodes: [
-          { actor: 'staff', glyph: 'check', title: 'Shortlisted' },
+          { actor: 'backoffice', glyph: 'check', title: 'Shortlisted' },
           {
-            actor: 'staff',
+            actor: 'backoffice',
             glyph: 'map-pin',
             title: 'Selected onto a stall number',
             detail: 'The stalls offered are the ones still free in that zone.',
@@ -767,7 +767,7 @@ const INTAKE: FlowItem[] = [
         label: 'No room',
         nodes: [
           {
-            actor: 'staff',
+            actor: 'backoffice',
             glyph: 'clock',
             title: 'Held as backup, or rejected',
             detail: 'A reason is recorded either way.',
@@ -781,7 +781,7 @@ const INTAKE: FlowItem[] = [
 
 const LETTERS: FlowItem[] = [
   {
-    actor: 'staff',
+    actor: 'backoffice',
     glyph: 'megaphone',
     title: 'Selection letter sent',
     detail: 'Communication → Send letters. A list of one is an individual send.',
@@ -841,7 +841,7 @@ const LETTERS: FlowItem[] = [
     ],
   },
   {
-    actor: 'staff',
+    actor: 'backoffice',
     glyph: 'phone',
     title: 'Whoever has not come back is called',
     detail: 'Communication → Reminder calls keeps the log: who rang whom, and when.',
@@ -907,7 +907,7 @@ const MONEY: FlowItem[] = [
             detail: 'Several credits can settle one request.',
           },
           {
-            actor: 'staff',
+            actor: 'backoffice',
             glyph: 'phone-call',
             title: 'Chased on the pending-payment list',
           },
@@ -920,7 +920,7 @@ const MONEY: FlowItem[] = [
 
 const EVENT: FlowItem[] = [
   {
-    actor: 'staff',
+    actor: 'backoffice',
     glyph: 'message-square',
     title: 'The FSSAI and staff letter goes out',
     detail: 'It carries the upload link and mints the stall’s coupon.',
@@ -938,7 +938,7 @@ const EVENT: FlowItem[] = [
             detail: 'Up to five files.',
           },
           {
-            actor: 'staff',
+            actor: 'backoffice',
             glyph: 'shield',
             title: 'Read, then marked verified',
             detail: 'A re-upload replaces the files and clears the tick.',
@@ -966,7 +966,7 @@ const EVENT: FlowItem[] = [
     ],
   },
   {
-    actor: 'staff',
+    actor: 'backoffice',
     glyph: 'sliders',
     title: 'The electrical sheet is printed per bay',
     detail: 'A4, chrome hidden. 5A counts include the free plug the form excluded.',
@@ -997,7 +997,7 @@ const SETTLE: FlowItem[] = [
     detail: 'Anything short or damaged is recorded on the row it went out on.',
   },
   {
-    actor: 'staff',
+    actor: 'backoffice',
     glyph: 'alert-triangle',
     title: 'Penalties itemised',
     detail:
@@ -1034,7 +1034,7 @@ const SETTLE: FlowItem[] = [
             detail: 'Finance cannot process a negative voucher.',
           },
           {
-            actor: 'staff',
+            actor: 'backoffice',
             glyph: 'phone-call',
             title: 'The balance is chased as a shortfall',
             detail: 'Outside the app, with the itemised list in hand.',
@@ -1056,7 +1056,7 @@ const APPLIES: FlowItem[] = [
         label: 'Yes',
         nodes: [
           {
-            actor: 'staff',
+            actor: 'backoffice',
             glyph: 'file-text',
             title: 'Bank details, GST and contract are asked for',
           },
@@ -1263,7 +1263,7 @@ const TAB_LIST: [string, string][] = [
   ['overview', 'Overview'],
   ['flows', 'Flow charts'],
   ['vendor', 'The vendor’s journey'],
-  ['screens', 'Staff screens'],
+  ['screens', 'Backoffice screens'],
   ['reference', 'Reference'],
 ];
 
@@ -1317,10 +1317,10 @@ function OverviewPanel() {
           day, and the refund afterwards.
         </Prose>
         <Prose>
-          There are two sides to it. <b>Staff</b> sign in and work the pipeline from the screens in
-          the sidebar. <b>Requesters</b> — vendors, ashram departments and local welfare stalls —
-          never sign in at all: they meet a public form once, and after that every page they need
-          arrives as a private link in an email.
+          There are two sides to it. The <b>backoffice</b> signs in and works the pipeline from the
+          screens in the sidebar. <b>Requesters</b> — vendors, ashram departments and local welfare
+          stalls — never sign in at all: they meet a public form once, and after that every page
+          they need arrives as a private link in an email.
         </Prose>
       </Panel>
 
@@ -1444,7 +1444,7 @@ function JourneyRow({ step, index }: { step: JourneyStep; index: number }) {
   );
 }
 
-// ── Staff screens ───────────────────────────────────────────────────────────
+// ── Backoffice screens ───────────────────────────────────────────────────────────
 
 function ScreensPanel() {
   const { can } = useMe();
@@ -1634,7 +1634,7 @@ function ReferencePanel() {
             'Only the hash of a link is stored, so a copy of the database hands out no live links.',
             'Uploaded documents are presigned in the browser and PUT straight at the store. The API never sees the bytes, and a key it is handed back must be one it issued.',
             'Aadhaar is reduced to its last four digits — what a gate volunteer compares against a card.',
-            'Staff sign-in in this standalone build is a development stand-in. In the host it is Isha SSO; the roles above are this module’s own either way.',
+            'Backoffice sign-in in this standalone build is a development stand-in. In the host it is Isha SSO; the roles above are this module’s own either way.',
           ]}
         />
       </Panel>

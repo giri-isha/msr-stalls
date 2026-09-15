@@ -11,7 +11,7 @@ import { prisma } from '../src/prisma';
  *   npm run dev:users --workspace=apps/api -- --set-password priya@maildrop.cc newpassword
  *
  * ── Two populations, and only one of them has a password ────────────────────
- * STAFF are `Person` rows with grants in `StallStaffRole`. They have no
+ * BACKOFFICE MEMBERS are `Person` rows with grants in `StallBackofficeRole`. They have no
  * password anywhere in this module — the standalone shell signs them in by
  * email through the host's `getCurrentPerson` seam (see `auth.ts`), and the
  * host will use its own SSO. So there is nothing here to change for them; the
@@ -39,9 +39,9 @@ function assertLocalDatabase(url: string | undefined): void {
   }
 }
 
-async function listStaff(): Promise<void> {
+async function listBackoffice(): Promise<void> {
   const people = await prisma.person.findMany({ orderBy: { email: 'asc' } });
-  const grants = await prisma.stallStaffRole.findMany({
+  const grants = await prisma.stallBackofficeRole.findMany({
     select: {
       personRef: true,
       roleKey: true,
@@ -82,7 +82,7 @@ async function listStaff(): Promise<void> {
     byPerson.set(g.personRef, [...(byPerson.get(g.personRef) ?? []), g.roleKey]);
   }
 
-  console.log('\n═══ STAFF — sign in by email, no password ═══\n');
+  console.log('\n═══ BACKOFFICE — sign in by email, no password ═══\n');
   if (people.length === 0) console.log('  (none — run `npm run db:seed`)');
 
   for (const p of people) {
@@ -212,7 +212,7 @@ async function main(): Promise<void> {
   }
   if (flag) throw new Error(`unknown option ${flag}`);
 
-  await listStaff();
+  await listBackoffice();
   await listRequesters();
 }
 

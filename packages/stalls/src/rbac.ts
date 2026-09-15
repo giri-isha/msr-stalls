@@ -53,6 +53,7 @@ export const STALL_PRIVILEGES = [
   'config.write',
   'users.write',
   'roles.write',
+  'passwords.write',
 ] as const;
 export type StallPrivilege = (typeof STALL_PRIVILEGES)[number];
 
@@ -182,7 +183,7 @@ export const PRIVILEGE_CATEGORIES: readonly PrivilegeCategory[] = [
         code: 'refunds.write',
         label: 'Issue refunds',
         kind: 'action',
-        description: 'Return the refundable advance at the end of the season.',
+        description: 'Return the refundable advance at the end of the edition.',
       },
     ],
   },
@@ -224,7 +225,7 @@ export const PRIVILEGE_CATEGORIES: readonly PrivilegeCategory[] = [
         code: 'users.write',
         label: 'Grant and revoke access',
         kind: 'config',
-        description: 'Add a staff member, grant a role, and revoke one.',
+        description: 'Add a backoffice member, grant a role, and revoke one.',
       },
       {
         /** ⚠️ The privilege that composes privileges. Whoever holds this can
@@ -236,6 +237,25 @@ export const PRIVILEGE_CATEGORIES: readonly PrivilegeCategory[] = [
         label: 'Author roles',
         kind: 'config',
         description: 'Create roles, retune what they grant, and place them in the hierarchy.',
+      },
+      {
+        /** ⚠️ TEMPORARY, and the only privilege in the module that will not
+         *  survive the move into the host — see `credentials.ts` and step 3b of
+         *  `docs/migration-to-host.md`. The host signs requesters in through
+         *  Isha SSO, where no password is this module's to set, so this code
+         *  and everything it guards is deleted rather than carried across.
+         *
+         *  ⚠️ Its own privilege, and NOT folded into `users.write`. Every other
+         *  support action sends a link to the contact the ACCOUNT already
+         *  holds, which is why a desk can be trusted with all of them — they
+         *  can cause a vendor to receive their own way in, never obtain it.
+         *  This one hands the desk a password that works, which is a different
+         *  power, and it is `sensitive` for the same reason `finance.read` is. */
+        code: 'passwords.write',
+        label: "Set a requester's password",
+        kind: 'sensitive',
+        description:
+          'Choose a password for a requester who cannot get in, and read it to them. Temporary — it goes when Isha SSO does the signing in.',
       },
     ],
   },
@@ -280,7 +300,7 @@ export interface SeedRole {
    *  🔴 The local welfare team works inside this application — they file the
    *  requests, because the traders they file them for are village vendors who
    *  mostly have no email address and no way to fill a form themselves. That
-   *  makes them staff. It does not make them stall coordinators: they have no
+   *  makes them backoffice members. It does not make them stall coordinators: they have no
    *  business reading a commercial vendor's bank details or rejecting somebody
    *  else's request. Without a scope the only way to let them enter a request
    *  is `requests.write`, which is unscoped, so the choice would be "give them
@@ -305,7 +325,7 @@ const LEAD_PRIVILEGES = [
 
 /** The roles the module ships with.
  *
- *  Vendors are not here: an external vendor is a `StallAccount`, not a staff
+ *  Vendors are not here: an external vendor is a `StallAccount`, not a backoffice
  *  member, and never holds one of these. Keeping the two populations in
  *  separate tables is what stops a vendor ever being granted `config.write`.
  *
@@ -395,7 +415,7 @@ export const SEED_ROLES: readonly SeedRole[] = [
  *  Two kinds of scope meet here, and they sit on different rows. `requestTypeScope`
  *  belongs to the ROLE — it is what the role is for. `editionScope` and
  *  `zoneScope` belong to the GRANT, because two people can hold the same role
- *  for different seasons or different bays. `null` means unrestricted in all
+ *  for different editions or different bays. `null` means unrestricted in all
  *  three cases. */
 export interface HeldRole {
   roleKey: string;
@@ -485,7 +505,7 @@ export function unionScope(
   return [...new Set(picked.flatMap((s) => s ?? []))];
 }
 
-/** Which seasons these grants reach, or `null` for every one. */
+/** Which editions these grants reach, or `null` for every one. */
 export function unionEditionScope(roles: readonly HeldRole[]): string[] | null {
   return unionScope(roles, (r) => r.editionScope);
 }
@@ -523,7 +543,7 @@ export interface RoleNode {
  *
  *  Everything under the roles they hold, plus their own where the role says so.
  *  Never a sibling — two roles drawn level on a chart report to different
- *  people, and one team lead must not be able to staff another's team.
+ *  people, and one team lead must not be able to backoffice another's team.
  *
  *  The walk is in memory rather than a recursive query: it is a dozen rows an
  *  admin edits by hand, and the rule has to stay testable without a database.

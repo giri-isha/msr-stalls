@@ -2,7 +2,7 @@
 // ships with.
 //
 // ⚠️ These rows are installed by the MIGRATION that created the tables, not by
-// this function — the foreign key on `stall_staff_role.role_key` is added in
+// this function — the foreign key on `stall_backoffice_role.role_key` is added in
 // that same migration, so the roles have to exist before it lands or every
 // existing grant violates it.
 //

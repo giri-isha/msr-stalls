@@ -26,7 +26,7 @@ datasource db {
 // FOUNDATION STUBS — discarded at migration
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Stands in for the host's Person. A staff member who can sign in.
+/// Stands in for the host's Person. A backoffice member who can sign in.
 model Person {
   personId       String  @id @default(uuid()) @map("person_id") @db.Uuid
   email          String  @unique
@@ -195,11 +195,11 @@ model StallEdition {
   isActive  Boolean  @default(false) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  /// The virtual-account prefixes Finance issues for this season. The account a
+  /// The virtual-account prefixes Finance issues for this edition. The account a
   /// requester pays into is the prefix followed by their mobile number, and that
   /// string is the only link between a credit on a bank statement and a request
   /// here. Rent and the refundable advance go to DIFFERENT accounts because the
-  /// advance comes back at the end of the season and the rent does not.
+  /// advance comes back at the end of the edition and the rent does not.
   ///
   /// Null until Finance issues them — a new edition has none, and a payment
   /// letter must not print half an account number.
@@ -212,7 +212,7 @@ model StallEdition {
   /// one".
   maxStallsPerRequest Int @default(2) @map("max_stalls_per_request")
 
-  /// Where this season's terms and conditions can be read.
+  /// Where this edition's terms and conditions can be read.
   ///
   /// 🔴 The bank form records `agreedTermsAt` against a tick-box, and the 2025
   /// form that tick-box came from put a LINK beside it: "to view the terms and
@@ -221,7 +221,7 @@ model StallEdition {
   /// consent on that form that has to be producible if a stall is ever in
   /// dispute.
   ///
-  /// Null until the legal team issues the season's document, and the form then
+  /// Null until the legal team issues the edition's document, and the form then
   /// shows the consent without a link rather than promising one that 404s. This
   /// is the wording people TICK; the signed agreement is a separate artefact
   /// with its own audit trail — see `StallContractSignature`.
@@ -270,7 +270,7 @@ model StallZone {
 
 /// The Planning grid's columns, as data.
 ///
-/// The planning sheet is redrawn every season and which columns it carries is a
+/// The planning sheet is redrawn every edition and which columns it carries is a
 /// judgement the stall team makes each year, not a fact about the software. A
 /// sponsor stall and an Adiyogi food stall are ashram stalls operationally, but
 /// the whole point of the grid is to see how many of each are standing in a
@@ -553,7 +553,7 @@ model StallPrivilege {
 
 /// A named bundle of privileges, and a place in the hierarchy.
 ///
-/// `roleKey` rather than the uuid is what `StallStaffRole` stores and what the
+/// `roleKey` rather than the uuid is what `StallBackofficeRole` stores and what the
 /// host would carry on a participation, so it is stable and append-only: a role
 /// may be re-labelled or retired, never re-keyed.
 model StallRole {
@@ -602,7 +602,7 @@ model StallRole {
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   privileges StallRolePrivilege[]
-  grants     StallStaffRole[]
+  grants     StallBackofficeRole[]
   parent     StallRole?  @relation("StallRoleTree", fields: [parentKey], references: [roleKey], onDelete: SetNull, onUpdate: Cascade)
   children   StallRole[] @relation("StallRoleTree")
 
@@ -634,19 +634,19 @@ model StallRolePrivilege {
 /// another schema owned by another module, and a module never reaches into
 /// another's tables. `roleKey` IS one: `StallRole` is this module's own table,
 /// and a grant naming a role that does not exist is a row nothing can resolve.
-model StallStaffRole {
+model StallBackofficeRole {
   id        String   @id @default(uuid()) @db.Uuid
   personRef String   @map("person_ref")
   roleKey   String   @map("role_key")
   grantedBy String   @map("granted_by")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  /// Which seasons this grant reaches. Empty is every one, including editions
+  /// Which editions this grant reaches. Empty is every one, including editions
   /// created after the grant was made.
   ///
   /// ⚠️ Empty is deliberately "all", not "none" — a person given the whole event
   /// must not lose next year the moment somebody creates it, with nothing
-  /// watching. A seasonal volunteer gets an explicit list instead, and simply
+  /// watching. A single-edition volunteer gets an explicit list instead, and simply
   /// stops reaching the module when the next edition is activated.
   ///
   /// Ids rather than years, and deliberately NOT a foreign key: an array column
@@ -660,7 +660,7 @@ model StallStaffRole {
   ///
   /// Codes, not zone ids, because that is what a request carries
   /// (`preferred_zone_code` / `agreed_zone_code`) and because a bay marshal who
-  /// runs A1 runs A1 every season — a zone ROW is per-edition, so scoping by id
+  /// runs A1 runs A1 every edition — a zone ROW is per-edition, so scoping by id
   /// would silently empty the grant the day next year's bays are created.
   zoneScope String[] @map("zone_scope")
 
@@ -668,7 +668,7 @@ model StallStaffRole {
 
   @@unique([personRef, roleKey])
   @@index([roleKey])
-  @@map("stall_staff_role")
+  @@map("stall_backoffice_role")
   @@schema("stalls")
 }
 
@@ -824,7 +824,7 @@ model StallCustomFieldValue {
 ///
 /// `activeStallId` is the DATABASE-ENFORCED single occupant: it is UNIQUE and
 /// non-null while the allocation is live, and set to null on release. Two
-/// staff selecting the same stall at once therefore cannot both succeed — the
+/// backoffice selecting the same stall at once therefore cannot both succeed — the
 /// second insert violates the constraint, whatever the application checked.
 /// `stallId` stays populated after release so the history survives.
 model StallAllocation {
@@ -994,7 +994,7 @@ model StallContractSignature {
 ///
 /// This is the module's most sensitive table: it is where the refund goes. It
 /// holds no card data and no file bytes — the cancelled cheque, PAN and GST
-/// certificate are media-store KEYS, presigned for a few minutes when a staff
+/// certificate are media-store KEYS, presigned for a few minutes when a backoffice
 /// member opens one, so the objects are never public and never in a backup of
 /// this database.
 model StallBankDetail {

@@ -365,7 +365,7 @@ describe('a zone with no rate', () => {
   // 🔴 The same bay, the same ground, a different requester — and a figure
   // rather than nothing. A3 and B2 carry the VAP traders, who pay the most of
   // any local welfare stall; quoting them nothing is what left the stalls that
-  // pay the most unbillable all season.
+  // pay the most unbillable all edition.
   test('the same bay IS priced for local welfare, and can settle', async () => {
     await makeStalls(edition.id, 'A3', { LW_FOOD: 2 });
     const { requestId } = await selected(['A3-1'], {

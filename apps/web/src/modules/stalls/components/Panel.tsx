@@ -8,7 +8,7 @@ import { Card } from '../ui';
  * own — so this is that pattern, once, rather than eight times down Admin.
  *
  * ⚠️ Its own file rather than Admin's, because the Users directory moved out
- * into `staff/Users.tsx` and needs the same panel. Admin importing Users while
+ * into `backoffice/Users.tsx` and needs the same panel. Admin importing Users while
  * Users imported Panel from Admin is a cycle, which the boundary guard forbids
  * and is right to.
  */

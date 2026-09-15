@@ -6,7 +6,7 @@ import { inputStyle } from './Dialog';
  *
  * ⚠️ These exist because the module this design system came from has no public
  * forms. Its own `Field` (in `Dialog.tsx`) is a label over a control inside a
- * dialog, where a caller has already validated and the only reader is staff.
+ * dialog, where a caller has already validated and the only reader is backoffice.
  * The four 2025 request forms are the opposite case: filled in by a vendor on a
  * phone, in two languages, validated on submit, and the error line is the whole
  * product on a bad submission.

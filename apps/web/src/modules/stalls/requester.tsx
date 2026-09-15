@@ -12,7 +12,7 @@ const RequesterContext = createContext<RequesterState | null>(null);
 
 /** Who is logged in on the PUBLIC side.
  *
- *  ⚠️ Deliberately not `MeProvider`. That one is staff and answers `can()`
+ *  ⚠️ Deliberately not `MeProvider`. That one is backoffice and answers `can()`
  *  about roles a requester will never hold; two things called "me" in one
  *  module is how a requester ends up being asked what they are allowed to do.
  *

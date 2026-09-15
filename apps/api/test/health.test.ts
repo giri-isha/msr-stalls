@@ -28,7 +28,7 @@ describe('the stalls module is mounted', () => {
     expect(res.json().edition.year).toBe(2026);
   });
 
-  test('its staff routes refuse a caller with no session', async () => {
+  test('its backoffice routes refuse a caller with no session', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/m/stalls/requests' });
     expect(res.statusCode).toBe(401);
   });

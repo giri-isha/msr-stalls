@@ -10,10 +10,10 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RouterProvider, createMemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { stallsPublicRoutes, stallsStaffRoutes } from '@/modules/stalls';
+import { stallsPublicRoutes, stallsBackofficeRoutes } from '@/modules/stalls';
 import { installFetch, ME_LEAD } from '@/modules/stalls/test-utils';
 import { PublicLayout } from './PublicLayout';
-import { StaffLayout } from './StaffLayout';
+import { BackofficeLayout } from './BackofficeLayout';
 
 const ME = ['GET', /\/m\/stalls\/me$/, () => ME_LEAD] as const;
 const DASH = [
@@ -29,9 +29,9 @@ const DASH = [
   }),
 ] as const;
 
-function renderStaff(path = '/m/stalls') {
+function renderBackoffice(path = '/m/stalls') {
   const router = createMemoryRouter(
-    [{ path: '/m/stalls', element: <StaffLayout />, children: stallsStaffRoutes }],
+    [{ path: '/m/stalls', element: <BackofficeLayout />, children: stallsBackofficeRoutes }],
     { initialEntries: [path] },
   );
   return render(<RouterProvider router={router} />);
@@ -44,14 +44,14 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-describe('the staff shell', () => {
+describe('the backoffice shell', () => {
   test('shows the dev sign-in when there is no session, and the app once there is', async () => {
     installFetch([
       ['GET', /\/m\/stalls\/me$/, () => [401, { error: 'no session' }]],
       DASH,
       ['GET', /\/dev\/people$/, () => []],
     ]);
-    renderStaff();
+    renderBackoffice();
 
     expect(await screen.findByText('Sign in — development')).toBeInTheDocument();
     // The chrome must NOT be behind the gate — a signed-out visitor should not
@@ -61,7 +61,7 @@ describe('the staff shell', () => {
 
   test('mounts the nav, the breadcrumb and the dashboard behind it', async () => {
     installFetch([ME, DASH]);
-    renderStaff();
+    renderBackoffice();
 
     const nav = await screen.findByRole('navigation', { name: 'Main navigation' });
     expect(within(nav).getByTitle('Dashboard')).toBeInTheDocument();
@@ -79,7 +79,7 @@ describe('the staff shell', () => {
       privileges: ME_LEAD.privileges.filter((a) => a !== 'planning.read'),
     };
     installFetch([['GET', /\/m\/stalls\/me$/, () => noPlanning], DASH]);
-    renderStaff();
+    renderBackoffice();
 
     const nav = await screen.findByRole('navigation', { name: 'Main navigation' });
     expect(within(nav).queryByTitle('Planning & Zones')).not.toBeInTheDocument();
@@ -88,7 +88,7 @@ describe('the staff shell', () => {
 
   test('the rail control collapses the sidebar and remembers the choice', async () => {
     installFetch([ME, DASH]);
-    const { unmount } = renderStaff();
+    const { unmount } = renderBackoffice();
 
     const collapse = await screen.findByRole('button', { name: 'Collapse sidebar' });
     await userEvent.setup().click(collapse);
@@ -101,14 +101,14 @@ describe('the staff shell', () => {
 
     unmount();
     installFetch([ME, DASH]);
-    renderStaff();
+    renderBackoffice();
     // Read once at mount, from storage — the sidebar comes back collapsed.
     expect(await screen.findByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument();
   });
 
   test('the account menu carries the identity and the way out', async () => {
     installFetch([ME, DASH]);
-    renderStaff();
+    renderBackoffice();
 
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'Account menu' }));
@@ -118,7 +118,7 @@ describe('the staff shell', () => {
 
   test('the theme control sits in the bar, not behind the account menu', async () => {
     installFetch([ME, DASH]);
-    renderStaff();
+    renderBackoffice();
 
     const user = userEvent.setup();
     // Reached without opening anything — that is the point of the move, and

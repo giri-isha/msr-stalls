@@ -269,7 +269,7 @@ export interface ContinueStepResponse {
   url: string;
 }
 
-// ── Staff: requests ─────────────────────────────────────────────────────────
+// ── Backoffice: requests ─────────────────────────────────────────────────────────
 
 export const ListRequestsQuery = z.object({
   requestType: RequestType.optional(),
@@ -368,7 +368,7 @@ export interface DashboardCounts {
 export const FlagRequestInput = z.object({ reason: z.string().trim().min(1).max(500) });
 export const RejectRequestInput = z.object({ reason: z.string().trim().min(1).max(500) });
 
-/** Staff correcting a request after it was filed.
+/** Backoffice correcting a request after it was filed.
  *
  *  🔴 Almost everything about a request gets renegotiated by phone — "in case
  *  there are any other changes, we anyway speak to them and make that change" —
@@ -409,7 +409,7 @@ export const PatchRequestInput = z
   .partial();
 export type PatchRequestInput = z.infer<typeof PatchRequestInput>;
 
-// ── Staff: selection ────────────────────────────────────────────────────────
+// ── Backoffice: selection ────────────────────────────────────────────────────────
 
 export const SelectRequestInput = z.object({
   /** ⚠️ MAY BE EMPTY, and routinely is.
@@ -436,7 +436,7 @@ export interface AvailableStall {
   status: string;
 }
 
-// ── Staff: planning ─────────────────────────────────────────────────────────
+// ── Backoffice: planning ─────────────────────────────────────────────────────────
 
 /** Keyed by category key rather than by a fixed set of columns: which columns
  *  the grid carries is the edition's own configuration. A key the edition does
@@ -484,7 +484,7 @@ export interface ApplyPlanResult {
   kept: string[];
 }
 
-// ── Staff: admin ────────────────────────────────────────────────────────────
+// ── Backoffice: admin ────────────────────────────────────────────────────────────
 
 const Paise = z.number().int().min(0).max(1_000_000_000);
 
@@ -501,17 +501,17 @@ export const CreateEditionInput = z.object({
   activate: z.boolean().default(true),
 });
 
-/** The season's settings that are neither a rate nor a zone.
+/** The edition's settings that are neither a rate nor a zone.
  *
  *  The two virtual-account prefixes are here because Finance issues them per
- *  season and they are the only link between a bank credit and a request — see
+ *  edition and they are the only link between a bank credit and a request — see
  *  `virtual-account.ts`. */
 export const EditionSettingsInput = z.object({
   name: z.string().trim().min(1).max(100),
   virtualAccountRentPrefix: VirtualAccountPrefix,
   virtualAccountDepositPrefix: VirtualAccountPrefix,
   maxStallsPerRequest: z.number().int().min(1).max(20),
-  /** Where this season's terms and conditions can be read, linked beside the
+  /** Where this edition's terms and conditions can be read, linked beside the
    *  tick-box on the bank form that records having accepted them.
    *
    *  ⚠️ `http(s)` only, and an empty string clears it. A `javascript:` or
@@ -654,7 +654,7 @@ export const CustomFieldPatch = CustomFieldInput.partial().extend({
 export const GrantRoleInput = z.object({
   personRef: z.uuid(),
   roleKey: z.string().min(1).max(64),
-  /** Which seasons this grant reaches. Empty — and absent — is every one,
+  /** Which editions this grant reaches. Empty — and absent — is every one,
    *  including editions created after the grant was made. */
   editionScope: z.array(z.uuid()).max(50).default([]),
   /** Which bays this grant reaches, by zone code. Empty is every bay. */
@@ -671,7 +671,7 @@ export type GrantRoleInput = z.infer<typeof GrantRoleInput>;
  *  digits, which is what every other intake stores and what the directory
  *  search matches against.
  *
- *  ⚠️ Nothing here touches a staff row. A staff member's name and address are
+ *  ⚠️ Nothing here touches a backoffice row. A backoffice member's name and address are
  *  the Foundation's — this module reads that directory and never writes it. */
 export const UpdateAccountInput = z.object({
   displayName: z.string().trim().min(1).max(200),
@@ -683,23 +683,23 @@ export const UpdateAccountInput = z.object({
 });
 export type UpdateAccountInput = z.infer<typeof UpdateAccountInput>;
 
-export interface StaffMember {
+export interface BackofficeMember {
   personId: string;
   email: string;
   displayName: string;
   roleKeys: string[];
 }
 
-// ── Staff: the users directory ──────────────────────────────────────────────
+// ── Backoffice: the users directory ──────────────────────────────────────────────
 
 /** Which population a directory row came from.
  *
- *  Staff hold this module's roles and live in the Foundation's `Person`;
+ *  Backoffice hold this module's roles and live in the Foundation's `Person`;
  *  requesters are `StallAccount`s a public form created. The two stay in
  *  separate tables for the reason `ROLES` gives — that separation is what stops
  *  a vendor ever being granted `config:write` — and are brought together only
  *  here, for one screen, and only as a read. */
-export type DirectoryKind = 'STAFF' | 'REQUESTER';
+export type DirectoryKind = 'BACKOFFICE' | 'REQUESTER';
 
 /**
  * Whether this person can get in, and if not, why.
@@ -718,25 +718,25 @@ export type SignInState = 'OK' | 'LINK_ONLY' | 'UNCONFIRMED' | 'LOCKED' | 'DISAB
 
 /** One role somebody holds, and how far it reaches.
  *
- *  ⚠️ An empty list on either axis means EVERYTHING — every season, every bay —
+ *  ⚠️ An empty list on either axis means EVERYTHING — every edition, every bay —
  *  which is the opposite of how a filter reads. The screens that show these say
  *  so in words rather than leaving a blank row to be guessed at. */
 export interface DirectoryGrant {
   roleKey: string;
-  /** Edition ids. Empty is every season, including ones created later. */
+  /** Edition ids. Empty is every edition, including ones created later. */
   editionScope: string[];
-  /** Zone CODES, not ids — a bay marshal who runs A1 runs A1 every season. */
+  /** Zone CODES, not ids — a bay marshal who runs A1 runs A1 every edition. */
   zoneScope: string[];
 }
 
 export interface DirectoryUser {
-  /** `personId` for staff, the account id for requesters. Both are UUIDs from
+  /** `personId` for backoffice, the account id for requesters. Both are UUIDs from
    *  different tables, so `kind` — not the id — is what an action keys on. */
   id: string;
   kind: DirectoryKind;
   displayName: string;
   email: string;
-  /** Requesters only. The Foundation directory holds no number for staff. */
+  /** Requesters only. The Foundation directory holds no number for backoffice. */
   phone: string | null;
   /**
    * The roles this person holds, each with what it reaches. Empty for a
@@ -745,11 +745,11 @@ export interface DirectoryUser {
    * ⚠️ The whole grant rather than the key alone. The dialog that edits
    * somebody's roles sends the whole grant back, because a re-grant RESETS
    * scope — so without the scope on the row, adding one role would silently
-   * widen every role the person already held to every season and every bay.
+   * widen every role the person already held to every edition and every bay.
    */
   grants: DirectoryGrant[];
   /** Requesters only — their requests in the ACTIVE edition, which is the
-   *  edition every other staff screen is showing at the same moment. */
+   *  edition every other backoffice screen is showing at the same moment. */
   requestCount: number | null;
   signInState: SignInState;
   /** Set only when `signInState` is `LOCKED`, so the row can say until when. */
@@ -765,7 +765,7 @@ export interface DirectoryUser {
  */
 export const DIRECTORY_VIEWS = [
   'All',
-  'Staff',
+  'Backoffice',
   'Requesters',
   'Cannot sign in',
   'Locked out',
@@ -781,7 +781,7 @@ export const SignInStateValue = z.enum(['OK', 'LINK_ONLY', 'UNCONFIRMED', 'LOCKE
 export const ListUsersQuery = z.object({
   view: DirectoryView.default('All'),
   q: z.string().trim().max(200).optional(),
-  /** Staff only, and it narrows to staff on its own — a requester holds no
+  /** Backoffice only, and it narrows to backoffice on its own — a requester holds no
    *  role, so asking for one and for requesters is an empty question. */
   roleKey: z.string().max(64).optional(),
   signInState: SignInStateValue.optional(),
@@ -798,7 +798,7 @@ export interface ListUsersResponse {
    *
    * ⚠️ Narrowed by the search and the Filter popover, NEVER by the active
    * view. A tile row that reacted to its own selection would zero the
-   * Requesters tile the moment you picked Staff — the numbers would then
+   * Requesters tile the moment you picked Backoffice — the numbers would then
    * describe the slice you are already looking at rather than the ones you
    * might move to, which is the opposite of what a view switcher is for.
    */
@@ -1120,7 +1120,7 @@ export interface BankFormView {
   stallNumbers: string[];
   zoneCode: string | null;
   editionName: string;
-  /** Where this season's terms and conditions can be read. Null when the legal
+  /** Where this edition's terms and conditions can be read. Null when the legal
    *  team has not issued a document — the consent is then shown without a link
    *  rather than with one that goes nowhere. */
   termsUrl: string | null;
@@ -1172,7 +1172,7 @@ export interface QuoteView {
  *
  *  ⚠️ The reason is required. A figure below the card rate with nothing beside
  *  it is indistinguishable from a typo six months later, when the person who
- *  agreed it has moved on and Finance is reconciling the season. */
+ *  agreed it has moved on and Finance is reconciling the edition. */
 export const SetDiscretionaryFeeInput = z.object({
   /** Null clears it and puts the quoted figure back in force. */
   discretionaryFeePaise: z.number().int().min(0).max(1_000_000_000).nullable(),
@@ -1181,7 +1181,7 @@ export const SetDiscretionaryFeeInput = z.object({
 export type SetDiscretionaryFeeInput = z.infer<typeof SetDiscretionaryFeeInput>;
 
 /** The two accounts a requester pays into, resolved for this request. Null
- *  where Finance has not issued that prefix for the season yet. */
+ *  where Finance has not issued that prefix for the edition yet. */
 export interface VirtualAccountView {
   rent: string | null;
   deposit: string | null;

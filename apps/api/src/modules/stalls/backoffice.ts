@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import { type RoleSummary, type StaffMember, cannotAssign, cannotEdit } from '@msr/stalls';
+import { type RoleSummary, type BackofficeMember, cannotAssign, cannotEdit } from '@msr/stalls';
 import { recordActivity } from '../../activity';
 import type { Db } from './editions';
 import {
@@ -10,7 +10,7 @@ import {
   UnknownPersonError,
   UnknownRoleError,
 } from './errors';
-import { MODULE_KEY, type StaffCaller, assignableRolesFor, editableRolesFor } from './roles';
+import { MODULE_KEY, type BackofficeCaller, assignableRolesFor, editableRolesFor } from './roles';
 
 /** The roles, with the caller's own reach marked on each.
  *
@@ -19,7 +19,10 @@ import { MODULE_KEY, type StaffCaller, assignableRolesFor, editableRolesFor } fr
  *  moment roles became data — a role an admin creates is on no list the client
  *  holds (msr ADR 0065). `assignable` is computed per caller so the picker
  *  cannot offer a choice the grant route is about to refuse. */
-export async function listRoles(db: PrismaClient, caller: StaffCaller): Promise<RoleSummary[]> {
+export async function listRoles(
+  db: PrismaClient,
+  caller: BackofficeCaller,
+): Promise<RoleSummary[]> {
   const [rows, assignable, activePrivileges] = await Promise.all([
     db.stallRole.findMany({
       orderBy: { sortOrder: 'asc' },
@@ -61,7 +64,7 @@ async function roleNameOf(db: PrismaClient, roleKey: string): Promise<string> {
  *  plus their own where the role carries `canAssignSameLevel`. Never a sibling. */
 async function assertCanAssign(
   db: PrismaClient,
-  caller: StaffCaller,
+  caller: BackofficeCaller,
   roleKey: string,
 ): Promise<void> {
   const exists = await db.stallRole.findUnique({ where: { roleKey }, select: { roleKey: true } });
@@ -79,14 +82,14 @@ async function assertCanAssign(
  *  who is also an admin — editing an account above them by picking the one
  *  attribute of it that happens to sit below them.
  *
- *  A person holding no roles yet passes, which is what lets a new staff member
+ *  A person holding no roles yet passes, which is what lets a new backoffice member
  *  be given their first one. */
 async function assertCanEditPerson(
   db: PrismaClient,
-  caller: StaffCaller,
+  caller: BackofficeCaller,
   personRef: string,
 ): Promise<void> {
-  const held = await db.stallStaffRole.findMany({
+  const held = await db.stallBackofficeRole.findMany({
     where: { personRef },
     select: { roleKey: true, role: { select: { name: true } } },
   });
@@ -106,8 +109,8 @@ async function assertCanEditPerson(
 /** Everyone who holds at least one stalls role, with the roles. Reads the
  *  Foundation's Person for the name and email — a module may READ the
  *  directory; it never writes it. */
-export async function listStaff(db: Db): Promise<StaffMember[]> {
-  const grants = await db.stallStaffRole.findMany({ orderBy: { createdAt: 'asc' } });
+export async function listBackoffice(db: Db): Promise<BackofficeMember[]> {
+  const grants = await db.stallBackofficeRole.findMany({ orderBy: { createdAt: 'asc' } });
   const refs = [...new Set(grants.map((g) => g.personRef))];
   const people = await db.person.findMany({ where: { personId: { in: refs } } });
   const byId = new Map(people.map((p) => [p.personId, p]));
@@ -133,7 +136,7 @@ export async function grantRole(
     editionScope?: string[];
     zoneScope?: string[];
   },
-  caller: StaffCaller,
+  caller: BackofficeCaller,
 ): Promise<void> {
   const by = caller.personId;
   await assertCanAssign(db, caller, input.roleKey);
@@ -145,14 +148,14 @@ export async function grantRole(
 
   // ⚠️ A scoped grantor must not hand out a WIDER grant than their own, for the
   // same reason `assertNoEscalation` guards the role editor: an empty scope
-  // means "every season" and "every bay", so an unscoped grant made by a
+  // means "every edition" and "every bay", so an unscoped grant made by a
   // bay-scoped marshal would reach past them.
   if (caller.editionScope !== null) {
     const beyond =
       editionScope.length === 0 || editionScope.some((id) => !caller.editionScope?.includes(id));
     if (beyond) {
       throw new PrivilegeEscalationError(
-        'you cannot grant access to a season your own access does not cover',
+        'you cannot grant access to an edition your own access does not cover',
       );
     }
   }
@@ -165,7 +168,7 @@ export async function grantRole(
     }
   }
 
-  await db.stallStaffRole.upsert({
+  await db.stallBackofficeRole.upsert({
     where: { personRef_roleKey: { personRef: input.personRef, roleKey: input.roleKey } },
     create: {
       personRef: input.personRef,
@@ -183,7 +186,7 @@ export async function grantRole(
   await recordActivity(db, {
     actorRef: by,
     moduleKey: MODULE_KEY,
-    action: 'stall_staff_role.granted',
+    action: 'stall_backoffice_role.granted',
     subjectRef: input.personRef,
     detail: { roleKey: input.roleKey, editionScope, zoneScope },
   });
@@ -198,33 +201,33 @@ export async function grantRole(
 export async function revokeRole(
   db: PrismaClient,
   input: { personRef: string; roleKey: string },
-  caller: StaffCaller,
+  caller: BackofficeCaller,
 ): Promise<void> {
   const by = caller.personId;
   await assertCanAssign(db, caller, input.roleKey);
   await assertCanEditPerson(db, caller, input.personRef);
   await db.$transaction(async (tx) => {
     if (input.roleKey === 'stalls_admin') {
-      const admins = await tx.stallStaffRole.count({ where: { roleKey: 'stalls_admin' } });
-      const isAdmin = await tx.stallStaffRole.findUnique({
+      const admins = await tx.stallBackofficeRole.count({ where: { roleKey: 'stalls_admin' } });
+      const isAdmin = await tx.stallBackofficeRole.findUnique({
         where: { personRef_roleKey: { personRef: input.personRef, roleKey: 'stalls_admin' } },
       });
       if (isAdmin && admins <= 1) throw new LastAdminError();
     }
-    await tx.stallStaffRole.deleteMany({
+    await tx.stallBackofficeRole.deleteMany({
       where: { personRef: input.personRef, roleKey: input.roleKey },
     });
     await recordActivity(tx, {
       actorRef: by,
       moduleKey: MODULE_KEY,
-      action: 'stall_staff_role.revoked',
+      action: 'stall_backoffice_role.revoked',
       subjectRef: input.personRef,
       detail: { roleKey: input.roleKey },
     });
   });
 }
 
-/** The directory, for the "add a staff member" picker. */
+/** The directory, for the "add a backoffice member" picker. */
 export async function searchPeople(db: Db, q: string) {
   return db.person.findMany({
     where: {

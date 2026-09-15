@@ -16,16 +16,16 @@ import {
   prisma,
   resetDatabase,
   seedEdition,
-  seedStaff,
+  seedBackoffice,
   SYSTEM,
-  type Staff,
+  type Backoffice,
   vendorBody,
 } from './helpers/db';
 import { makeStalls } from './helpers/plan';
 
 let app: FastifyInstance;
-let finance: Staff;
-let lead: Staff;
+let finance: Backoffice;
+let lead: Backoffice;
 let requestId: string;
 
 beforeAll(async () => {
@@ -37,8 +37,8 @@ beforeEach(async () => {
   await resetDatabase();
   const edition = await seedEdition();
   await makeStalls(edition.id, 'A4', { VENDOR_FOOD: 3 });
-  finance = await seedStaff(['stalls_finance']);
-  lead = await seedStaff(['stalls_lead']);
+  finance = await seedBackoffice(['stalls_finance']);
+  lead = await seedBackoffice(['stalls_lead']);
   const r = await submitRequest(
     prisma,
     SubmitRequestInput.parse(
@@ -56,11 +56,11 @@ beforeEach(async () => {
   await selectRequest(prisma, { requestId, stallNumbers: ['A4-1'] }, SYSTEM);
 });
 
-const put = (staff: Staff, body: Record<string, unknown>) =>
+const put = (backoffice: Backoffice, body: Record<string, unknown>) =>
   app.inject({
     method: 'PUT',
     url: `/api/m/stalls/finance/payments/${requestId}/discretionary-fee`,
-    headers: staff.headers,
+    headers: backoffice.headers,
     payload: body,
   });
 

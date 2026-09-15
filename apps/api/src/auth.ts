@@ -5,7 +5,7 @@
 // ⚠️ The ONE thing in this repo that cannot be exercised against the real
 // implementation until migration. In the host, `Person` rows come from Isha
 // SSO and the token is a signed identity-only JWT. Here, `Person` is a small
-// table of staff seeded for development, and the token is the person's id in a
+// table of backoffice seeded for development, and the token is the person's id in a
 // cookie. The stalls module sees the same `Person | null` either way — that is
 // the whole point of the stub.
 import type { FastifyRequest } from 'fastify';

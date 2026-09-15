@@ -7,6 +7,7 @@ import { useMe } from '../me';
 import {
   Btn,
   Checkbox,
+  Dialog,
   Empty,
   ErrorBox,
   FormField,
@@ -121,13 +122,18 @@ export function Admin() {
     return <ErrorBox>{cfg.error?.message ?? 'Could not load the configuration.'}</ErrorBox>;
   const c = cfg.data;
 
+  // ⚠️ Returns whether it went through. The dialogs below close on `true` and
+  // stay open on `false` — a refused save that closed the box anyway would take
+  // the admin's typing with it, which is exactly when they least want to retype.
   const run = async (label: string, fn: () => Promise<unknown>) => {
     try {
       await fn();
       toast.ok(label);
       cfg.reload();
+      return true;
     } catch (e) {
       toast.fail(e);
+      return false;
     }
   };
 
@@ -193,17 +199,58 @@ export function Admin() {
 }
 
 type PanelProps = {
-  c: api.StaffConfig;
+  c: api.BackofficeConfig;
   writable: boolean;
-  run: (l: string, f: () => Promise<unknown>) => Promise<void>;
+  run: (l: string, f: () => Promise<unknown>) => Promise<boolean>;
 };
+
+/**
+ * The row action that opens an edit dialog.
+ *
+ * ⚠️ One helper rather than a pencil spelled out in six places. Every table on
+ * this screen grew its own inline fields once, and the point of moving them all
+ * behind a dialog is that a row now reads as a record instead of as a form — so
+ * the control that opens the dialog has to be the same control everywhere, or
+ * the tables drift apart again in the dimension that was just unified.
+ */
+function EditBtn({
+  what,
+  writable,
+  onClick,
+}: {
+  what: string;
+  writable: boolean;
+  onClick: () => void;
+}) {
+  return <IconBtn label={`Edit ${what}`} glyph='pencil' disabled={!writable} onClick={onClick} />;
+}
+
+/** The footer every edit dialog wears: cancel, then the primary save. */
+function DialogButtons({
+  onClose,
+  onSave,
+  disabled,
+}: {
+  onClose: () => void;
+  onSave: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <>
+      <Btn onClick={onClose}>Cancel</Btn>
+      <Btn kind='primary' disabled={disabled} onClick={onSave}>
+        Save
+      </Btn>
+    </>
+  );
+}
 
 /**
  * Bays, added and removed from here.
  *
  * 🔴 The venue layout is redrawn every year. This used to be a closed union of
  * the seven codes 2025 happened to use, so a new bay meant a code change and a
- * redeploy — a season's layout waiting on an engineer.
+ * redeploy — an edition's layout waiting on an engineer.
  *
  * ⚠️ A bay holding stalls cannot be removed, and the row says so before the
  * button is pressed rather than after a refused request. The alternative is
@@ -215,6 +262,10 @@ function Zones({ c, writable, run }: PanelProps) {
   const [name, setName] = useState('');
   const [crowd, setCrowd] = useState('');
   const [closed, setClosed] = useState(false);
+  // ⚠️ Held by the PANEL, not the row. A dialog is a <div>, and a <div> inside
+  // a <tr> is invalid markup React will complain about — so the row raises the
+  // intent and the box is rendered out here, beside the table.
+  const [editing, setEditing] = useState<api.BackofficeConfig['zones'][number] | null>(null);
   const valid = /^[A-Z]{1,2}\d{0,2}$/.test(code.trim().toUpperCase()) && name.trim() !== '';
 
   const add = () =>
@@ -234,7 +285,7 @@ function Zones({ c, writable, run }: PanelProps) {
   return (
     <Panel
       title='Bays'
-      note='The physical areas stalls are planned into. The layout is redrawn each season, so bays are added and removed here rather than in a migration.'
+      note='The physical areas stalls are planned into. The layout is redrawn each edition, so bays are added and removed here rather than in a migration.'
     >
       <Table>
         <THead>
@@ -249,10 +300,12 @@ function Zones({ c, writable, run }: PanelProps) {
         </THead>
         <TBody>
           {c.zones.map((z) => (
-            <ZoneRow key={z.id} z={z} writable={writable} run={run} />
+            <ZoneRow key={z.id} z={z} writable={writable} run={run} onEdit={setEditing} />
           ))}
         </TBody>
       </Table>
+
+      {editing && <ZoneDialog z={editing} run={run} onClose={() => setEditing(null)} />}
 
       <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Add a bay</div>
@@ -324,6 +377,7 @@ function PlanCategories({ c, writable, run }: PanelProps) {
   const [key, setKey] = useState('');
   const [name, setName] = useState('');
   const [isFood, setIsFood] = useState(false);
+  const [editing, setEditing] = useState<number | null>(null);
   useEffect(() => setRows(c.planCategories), [c.planCategories]);
 
   const dirty = JSON.stringify(rows) !== JSON.stringify(c.planCategories);
@@ -362,30 +416,8 @@ function PlanCategories({ c, writable, run }: PanelProps) {
           {rows.map((r, i) => (
             <TR key={r.key}>
               <TD mono>{r.key}</TD>
-              <TD>
-                <Input
-                  aria-label={`${r.key} name`}
-                  value={r.name}
-                  disabled={!writable}
-                  onChange={(e) =>
-                    setRows((rs) =>
-                      rs.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)),
-                    )
-                  }
-                />
-              </TD>
-              <TD>
-                <Checkbox
-                  aria-label={`${r.key} is food`}
-                  checked={r.isFood}
-                  disabled={!writable}
-                  onChange={(e) =>
-                    setRows((rs) =>
-                      rs.map((x, j) => (j === i ? { ...x, isFood: e.target.checked } : x)),
-                    )
-                  }
-                />
-              </TD>
+              <TD>{r.name}</TD>
+              <TD muted>{r.isFood ? 'Yes' : '—'}</TD>
               <TD align='right'>
                 <IconBtn
                   label={`Move ${r.key} up`}
@@ -412,9 +444,10 @@ function PlanCategories({ c, writable, run }: PanelProps) {
                   }
                 />
               </TD>
-              <TD align='right'>
+              <TD align='right' style={{ whiteSpace: 'nowrap' }}>
+                <EditBtn what={r.key} writable={writable} onClick={() => setEditing(i)} />
                 {r.inUse ? (
-                  <span style={{ fontSize: 11.5, color: 'var(--mfg)' }}>In use</span>
+                  <span style={{ fontSize: 11.5, color: 'var(--mfg)', marginLeft: 6 }}>In use</span>
                 ) : (
                   <IconBtn
                     label={`Remove ${r.key}`}
@@ -428,6 +461,17 @@ function PlanCategories({ c, writable, run }: PanelProps) {
           ))}
         </TBody>
       </Table>
+
+      {editing !== null && rows[editing] && (
+        <ColumnDialog
+          row={rows[editing]}
+          onClose={() => setEditing(null)}
+          onApply={(patch) => {
+            setRows((rs) => rs.map((x, j) => (j === editing ? { ...x, ...patch } : x)));
+            setEditing(null);
+          }}
+        />
+      )}
 
       <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Add a column</div>
@@ -494,11 +538,70 @@ function PlanCategories({ c, writable, run }: PanelProps) {
 }
 
 /**
- * The season's own settings.
+ * One planning column, in a box.
+ *
+ * ⚠️ This one writes NOTHING. The columns are saved whole by the panel — a
+ * column dropped from the list is a column the edition no longer carries — so
+ * the dialog hands its change back to the draft and the panel's Save is still
+ * the only thing that crosses the wire. The footer says so, because a box with
+ * a Save button in it that does not save is otherwise a lie.
+ */
+function ColumnDialog({
+  row,
+  onApply,
+  onClose,
+}: {
+  row: api.BackofficeConfig['planCategories'][number];
+  onApply: (patch: { name: string; isFood: boolean }) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(row.name);
+  const [isFood, setIsFood] = useState(row.isFood);
+  return (
+    <Dialog
+      title={`Edit ${row.key}`}
+      note='The key is what the planning grid and every saved plan refer to, so it cannot be changed. Nothing is written until Save columns.'
+      onClose={onClose}
+      footer={
+        <DialogButtons
+          onClose={onClose}
+          onSave={() => onApply({ name: name.trim(), isFood })}
+          disabled={name.trim() === ''}
+        />
+      }
+    >
+      <div style={{ display: 'grid', gap: 12 }}>
+        <FormField id='pc-name' label='Column heading'>
+          <Input id='pc-name' value={name} onChange={(e) => setName(e.target.value)} />
+        </FormField>
+        <FormField id='pc-food' label='Food'>
+          {/* biome-ignore lint/a11y/noLabelWithoutControl: the label WRAPS its control,
+              which associates them implicitly; the rule cannot see the input inside
+              <Checkbox>. */}
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 13,
+              cursor: 'pointer',
+            }}
+          >
+            <Checkbox checked={isFood} onChange={(e) => setIsFood(e.target.checked)} />
+            Counts as a food stall
+          </label>
+        </FormField>
+      </div>
+    </Dialog>
+  );
+}
+
+/**
+ * The edition's own settings.
  *
  * The two virtual-account prefixes are Finance's: a requester's rent and their
  * deposit are paid into accounts built from the prefix and their mobile number,
- * so a season with no prefix issued yet quotes no account to pay into.
+ * so an edition with no prefix issued yet quotes no account to pay into.
  */
 function EditionSettings({ c, writable, run }: PanelProps) {
   const [v, setV] = useState({
@@ -522,14 +625,14 @@ function EditionSettings({ c, writable, run }: PanelProps) {
 
   return (
     <Panel
-      title='Season settings'
-      note='The edition’s name as it appears on every letter, the two virtual-account prefixes Finance issues for it, the cap on how many stalls one request may ask for in a single bay, and where this season’s terms can be read.'
+      title='Edition settings'
+      note='The edition’s name as it appears on every letter, the two virtual-account prefixes Finance issues for it, the cap on how many stalls one request may ask for in a single bay, and where this edition’s terms can be read.'
       footer={
         <Btn
           kind='primary'
           disabled={!writable}
           onClick={() =>
-            run('Season settings saved', () =>
+            run('Edition settings saved', () =>
               api.updateEditionSettings(c.edition.id, {
                 name: v.name.trim(),
                 virtualAccountRentPrefix: v.virtualAccountRentPrefix.trim() || null,
@@ -545,7 +648,7 @@ function EditionSettings({ c, writable, run }: PanelProps) {
       }
     >
       <Grid>
-        <FormField id='ed-name' label='Season name'>
+        <FormField id='ed-name' label='Edition name'>
           <Input
             id='ed-name'
             value={v.name}
@@ -588,7 +691,7 @@ function EditionSettings({ c, writable, run }: PanelProps) {
       {/* 🔴 The bank form records that a requester accepted the terms. This is
           the document they accepted — without it that consent cannot be
           produced if a stall is ever in dispute. Blank until the legal team
-          issues the season's document, and the form then shows the consent
+          issues the edition's document, and the form then shows the consent
           without a link rather than one that goes nowhere. */}
       <FormField
         id='ed-terms'
@@ -608,72 +711,41 @@ function EditionSettings({ c, writable, run }: PanelProps) {
   );
 }
 
+/** A bay, as a record. The figures are read here and changed in the dialog the
+ *  pencil opens. */
 function ZoneRow({
   z,
   writable,
   run,
-}: { z: api.StaffConfig['zones'][number] } & Omit<PanelProps, 'c'>) {
-  const [name, setName] = useState(z.name);
-  const [crowd, setCrowd] = useState(String(z.expectedCrowd));
-  const [closed, setClosed] = useState(z.isClosedToVendors);
-  const dirty =
-    name !== z.name || Number(crowd) !== z.expectedCrowd || closed !== z.isClosedToVendors;
+  onEdit,
+}: {
+  z: api.BackofficeConfig['zones'][number];
+  onEdit: (z: api.BackofficeConfig['zones'][number]) => void;
+} & Omit<PanelProps, 'c'>) {
   return (
     <TR>
       <TD mono style={{ fontWeight: 700 }}>
         {z.code}
       </TD>
-      <TD>
-        <Input
-          aria-label={`${z.code} name`}
-          value={name}
-          disabled={!writable}
-          onChange={(e) => setName(e.target.value)}
-          style={{ padding: '6px 10px', fontSize: 12.5 }}
-        />
-      </TD>
-      <TD align='right'>
-        <Input
-          aria-label={`${z.code} crowd`}
-          type='number'
-          min={0}
-          style={{ width: 110, textAlign: 'right', padding: '6px 8px', fontSize: 12.5 }}
-          value={crowd}
-          disabled={!writable}
-          onChange={(e) => setCrowd(e.target.value)}
-        />
+      <TD>{z.name}</TD>
+      <TD align='right' style={{ fontVariantNumeric: 'tabular-nums' }}>
+        {z.expectedCrowd.toLocaleString('en-IN')}
       </TD>
       <TD>
-        {/* biome-ignore lint/a11y/noLabelWithoutControl: the label WRAPS its control,
-            which associates them implicitly; the rule cannot see the input inside
-            <Checkbox>. */}
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-          <Checkbox
-            checked={closed}
-            disabled={!writable}
-            onChange={(e) => setClosed(e.target.checked)}
-          />
-          Closed to vendors
-        </label>
+        {/* ⚠️ A tag only when the bay is closed. "Open" for everything else
+            would put a badge on almost every row and leave the exception
+            competing with the rule for attention. */}
+        {z.isClosedToVendors ? (
+          <Tag size='sm'>Closed to vendors</Tag>
+        ) : (
+          <span style={{ color: 'var(--mfg)' }}>Open</span>
+        )}
       </TD>
       <TD align='right' muted>
         {z.stallCount}
       </TD>
       <TD align='right' style={{ whiteSpace: 'nowrap' }}>
-        <Btn
-          disabled={!writable || !dirty}
-          onClick={() =>
-            run(`${z.code} saved`, () =>
-              api.updateZone(z.code, {
-                name,
-                expectedCrowd: Number(crowd) || 0,
-                isClosedToVendors: closed,
-              }),
-            )
-          }
-        >
-          Save
-        </Btn>
+        <EditBtn what={z.code} writable={writable} onClick={() => onEdit(z)} />
         {/* ⚠️ Disabled, with the reason, rather than offered and refused. A bay
             is emptied before it leaves a layout, so this is the normal order of
             work — and the alternative to refusing is a cascade that would take
@@ -690,6 +762,83 @@ function ZoneRow({
         />
       </TD>
     </TR>
+  );
+}
+
+function ZoneDialog({
+  z,
+  run,
+  onClose,
+}: {
+  z: api.BackofficeConfig['zones'][number];
+  run: PanelProps['run'];
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(z.name);
+  const [crowd, setCrowd] = useState(String(z.expectedCrowd));
+  const [closed, setClosed] = useState(z.isClosedToVendors);
+  const [saving, setSaving] = useState(false);
+  const dirty =
+    name !== z.name || Number(crowd) !== z.expectedCrowd || closed !== z.isClosedToVendors;
+
+  const save = async () => {
+    setSaving(true);
+    const ok = await run(`${z.code} saved`, () =>
+      api.updateZone(z.code, {
+        name: name.trim(),
+        expectedCrowd: Number(crowd) || 0,
+        isClosedToVendors: closed,
+      }),
+    );
+    if (ok) onClose();
+    else setSaving(false);
+  };
+
+  return (
+    <Dialog
+      title={`Edit ${z.code}`}
+      note={`${z.stallCount} ${z.stallCount === 1 ? 'stall stands' : 'stalls stand'} in this bay. The code is the bay’s identity and cannot be changed here.`}
+      onClose={onClose}
+      footer={
+        <DialogButtons
+          onClose={onClose}
+          onSave={save}
+          disabled={saving || !dirty || name.trim() === ''}
+        />
+      }
+    >
+      <div style={{ display: 'grid', gap: 12 }}>
+        <FormField id='z-name' label='Name'>
+          <Input id='z-name' value={name} onChange={(e) => setName(e.target.value)} />
+        </FormField>
+        <FormField id='z-crowd' label='Expected crowd'>
+          <Input
+            id='z-crowd'
+            type='number'
+            min={0}
+            value={crowd}
+            onChange={(e) => setCrowd(e.target.value)}
+          />
+        </FormField>
+        <FormField id='z-closed' label='Vendors'>
+          {/* biome-ignore lint/a11y/noLabelWithoutControl: the label WRAPS its control,
+              which associates them implicitly; the rule cannot see the input inside
+              <Checkbox>. */}
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 13,
+              cursor: 'pointer',
+            }}
+          >
+            <Checkbox checked={closed} onChange={(e) => setClosed(e.target.checked)} />
+            Closed to vendors — ashram and local welfare only
+          </label>
+        </FormField>
+      </div>
+    </Dialog>
   );
 }
 
@@ -715,6 +864,7 @@ function ZoneRow({
 function Rates({ c, writable, run }: PanelProps) {
   const [entries, setEntries] = useState<RateCardEntry[]>(c.rateCard);
   const [isFood, setIsFood] = useState(true);
+  const [editing, setEditing] = useState<api.BackofficeConfig['zones'][number] | null>(null);
   useEffect(() => setEntries(c.rateCard), [c.rateCard]);
 
   const row = (zoneCode: string, scope: RateScope) =>
@@ -778,6 +928,7 @@ function Rates({ c, writable, run }: PanelProps) {
             <TH align='right'>Vendor advance</TH>
             <TH align='right'>Local welfare rent</TH>
             <TH align='right'>Local welfare advance</TH>
+            <TH />
           </TR>
         </THead>
         <TBody>
@@ -799,62 +950,121 @@ function Rates({ c, writable, run }: PanelProps) {
                 ) : (
                   <Fragment key={scope}>
                     <TD align='right'>
-                      <RateCell
-                        id={`${z.code}-${scope}-rent`}
-                        label={`${z.code} ${scope === 'VENDOR' ? 'vendor' : 'local welfare'} rent`}
-                        paise={r?.amountPaise ?? 0}
-                        onPaise={(amountPaise) => set(z.code, scope, { amountPaise })}
-                        disabled={!writable}
-                      />
+                      <Money paise={r?.amountPaise ?? 0} />
                     </TD>
                     <TD align='right'>
-                      <RateCell
-                        id={`${z.code}-${scope}-adv`}
-                        label={`${z.code} ${scope === 'VENDOR' ? 'vendor' : 'local welfare'} advance`}
-                        paise={r?.depositPaise ?? 0}
-                        onPaise={(depositPaise) => set(z.code, scope, { depositPaise })}
-                        disabled={!writable}
-                      />
+                      <Money paise={r?.depositPaise ?? 0} />
                     </TD>
                   </Fragment>
                 );
               })}
+              <TD align='right'>
+                <EditBtn
+                  what={`${z.code} ${isFood ? 'food' : 'non-food'} rates`}
+                  writable={writable}
+                  onClick={() => setEditing(z)}
+                />
+              </TD>
             </TR>
           ))}
         </TBody>
       </Table>
+
+      {editing && (
+        <RateDialog
+          z={editing}
+          isFood={isFood}
+          vendor={row(editing.code, 'VENDOR')}
+          localWelfare={row(editing.code, 'LOCAL_WELFARE')}
+          onApply={(scope, patch) => set(editing.code, scope, patch)}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </Panel>
   );
 }
 
-/** A rupee cell inside the rent grid. Narrower than `RupeeInput` and without a
- *  label of its own, because the column heading already carries it — the label
- *  is kept for screen readers only. */
-function RateCell({
-  id,
-  label,
-  paise,
-  onPaise,
-  disabled,
+/** A figure in the rent grid. Zero is not "₹0" — a bay left at zero is one this
+ *  scope does not price, and it is dropped on save rather than quoted free. */
+function Money({ paise }: { paise: number }) {
+  return paise > 0 ? (
+    <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatInr(paise)}</span>
+  ) : (
+    <span style={{ color: 'var(--mfg)' }}>—</span>
+  );
+}
+
+/**
+ * One bay's four figures.
+ *
+ * ⚠️ Local, and applied on Save. The panel holds a draft that its own Save
+ * writes whole, so a dialog that wrote straight into that draft would leave
+ * Cancel with nothing to cancel.
+ */
+function RateDialog({
+  z,
+  isFood,
+  vendor,
+  localWelfare,
+  onApply,
+  onClose,
 }: {
-  id: string;
-  label: string;
-  paise: number;
-  onPaise: (p: number) => void;
-  disabled?: boolean;
+  z: api.BackofficeConfig['zones'][number];
+  isFood: boolean;
+  vendor: RateCardEntry | null;
+  localWelfare: RateCardEntry | null;
+  onApply: (scope: RateScope, patch: Partial<RateCardEntry>) => void;
+  onClose: () => void;
 }) {
+  const [v, setV] = useState({
+    vendorRent: vendor?.amountPaise ?? 0,
+    vendorAdvance: vendor?.depositPaise ?? 0,
+    lwRent: localWelfare?.amountPaise ?? 0,
+    lwAdvance: localWelfare?.depositPaise ?? 0,
+  });
+  const set = (k: keyof typeof v) => ({
+    paise: v[k],
+    onPaise: (p: number) => setV((prev) => ({ ...prev, [k]: p })),
+  });
+
   return (
-    <Input
-      id={id}
-      aria-label={label}
-      type='number'
-      min={0}
-      step={100}
-      style={{ width: 110, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-      value={paiseToRupees(paise)}
-      disabled={disabled}
-      onChange={(e) => onPaise(rupeesToPaise(Number(e.target.value) || 0))}
-    />
+    <Dialog
+      title={`${z.code} — ${isFood ? 'food' : 'non-food'} rates`}
+      note={`${z.name}. Per stall, before GST. A figure left at zero is not priced at that scope and the form will not offer it. Nothing is written until Save rates.`}
+      onClose={onClose}
+      width={520}
+      footer={
+        <DialogButtons
+          onClose={onClose}
+          onSave={() => {
+            if (!z.isClosedToVendors)
+              onApply('VENDOR', { amountPaise: v.vendorRent, depositPaise: v.vendorAdvance });
+            onApply('LOCAL_WELFARE', { amountPaise: v.lwRent, depositPaise: v.lwAdvance });
+            onClose();
+          }}
+        />
+      }
+    >
+      <div style={{ display: 'grid', gap: 12 }}>
+        {/* ⚠️ Absent, not disabled. A bay closed to trade has no vendor
+            proposition at all, and empty fields nobody may fill read as
+            something broken rather than as something that does not apply. */}
+        {z.isClosedToVendors ? (
+          <div style={{ fontSize: 12.5, color: 'var(--mfg)' }}>
+            {z.code} is closed to vendors, so it carries local welfare figures only.
+          </div>
+        ) : (
+          <Grid min={200}>
+            <RupeeInput id='rd-v-rent' label='Vendor rent' {...set('vendorRent')} />
+            <RupeeInput id='rd-v-adv' label='Vendor advance' {...set('vendorAdvance')} />
+          </Grid>
+        )}
+        <Grid min={200}>
+          <RupeeInput id='rd-lw-rent' label='Local welfare rent' {...set('lwRent')} />
+          <RupeeInput id='rd-lw-adv' label='Local welfare advance' {...set('lwAdvance')} />
+        </Grid>
+      </div>
+    </Dialog>
   );
 }
 
@@ -953,6 +1163,7 @@ function Charges({ c, writable, run }: PanelProps) {
 function Fines({ c, writable, run }: PanelProps) {
   const [reason, setReason] = useState('');
   const [amount, setAmount] = useState('');
+  const [editing, setEditing] = useState<api.BackofficeConfig['fineTypes'][number] | null>(null);
   return (
     <Panel title='Fine types' note='Deducted from the deposit in Phase 3. Configured here.'>
       {c.fineTypes.length === 0 ? (
@@ -964,34 +1175,35 @@ function Fines({ c, writable, run }: PanelProps) {
               <TH>Reason</TH>
               <TH align='right'>Default</TH>
               <TH>Active</TH>
+              <TH />
             </TR>
           </THead>
           <TBody>
             {c.fineTypes.map((ft) => (
-              <TR key={ft.id}>
+              <TR key={ft.id} style={{ opacity: ft.isActive ? 1 : 0.55 }}>
                 <TD>{ft.reason}</TD>
-                <TD align='right'>{formatInr(ft.defaultAmountPaise)}</TD>
+                <TD align='right' style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {formatInr(ft.defaultAmountPaise)}
+                </TD>
                 <TD>
-                  <Checkbox
-                    aria-label={`${ft.reason} active`}
-                    checked={ft.isActive}
-                    disabled={!writable}
-                    onChange={(e) =>
-                      run('Updated', () =>
-                        api.putFineType({
-                          reason: ft.reason,
-                          defaultAmountPaise: ft.defaultAmountPaise,
-                          isActive: e.target.checked,
-                        }),
-                      )
-                    }
-                  />
+                  {ft.isActive ? (
+                    <Tag tone='ok' size='sm'>
+                      Active
+                    </Tag>
+                  ) : (
+                    <Tag size='sm'>Retired</Tag>
+                  )}
+                </TD>
+                <TD align='right'>
+                  <EditBtn what={ft.reason} writable={writable} onClick={() => setEditing(ft)} />
                 </TD>
               </TR>
             ))}
           </TBody>
         </Table>
       )}
+
+      {editing && <FineDialog ft={editing} run={run} onClose={() => setEditing(null)} />}
 
       {writable && (
         <div
@@ -1049,6 +1261,85 @@ function Fines({ c, writable, run }: PanelProps) {
   );
 }
 
+/**
+ * A fine type's default and whether it is still offered.
+ *
+ * ⚠️ The reason is the KEY — `putFineType` upserts on it — so changing the
+ * wording here would leave the old category standing and add a second one
+ * beside it. It is shown and not edited for that reason; a fine that needs
+ * renaming is retired and re-added.
+ */
+function FineDialog({
+  ft,
+  run,
+  onClose,
+}: {
+  ft: api.BackofficeConfig['fineTypes'][number];
+  run: PanelProps['run'];
+  onClose: () => void;
+}) {
+  const [amount, setAmount] = useState(String(paiseToRupees(ft.defaultAmountPaise)));
+  const [active, setActive] = useState(ft.isActive);
+  const [saving, setSaving] = useState(false);
+  const rupees = Number(amount);
+  const valid = Number.isFinite(rupees) && rupees >= 0;
+
+  const save = async () => {
+    setSaving(true);
+    const ok = await run('Fine saved', () =>
+      api.putFineType({
+        reason: ft.reason,
+        defaultAmountPaise: rupeesToPaise(rupees),
+        isActive: active,
+      }),
+    );
+    if (ok) onClose();
+    else setSaving(false);
+  };
+
+  return (
+    <Dialog
+      title={`Edit ${ft.reason}`}
+      note='The reason is how this fine is recorded against a deposit, so it cannot be changed. Retire it instead and add the new wording.'
+      onClose={onClose}
+      footer={<DialogButtons onClose={onClose} onSave={save} disabled={saving || !valid} />}
+    >
+      <div style={{ display: 'grid', gap: 12 }}>
+        <FormField id='ft-amount' label='Default amount (₹)'>
+          <Input
+            id='ft-amount'
+            type='number'
+            min={0}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </FormField>
+        <FormField
+          id='ft-active'
+          label='Offered'
+          help='A retired fine stays on every deposit it was already deducted from; it is only withdrawn from the refund screen’s list.'
+        >
+          {/* biome-ignore lint/a11y/noLabelWithoutControl: the label WRAPS its control,
+              which associates them implicitly; the rule cannot see the input inside
+              <Checkbox>. */}
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 13,
+              cursor: 'pointer',
+            }}
+          >
+            <Checkbox checked={active} onChange={(e) => setActive(e.target.checked)} />
+            Offered on the refund screen
+          </label>
+        </FormField>
+      </div>
+    </Dialog>
+  );
+}
+
 const FORM_TYPES = ['VENDOR', 'LOCAL_WELFARE', 'ASHRAM', 'ASHRAM_FOOD', 'BANK', 'FSSAI'] as const;
 
 function CustomFields({ c, writable, run }: PanelProps) {
@@ -1057,6 +1348,7 @@ function CustomFields({ c, writable, run }: PanelProps) {
   const [labelTa, setLabelTa] = useState('');
   const [fieldType, setFieldType] = useState('text');
   const [required, setRequired] = useState(false);
+  const [editing, setEditing] = useState<api.BackofficeConfig['customFields'][number] | null>(null);
   return (
     <Panel
       title='Custom fields'
@@ -1099,18 +1391,16 @@ function CustomFields({ c, writable, run }: PanelProps) {
                 <TD muted>{f.fieldType}</TD>
                 <TD muted>{f.isRequired ? 'Yes' : '—'}</TD>
                 <TD>
-                  <Checkbox
-                    aria-label={`${f.label} active`}
-                    checked={f.isActive}
-                    disabled={!writable}
-                    onChange={(e) =>
-                      run('Updated', () =>
-                        api.patchCustomField(f.id, { isActive: e.target.checked }),
-                      )
-                    }
-                  />
+                  {f.isActive ? (
+                    <Tag tone='ok' size='sm'>
+                      Active
+                    </Tag>
+                  ) : (
+                    <Tag size='sm'>Off</Tag>
+                  )}
                 </TD>
-                <TD align='right'>
+                <TD align='right' style={{ whiteSpace: 'nowrap' }}>
+                  <EditBtn what={f.label} writable={writable} onClick={() => setEditing(f)} />
                   <Btn
                     kind='danger'
                     disabled={!writable}
@@ -1124,6 +1414,8 @@ function CustomFields({ c, writable, run }: PanelProps) {
           </TBody>
         </Table>
       )}
+
+      {editing && <CustomFieldDialog f={editing} run={run} onClose={() => setEditing(null)} />}
 
       {writable && (
         <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
@@ -1200,6 +1492,120 @@ function CustomFields({ c, writable, run }: PanelProps) {
         </div>
       )}
     </Panel>
+  );
+}
+
+/**
+ * A custom field's wording and whether the form still asks it.
+ *
+ * ⚠️ The form it belongs to is not editable. Moving a field between forms would
+ * leave the answers already given filed under a form that never asked the
+ * question — the field is switched off here and added to the other form
+ * instead.
+ */
+function CustomFieldDialog({
+  f,
+  run,
+  onClose,
+}: {
+  f: api.BackofficeConfig['customFields'][number];
+  run: PanelProps['run'];
+  onClose: () => void;
+}) {
+  const [label, setLabel] = useState(f.label);
+  const [labelTa, setLabelTa] = useState(f.labelTa ?? '');
+  const [fieldType, setFieldType] = useState(f.fieldType);
+  const [required, setRequired] = useState(f.isRequired);
+  const [active, setActive] = useState(f.isActive);
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    const ok = await run('Field saved', () =>
+      api.patchCustomField(f.id, {
+        label: label.trim(),
+        labelTa: labelTa.trim() || null,
+        fieldType,
+        isRequired: required,
+        isActive: active,
+      }),
+    );
+    if (ok) onClose();
+    else setSaving(false);
+  };
+
+  return (
+    <Dialog
+      title={`Edit ${f.label}`}
+      note={`Asked on the ${f.formType} form. A field that has been answered can be switched off but not moved to another form.`}
+      onClose={onClose}
+      width={520}
+      footer={
+        <DialogButtons onClose={onClose} onSave={save} disabled={saving || label.trim() === ''} />
+      }
+    >
+      <div style={{ display: 'grid', gap: 12 }}>
+        <FormField id='cfd-label' label='Label'>
+          <Input id='cfd-label' value={label} onChange={(e) => setLabel(e.target.value)} />
+        </FormField>
+        <FormField id='cfd-ta' label='Tamil label (optional)'>
+          <Input
+            id='cfd-ta'
+            className='msrs-tamil'
+            value={labelTa}
+            onChange={(e) => setLabelTa(e.target.value)}
+          />
+        </FormField>
+        <FormField
+          id='cfd-type'
+          label='Type'
+          help='Changing the type of a field that has been answered leaves those answers as they were recorded.'
+        >
+          <Select id='cfd-type' value={fieldType} onChange={(e) => setFieldType(e.target.value)}>
+            <option value='text'>Text</option>
+            <option value='textarea'>Paragraph</option>
+            <option value='number'>Number</option>
+            <option value='checkbox'>Checkbox</option>
+          </Select>
+        </FormField>
+        <Grid min={180}>
+          <FormField id='cfd-req' label='Required'>
+            {/* biome-ignore lint/a11y/noLabelWithoutControl: the label WRAPS its control,
+                which associates them implicitly; the rule cannot see the input inside
+                <Checkbox>. */}
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                fontSize: 13,
+                cursor: 'pointer',
+              }}
+            >
+              <Checkbox checked={required} onChange={(e) => setRequired(e.target.checked)} />
+              Must be answered
+            </label>
+          </FormField>
+          <FormField id='cfd-active' label='Active'>
+            {/* biome-ignore lint/a11y/noLabelWithoutControl: the label WRAPS its control,
+                which associates them implicitly; the rule cannot see the input inside
+                <Checkbox>. */}
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                fontSize: 13,
+                cursor: 'pointer',
+              }}
+            >
+              <Checkbox checked={active} onChange={(e) => setActive(e.target.checked)} />
+              Still asked on the form
+            </label>
+          </FormField>
+        </Grid>
+      </div>
+    </Dialog>
   );
 }
 
@@ -1280,7 +1686,7 @@ function Editions({ writable, run }: { writable: boolean; run: PanelProps['run']
   return (
     <Panel
       title='Editions'
-      note='One per MSR. Exactly one is active; the public forms and every staff screen read it. Creating a new one seeds zones, rates and charges from the 2025 defaults.'
+      note='One per MSR. Exactly one is active; the public forms and every backoffice screen read it. Creating a new one seeds zones, rates and charges from the 2025 defaults.'
     >
       {eds.data === null ? (
         <Loading />

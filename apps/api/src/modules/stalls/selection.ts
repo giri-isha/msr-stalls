@@ -85,7 +85,7 @@ async function releaseAllForRequest(tx: Prisma.TransactionClient, requestId: str
  *  The single-occupant guarantee is the UNIQUE constraint on
  *  `StallAllocation.activeStallId`. This function does check the stall's
  *  status first — so the common case gets a clear error before touching the
- *  constraint — but it does not RELY on that check: two staff can both read
+ *  constraint — but it does not RELY on that check: two backoffice members can both read
  *  AVAILABLE and both proceed, and then exactly one insert succeeds. The
  *  other's P2002 becomes `StallAlreadyAllocatedError`, and its transaction
  *  rolls back, so it never half-selects. */

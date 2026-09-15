@@ -248,7 +248,7 @@ function Money({ row }: { row: PaymentRow }) {
     <div style={{ fontSize: 12.5, display: 'grid', gap: 2 }}>
       {/* Both figures, always, where a concession stands: what the requester was
           TOLD and what they OWE are different facts, and Finance reconciling a
-          season six months later needs to see the gap rather than infer it. */}
+          edition six months later needs to see the gap rather than infer it. */}
       <div style={conceded ? { textDecoration: 'line-through', color: 'var(--mfg)' } : undefined}>
         Fee incl. GST: {formatInr(row.quote.feeTotalPaise)}
       </div>
@@ -359,7 +359,7 @@ function ConfirmPanel() {
  *
  *  The reason is required, and that is not ceremony: a figure below the card
  *  rate with nothing beside it is indistinguishable from a typo six months on,
- *  when whoever agreed it has moved on and Finance is closing the season.
+ *  when whoever agreed it has moved on and Finance is closing the edition.
  */
 function Concession({
   row,

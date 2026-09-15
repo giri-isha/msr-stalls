@@ -205,7 +205,7 @@ export const DEFAULT_TEMPLATES: TemplateSeed[] = [
       'Payment for {{stallName}} ({{reference}}) is confirmed. Two things remain:',
       '',
       '1. FSSAI certificate: {{fssaiUrl}}',
-      '2. Register your staff with coupon {{staffCouponCode}}: {{staffRegistrationUrl}}',
+      '2. Register your backoffice with coupon {{staffCouponCode}}: {{staffRegistrationUrl}}',
       '',
       'Please do not share the coupon outside your own team.',
       '',

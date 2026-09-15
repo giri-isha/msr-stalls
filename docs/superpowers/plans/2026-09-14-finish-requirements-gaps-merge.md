@@ -98,11 +98,11 @@ git add apps/api/test && git commit -m "test: API helpers follow config-as-data"
 ### Task 3: Planning and Electrical read the edition's own columns and bays
 
 **Files:**
-- Modify: `apps/web/src/modules/stalls/staff/Planning.tsx`
-- Modify: `apps/web/src/modules/stalls/staff/Electrical.tsx`
+- Modify: `apps/web/src/modules/stalls/backoffice/Planning.tsx`
+- Modify: `apps/web/src/modules/stalls/backoffice/Electrical.tsx`
 
 **Interfaces:**
-- Consumes: `ZonePlanView.categories: Array<{ key: string; name: string; isFood: boolean }>` — the grid's columns, sent with the data; `StaffConfig.zones` for the bay filter.
+- Consumes: `ZonePlanView.categories: Array<{ key: string; name: string; isFood: boolean }>` — the grid's columns, sent with the data; `BackofficeConfig.zones` for the bay filter.
 - Produces: nothing new.
 
 - [x] **Step 1: Planning — drop the `STALL_CATEGORIES` import**
@@ -123,14 +123,14 @@ Expected: Planning and Electrical errors gone (Admin and RequestForm remain, Tas
 ### Task 4: The Admin rate card edits the per-bay matrix
 
 **Files:**
-- Modify: `apps/web/src/modules/stalls/staff/Admin.tsx`
-- Modify: `apps/web/src/modules/stalls/api.ts` (`StaffConfig.rateCard` type)
+- Modify: `apps/web/src/modules/stalls/backoffice/Admin.tsx`
+- Modify: `apps/web/src/modules/stalls/api.ts` (`BackofficeConfig.rateCard` type)
 
 **Interfaces:**
 - Consumes: `RateCardEntry`, `RATE_SCOPES`, `ChargesInput`.
 - Produces: an Admin rent panel that writes `PUT /config/rate-card` with full `{ zoneCode, isFood, scope, amountPaise, depositPaise }` rows.
 
-- [x] **Step 1: Fix the client's `StaffConfig.rateCard` type**
+- [x] **Step 1: Fix the client's `BackofficeConfig.rateCard` type**
 
 It still reads `{ zoneGroup: 'AB' | 'C' | 'CLOSED'; isFood; amountPaise }`. Replace with `RateCardEntry[]` imported from `@msr/stalls`.
 
@@ -233,8 +233,8 @@ Nothing references it, in its own file or anywhere else.
 ### Task 7: Admin screens for the new writes
 
 **Files:**
-- Modify: `apps/web/src/modules/stalls/staff/Admin.tsx`
-- Modify: `apps/web/src/modules/stalls/staff/Onboarding.tsx`
+- Modify: `apps/web/src/modules/stalls/backoffice/Admin.tsx`
+- Modify: `apps/web/src/modules/stalls/backoffice/Onboarding.tsx`
 
 - [x] **Step 1: Zones panel takes add and remove**
 

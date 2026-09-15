@@ -5,7 +5,14 @@ import type { StallEdition } from '@prisma/client';
 import { buildApp } from '../src/app';
 import { mintAccessLink } from '../src/modules/stalls/accounts';
 import { ensureCoupon, setCouponCapacity } from '../src/modules/stalls/onboarding';
-import { LogMailer, type Staff, prisma, resetDatabase, seedEdition, seedStaff } from './helpers/db';
+import {
+  LogMailer,
+  type Backoffice,
+  prisma,
+  resetDatabase,
+  seedEdition,
+  seedBackoffice,
+} from './helpers/db';
 import { fakeStore, selected } from './helpers/onboarding';
 import { makeStalls } from './helpers/plan';
 
@@ -16,10 +23,10 @@ import { makeStalls } from './helpers/plan';
 
 let app: FastifyInstance;
 let edition: StallEdition;
-let admin: Staff;
-let volunteer: Staff;
-let finance: Staff;
-let lead: Staff;
+let admin: Backoffice;
+let volunteer: Backoffice;
+let finance: Backoffice;
+let lead: Backoffice;
 
 beforeAll(async () => {
   app = await buildApp({ logger: false, mail: new LogMailer(), files: fakeStore() });
@@ -30,15 +37,15 @@ beforeEach(async () => {
   await resetDatabase();
   edition = await seedEdition();
   await makeStalls(edition.id, 'C1', { VENDOR_FOOD: 5 });
-  admin = await seedStaff(['stalls_admin'], 'admin@example.org');
-  lead = await seedStaff(['stalls_lead'], 'lead@example.org');
-  volunteer = await seedStaff(['stalls_volunteer'], 'volunteer@example.org');
-  finance = await seedStaff(['stalls_finance'], 'finance@example.org');
+  admin = await seedBackoffice(['stalls_admin'], 'admin@example.org');
+  lead = await seedBackoffice(['stalls_lead'], 'lead@example.org');
+  volunteer = await seedBackoffice(['stalls_volunteer'], 'volunteer@example.org');
+  finance = await seedBackoffice(['stalls_finance'], 'finance@example.org');
 });
 
-const get = (url: string, who?: Staff) =>
+const get = (url: string, who?: Backoffice) =>
   app.inject({ method: 'GET', url: `/api/m/stalls${url}`, headers: who?.headers });
-const post = (url: string, payload: Record<string, unknown>, who?: Staff) =>
+const post = (url: string, payload: Record<string, unknown>, who?: Backoffice) =>
   app.inject({ method: 'POST', url: `/api/m/stalls${url}`, headers: who?.headers, payload });
 const pub = (method: 'GET' | 'POST', url: string, payload?: Record<string, unknown>) =>
   app.inject({ method, url: `/api/m/stalls/public${url}`, payload });
@@ -55,7 +62,7 @@ async function link(requestId: string, purpose: 'BANK_FORM' | 'FSSAI_UPLOAD' | '
   return token;
 }
 
-describe('who may reach the new staff surfaces', () => {
+describe('who may reach the new backoffice surfaces', () => {
   test('a volunteer may run check-in and the chairs counter but not send letters', async () => {
     expect((await get('/checkin', volunteer)).statusCode).toBe(200);
     expect((await get('/equipment', volunteer)).statusCode).toBe(200);
@@ -311,7 +318,7 @@ describe('the ops surfaces over HTTP', () => {
     // venue-prep teams. They are not the stalls team: the sheet and the bay
     // list it filters by are all they get.
     await selected(['C1-1'], { plugs5a: 3 });
-    const sparky = await seedStaff(['stalls_electrical']);
+    const sparky = await seedBackoffice(['stalls_electrical']);
 
     expect((await get('/electrical', sparky)).statusCode).toBe(200);
     expect((await get('/zones', sparky)).statusCode).toBe(200);

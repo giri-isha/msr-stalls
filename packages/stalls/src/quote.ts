@@ -228,7 +228,7 @@ export function quoteRequest(
  *  quote exists. Without somewhere to record it, the quoted figure is the only
  *  figure the system knows, a stall that paid the agreed 5,000 against a
  *  10,000 quote never counts as settled, and it sits on the Finance list and in
- *  "payment pending" for the rest of the season.
+ *  "payment pending" for the rest of the edition.
  *
  *  So: `feeTotalPaise` stays as quoted and is never rewritten — it is what the
  *  vendor was told — and `discretionaryFeePaise`, when present, is what is

@@ -126,7 +126,7 @@ describe('staff registration', () => {
     const coupon = await couponFor(requestId);
     const view = await registerStaff(prisma, staffBody({ couponCode: coupon.code }));
     expect(view.staff[0].mobile).toBe('98••••555');
-    // Staff themselves see the full number.
+    // Backoffice themselves see the full number.
     expect((await listStaffFor(prisma, requestId))[0].mobile).toBe('9840055555');
   });
 
@@ -183,7 +183,7 @@ describe('staff registration', () => {
     ).rejects.toBeInstanceOf(CouponFullError);
   });
 
-  test('a staff member can be removed by the team', async () => {
+  test('a backoffice member can be removed by the team', async () => {
     const { requestId } = await selected(['C1-1'], { passesStaff: 3 });
     const coupon = await couponFor(requestId);
     await registerStaff(prisma, staffBody({ couponCode: coupon.code }));

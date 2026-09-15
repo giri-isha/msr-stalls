@@ -136,7 +136,7 @@ describe('confirming a credit', () => {
   test('the agreed fee is recorded beside the quote, never on top of it', async () => {
     // "For A3 the cost is 10,000 — for the coconut wala, probably we will give
     // that stall at 5,000." The card figure is what they were told; this is
-    // what they owe, and Finance needs both when the season is reconciled.
+    // what they owe, and Finance needs both when the edition is reconciled.
     const fetch = stub([['PUT', /\/discretionary-fee$/, () => [204, null]]]);
     render();
     const user = userEvent.setup();

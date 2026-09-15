@@ -171,7 +171,7 @@ matching the host.
   (`STATUS | BANK_FORM | FSSAI_UPLOAD | STAFF_REGISTRATION`), `expiresAt`,
   `usedAt?`, `revokedAt?`. The return-access mechanism (decision 7). Only the
   **hash** is stored, so a database leak does not hand out live links.
-- **`StallStaffRole`** — `personRef`, `roleKey`. Module-owned RBAC (decision 3).
+- **`StallBackofficeRole`** — `personRef`, `roleKey`. Module-owned RBAC (decision 3).
   `personRef` is the host's `person_id` after migration; a stub id before it.
 
 ### Requests

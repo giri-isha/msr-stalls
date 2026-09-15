@@ -149,7 +149,7 @@ describe('getPublicConfig', () => {
     expect(cfg.customFields.map((f) => f.id)).toEqual([active.id]);
   });
 
-  test('carries nothing staff-only', async () => {
+  test('carries nothing backoffice-only', async () => {
     await seedEdition();
     const cfg = (await getPublicConfig(prisma)) as unknown as Record<string, unknown>;
     expect(Object.keys(cfg).sort()).toEqual([

@@ -70,7 +70,7 @@ describe('the vocabulary', () => {
 });
 
 describe('the seeded roles', () => {
-  test('declares the staff roles from the requirements', () => {
+  test('declares the backoffice roles from the requirements', () => {
     expect(SEED_ROLES.map((r) => r.roleKey).sort()).toEqual([
       'stalls_admin',
       'stalls_electrical',
@@ -103,7 +103,7 @@ describe('the seeded roles', () => {
   });
 
   // The local welfare team files requests inside this application, because the
-  // traders they file for mostly have no email address. That makes them staff —
+  // traders they file for mostly have no email address. That makes them backoffice members —
   // it does not give them a commercial vendor's bank details.
   test('only the local welfare role is scoped, and only to its own requests', () => {
     const scoped = SEED_ROLES.filter((r) => r.requestTypeScope !== null);
@@ -309,7 +309,7 @@ describe('assignableRoleKeys', () => {
   });
 
   // Two roles drawn level on a chart report to different people, so one team
-  // lead must never be able to staff another's team.
+  // lead must never be able to backoffice another's team.
   test('never a sibling', () => {
     const assignable = assignableRoleKeys(TREE, ['stalls_finance']);
     expect(assignable).not.toContain('stalls_volunteer');
@@ -384,12 +384,12 @@ describe('the grant-level scopes', () => {
     zoneScope,
   });
 
-  test('an unrestricted grant reaches every season and every bay', () => {
+  test('an unrestricted grant reaches every edition and every bay', () => {
     expect(unionEditionScope([grant(null)])).toBeNull();
     expect(unionZoneScope([grant(null, null)])).toBeNull();
   });
 
-  test('a seasonal grant reaches only its own', () => {
+  test('a single-edition grant reaches only its own', () => {
     expect(unionEditionScope([grant(['e-2026'])])).toEqual(['e-2026']);
   });
 

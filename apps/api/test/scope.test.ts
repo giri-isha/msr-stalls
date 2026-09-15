@@ -2,7 +2,7 @@
 //
 // The role exists because the local welfare team files requests inside this
 // application on behalf of village traders who have no email address — which
-// makes them staff, holding real `requests:write`. `rbac.ts` says they reach
+// makes them backoffice members, holding real `requests:write`. `rbac.ts` says they reach
 // only LOCAL_WELFARE; these are the tests that the API agrees, on every door
 // rather than on the list alone.
 import type { FastifyInstance } from 'fastify';
@@ -17,16 +17,16 @@ import {
   prisma,
   resetDatabase,
   seedEdition,
-  seedStaff,
+  seedBackoffice,
   SYSTEM,
-  type Staff,
+  type Backoffice,
   vendorBody,
 } from './helpers/db';
 import { makeStalls } from './helpers/plan';
 
 let app: FastifyInstance;
-let lw: Staff;
-let lead: Staff;
+let lw: Backoffice;
+let lead: Backoffice;
 let vendorId: string;
 let welfareId: string;
 
@@ -50,8 +50,8 @@ beforeEach(async () => {
   await resetDatabase();
   const edition = await seedEdition();
   await makeStalls(edition.id, 'A4', { VENDOR_FOOD: 4 });
-  lw = await seedStaff(['stalls_local_welfare']);
-  lead = await seedStaff(['stalls_lead']);
+  lw = await seedBackoffice(['stalls_local_welfare']);
+  lead = await seedBackoffice(['stalls_lead']);
   vendorId = (await submit({ stallName: 'Green Leaf', email: 'v@x.com' })).requestId;
   welfareId = (
     await submit({
@@ -64,8 +64,8 @@ beforeEach(async () => {
   ).requestId;
 });
 
-const get = (staff: Staff, url: string) =>
-  app.inject({ method: 'GET', url: `/api/m/stalls${url}`, headers: staff.headers });
+const get = (backoffice: Backoffice, url: string) =>
+  app.inject({ method: 'GET', url: `/api/m/stalls${url}`, headers: backoffice.headers });
 
 describe('the list a scoped role sees', () => {
   test('carries their own requester type and nobody else’s', async () => {
@@ -139,7 +139,7 @@ describe('one request, addressed by id', () => {
     // ⚠️ `:id` here is the registration's, not the request's — the check has to
     // walk to the stall it hangs off before it can answer.
     await selectRequest(prisma, { requestId: vendorId, stallNumbers: ['A4-1'] }, SYSTEM);
-    const staffRow = await prisma.stallVendorStaff.create({
+    const backofficeRow = await prisma.stallVendorStaff.create({
       data: {
         requestId: vendorId,
         name: 'Murugan',
@@ -150,11 +150,11 @@ describe('one request, addressed by id', () => {
     });
     const res = await app.inject({
       method: 'DELETE',
-      url: `/api/m/stalls/staff-registrations/${staffRow.id}`,
+      url: `/api/m/stalls/staff-registrations/${backofficeRow.id}`,
       headers: lw.headers,
     });
     expect(res.statusCode).toBe(403);
-    expect(await prisma.stallVendorStaff.count({ where: { id: staffRow.id } })).toBe(1);
+    expect(await prisma.stallVendorStaff.count({ where: { id: backofficeRow.id } })).toBe(1);
   });
 
   test('an id that matches nothing is a 404, not a 403', async () => {

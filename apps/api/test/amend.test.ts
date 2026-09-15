@@ -17,15 +17,15 @@ import {
   resetDatabase,
   seedEdition,
   seedRequester,
-  seedStaff,
-  type Staff,
+  seedBackoffice,
+  type Backoffice,
   vendorBody,
 } from './helpers/db';
 import { makeStalls } from './helpers/plan';
 
 let app: FastifyInstance;
-let lead: Staff;
-let volunteer: Staff;
+let lead: Backoffice;
+let volunteer: Backoffice;
 let editionId: string;
 
 beforeAll(async () => {
@@ -49,15 +49,15 @@ beforeEach(async () => {
   const edition = await seedEdition();
   editionId = edition.id;
   await makeStalls(edition.id, 'A4', { VENDOR_FOOD: 4 });
-  lead = await seedStaff(['stalls_lead']);
-  volunteer = await seedStaff(['stalls_volunteer']);
+  lead = await seedBackoffice(['stalls_lead']);
+  volunteer = await seedBackoffice(['stalls_volunteer']);
 });
 
-const patch = (staff: Staff, id: string, payload: Record<string, unknown>) =>
+const patch = (backoffice: Backoffice, id: string, payload: Record<string, unknown>) =>
   app.inject({
     method: 'PATCH',
     url: `/api/m/stalls/requests/${id}`,
-    headers: staff.headers,
+    headers: backoffice.headers,
     payload,
   });
 

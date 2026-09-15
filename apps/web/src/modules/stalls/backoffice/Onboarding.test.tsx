@@ -275,7 +275,7 @@ describe('the vendor detail', () => {
     expect(within(dialog).getByRole('button', { name: 'Save' })).toBeDisabled();
   });
 
-  test('staff numbers are shown in full to the team, unlike the vendor’s own page', async () => {
+  test('backoffice numbers are shown in full to the team, unlike the vendor’s own page', async () => {
     installFetch([
       ['GET', /\/me$/, () => ME_ADMIN],
       ['GET', /\/onboarding$/, () => [row()]],

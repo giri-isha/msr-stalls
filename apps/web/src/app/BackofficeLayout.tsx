@@ -1,4 +1,4 @@
-// SHELL — the staff chrome, and the sign-in gate.
+// SHELL — the backoffice chrome, and the sign-in gate.
 //
 // Discarded at migration: the host has its own shell, its own nav and Isha SSO.
 // What survives is what this wraps — `MeProvider`, `ToastProvider` and the
@@ -538,7 +538,7 @@ function Gate() {
   );
 }
 
-export function StaffLayout() {
+export function BackofficeLayout() {
   return (
     // ⚠️ `ToastProvider` sits OUTSIDE `MeProvider`, not inside, and the order is
     // the decision: the gate swaps its whole subtree between the sign-in screen

@@ -92,9 +92,27 @@ export const PasswordResetConfirmInput = z.object({
 });
 export type PasswordResetConfirmInput = z.infer<typeof PasswordResetConfirmInput>;
 
+/**
+ * A password the BACKOFFICE chooses for a requester, over the phone.
+ *
+ * ⚠️ The one place in the module where a way in is handed to somebody other
+ * than the account holder, and it is deliberate: the vendor on the phone who
+ * cannot follow a link being read out to them is real, and until Isha SSO
+ * arrives the alternative is that they never get in. It is gated by its own
+ * `passwords.write`, never by `users.write` — see the note on that privilege —
+ * and every use is written to the activity trail with the actor.
+ *
+ * ⚠️ It goes with the rest of the password login. When the host signs
+ * requesters in, there is no password here for anyone to set.
+ */
+export const SetRequesterPasswordInput = z.object({
+  password: z.string().min(MIN_PASSWORD_LENGTH).max(200),
+});
+export type SetRequesterPasswordInput = z.infer<typeof SetRequesterPasswordInput>;
+
 /** Who is logged in on the public side.
  *
- *  ⚠️ NOT `MeResponse`. That is the STAFF session and it answers `can()` about
+ *  ⚠️ NOT `MeResponse`. That is the BACKOFFICE session and it answers `can()` about
  *  roles a requester will never hold. Conflating the two is how a requester
  *  ends up being asked what they are allowed to do. */
 export interface RequesterSession {

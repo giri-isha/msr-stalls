@@ -11,8 +11,10 @@ import {
   Dialog,
   Empty,
   ErrorBox,
+  FormField,
   H1,
   Icon,
+  IconBtn,
   Input,
   Loading,
   Search,
@@ -48,6 +50,9 @@ export function Equipment() {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<'all' | 'todo' | 'out' | 'flagged'>('all');
   const [challan, setChallan] = useState<ChallanView | null>(null);
+  // ⚠️ The page holds it, not the row: a dialog is a <div>, and a <div> inside
+  // a <tr> is markup React will not have.
+  const [editing, setEditing] = useState<EquipmentRow | null>(null);
   const mobile = useIsMobile();
   const canWrite = can('checkin.write');
 
@@ -75,9 +80,11 @@ export function Equipment() {
     try {
       replace(await fn());
       if (message) toast.ok(message);
+      return true;
     } catch (e) {
       toast.fail(e);
       reload();
+      return false;
     }
   };
 
@@ -133,6 +140,7 @@ export function Equipment() {
               row={r}
               canWrite={canWrite}
               onRun={run}
+              onEdit={() => setEditing(r)}
               onChallan={() => openChallan(r.requestId)}
             />
           ))}
@@ -177,19 +185,11 @@ export function Equipment() {
                   <TD align='right' style={{ whiteSpace: 'nowrap' }}>
                     {r.chairsRequested} ch / {r.tablesRequested} tb
                   </TD>
-                  <TD align='right'>
-                    <NumberCell
-                      value={r.extraChairs}
-                      disabled={!canWrite}
-                      onCommit={(v) => run(() => patchEquipment(r.requestId, { extraChairs: v }))}
-                    />
+                  <TD align='right' style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {r.extraChairs || <span style={{ color: 'var(--mfg)' }}>—</span>}
                   </TD>
-                  <TD align='right'>
-                    <NumberCell
-                      value={r.extraTables}
-                      disabled={!canWrite}
-                      onCommit={(v) => run(() => patchEquipment(r.requestId, { extraTables: v }))}
-                    />
+                  <TD align='right' style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {r.extraTables || <span style={{ color: 'var(--mfg)' }}>—</span>}
                   </TD>
                   <TD align='right'>
                     {r.extraChargePaise > 0 ? (
@@ -205,13 +205,14 @@ export function Equipment() {
                     <StageTag row={r} />
                   </TD>
                   <TD>
-                    <ConditionCell row={r} canWrite={canWrite} onRun={run} />
+                    <ConditionSummary row={r} />
                   </TD>
                   <TD align='right'>
                     <Actions
                       row={r}
                       canWrite={canWrite}
                       onRun={run}
+                      onEdit={() => setEditing(r)}
                       onChallan={() => openChallan(r.requestId)}
                     />
                   </TD>
@@ -222,12 +223,15 @@ export function Equipment() {
         </Card>
       )}
 
+      {editing && <CounterDialog row={editing} onRun={run} onClose={() => setEditing(null)} />}
       {challan && <ChallanDialog data={challan} onClose={() => setChallan(null)} />}
     </div>
   );
 }
 
-type Run = (fn: () => Promise<EquipmentRow>, message?: string) => Promise<void>;
+/** ⚠️ Answers whether it went through, so the counter dialog can stay open on a
+ *  refusal rather than closing and taking the figures with it. */
+type Run = (fn: () => Promise<EquipmentRow>, message?: string) => Promise<boolean>;
 
 function StageTag({ row }: { row: EquipmentRow }) {
   if (row.collectedAt) {
@@ -251,88 +255,37 @@ function StageTag({ row }: { row: EquipmentRow }) {
   );
 }
 
-/** Commits on blur, not on every keystroke: a counter typing "12" would
- *  otherwise send a 1 and a 12, and the first of those is a real charge. */
-function NumberCell({
-  value,
-  disabled,
-  onCommit,
-}: {
-  value: number;
-  disabled?: boolean;
-  onCommit: (v: number) => void;
-}) {
-  const [text, setText] = useState(String(value));
-  return (
-    <Input
-      type='number'
-      min={0}
-      value={text}
-      disabled={disabled}
-      aria-label='Count'
-      onChange={(e) => setText(e.target.value)}
-      onBlur={() => {
-        const v = Number(text);
-        if (Number.isInteger(v) && v >= 0 && v !== value) onCommit(v);
-        else setText(String(value));
-      }}
-      style={{ width: 64, padding: '5px 8px', fontSize: 12.5, textAlign: 'right' }}
-    />
-  );
-}
+/**
+ * What was found when the chairs came back — read here, changed in the dialog.
+ *
+ * ⚠️ Nothing at all when nothing is wrong. The overwhelming majority of rows
+ * return complete, and a column of empty fields and unticked boxes made the
+ * handful that did not look exactly like the ones that did.
+ */
+function ConditionSummary({ row }: { row: EquipmentRow }) {
+  const missing = [
+    row.missingChairs > 0 ? `${row.missingChairs} ch` : null,
+    row.missingTables > 0 ? `${row.missingTables} tb` : null,
+  ].filter(Boolean);
+  const clean = missing.length === 0 && !row.damaged && !row.note;
 
-function ConditionCell({
-  row,
-  canWrite,
-  onRun,
-}: {
-  row: EquipmentRow;
-  canWrite: boolean;
-  onRun: Run;
-}) {
-  const [note, setNote] = useState(row.note ?? '');
+  if (clean) return <span style={{ color: 'var(--mfg)' }}>—</span>;
+
   return (
-    <div style={{ display: 'grid', gap: 5, minWidth: 220 }}>
-      <Input
-        value={note}
-        disabled={!canWrite}
-        aria-label='Condition note'
-        placeholder='e.g. 1 chair broken'
-        onChange={(e) => setNote(e.target.value)}
-        onBlur={() => {
-          if (note !== (row.note ?? '')) onRun(() => patchEquipment(row.requestId, { note }));
-        }}
-        style={{ padding: '5px 8px', fontSize: 12 }}
-      />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5 }}>
-        <span style={{ color: 'var(--mfg)' }}>Missing</span>
-        <NumberCell
-          value={row.missingChairs}
-          disabled={!canWrite}
-          onCommit={(v) => onRun(() => patchEquipment(row.requestId, { missingChairs: v }))}
-        />
-        <span style={{ color: 'var(--mfg)' }}>ch</span>
-        <NumberCell
-          value={row.missingTables}
-          disabled={!canWrite}
-          onCommit={(v) => onRun(() => patchEquipment(row.requestId, { missingTables: v }))}
-        />
-        <span style={{ color: 'var(--mfg)' }}>tb</span>
-        <label
-          htmlFor={`damaged-${row.requestId}`}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
-        >
-          <Checkbox
-            id={`damaged-${row.requestId}`}
-            checked={row.damaged}
-            disabled={!canWrite}
-            onChange={(e) =>
-              onRun(() => patchEquipment(row.requestId, { damaged: e.target.checked }))
-            }
-          />
-          Damaged
-        </label>
+    <div style={{ display: 'grid', gap: 4, minWidth: 180 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        {missing.length > 0 && (
+          <Tag tone='warn' size='sm'>
+            {missing.join(' / ')} missing
+          </Tag>
+        )}
+        {row.damaged && (
+          <Tag tone='des' size='sm'>
+            Damaged
+          </Tag>
+        )}
       </div>
+      {row.note && <span style={{ fontSize: 11.5, color: 'var(--mfg)' }}>{row.note}</span>}
       {row.deductionPaise > 0 && (
         <span style={{ fontSize: 11, color: 'var(--warn-fg,var(--mfg))' }}>
           Deduction {formatInr(row.deductionPaise)}
@@ -342,15 +295,200 @@ function ConditionCell({
   );
 }
 
+/**
+ * Everything the counter writes down, in one box.
+ *
+ * 🔴 One PATCH, not six. These were six inline controls that each fired on its
+ * own blur or tick, so a counter correcting an entry — two chairs missing, no,
+ * three, and one of them broken — sent three requests, and the middle one was
+ * a figure nobody meant. Worse, the extras are CHARGED: a half-typed "12" used
+ * to leave the counter as a 1 before it left as a 12. Here the figures are
+ * settled first and sent once.
+ */
+function CounterDialog({
+  row,
+  onRun,
+  onClose,
+}: {
+  row: EquipmentRow;
+  onRun: Run;
+  onClose: () => void;
+}) {
+  const [v, setV] = useState({
+    extraChairs: String(row.extraChairs),
+    extraTables: String(row.extraTables),
+    missingChairs: String(row.missingChairs),
+    missingTables: String(row.missingTables),
+    damaged: row.damaged,
+    note: row.note ?? '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  const num = (s: string) => {
+    const x = Number(s);
+    return Number.isInteger(x) && x >= 0 && x <= 500 ? x : null;
+  };
+  const counts = [v.extraChairs, v.extraTables, v.missingChairs, v.missingTables];
+  const valid = counts.every((s) => num(s) !== null);
+
+  // ⚠️ The extras are frozen once the cash has been taken. Re-pricing a charge
+  // the vendor has already paid at the counter would leave the money in the
+  // drawer disagreeing with the figure on the screen.
+  const extrasLocked = row.extraCollectedAt !== null;
+
+  const field = (k: 'extraChairs' | 'extraTables' | 'missingChairs' | 'missingTables') => ({
+    type: 'number' as const,
+    min: 0,
+    value: v[k],
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => setV({ ...v, [k]: e.target.value }),
+  });
+
+  const save = async () => {
+    setSaving(true);
+    const ok = await onRun(
+      () =>
+        patchEquipment(row.requestId, {
+          ...(extrasLocked
+            ? {}
+            : { extraChairs: num(v.extraChairs) ?? 0, extraTables: num(v.extraTables) ?? 0 }),
+          missingChairs: num(v.missingChairs) ?? 0,
+          missingTables: num(v.missingTables) ?? 0,
+          damaged: v.damaged,
+          note: v.note.trim(),
+        }),
+      'Saved.',
+    );
+    if (ok) onClose();
+    else setSaving(false);
+  };
+
+  return (
+    <Dialog
+      title={row.stallName}
+      note={`${row.stallNumbers.join(', ') || 'No stall number'} · ordered ${row.chairsRequested} chairs and ${row.tablesRequested} tables.`}
+      onClose={onClose}
+      width={520}
+      footer={
+        <>
+          <Btn onClick={onClose}>Cancel</Btn>
+          <Btn kind='primary' onClick={save} disabled={saving || !valid}>
+            Save
+          </Btn>
+        </>
+      }
+    >
+      <div style={{ display: 'grid', gap: 14 }}>
+        <Section title='Taken at the counter'>
+          {extrasLocked ? (
+            <div style={{ fontSize: 12.5, color: 'var(--mfg)' }}>
+              {formatInr(row.extraChargePaise)} for {row.extraChairs} extra chairs and{' '}
+              {row.extraTables} extra tables has already been collected in cash, so the extras are
+              fixed.
+            </div>
+          ) : (
+            <Pair>
+              <FormField id='eq-xch' label='Extra chairs'>
+                <Input id='eq-xch' {...field('extraChairs')} />
+              </FormField>
+              <FormField id='eq-xtb' label='Extra tables'>
+                <Input id='eq-xtb' {...field('extraTables')} />
+              </FormField>
+            </Pair>
+          )}
+        </Section>
+
+        <Section title='Found on return'>
+          <Pair>
+            <FormField id='eq-mch' label='Chairs missing'>
+              <Input id='eq-mch' {...field('missingChairs')} />
+            </FormField>
+            <FormField id='eq-mtb' label='Tables missing'>
+              <Input id='eq-mtb' {...field('missingTables')} />
+            </FormField>
+          </Pair>
+          <FormField id='eq-note' label='Condition note'>
+            <Input
+              id='eq-note'
+              value={v.note}
+              placeholder='e.g. 1 chair broken'
+              onChange={(e) => setV({ ...v, note: e.target.value })}
+            />
+          </FormField>
+          {/* biome-ignore lint/a11y/noLabelWithoutControl: the label WRAPS its control,
+              which associates them implicitly; the rule cannot see the input inside
+              <Checkbox>. */}
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 13,
+              cursor: 'pointer',
+            }}
+          >
+            <Checkbox
+              checked={v.damaged}
+              onChange={(e) => setV({ ...v, damaged: e.target.checked })}
+            />
+            Damaged
+          </label>
+        </Section>
+
+        <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
+          What is missing or damaged is priced from the admin’s replacement rates and deducted from
+          this stall’s deposit on the refund screen.
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+/** A titled block inside the counter dialog. */
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: '.6px',
+          textTransform: 'uppercase',
+          color: 'var(--mfg)',
+        }}
+      >
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** Two fields side by side, stacking on a phone. */
+function Pair({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))',
+        gap: 10,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 function Actions({
   row,
   canWrite,
   onRun,
+  onEdit,
   onChallan,
 }: {
   row: EquipmentRow;
   canWrite: boolean;
   onRun: Run;
+  onEdit: () => void;
   onChallan: () => void;
 }) {
   const act = (action: EquipmentAction, message: string) =>
@@ -358,6 +496,7 @@ function Actions({
 
   return (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+      {canWrite && <IconBtn label={`Edit ${row.stallName}`} glyph='pencil' onClick={onEdit} />}
       {canWrite &&
         (row.distributedAt ? (
           <Btn onClick={() => act('UNDISTRIBUTE', 'Marked not distributed.')}>Undo</Btn>
@@ -394,11 +533,13 @@ function EquipmentCard({
   row,
   canWrite,
   onRun,
+  onEdit,
   onChallan,
 }: {
   row: EquipmentRow;
   canWrite: boolean;
   onRun: Run;
+  onEdit: () => void;
   onChallan: () => void;
 }) {
   return (
@@ -419,8 +560,23 @@ function EquipmentCard({
         </div>
         <StageTag row={row} />
       </div>
-      <ConditionCell row={row} canWrite={canWrite} onRun={onRun} />
-      <Actions row={row} canWrite={canWrite} onRun={onRun} onChallan={onChallan} />
+      {/* The extras and the cash line, which the desktop table gives their own
+          columns — a card has no columns, so they are said here. */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {(row.extraChairs > 0 || row.extraTables > 0) && (
+          <Tag size='sm'>
+            +{row.extraChairs} ch / +{row.extraTables} tb
+          </Tag>
+        )}
+        {row.extraChargePaise > 0 && (
+          <Tag tone={row.extraCollectedAt ? 'ok' : 'warn'} size='sm'>
+            {formatInr(row.extraChargePaise)}
+            {row.extraCollectedAt ? ' paid' : ''}
+          </Tag>
+        )}
+        <ConditionSummary row={row} />
+      </div>
+      <Actions row={row} canWrite={canWrite} onRun={onRun} onEdit={onEdit} onChallan={onChallan} />
     </Card>
   );
 }

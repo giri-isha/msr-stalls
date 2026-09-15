@@ -1,12 +1,12 @@
 import type { Prisma, PrismaClient, StallEdition } from '@prisma/client';
 import { NoActiveEditionError } from './errors';
-import { type StaffCaller, requireEditionReach } from './roles';
+import { type BackofficeCaller, requireEditionReach } from './roles';
 
 /** A client or a transaction — every seam accepts either so a route can compose
  *  several inside one transaction. */
 export type Db = PrismaClient | Prisma.TransactionClient;
 
-/** The edition every public write and most staff reads target. Throws rather
+/** The edition every public write and most backoffice reads target. Throws rather
  *  than guessing when none is active — see `NoActiveEditionError`. */
 export async function activeEdition(db: Db): Promise<StallEdition> {
   const edition = await db.stallEdition.findFirst({ where: { isActive: true } });
@@ -16,10 +16,10 @@ export async function activeEdition(db: Db): Promise<StallEdition> {
 
 /** The active edition, refused if this caller's grants do not cover it.
  *
- *  Every staff route resolves the season through here rather than through
+ *  Every backoffice route resolves the edition through here rather than through
  *  `activeEdition` directly, so grant-level edition scope is enforced in one
  *  place instead of at seventy-six guards. */
-export async function activeEditionFor(db: Db, caller: StaffCaller): Promise<StallEdition> {
+export async function activeEditionFor(db: Db, caller: BackofficeCaller): Promise<StallEdition> {
   const edition = await activeEdition(db);
   requireEditionReach(caller, edition.id);
   return edition;

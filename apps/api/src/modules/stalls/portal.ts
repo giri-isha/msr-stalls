@@ -61,7 +61,7 @@ export type AccessLinkDeps = { mail: Mailer; statusUrl(token: string): string };
  * ⚠️ This one THROWS where `sendAccessLink` swallows, and the difference is
  * the whole reason it is a separate function. The public route must answer
  * identically whether or not the contact matched, so a send failure there has
- * to look like a miss. The staff route above it is called by someone already
+ * to look like a miss. The backoffice route above it is called by someone already
  * holding `config:read` and already looking at the whole directory — there is
  * nothing left for them to learn — so it may say plainly that the mail did not
  * go, which is the only useful thing to tell a person who pressed Send.

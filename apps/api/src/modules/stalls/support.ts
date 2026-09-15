@@ -1,40 +1,57 @@
 import type { PrismaClient } from '@prisma/client';
-import { type UpdateAccountInput, parseContact } from '@msr/stalls';
+import {
+  type Contact,
+  type UpdateAccountInput,
+  isPlaceholderEmail,
+  parseContact,
+} from '@msr/stalls';
 import { recordActivity } from '../../activity';
 import { normalizeEmail } from './accounts';
-import { clearLockout } from './credentials';
+import { clearLockout, setAccountPassword } from './credentials';
 import type { Db } from './editions';
-import { AccountEmailTakenError, NothingToSendError, UnknownAccountError } from './errors';
+import {
+  AccountEmailTakenError,
+  CannotSetPasswordError,
+  NothingToSendError,
+  UnknownAccountError,
+} from './errors';
 import { type AccessLinkDeps, deliverAccessLink } from './portal';
 import { type SendDeps, sendConfirmation } from './registration';
 import { MODULE_KEY } from './roles';
+import { endAllSessions } from './session';
 
 /**
  * What a desk can do to a requester's account on their behalf.
  *
  * Three of these unstick a vendor who cannot get in; each already existed for
- * the requester to do themselves, and what is new is a staff member doing it
- * from the Users screen for the vendor on the phone who cannot follow the
+ * the requester to do themselves, and what is new is a backoffice member doing
+ * it from the Users screen for the vendor on the phone who cannot follow the
  * instructions being read to them. The fourth corrects the details the account
  * carries — the same call, from the same screen, for the vendor whose address
  * was typed wrong on the form and who therefore receives none of the other
  * three.
  *
- * ⚠️ Two rules hold across all of them.
+ * ⚠️ Two rules hold across the first four.
  *
  * **Nothing is ever shown to the caller.** A link is minted and sent to the
  * address or number the ACCOUNT already holds — never to anything typed into
- * the screen. Staff can cause a vendor to receive their own link; they cannot
- * obtain it. That is the same rule the public routes keep, and it is what
- * makes these safe to expose to `users:write` rather than to admins alone.
+ * the screen. The backoffice can cause a vendor to receive their own link; it
+ * cannot obtain it. That is the same rule the public routes keep, and it is
+ * what makes these safe to expose to `users:write` rather than to admins
+ * alone.
  *
  * **Every one is written to the activity trail**, with the actor. These act on
  * accounts a vendor owns; who unlocked whom has to be answerable afterwards.
  *
- * ⚠️ TEMPORARY, with `credentials.ts`: unlock and resend-confirmation exist
- * only because this module carries its own requester passwords. When the
- * host's Isha OIDC takes that over, both go, and only the access link — which
- * predates passwords and never depended on them — stays.
+ * 🔴 `setRequesterPassword` is the FIFTH, and it breaks the first rule on
+ * purpose — which is exactly why it is gated by its own `passwords.write` and
+ * not by `users:write` with the rest. See it below.
+ *
+ * ⚠️ TEMPORARY, with `credentials.ts`: unlock, resend-confirmation and
+ * set-password exist only because this module carries its own requester
+ * passwords. When the host's Isha OIDC takes that over, all three go, and only
+ * the access link — which predates passwords and never depended on them —
+ * stays.
  */
 
 async function accountOr404(db: Db, accountId: string) {
@@ -174,5 +191,93 @@ export async function sendAccountAccessLink(
     action: 'stall_account.access_link_sent',
     subjectRef: account.id,
     detail: {},
+  });
+}
+
+/* ── The requester password ─────────────────────────────────────────────────
+ *
+ * ⚠️ TEMPORARY. Deleted with `credentials.ts` and `registration.ts` when the
+ * host's Isha SSO signs requesters in — step 3b of
+ * `docs/migration-to-host.md`. There is no password in the host for anybody to
+ * set, so nothing below migrates.
+ */
+
+/**
+ * The contact a login is registered against, for an account that holds none
+ * yet.
+ *
+ * The address first, because the address is the module's identity key and the
+ * thing the vendor is most likely to be told to type. The number only when
+ * there is no real address — an account registered on a mobile carries a
+ * placeholder nothing delivers to, and a login registered against THAT is a
+ * login nobody could ever use.
+ */
+function loginContactOf(account: { email: string; phone: string }): Contact | null {
+  const email = isPlaceholderEmail(account.email) ? null : parseContact(account.email);
+  return email ?? (account.phone ? parseContact(account.phone) : null);
+}
+
+/**
+ * A password the backoffice chooses and reads out to a requester.
+ *
+ * 🔴 **The one action here that hands over a way in, rather than causing one to
+ * be sent.** Every other support action mints a link and posts it to the
+ * contact the ACCOUNT already holds, which is what makes them safe for any desk
+ * with `users:write`: the desk can cause a vendor to receive their own way in
+ * and can never obtain it. This one gives the desk a password that works. That
+ * is a different power and it holds a different privilege —
+ * `passwords.write` — so an admin can staff a support desk without also
+ * handing it every vendor's account.
+ *
+ * It exists because the alternative for a village trader with no address, no
+ * smartphone and a number they share with a shop is that they never get in at
+ * all. When SSO arrives that vendor signs in the way everyone else does and
+ * this goes.
+ *
+ * A requester who never registered gets a credential minted here, so this is
+ * also how a login is CREATED for somebody who cannot create their own — which
+ * is why it does not refuse an account with no credential the way Unlock and
+ * Resend do.
+ *
+ * ⚠️ **Every live session ends**, exactly as a self-service reset ends them.
+ * Half the reason a desk is setting a password is that somebody else may have
+ * had the account, and leaving their session standing would change the
+ * password without closing the door.
+ */
+export async function setRequesterPassword(
+  db: PrismaClient,
+  accountId: string,
+  password: string,
+  by: string,
+): Promise<void> {
+  const account = await accountOr404(db, accountId);
+  const contact = loginContactOf(account);
+  if (!contact) {
+    throw new CannotSetPasswordError(
+      'this requester has no email address or mobile number to register a login against — correct their details first',
+    );
+  }
+
+  let created: boolean;
+  try {
+    ({ created } = await setAccountPassword(db, account.id, password, contact));
+  } catch {
+    // The only way the write fails is the unique `loginValue`: another account
+    // already signs in with this contact. Named as such rather than re-read,
+    // because the desk's answer is the same either way — look at the other row.
+    throw new CannotSetPasswordError(
+      `another account already signs in with ${contact.value} — that account is this requester's login, not this one`,
+    );
+  }
+
+  await endAllSessions(db, account.id);
+  await recordActivity(db, {
+    actorRef: by,
+    moduleKey: MODULE_KEY,
+    action: 'stall_account.password_set',
+    subjectRef: account.id,
+    // ⚠️ The password is NOT here and must never be. What the trail answers is
+    // who handed one out, to whom, and whether it was a new login or a reset.
+    detail: { created, loginKind: contact.kind },
   });
 }

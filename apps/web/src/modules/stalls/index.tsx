@@ -1,9 +1,9 @@
 // The module's public surface for a host router: two route trees and a nav
-// list. The host mounts `stallsStaffRoutes` under its /m/stalls and
+// list. The host mounts `stallsBackofficeRoutes` under its /m/stalls and
 // `stallsPublicRoutes` wherever it serves public pages. Nothing here knows
 // which shell it is inside.
 import type { StallPrivilege } from '@msr/stalls';
-import { Navigate, type RouteObject } from 'react-router';
+import { Navigate, type RouteObject, useLocation, useParams } from 'react-router';
 import { AccessLink } from './public/AccessLink';
 import { BankForm } from './public/BankForm';
 import { ConfirmRegistration } from './public/ConfirmRegistration';
@@ -17,20 +17,20 @@ import { ResetPassword } from './public/ResetPassword';
 import { StaffRegistration } from './public/StaffRegistration';
 import { StatusPage } from './public/StatusPage';
 import { Submitted } from './public/Submitted';
-import { Admin } from './staff/Admin';
-import { RolesPrivileges } from './staff/access/RolesPrivileges';
-import { Users } from './staff/access/Users';
-import { CheckIn } from './staff/CheckIn';
-import { Communication } from './staff/Communication';
-import { Dashboard } from './staff/Dashboard';
-import { Documentation } from './staff/Documentation';
-import { Electrical } from './staff/Electrical';
-import { Equipment } from './staff/Equipment';
-import { Finance } from './staff/Finance';
-import { Onboarding } from './staff/Onboarding';
-import { Planning } from './staff/Planning';
-import { RequestDetail } from './staff/RequestDetail';
-import { Requests } from './staff/Requests';
+import { Admin } from './backoffice/Admin';
+import { RolesPrivileges } from './backoffice/access/RolesPrivileges';
+import { Users } from './backoffice/access/Users';
+import { CheckIn } from './backoffice/CheckIn';
+import { Communication } from './backoffice/Communication';
+import { Dashboard } from './backoffice/Dashboard';
+import { Documentation } from './backoffice/Documentation';
+import { Electrical } from './backoffice/Electrical';
+import { Equipment } from './backoffice/Equipment';
+import { Finance } from './backoffice/Finance';
+import { Onboarding } from './backoffice/Onboarding';
+import { Planning } from './backoffice/Planning';
+import { RequestDetail } from './backoffice/RequestDetail';
+import { Requests } from './backoffice/Requests';
 
 export const stallsPublicRoutes: RouteObject[] = [
   { index: true, element: <Navigate to='apply' replace /> },
@@ -61,15 +61,19 @@ export const stallsPublicRoutes: RouteObject[] = [
   { path: 'staff/:code', element: <StaffRegistration /> },
 ];
 
-export const stallsStaffRoutes: RouteObject[] = [
+export const stallsBackofficeRoutes: RouteObject[] = [
   { index: true, element: <Dashboard /> },
-  { path: 'requests', element: <Requests mode='triage' /> },
-  { path: 'all', element: <Requests mode='all' /> },
-  // One record, one page, hanging under whichever list opened it — so the
-  // breadcrumb and the back link both name the list the reader came from,
-  // and the URL is something a coordinator can paste to a colleague.
+  { path: 'requests', element: <Requests /> },
+  // One record, one page, hanging one segment under the list — so the back
+  // link is the pathname with the id taken off, and the URL is something a
+  // coordinator can paste to a colleague.
   { path: 'requests/:id', element: <RequestDetail /> },
-  { path: 'all/:id', element: <RequestDetail /> },
+  // ⚠️ `/all` WAS the second of two request lists — the triage screen and the
+  // pipeline screen, reading the same rows through different presets. They are
+  // one screen now, and this is what keeps a bookmark, a pasted link and every
+  // `?status=` deep link the Dashboard has ever emitted working.
+  { path: 'all', element: <RedirectKeepingQuery to='/m/stalls/requests' /> },
+  { path: 'all/:id', element: <RedirectRecord /> },
   { path: 'planning', element: <Planning /> },
   { path: 'communication', element: <Communication /> },
   { path: 'onboarding', element: <Onboarding /> },
@@ -85,6 +89,23 @@ export const stallsStaffRoutes: RouteObject[] = [
   { path: 'access/users', element: <Users /> },
   { path: 'docs', element: <Documentation /> },
 ];
+
+/** A permanent move that keeps the query string.
+ *
+ *  ⚠️ `<Navigate to='/x' />` does NOT carry `?status=SHORTLISTED` across, and
+ *  every filter on the request list lives in the query string. A bare Navigate
+ *  would land each of the Dashboard's deep links on the unfiltered pipeline —
+ *  a redirect that works and silently loses the point of the link. */
+function RedirectKeepingQuery({ to }: { to: string }) {
+  const { search } = useLocation();
+  return <Navigate to={{ pathname: to, search }} replace />;
+}
+
+/** The same move for one record: `/m/stalls/all/:id` → `/m/stalls/requests/:id`. */
+function RedirectRecord() {
+  const { id } = useParams();
+  return <RedirectKeepingQuery to={`/m/stalls/requests/${id}`} />;
+}
 
 export interface StallsNavItem {
   label: string;
@@ -109,13 +130,16 @@ export interface StallsNavItem {
  *  money between, operations on the day. */
 export const STALLS_NAV: StallsNavItem[] = [
   { label: 'Dashboard', to: '/m/stalls', glyph: 'home', end: true },
+  // ⚠️ ONE entry, where there were two. "Stall Requests" (triage) and "All
+  // Requests" (the pipeline) were the same rows behind two presets, and the
+  // split cost a reader the question "which list is my request in?" every time
+  // they went looking. The triage preset survives as a filter on this one.
   {
-    label: 'Stall Requests',
+    label: 'All Requests',
     to: '/m/stalls/requests',
-    glyph: 'clipboard-list',
+    glyph: 'list-view',
     group: 'Requests & Selection',
   },
-  { label: 'All Requests', to: '/m/stalls/all', glyph: 'list-view', group: 'Requests & Selection' },
   {
     label: 'Planning & Zones',
     to: '/m/stalls/planning',

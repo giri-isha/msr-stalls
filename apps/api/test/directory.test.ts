@@ -1,10 +1,17 @@
 import type { FastifyInstance } from 'fastify';
 import type { ListUsersResponse } from '@msr/stalls';
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { buildApp } from '../src/app';
 import { authenticate, createCredential } from '../src/modules/stalls/credentials';
 import { InvalidCredentialsError } from '../src/modules/stalls/errors';
-import { LogMailer, prisma, resetDatabase, seedEdition, seedStaff } from './helpers/db';
+import {
+  LogMailer,
+  prisma,
+  resetDatabase,
+  seedEdition,
+  seedRequester,
+  seedBackoffice,
+} from './helpers/db';
 import { recordingWhatsApp } from './helpers/onboarding';
 
 let app: FastifyInstance;
@@ -79,20 +86,20 @@ const count = (body: ListUsersResponse, label: string) =>
   body.counts.find((c) => c.label === label)?.count;
 
 describe('the union', () => {
-  test('staff and requesters arrive in one list, each tagged with its kind', async () => {
-    const admin = await seedStaff(['stalls_admin'], 'vikram.s@ishafoundation.org');
+  test('backoffice and requesters arrive in one list, each tagged with its kind', async () => {
+    const admin = await seedBackoffice(['stalls_admin'], 'vikram.s@ishafoundation.org');
     await requester();
 
     const { body } = await list(admin.headers);
 
     expect(body.users.map((u) => [u.kind, u.email]).sort()).toEqual([
+      ['BACKOFFICE', 'vikram.s@ishafoundation.org'],
       ['REQUESTER', 'priya@greenleaf.example'],
-      ['STAFF', 'vikram.s@ishafoundation.org'],
     ]);
   });
 
-  test('a staff row carries its roles and no request count; a requester the reverse', async () => {
-    const admin = await seedStaff(['stalls_admin'], 'vikram.s@ishafoundation.org');
+  test('a backoffice row carries its roles and no request count; a requester the reverse', async () => {
+    const admin = await seedBackoffice(['stalls_admin'], 'vikram.s@ishafoundation.org');
     const account = await requester();
     const edition = await prisma.stallEdition.findFirstOrThrow({ where: { isActive: true } });
     // Seeded directly: the public route sits behind a requester session, and
@@ -116,16 +123,16 @@ describe('the union', () => {
     });
 
     const { body } = await list(admin.headers);
-    const staffRow = body.users.find((u) => u.kind === 'STAFF');
+    const backofficeRow = body.users.find((u) => u.kind === 'BACKOFFICE');
     const reqRow = body.users.find((u) => u.kind === 'REQUESTER');
 
-    expect(staffRow?.grants.map((g) => g.roleKey)).toEqual(['stalls_admin']);
-    expect(staffRow).toMatchObject({ requestCount: null, phone: null });
+    expect(backofficeRow?.grants.map((g) => g.roleKey)).toEqual(['stalls_admin']);
+    expect(backofficeRow).toMatchObject({ requestCount: null, phone: null });
     expect(reqRow).toMatchObject({ grants: [], requestCount: 1, phone: '9840012345' });
   });
 
   test('a request in another edition is not counted against this one', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester();
     const other = await seedEdition(2025);
     await prisma.stallRequest.create({
@@ -159,17 +166,17 @@ describe('the union', () => {
  * What each grant REACHES, on the row.
  *
  * ⚠️ The dialog that edits somebody's roles has to send the whole grant back —
- * role, seasons and bays — because a re-grant RESETS scope (see `grantRole`).
+ * role, editions and bays — because a re-grant RESETS scope (see `grantRole`).
  * Without the scope on the row, an admin who opened that dialog to add one role
- * would silently widen every role the person already held to "every season,
+ * would silently widen every role the person already held to "every edition,
  * every bay". So the scope travels with the list, not on a second request.
  */
 describe('what a grant reaches', () => {
-  test('a staff row carries the seasons and bays each of its roles is scoped to', async () => {
-    const admin = await seedStaff(['stalls_admin'], 'vikram.s@ishafoundation.org');
-    const marshal = await seedStaff([], 'marshal@example.org');
+  test('a backoffice row carries the editions and bays each of its roles is scoped to', async () => {
+    const admin = await seedBackoffice(['stalls_admin'], 'vikram.s@ishafoundation.org');
+    const marshal = await seedBackoffice([], 'marshal@example.org');
     const edition = await prisma.stallEdition.findFirstOrThrow({ where: { year: 2026 } });
-    await prisma.stallStaffRole.create({
+    await prisma.stallBackofficeRole.create({
       data: {
         personRef: marshal.personId,
         roleKey: 'stalls_volunteer',
@@ -186,10 +193,10 @@ describe('what a grant reaches', () => {
     ]);
   });
 
-  // Empty is EVERY season and EVERY bay, not none — the opposite of how a
+  // Empty is EVERY edition and EVERY bay, not none — the opposite of how a
   // filter reads, and the reason the dialog says so in words.
   test('an unscoped grant arrives with both lists empty', async () => {
-    const admin = await seedStaff(['stalls_admin'], 'vikram.s@ishafoundation.org');
+    const admin = await seedBackoffice(['stalls_admin'], 'vikram.s@ishafoundation.org');
 
     const { body } = await list(admin.headers);
     const row = body.users.find((u) => u.email === 'vikram.s@ishafoundation.org');
@@ -197,7 +204,7 @@ describe('what a grant reaches', () => {
   });
 
   test('a requester holds no grants at all', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     await requester();
 
     const { body } = await list(admin.headers);
@@ -207,7 +214,7 @@ describe('what a grant reaches', () => {
 
 describe('sign-in state', () => {
   test('a requester who never registered is LINK_ONLY, not a fault', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     await requester();
 
     const { body } = await list(admin.headers);
@@ -219,7 +226,7 @@ describe('sign-in state', () => {
   });
 
   test('registered-but-never-confirmed is UNCONFIRMED, and counts as cannot sign in', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     await requester({ credential: 'unconfirmed' });
 
     const { body } = await list(admin.headers);
@@ -229,7 +236,7 @@ describe('sign-in state', () => {
   });
 
   test('a locked credential reads LOCKED with the time it frees up', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     await requester({ credential: 'locked' });
 
     const { body } = await list(admin.headers);
@@ -242,9 +249,9 @@ describe('sign-in state', () => {
     expect(count(body, 'Cannot sign in')).toBe(0);
   });
 
-  test('a staff member the Foundation has disabled cannot sign in', async () => {
-    const admin = await seedStaff(['stalls_admin']);
-    const other = await seedStaff(['stalls_volunteer'], 'kavya.n@ishafoundation.org');
+  test('a backoffice member the Foundation has disabled cannot sign in', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+    const other = await seedBackoffice(['stalls_volunteer'], 'kavya.n@ishafoundation.org');
     await prisma.person.update({
       where: { personId: other.personId },
       data: { signInDisabled: true },
@@ -261,41 +268,41 @@ describe('sign-in state', () => {
 
 describe('views, search and paging', () => {
   test('the tile counts are NOT narrowed by the active view', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     await requester();
 
-    const { body } = await list(admin.headers, '?view=Staff');
+    const { body } = await list(admin.headers, '?view=Backoffice');
 
     expect(body.users).toHaveLength(1);
-    expect(body.users[0].kind).toBe('STAFF');
-    // ⚠️ The Requesters tile still reads 1 while Staff is the active view — a
+    expect(body.users[0].kind).toBe('BACKOFFICE');
+    // ⚠️ The Requesters tile still reads 1 while Backoffice is the active view — a
     // tile row that zeroed the view you might move to would be useless.
     expect(count(body, 'Requesters')).toBe(1);
     expect(count(body, 'All')).toBe(2);
   });
 
   test('search narrows both the rows and the counts, across both populations', async () => {
-    const admin = await seedStaff(['stalls_admin'], 'vikram.s@ishafoundation.org');
+    const admin = await seedBackoffice(['stalls_admin'], 'vikram.s@ishafoundation.org');
     await requester({ name: 'Priya Venkat' });
 
     const { body } = await list(admin.headers, '?q=priya');
 
     expect(body.users).toHaveLength(1);
     expect(count(body, 'All')).toBe(1);
-    expect(count(body, 'Staff')).toBe(0);
+    expect(count(body, 'Backoffice')).toBe(0);
   });
 
   test('a phone number finds the requester who carries it', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     await requester({ phone: '9840012345' });
 
     const { body } = await list(admin.headers, '?q=98400');
     expect(body.users.map((u) => u.kind)).toEqual(['REQUESTER']);
   });
 
-  test('a role filter narrows to the staff holding it', async () => {
-    const admin = await seedStaff(['stalls_admin']);
-    await seedStaff(['stalls_lead'], 'deepa.r@ishafoundation.org');
+  test('a role filter narrows to the backoffice members holding it', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+    await seedBackoffice(['stalls_lead'], 'deepa.r@ishafoundation.org');
     await requester();
 
     const { body } = await list(admin.headers, '?roleKey=stalls_lead');
@@ -304,7 +311,7 @@ describe('views, search and paging', () => {
   });
 
   test('pages, sorted by name, with the total counting the whole view', async () => {
-    const admin = await seedStaff(['stalls_admin'], 'zz@ishafoundation.org');
+    const admin = await seedBackoffice(['stalls_admin'], 'zz@ishafoundation.org');
     await requester({ email: 'a@example.com', name: 'Aarti Kumar' });
     await requester({ email: 'b@example.com', name: 'Bharat Singh' });
 
@@ -320,12 +327,12 @@ describe('views, search and paging', () => {
 
 describe('who may read it', () => {
   test('config:read reaches the directory', async () => {
-    const lead = await seedStaff(['stalls_lead']);
+    const lead = await seedBackoffice(['stalls_lead']);
     expect((await list(lead.headers)).status).toBe(200);
   });
 
   test('a role without config:read does not', async () => {
-    const volunteer = await seedStaff(['stalls_volunteer']);
+    const volunteer = await seedBackoffice(['stalls_volunteer']);
     expect((await list(volunteer.headers)).status).toBe(403);
   });
 
@@ -340,7 +347,7 @@ describe('support actions', () => {
     app.inject({ method: 'POST', url: `/api/m/stalls/users/${path}`, headers });
 
   test('unlock lets a locked credential authenticate again', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester({ credential: 'locked' });
 
     // Proof it is genuinely locked, through the real authenticator.
@@ -358,7 +365,7 @@ describe('support actions', () => {
   });
 
   test('unlocking an account with no login at all is a 409, not a silent success', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester();
 
     const res = await post(`${account.id}/unlock`, admin.headers);
@@ -371,7 +378,7 @@ describe('support actions', () => {
    *  for a credential that was never locked, and a second press answered 204 —
    *  telling a desk it had freed somebody who was never stuck. */
   test('unlocking a login that is not locked is a 409, however many times it is pressed', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester({ credential: 'locked' });
 
     expect((await post(`${account.id}/unlock`, admin.headers)).statusCode).toBe(204);
@@ -382,7 +389,7 @@ describe('support actions', () => {
   });
 
   test('an unlock that did nothing writes nothing to the activity trail', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester({ credential: 'confirmed' });
 
     await post(`${account.id}/unlock`, admin.headers);
@@ -394,7 +401,7 @@ describe('support actions', () => {
   });
 
   test('resend-confirmation mails a fresh link to the registered address', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester({ credential: 'unconfirmed' });
 
     expect((await post(`${account.id}/resend-confirmation`, admin.headers)).statusCode).toBe(204);
@@ -409,7 +416,7 @@ describe('support actions', () => {
   });
 
   test('an account registered on a number is confirmed over WhatsApp, not to its placeholder address', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester({
       email: 'mobile+9840012345@stalls.invalid',
       credential: 'unconfirmed',
@@ -423,7 +430,7 @@ describe('support actions', () => {
   });
 
   test('resending to somebody already confirmed is a 409', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester({ credential: 'confirmed' });
 
     const res = await post(`${account.id}/resend-confirmation`, admin.headers);
@@ -432,7 +439,7 @@ describe('support actions', () => {
   });
 
   test('resending to somebody who never registered points at the access link instead', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester();
 
     const res = await post(`${account.id}/resend-confirmation`, admin.headers);
@@ -441,7 +448,7 @@ describe('support actions', () => {
   });
 
   test('access-link mints a STATUS link and mails it to the account', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester();
 
     expect((await post(`${account.id}/access-link`, admin.headers)).statusCode).toBe(204);
@@ -453,10 +460,10 @@ describe('support actions', () => {
     expect(link.purpose).toBe('STATUS');
   });
 
-  /** ⚠️ The rule the whole access-link design rests on: staff can cause a
+  /** ⚠️ The rule the whole access-link design rests on: backoffice can cause a
    *  vendor to receive their link; they can never read it. */
   test('no support action returns the link to the caller', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester();
 
     const res = await post(`${account.id}/access-link`, admin.headers);
@@ -465,7 +472,7 @@ describe('support actions', () => {
   });
 
   test('every support action is written to the activity trail with its actor', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester({ credential: 'locked' });
 
     await post(`${account.id}/unlock`, admin.headers);
@@ -480,17 +487,231 @@ describe('support actions', () => {
   });
 
   test('an unknown account is a 404', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const res = await post('11111111-1111-4111-8111-111111111111/unlock', admin.headers);
     expect(res.statusCode).toBe(404);
   });
 
   test('config:read alone cannot run a support action', async () => {
-    const lead = await seedStaff(['stalls_lead']);
+    const lead = await seedBackoffice(['stalls_lead']);
     const account = await requester();
 
     expect((await post(`${account.id}/access-link`, lead.headers)).statusCode).toBe(403);
     expect(mail.sent).toHaveLength(0);
+  });
+});
+
+/**
+ * 🔴 TEMPORARY, with the requester password login itself. When the host's Isha
+ * SSO signs requesters in there is no password here for anybody to set, and
+ * this block goes with the route — see `docs/migration-to-host.md` step 3b.
+ */
+describe("setting a requester's password", () => {
+  const setPassword = (id: string, headers: { cookie: string }, password: string) =>
+    app.inject({
+      method: 'POST',
+      url: `/api/m/stalls/users/${id}/password`,
+      headers,
+      payload: { password },
+    });
+
+  /** A role with exactly these privileges, and a person holding it.
+   *
+   *  ⚠️ It cleans up after itself. `resetDatabase` deliberately does NOT
+   *  truncate the RBAC tables — they are reference data the migration installs
+   *  — so a role a test authors would otherwise leak into every later file. */
+  const authored: string[] = [];
+  async function backofficeHolding(roleKey: string, privileges: string[]) {
+    // Idempotent, because the cleanup below is the only thing that removes
+    // these and a run that died before it left the row behind. Without this a
+    // single failure makes every later run fail on the unique key instead.
+    await prisma.stallBackofficeRole.deleteMany({ where: { roleKey } });
+    await prisma.stallRolePrivilege.deleteMany({ where: { role: { roleKey } } });
+    await prisma.stallRole.deleteMany({ where: { roleKey } });
+    const role = await prisma.stallRole.create({
+      data: { roleKey, name: roleKey, description: 'authored by a test', level: 1, sortOrder: 99 },
+    });
+    authored.push(roleKey);
+    const rows = await prisma.stallPrivilege.findMany({ where: { code: { in: privileges } } });
+    expect(rows).toHaveLength(privileges.length);
+    await prisma.stallRolePrivilege.createMany({
+      data: rows.map((p) => ({ roleId: role.id, privilegeId: p.id })),
+    });
+    return seedBackoffice([roleKey]);
+  }
+
+  afterEach(async () => {
+    for (const roleKey of authored.splice(0)) {
+      // The grants first: `role_key` is a foreign key, and this hook runs
+      // before the next test's truncate rather than after it.
+      await prisma.stallBackofficeRole.deleteMany({ where: { roleKey } });
+      await prisma.stallRolePrivilege.deleteMany({ where: { role: { roleKey } } });
+      await prisma.stallRole.delete({ where: { roleKey } });
+    }
+  });
+
+  test('replaces the password on a login the requester already had', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+    const account = await requester({ credential: 'confirmed' });
+
+    expect((await setPassword(account.id, admin.headers, 'monsoon-fig-84')).statusCode).toBe(204);
+
+    const cred = await authenticate(prisma, {
+      contact: 'priya@greenleaf.example',
+      password: 'monsoon-fig-84',
+    });
+    expect(cred.accountId).toBe(account.id);
+    await expect(
+      authenticate(prisma, { contact: 'priya@greenleaf.example', password: 'hunter2hunter2' }),
+    ).rejects.toBeInstanceOf(InvalidCredentialsError);
+  });
+
+  /** The whole reason the action exists: the vendor who never registered, and
+   *  cannot. Unlock and Resend both refuse this account — this is what answers
+   *  it. */
+  test('creates a login for a requester who never registered one', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+    const account = await requester();
+
+    expect((await setPassword(account.id, admin.headers, 'monsoon-fig-84')).statusCode).toBe(204);
+
+    const cred = await authenticate(prisma, {
+      contact: 'priya@greenleaf.example',
+      password: 'monsoon-fig-84',
+    });
+    expect(cred.accountId).toBe(account.id);
+    // Confirmed on creation: the desk spoke to them, and there is no
+    // confirmation link for a vendor in this position to follow.
+    expect(cred.confirmedAt).not.toBeNull();
+  });
+
+  /** An account registered on a number carries a placeholder address nothing
+   *  delivers to. A login minted against THAT is a login nobody can use. */
+  test('registers the login on the number when there is no real address', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+    const account = await requester({ email: 'mobile+9840012345@stalls.invalid' });
+
+    expect((await setPassword(account.id, admin.headers, 'monsoon-fig-84')).statusCode).toBe(204);
+
+    const cred = await authenticate(prisma, {
+      contact: '9840012345',
+      password: 'monsoon-fig-84',
+    });
+    expect(cred.accountId).toBe(account.id);
+  });
+
+  test('a locked-out requester can sign in with the new password straight away', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+    const account = await requester({ credential: 'locked' });
+
+    await setPassword(account.id, admin.headers, 'monsoon-fig-84');
+
+    const cred = await authenticate(prisma, {
+      contact: 'priya@greenleaf.example',
+      password: 'monsoon-fig-84',
+    });
+    expect(cred.lockedUntil).toBeNull();
+    expect(cred.failedCount).toBe(0);
+  });
+
+  /** Half the reason a desk is doing this is that somebody else may have had
+   *  the account. Changing the password without closing their session would
+   *  change the lock and leave the door open. */
+  test('every session the account has open is ended', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+    const { accountId } = await seedRequester(app);
+
+    await setPassword(accountId, admin.headers, 'monsoon-fig-84');
+
+    const live = await prisma.stallAccessLink.count({
+      where: { accountId, purpose: 'SESSION', revokedAt: null },
+    });
+    expect(live).toBe(0);
+  });
+
+  test('the trail records who set it, and never what it was', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+    const account = await requester({ credential: 'confirmed' });
+
+    await setPassword(account.id, admin.headers, 'monsoon-fig-84');
+
+    const row = await prisma.activityTrail.findFirstOrThrow({
+      where: { subjectRef: account.id, action: 'stall_account.password_set' },
+    });
+    expect(row.actorRef).toBe(admin.personId);
+    expect(JSON.stringify(row.detail)).not.toContain('monsoon-fig-84');
+  });
+
+  /** 🔴 The point of the privilege. A support desk that can send a vendor their
+   *  own link must not thereby be able to walk into the vendor's account. */
+  test('users:write alone cannot set a password', async () => {
+    const desk = await backofficeHolding('test_support_desk', ['config.read', 'users.write']);
+    const account = await requester({ credential: 'confirmed' });
+
+    expect((await setPassword(account.id, desk.headers, 'monsoon-fig-84')).statusCode).toBe(403);
+    // Proof it was the privilege and not the role: the same caller may still
+    // send this account its access link.
+    const link = await app.inject({
+      method: 'POST',
+      url: `/api/m/stalls/users/${account.id}/access-link`,
+      headers: desk.headers,
+    });
+    expect(link.statusCode).toBe(204);
+  });
+
+  test('passwords:write alone is enough, and grants nothing else', async () => {
+    const desk = await backofficeHolding('test_password_desk', ['config.read', 'passwords.write']);
+    const account = await requester({ credential: 'confirmed' });
+
+    expect((await setPassword(account.id, desk.headers, 'monsoon-fig-84')).statusCode).toBe(204);
+
+    const link = await app.inject({
+      method: 'POST',
+      url: `/api/m/stalls/users/${account.id}/access-link`,
+      headers: desk.headers,
+    });
+    expect(link.statusCode).toBe(403);
+  });
+
+  test('a password under the floor is refused before anything is written', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+    const account = await requester({ credential: 'confirmed' });
+
+    expect((await setPassword(account.id, admin.headers, 'short')).statusCode).toBe(400);
+    expect(await prisma.activityTrail.count({ where: { subjectRef: account.id } })).toBe(0);
+  });
+
+  /** The contact is another account's login — the desk has two rows in front of
+   *  them and needs to be told which one is the login. */
+  test('a contact another account already signs in with is a 409, not a 500', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+    const other = await requester({ credential: 'confirmed' });
+    const account = await prisma.stallAccount.create({
+      data: { email: 'priya.v@greenleaf.example', phone: '', displayName: 'Priya V' },
+    });
+    // The same address, moved onto the second account's credential-less row.
+    await prisma.stallAccount.update({
+      where: { id: other.id },
+      data: { email: 'priya.old@greenleaf.example' },
+    });
+    await prisma.stallAccount.update({
+      where: { id: account.id },
+      data: { email: 'priya@greenleaf.example' },
+    });
+
+    const res = await setPassword(account.id, admin.headers, 'monsoon-fig-84');
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toMatch(/already signs in/);
+  });
+
+  test('an unknown account is a 404', async () => {
+    const admin = await seedBackoffice(['stalls_admin']);
+    const res = await setPassword(
+      '11111111-1111-4111-8111-111111111111',
+      admin.headers,
+      'monsoon-fig-84',
+    );
+    expect(res.statusCode).toBe(404);
   });
 });
 
@@ -504,7 +725,7 @@ describe('editing a requester', () => {
     });
 
   test('a corrected name, email and number are stored', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester();
 
     const res = await patch(account.id, admin.headers, {
@@ -526,7 +747,7 @@ describe('editing a requester', () => {
    *  reason: a typed `Priya@X ` must not become a second identity for one
    *  vendor that the next submission then fails to merge into. */
   test('a typed address is stored trimmed and lowercased', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester();
 
     await patch(account.id, admin.headers, {
@@ -540,7 +761,7 @@ describe('editing a requester', () => {
   });
 
   test('a number arrives normalised to its bare ten digits', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester();
 
     await patch(account.id, admin.headers, {
@@ -554,7 +775,7 @@ describe('editing a requester', () => {
   });
 
   test('an account registered on an email alone may keep no number at all', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester({ phone: '' });
 
     const res = await patch(account.id, admin.headers, {
@@ -566,7 +787,7 @@ describe('editing a requester', () => {
   });
 
   test('an address another account already holds is a 409 naming who holds it', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester();
     await requester({ email: 'arun@spicebox.example', name: 'Arun Kumar' });
 
@@ -583,7 +804,7 @@ describe('editing a requester', () => {
   });
 
   test('an account may be saved under its own address unchanged', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester();
 
     const res = await patch(account.id, admin.headers, {
@@ -599,7 +820,7 @@ describe('editing a requester', () => {
    *  signs in with the one they registered under, and the Sign-in column keeps
    *  telling the truth about it. */
   test('moving the address leaves the password login where it was', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester({ credential: 'confirmed' });
 
     await patch(account.id, admin.headers, {
@@ -618,7 +839,7 @@ describe('editing a requester', () => {
   });
 
   test('the trail records only what changed, with what it was before', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester();
 
     await patch(account.id, admin.headers, {
@@ -635,7 +856,7 @@ describe('editing a requester', () => {
   });
 
   test('a save that changed nothing writes nothing to the trail', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester();
 
     const res = await patch(account.id, admin.headers, {
@@ -649,7 +870,7 @@ describe('editing a requester', () => {
   });
 
   test('an address that is not one is refused', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester();
 
     const res = await patch(account.id, admin.headers, {
@@ -661,7 +882,7 @@ describe('editing a requester', () => {
   });
 
   test('a name cannot be emptied', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const account = await requester();
 
     const res = await patch(account.id, admin.headers, {
@@ -673,7 +894,7 @@ describe('editing a requester', () => {
   });
 
   test('an unknown account is a 404', async () => {
-    const admin = await seedStaff(['stalls_admin']);
+    const admin = await seedBackoffice(['stalls_admin']);
     const res = await patch('11111111-1111-4111-8111-111111111111', admin.headers, {
       displayName: 'Nobody',
       email: 'nobody@example.com',
@@ -683,7 +904,7 @@ describe('editing a requester', () => {
   });
 
   test('a role without users:write cannot edit a requester', async () => {
-    const lead = await seedStaff(['stalls_lead']);
+    const lead = await seedBackoffice(['stalls_lead']);
     const account = await requester();
 
     const res = await patch(account.id, lead.headers, {

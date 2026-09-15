@@ -69,7 +69,7 @@ package both sides share.
 | The 2025 bank form's fields, vendors only | `StallBankDetail`, `/stalls/bank/:token` | Built |
 | Cheque, PAN and GST documents | Presigned straight to object storage; the API never sees the bytes | Built |
 | Contract agreement | The agreement checkboxes the 2025 form used (`agreedTermsAt`, `agreedNeftAt`), plus digital signature through a provider port (`signer.ts`, `StallContractSignature`) — `GET/POST /requests/:id/signature` and `POST .../refresh` | Built; no provider is wired up in this repo, and the standalone adapter reports itself unconfigured rather than pretending |
-| The terms document the requester accepts — "to view the terms and conditions document, please click here" on the 2025 form | `StallEdition.termsUrl`, set in Admin → Season settings, linked beside the acceptance tick-box on the bank form. Blank until the legal team issues one, and the consent then stands without a link rather than with one that 404s | Built |
+| The terms document the requester accepts — "to view the terms and conditions document, please click here" on the 2025 form | `StallEdition.termsUrl`, set in Admin → Edition settings, linked beside the acceptance tick-box on the bank form. Blank until the legal team issues one, and the consent then stands without a link rather than with one that 404s | Built |
 | MICR code | Required on the 2025 form; optional here | Differs — the cancelled cheque carries it and is uploaded anyway, so requiring it turns a legible cheque into a blocked submission |
 | Reminder calls for bank details pending | `StallReminderCall(kind: BANK)`, Communication → Reminder calls | Built |
 | A vendor who lost the email can get back to the form | Their status page lists what is outstanding and opens the bank form from there — reached by the emailed link (`/stalls/status/:token`) **or**, once logged in, from `/stalls/requests` | Built |
@@ -116,7 +116,7 @@ package both sides share.
 | Requirement | Where | Status |
 |---|---|---|
 | Vendor name, stall number, staff registered, vehicle passes | Check-in, `GET /checkin` | Built |
-| What is still pending — payment, FSSAI, staff | `pendingSteps` in `@msr/stalls`, the same function the vendor's page reads | Built |
+| What is still pending — payment, FSSAI, backoffice | `pendingSteps` in `@msr/stalls`, the same function the vendor's page reads | Built |
 | Ashram stalls check in too | Same screen; the pending list adapts to the requester type | Built |
 | Nothing blocks a check-in | Deliberate: the chips inform, they do not gate | Built |
 
@@ -150,10 +150,10 @@ package both sides share.
 | Furniture deposit | Admin → Charges (`chairTableDepositPaise`), flat and charged once when any furniture is taken, as the 2025 sheet carries it | Built |
 | Chair and table amount | Admin → Charges — three rates, because 2025 quoted three: ashram, local welfare, and the vendor pair the bank-details form carries | Built |
 | Fine categorisation | Admin → Fine types | Built |
-| Access management | Access → Users, `StallStaffRole`. A role hierarchy limits who may hand out which role, and a grant can be narrowed to particular seasons and bays | Built |
+| Access management | Access → Users, `StallBackofficeRole`. A role hierarchy limits who may hand out which role, and a grant can be narrowed to particular editions and bays | Built |
 | Bays added and removed for a redrawn venue | Admin → Bays (`POST`/`DELETE /config/zones`). A bay holding stalls refuses with a 409 rather than cascading | Built |
 | The planning grid's columns | Admin → Planning columns (`PUT /config/plan-categories`), including the sponsor and Adiyogi columns the 2025 sheet carries | Built |
-| The season's own settings | Admin → Editions (`PATCH /editions/:id/settings`): name, the two virtual-account prefixes, the stalls-per-request cap — which the public write enforces | Built |
+| The edition's own settings | Admin → Editions (`PATCH /editions/:id/settings`): name, the two virtual-account prefixes, the stalls-per-request cap — which the public write enforces | Built |
 | Number of stalls, stall numbers | Planning → Apply | Built |
 | What one coupon admits | Onboarding → the coupon block (`PUT /onboarding/:id/coupon/capacity`). Eight by default, raised case by case on the code the vendor already holds | Built |
 
@@ -161,7 +161,7 @@ package both sides share.
 
 | Requirement | Where | Status |
 |---|---|---|
-| External vendors / local welfare / ashram stall vendors | Requester types on the account side (`StallRequestType`), never staff roles | Built |
+| External vendors / local welfare / ashram stall vendors | Requester types on the account side (`StallRequestType`), never backoffice roles | Built |
 | Admin, Lead, Volunteer | `stall_role` / `stall_privilege`, seeded from `SEED_ROLES` in `@msr/stalls/rbac.ts`. Roles are DATA — an admin retunes them in Access → Roles & Privileges without a deploy | Built |
 | — | A fourth role, **Finance**, exists because the finance requirement needs one that is not the Lead | Differs — an addition, not a substitution |
 | The local welfare team works inside the application and files on behalf of their traders | A fifth role, **Local Welfare**, scoped to `LOCAL_WELFARE` requests. `scope.ts` narrows every list and guards every request-addressed route, so the role's write access cannot reach a commercial vendor's record | Built |
@@ -196,9 +196,9 @@ the swap is: an OIDC callback calls that same function, `StallCredential` and
 the six password routes are dropped, and nothing else in the module moves.
 
 **What is still NOT self-serve.** Registering on a contact that already has an
-account does not attach a password to it — staff do that linking. So the
+account does not attach a password to it — the backoffice does that linking. So the
 village traders the local welfare team files for, who have no address of their
-own, still cannot reach the portal themselves; staff screens remain their only
+own, still cannot reach the portal themselves; backoffice screens remain their only
 route. That was a deliberate call, not an oversight, and `StallCredential` is
 shaped to take a claim flow if it is revisited.
 
@@ -235,4 +235,4 @@ this repository.
 | Question | Why it is open | Where |
 |---|---|---|
 | The Tamil for the refundable-advance consent | The 2025 Tamil names a flat Rs.4000. The advance is area-wise now, so that sentence is no longer true — and it is the sentence that tells a requester money will be withheld from them. It needs the team's own revised wording, not a translation invented here. The field renders its English help alone until then, which is correct rather than broken. | `packages/stalls/src/forms.ts`, `depositAcknowledged.helpTa` |
-| Whether the vendor chair and table rates are current | Rs.100 and Rs.400 per day come from the 2025 bank-details form. They are seeded as an edition's defaults and an admin sets them per season, so a stale figure is editable rather than baked in — but nobody has confirmed the 2026 numbers. | Admin → Charges |
+| Whether the vendor chair and table rates are current | Rs.100 and Rs.400 per day come from the 2025 bank-details form. They are seeded as an edition's defaults and an admin sets them per edition, so a stale figure is editable rather than baked in — but nobody has confirmed the 2026 numbers. | Admin → Charges |

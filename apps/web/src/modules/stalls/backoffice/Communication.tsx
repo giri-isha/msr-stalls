@@ -9,7 +9,7 @@ import {
   logReminder,
   putTemplate,
   putTemplateAttachment,
-  presignStaffUpload,
+  presignBackofficeUpload,
   sendEmails,
   type TemplatesResponse,
   uploadFile,
@@ -594,7 +594,7 @@ function AttachmentControl({
             if (!file) return;
             setBusy(true);
             try {
-              const up = await uploadFile(presignStaffUpload, file, 'TEMPLATE_ATTACHMENT');
+              const up = await uploadFile(presignBackofficeUpload, file, 'TEMPLATE_ATTACHMENT');
               await putTemplateAttachment(template.key, {
                 key: up.key,
                 name: up.name,

@@ -194,7 +194,10 @@ describe('chairs and tables', () => {
     expect(await screen.findByText('Out')).toBeInTheDocument();
   });
 
-  test('extra chairs are committed on blur, not on every keystroke', async () => {
+  // 🔴 These were six inline controls that each fired on its own blur or tick,
+  // so a counter correcting an entry sent a request per change — and the extras
+  // are CHARGED, so a half-typed "12" left as a real 1 on its way to 12.
+  test('the counter’s figures cross the wire once, not once per field', async () => {
     const fetch = installFetch([
       ['GET', /\/me$/, () => ME_ADMIN],
       ['GET', /\/equipment$/, () => [equipmentRow()]],
@@ -204,17 +207,59 @@ describe('chairs and tables', () => {
     const user = userEvent.setup();
 
     await screen.findByText('6 ch / 2 tb');
-    const inputs = screen.getAllByLabelText('Count');
-    await user.clear(inputs[0]);
-    await user.type(inputs[0], '12');
-    // Still nothing sent — a "1" in flight would be a real charge at a counter.
+    await user.click(screen.getByLabelText('Edit Green Leaf Organics'));
+
+    const box = within(screen.getByRole('dialog'));
+    await user.clear(box.getByLabelText('Extra chairs'));
+    await user.type(box.getByLabelText('Extra chairs'), '12');
+    await user.clear(box.getByLabelText('Chairs missing'));
+    await user.type(box.getByLabelText('Chairs missing'), '1');
+    // Nothing in flight while the figures are still being settled.
     expect(fetch.calls.filter((c) => c.method === 'PATCH')).toHaveLength(0);
 
-    await user.tab();
+    await user.click(box.getByRole('button', { name: 'Save' }));
     await waitFor(() => {
-      const patch = fetch.calls.find((c) => c.method === 'PATCH');
-      expect(patch?.body).toEqual({ extraChairs: 12 });
+      const patches = fetch.calls.filter((c) => c.method === 'PATCH');
+      expect(patches).toHaveLength(1);
+      expect(patches[0].body).toEqual({
+        extraChairs: 12,
+        extraTables: 0,
+        missingChairs: 1,
+        missingTables: 0,
+        damaged: false,
+        note: '',
+      });
     });
+  });
+
+  // ⚠️ The extras are frozen once the cash is in the drawer. Re-pricing a charge
+  // the vendor has already paid would leave the money and the screen disagreeing.
+  test('extras already paid for in cash are stated, not offered for editing', async () => {
+    installFetch([
+      ['GET', /\/me$/, () => ME_ADMIN],
+      [
+        'GET',
+        /\/equipment$/,
+        () => [
+          equipmentRow({
+            extraChairs: 2,
+            extraChargePaise: 10_000,
+            extraCollectedAt: '2026-02-13T10:00:00.000Z',
+          }),
+        ],
+      ],
+    ]);
+    render();
+    const user = userEvent.setup();
+
+    await screen.findByText('6 ch / 2 tb');
+    await user.click(screen.getByLabelText('Edit Green Leaf Organics'));
+
+    const box = within(screen.getByRole('dialog'));
+    expect(box.queryByLabelText('Extra chairs')).not.toBeInTheDocument();
+    expect(box.getByText(/already been collected in cash/)).toBeInTheDocument();
+    // What was found on return is still the counter's to record.
+    expect(box.getByLabelText('Chairs missing')).toBeInTheDocument();
   });
 
   test('missing and damaged items show the deduction they will cause', async () => {

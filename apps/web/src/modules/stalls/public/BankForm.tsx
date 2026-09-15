@@ -361,7 +361,7 @@ export function BankForm() {
             and conditions document, please click here" — and this is the
             consent that has to be producible if a stall is ever in dispute.
             Without the link a requester accepts terms they were never shown.
-            The season's document is set in Admin → Editions; where the legal
+            The edition's document is set in Admin → Editions; where the legal
             team has not issued one, the consent stands on its own wording
             rather than promising a document that is not there. */}
         <label

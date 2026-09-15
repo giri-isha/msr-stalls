@@ -3,6 +3,7 @@ import { NotAuthorizedError, ValidationFailedError } from '../../errors';
 import {
   AccountEmailTakenError,
   BankDetailsLockedError,
+  CannotSetPasswordError,
   CategoryInUseError,
   CouponFullError,
   CustomFieldInUseError,
@@ -101,6 +102,7 @@ function statusFor(err: unknown): number | null {
     err instanceof DuplicatePaymentError ||
     err instanceof NothingToSendError ||
     err instanceof AccountEmailTakenError ||
+    err instanceof CannotSetPasswordError ||
     // Configuration that cannot be applied because something already stands on
     // it. A 409 rather than a 500 so the Admin screen can say "this bay has
     // stalls planned against it" instead of showing an error page.

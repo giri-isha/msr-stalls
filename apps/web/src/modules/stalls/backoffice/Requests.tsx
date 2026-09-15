@@ -33,12 +33,15 @@ import {
   useIsMobile,
 } from '../ui';
 
-type Mode = 'triage' | 'all';
-
-/** "Stall Requests" (triage: what needs a decision, cards or table) and "All
- *  Requests" (the full pipeline table with every filter) are one screen with
- *  two presets — the prototype had both, and they read the same list. */
-export function Requests({ mode }: { mode: Mode }) {
+/** Every request in the pipeline, with every filter.
+ *
+ *  ⚠️ There was a second list — "Stall Requests", a triage preset that showed
+ *  the same rows as cards with three of the filters hidden. It is gone. Two
+ *  screens over one table meant a coordinator had to know which preset a
+ *  request would show up under before they could go looking for it, and the
+ *  answer depended on a stage they were trying to look up in the first place.
+ *  Triage is what the filters are FOR, so it is a filter now, not an address. */
+export function Requests() {
   const [params, setParams] = useSearchParams();
   const mobile = useIsMobile();
   const q = params.get('q') ?? '';
@@ -47,8 +50,8 @@ export function Requests({ mode }: { mode: Mode }) {
   const stage = params.get('stage') ?? '';
   const zoneCode = params.get('zoneCode') ?? '';
   const flagged = params.get('flagged') === 'true';
-  const [view, setView] = useState<'table' | 'cards'>(mode === 'triage' ? 'cards' : 'table');
-  // The bays are the season's own rows, not a list in this file: the venue is
+  const [view, setView] = useState<'table' | 'cards'>('table');
+  // The bays are the edition's own rows, not a list in this file: the venue is
   // redrawn every year, and a filter that cannot offer a new bay hides every
   // request standing in it.
   const { data: zones } = useLoad(() => listZones(), []);
@@ -56,8 +59,10 @@ export function Requests({ mode }: { mode: Mode }) {
 
   // The record hangs one segment under this list, and the list's filters ride
   // along in the query string so the back link lands where the reader left.
-  const base = mode === 'triage' ? '/m/stalls/requests' : '/m/stalls/all';
-  const to = (id: string) => ({ pathname: `${base}/${id}`, search: params.toString() });
+  const to = (id: string) => ({
+    pathname: `/m/stalls/requests/${id}`,
+    search: params.toString(),
+  });
 
   const [items, setItems] = useState<RequestSummary[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -118,12 +123,8 @@ export function Requests({ mode }: { mode: Mode }) {
   return (
     <div>
       <H1
-        icon={<Icon name={mode === 'triage' ? 'clipboard-list' : 'list-view'} size={18} />}
-        sub={
-          mode === 'triage'
-            ? 'Review, shortlist and select. Click a request to see its full application.'
-            : 'Every request in the pipeline, with every filter.'
-        }
+        icon={<Icon name='list-view' size={18} />}
+        sub='Every request in the pipeline. Click one to see its full application.'
         actions={
           // The two views, as one segmented control on the card plate.
           <div
@@ -151,7 +152,7 @@ export function Requests({ mode }: { mode: Mode }) {
           </div>
         }
       >
-        {mode === 'triage' ? 'Stall Requests' : 'All Requests'}
+        All Requests
       </H1>
 
       <Toolbar>
@@ -186,9 +187,7 @@ export function Requests({ mode }: { mode: Mode }) {
             </option>
           ))}
         </Select>
-        {mode === 'all' && (
-          <>
-            {/* The stage filter. The query has always accepted `stage` and the
+        {/* The stage filter. The query has always accepted `stage` and the
                 pipeline has always carried one — this is the control that was
                 missing, which is why "show me everyone still sitting on a bank
                 form" could be asked of the API but not of the screen. */}

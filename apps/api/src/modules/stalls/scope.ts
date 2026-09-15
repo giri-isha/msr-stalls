@@ -1,20 +1,20 @@
-// Which requesters a staff member's roles reach, applied.
+// Which requesters a backoffice member's roles reach, applied.
 //
 // `@msr/stalls/rbac.ts` decides the rule — `unionRequestTypeScope` turns the
 // roles a person holds into the requester types they cover, or `null` for all
-// of them, and `requireStaff` resolves it once per request.
+// of them, and `requireBackoffice` resolves it once per request.
 // This file is the half that makes the answer bite: a `where` clause for the
 // lists, and a guard for the routes that address one request by id.
 //
 // 🔴 Why it exists at all: the local welfare team works inside this
 // application, because the traders they file for are village vendors who mostly
-// have no email address. That makes them staff, and `requests.write` is
+// have no email address. That makes them backoffice members, and `requests.write` is
 // otherwise unscoped — so without this the only way to let them enter a request
 // was to also let them read a commercial vendor's bank details.
 import type { Prisma, PrismaClient, StallRequestType } from '@prisma/client';
 import { canReach, zoneOfRequest } from '@msr/stalls';
 import { RequestTypeForbiddenError, ZoneForbiddenError } from './errors';
-import type { StaffCaller } from './roles';
+import type { BackofficeCaller } from './roles';
 
 /**
  * How far a caller reaches, on the two axes that narrow a REQUEST.
@@ -25,7 +25,7 @@ import type { StaffCaller } from './roles';
  * hold the same role for different bays. `null` is "everything" on either axis.
  *
  * The third axis, the EDITION, is not here: it does not narrow a list, it
- * decides whether the caller may work in this season at all, so it is a refusal
+ * decides whether the caller may work in this edition at all, so it is a refusal
  * (`requireEditionReach`) rather than a `where` clause.
  */
 export interface RequestScope {
@@ -42,7 +42,7 @@ export const UNSCOPED: RequestScope = { requestTypes: null, zones: null };
 /** Resolved once per request, when the caller's roles are read. This reads it
  *  back rather than recomputing it, so a list and the guard beside it cannot
  *  disagree about what the same caller reaches. */
-export function scopeOf(caller: StaffCaller): RequestScope {
+export function scopeOf(caller: BackofficeCaller): RequestScope {
   return { requestTypes: caller.requestTypeScope, zones: caller.zoneScope };
 }
 
@@ -103,7 +103,7 @@ export function narrowType(
  *  and answering 403 here would tell the caller that an id they may not read
  *  nonetheless exists. */
 export async function requireRequestScope(
-  caller: StaffCaller,
+  caller: BackofficeCaller,
   db: PrismaClient,
   requestId: string,
 ): Promise<void> {
@@ -132,7 +132,7 @@ export async function requireRequestScope(
  *  which tables hang off a request, and it runs only for a scoped caller: an
  *  unscoped one costs no extra query, which is every caller but one role. */
 export async function requireOwnerScope(
-  caller: StaffCaller,
+  caller: BackofficeCaller,
   db: PrismaClient,
   findOwner: () => Promise<{ requestId: string } | null>,
 ): Promise<void> {

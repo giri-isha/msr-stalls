@@ -135,7 +135,7 @@ export async function submitBankDetails(
     }
 
     await recordActivity(tx, {
-      // The vendor acted, not a staff member. The trail records the request as
+      // The vendor acted, not a backoffice member. The trail records the request as
       // its own actor rather than attributing this to whoever looks at it next.
       actorRef: requestId,
       moduleKey: MODULE_KEY,

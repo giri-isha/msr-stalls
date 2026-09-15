@@ -656,7 +656,7 @@ describe('the apply gate', () => {
     expect(created.accountId).toBe(accountId);
     expect(created.accountId).not.toBe(victim.id);
     // The typed address still lives on the row — it is a fact about this
-    // request, and staff need it. It just no longer selects anything.
+    // request, and backoffice need it. It just no longer selects anything.
     expect(created.email).toBe('victim@vendor.example');
   });
 

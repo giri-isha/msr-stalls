@@ -1,4 +1,4 @@
-// Development seed: a 2026 edition, four staff, a plan applied across every
+// Development seed: a 2026 edition, four backoffice members, a plan applied across every
 // zone, and a realistic spread of requests drawn from the 2025 prototype data
 // — some shortlisted, some selected onto real stalls, one flagged.
 //
@@ -44,7 +44,7 @@ const force = process.argv.includes('--force');
  */
 export const DEV_PASSWORD = 'stalls-dev-password';
 
-const STAFF = [
+const BACKOFFICE = [
   { email: 'vikram.s@maildrop.cc', displayName: 'Vikram Sethu', roles: ['stalls_admin'] },
   { email: 'deepa.r@maildrop.cc', displayName: 'Deepa Ramanathan', roles: ['stalls_lead'] },
   { email: 'kavya.n@maildrop.cc', displayName: 'Kavya Nair', roles: ['stalls_volunteer'] },
@@ -393,9 +393,9 @@ async function main() {
   // and a grant cannot be written against a role table that is not there.
   await seedRbac(prisma);
 
-  // Staff
+  // Backoffice
   const people = new Map<string, string>();
-  for (const s of STAFF) {
+  for (const s of BACKOFFICE) {
     const p = await prisma.person.upsert({
       where: { email: s.email },
       create: { email: s.email, displayName: s.displayName },
@@ -403,7 +403,7 @@ async function main() {
     });
     people.set(s.email, p.personId);
     for (const roleKey of s.roles) {
-      await prisma.stallStaffRole.upsert({
+      await prisma.stallBackofficeRole.upsert({
         where: { personRef_roleKey: { personRef: p.personId, roleKey } },
         create: { personRef: p.personId, roleKey, grantedBy: SYSTEM },
         update: {},
@@ -411,7 +411,7 @@ async function main() {
     }
   }
   const lead = people.get('deepa.r@maildrop.cc') ?? SYSTEM;
-  console.log(`Staff: ${STAFF.length}`);
+  console.log(`Backoffice members: ${BACKOFFICE.length}`);
 
   // Edition + plan
   const edition = await createEdition(
@@ -557,7 +557,7 @@ async function main() {
   // ── Phase 2: onboarding and money ─────────────────────────────────────────
   //
   // Walks ONE vendor (Green Leaf) the whole way — letter, bank form, payment
-  // email, confirmed credit, certificate, staff — and leaves the others part
+  // email, confirmed credit, certificate, staff registered — and leaves the others part
   // way, so every screen has both a finished row and an outstanding one to
   // look at. Everything below goes through the same seams the routes call; the
   // seed never writes a state the application could not have produced.
@@ -716,7 +716,7 @@ async function main() {
     console.log(`\nA vendor status link (Green Leaf):\n  ${first.text.match(/http\S+/)?.[0]}`);
   console.log(`Staff registration: http://localhost:5173/stalls/staff/${coupon.code}`);
   console.log('\nSign in at http://localhost:5173/m/stalls as any of:');
-  for (const s of STAFF)
+  for (const s of BACKOFFICE)
     console.log(`  ${s.displayName.padEnd(18)} ${s.email}  ${s.roles.join(', ') || '(no role)'}`);
 }
 

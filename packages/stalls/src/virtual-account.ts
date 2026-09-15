@@ -2,7 +2,7 @@
  *
  *  ── Why this exists ────────────────────────────────────────────────────────
  *  No money moves through this application. Finance issues a PREFIX for the
- *  season and the account for one requester is that prefix followed by their
+ *  edition and the account for one requester is that prefix followed by their
  *  mobile number — so the bank statement comes back carrying, in the account
  *  column, the one field that identifies who paid. That string is the entire
  *  link between a credit on a statement and a request in this system: "without
@@ -10,12 +10,12 @@
  *
  *  🔴 Rent and the refundable advance go to DIFFERENT accounts. They are two
  *  prefixes, not one — in 2025 they differed by a single character — and they
- *  have to, because the advance comes back at the end of the season and the
+ *  have to, because the advance comes back at the end of the edition and the
  *  rent does not. A vendor who pays both into the rent account leaves Finance
  *  reconciling two credits that look identical.
  *
  *  ⚠️ Both prefixes are edition configuration, not constants. Finance mints a
- *  new pair each season and the old one stops working; hard-coding either would
+ *  new pair each edition and the old one stops working; hard-coding either would
  *  quietly send a 2027 vendor's money at a 2026 account.
  */
 

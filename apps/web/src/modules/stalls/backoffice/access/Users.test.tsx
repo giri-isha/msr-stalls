@@ -6,10 +6,10 @@ import { Users } from './Users';
 
 beforeEach(() => vi.unstubAllGlobals());
 
-function staff(over: Record<string, unknown> = {}) {
+function backoffice(over: Record<string, unknown> = {}) {
   return {
     id: 'p-admin',
-    kind: 'STAFF',
+    kind: 'BACKOFFICE',
     displayName: 'Vikram Sethu',
     email: 'vikram.s@ishafoundation.org',
     phone: null,
@@ -40,7 +40,7 @@ function requester(over: Record<string, unknown> = {}) {
  *  test that invented its own would pass while the screen sent nonsense. */
 const COUNTS = [
   { label: 'All', count: 2 },
-  { label: 'Staff', count: 1 },
+  { label: 'Backoffice', count: 1 },
   { label: 'Requesters', count: 1 },
   { label: 'Cannot sign in', count: 0 },
   { label: 'Locked out', count: 0 },
@@ -53,7 +53,7 @@ function page(users: unknown[], counts = COUNTS) {
 const routes = [{ path: '/m/stalls/access/users', element: <Users /> }];
 /** ⚠️ `me: true` now. The screen is its own route rather than a tab Admin
  *  handed a `writable` prop to, so it reads the caller's privileges itself —
- *  the same way every other staff screen does. */
+ *  the same way every other backoffice screen does. */
 const render = () => renderAt('/m/stalls/access/users', routes, { me: true });
 
 /**
@@ -130,16 +130,16 @@ async function rowFor(name: string) {
 }
 
 describe('the directory', () => {
-  test('shows staff and requesters in one table, told apart by type', async () => {
-    base(page([staff(), requester()]));
+  test('shows backoffice and requesters in one table, told apart by type', async () => {
+    base(page([backoffice(), requester()]));
     render();
 
-    expect(within(await rowFor('Vikram Sethu')).getByText('Staff')).toBeInTheDocument();
+    expect(within(await rowFor('Vikram Sethu')).getByText('Backoffice')).toBeInTheDocument();
     expect(within(await rowFor('Priya Venkat')).getByText('Requester')).toBeInTheDocument();
   });
 
-  test('a requester has no role, and a staff member has no request count', async () => {
-    base(page([staff(), requester()]));
+  test('a requester has no role, and a backoffice member has no request count', async () => {
+    base(page([backoffice(), requester()]));
     render();
 
     // The em-dash is the point: the column exists for the other population and
@@ -162,7 +162,7 @@ describe('the directory', () => {
 
 describe('the tiles', () => {
   test('are the view filter: picking one asks the server for that view', async () => {
-    const fetch = base(page([staff(), requester()]));
+    const fetch = base(page([backoffice(), requester()]));
     render();
     const user = userEvent.setup();
 
@@ -178,7 +178,7 @@ describe('the tiles', () => {
   });
 
   test('the All tile is titled from the noun, and keeps its raw value on the wire', async () => {
-    const fetch = base(page([staff(), requester()]));
+    const fetch = base(page([backoffice(), requester()]));
     render();
     const user = userEvent.setup();
 
@@ -192,7 +192,7 @@ describe('the tiles', () => {
 
 describe('the toolbar', () => {
   test('search reaches the server, debounced into one request', async () => {
-    const fetch = base(page([staff(), requester()]));
+    const fetch = base(page([backoffice(), requester()]));
     render();
     const user = userEvent.setup();
 
@@ -205,7 +205,7 @@ describe('the toolbar', () => {
   });
 
   test('a role filter narrows the request', async () => {
-    const fetch = base(page([staff()]));
+    const fetch = base(page([backoffice()]));
     render();
     const user = userEvent.setup();
 
@@ -222,7 +222,7 @@ describe('the toolbar', () => {
   });
 
   test('Columns hides a column, and Name is not on offer', async () => {
-    base(page([staff(), requester()]));
+    base(page([backoffice(), requester()]));
     render();
     const user = userEvent.setup();
 
@@ -273,7 +273,7 @@ describe('support actions', () => {
   });
 
   test('Resend confirmation is offered only where there is one to confirm', async () => {
-    base(page([requester({ signInState: 'UNCONFIRMED' }), staff()]));
+    base(page([requester({ signInState: 'UNCONFIRMED' }), backoffice()]));
     render();
 
     await screen.findByText('Priya Venkat');
@@ -322,16 +322,99 @@ describe('support actions', () => {
   });
 });
 
+/**
+ * 🔴 TEMPORARY, with the requester password login — see the screen's own note.
+ */
+describe("setting a requester's password", () => {
+  /** An admin minus the one privilege, which is the only honest way to show
+   *  that it is `passwords.write` and not `users.write` opening this. */
+  const ME_NO_PASSWORDS = {
+    ...ME_ADMIN,
+    privileges: ME_ADMIN.privileges.filter((p) => p !== 'passwords.write'),
+  };
+
+  test('sends the typed password, and only once it is long enough', async () => {
+    const fetch = base(page([requester()]), [
+      ['POST', /\/users\/a-priya\/password$/, () => [204, null]],
+    ]);
+    render();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByLabelText('Set a password for Priya Venkat'));
+
+    const set = screen.getByRole('button', { name: 'Set password' });
+    await user.type(screen.getByLabelText('New password'), 'short');
+    expect(set).toBeDisabled();
+
+    await user.type(screen.getByLabelText('New password'), '-monsoon');
+    await user.click(set);
+
+    await waitFor(() => {
+      const call = fetch.calls.find((c) => c.url.endsWith('/users/a-priya/password'));
+      expect(call?.body).toEqual({ password: 'short-monsoon' });
+    });
+  });
+
+  /** ⚠️ Not masked, deliberately: the desk is reading it down a phone line. */
+  test('the password is legible while it is typed', async () => {
+    base(page([requester()]));
+    render();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByLabelText('Set a password for Priya Venkat'));
+    expect(screen.getByLabelText('New password')).toHaveAttribute('type', 'text');
+  });
+
+  /** A backoffice member signs in through the Foundation. There is no password
+   *  here for anyone to set, so the row must not offer one. */
+  test('is never offered on a backoffice row', async () => {
+    base(page([backoffice(), requester()]));
+    render();
+
+    await screen.findByText('Vikram Sethu');
+    expect(screen.queryByLabelText('Set a password for Vikram Sethu')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Set a password for Priya Venkat')).toBeInTheDocument();
+  });
+
+  test('users.write without passwords.write offers every other action and not this one', async () => {
+    base(page([requester({ signInState: 'LOCKED' })]), [], ME_NO_PASSWORDS);
+    render();
+
+    await screen.findByText('Priya Venkat');
+    expect(screen.getByLabelText('Unlock Priya Venkat')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Set a password for Priya Venkat')).not.toBeInTheDocument();
+  });
+
+  test('a refusal is shown in the dialog, where the field still is', async () => {
+    base(page([requester()]), [
+      [
+        'POST',
+        /\/users\/a-priya\/password$/,
+        () => [409, { error: 'another account already signs in with priya@greenleaf.example' }],
+      ],
+    ]);
+    render();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByLabelText('Set a password for Priya Venkat'));
+    await user.type(screen.getByLabelText('New password'), 'monsoon-fig-84');
+    await user.click(screen.getByRole('button', { name: 'Set password' }));
+
+    expect(await screen.findByText(/another account already signs in/)).toBeInTheDocument();
+    expect(screen.getByLabelText('New password')).toBeInTheDocument();
+  });
+});
+
 describe('granting a role', () => {
   // Position 0 of the assignable list is the caller's MOST privileged role, so
   // any positional default would make Admin the thing granted by an admin who
   // never touched the dropdown. There is no honest default left, so there is
   // none.
   test('will not grant until a role is actually chosen', async () => {
-    base(page([staff()]), [
+    base(page([backoffice()]), [
       [
         'GET',
-        /\/staff\/search$/,
+        /\/backoffice\/search$/,
         () => [
           { personId: 'p-new', displayName: 'Kavya Nair', email: 'kavya.n@ishafoundation.org' },
         ],
@@ -352,15 +435,15 @@ describe('granting a role', () => {
   });
 
   test('searches the directory and grants, then reloads the list', async () => {
-    const fetch = base(page([staff()]), [
+    const fetch = base(page([backoffice()]), [
       [
         'GET',
-        /\/staff\/search$/,
+        /\/backoffice\/search$/,
         () => [
           { personId: 'p-new', displayName: 'Kavya Nair', email: 'kavya.n@ishafoundation.org' },
         ],
       ],
-      ['POST', /\/staff$/, () => [204, null]],
+      ['POST', /\/backoffice$/, () => [204, null]],
     ]);
     render();
     const user = userEvent.setup();
@@ -378,19 +461,19 @@ describe('granting a role', () => {
     await user.click(screen.getByRole('button', { name: 'Assign' }));
 
     await waitFor(() => {
-      const call = fetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/staff'));
+      const call = fetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/backoffice'));
       expect(call?.body).toMatchObject({ personRef: 'p-new', roleKey: 'stalls_lead' });
     });
   });
 });
 
-describe("editing a staff member's roles", () => {
+describe("editing a backoffice member's roles", () => {
   const open = async (user: ReturnType<typeof userEvent.setup>, name = 'Vikram Sethu') => {
     await user.click(await screen.findByLabelText(`Edit ${name}`));
   };
 
   test('opens with the roles they already hold ticked', async () => {
-    base(page([staff()]));
+    base(page([backoffice()]));
     render();
     const user = userEvent.setup();
 
@@ -413,7 +496,7 @@ describe("editing a staff member's roles", () => {
   test('choosing another role replaces the one they hold', async () => {
     const fetch = base(
       page([
-        staff({
+        backoffice({
           grants: [
             { roleKey: 'stalls_admin', editionScope: [], zoneScope: [] },
             { roleKey: 'stalls_finance', editionScope: [], zoneScope: [] },
@@ -421,8 +504,8 @@ describe("editing a staff member's roles", () => {
         }),
       ]),
       [
-        ['POST', /\/staff$/, () => [204, null]],
-        ['DELETE', /\/staff\/p-admin\/[a-z_]+$/, () => [204, null]],
+        ['POST', /\/backoffice$/, () => [204, null]],
+        ['DELETE', /\/backoffice\/p-admin\/[a-z_]+$/, () => [204, null]],
       ],
     );
     render();
@@ -433,22 +516,22 @@ describe("editing a staff member's roles", () => {
     await user.click(screen.getByRole('button', { name: /^Save$/ }));
 
     await waitFor(() => {
-      const granted = fetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/staff'));
+      const granted = fetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/backoffice'));
       expect(granted?.body).toMatchObject({ personRef: 'p-admin', roleKey: 'stalls_volunteer' });
     });
     // Both of the old ones go, and exactly one grant is asked for.
     const revoked = fetch.calls.filter((c) => c.method === 'DELETE').map((c) => c.url);
-    expect(revoked).toContain('/api/m/stalls/staff/p-admin/stalls_admin');
-    expect(revoked).toContain('/api/m/stalls/staff/p-admin/stalls_finance');
-    expect(fetch.calls.filter((c) => c.method === 'POST' && c.url.endsWith('/staff'))).toHaveLength(
-      1,
-    );
+    expect(revoked).toContain('/api/m/stalls/backoffice/p-admin/stalls_admin');
+    expect(revoked).toContain('/api/m/stalls/backoffice/p-admin/stalls_finance');
+    expect(
+      fetch.calls.filter((c) => c.method === 'POST' && c.url.endsWith('/backoffice')),
+    ).toHaveLength(1);
   });
 
   // ⚠️ Says so in words. "Pick one" is a rule a reader should not have to infer
   // from the shape of the controls.
   test('says that a role replaces the one they hold rather than adding to it', async () => {
-    base(page([staff()]));
+    base(page([backoffice()]));
     render();
     const user = userEvent.setup();
 
@@ -458,7 +541,7 @@ describe("editing a staff member's roles", () => {
   });
 
   test('a Save that changed nothing asks the server for nothing', async () => {
-    const fetch = base(page([staff()]));
+    const fetch = base(page([backoffice()]));
     render();
     const user = userEvent.setup();
 
@@ -475,7 +558,7 @@ describe("editing a staff member's roles", () => {
   test('a refusal part-way leaves the dialog describing what actually stuck', async () => {
     const fetch = base(
       page([
-        staff({
+        backoffice({
           grants: [
             { roleKey: 'stalls_admin', editionScope: [], zoneScope: [] },
             { roleKey: 'stalls_finance', editionScope: [], zoneScope: [] },
@@ -483,11 +566,11 @@ describe("editing a staff member's roles", () => {
         }),
       ]),
       [
-        ['POST', /\/staff$/, () => [204, null]],
-        ['DELETE', /\/staff\/p-admin\/stalls_finance$/, () => [204, null]],
+        ['POST', /\/backoffice$/, () => [204, null]],
+        ['DELETE', /\/backoffice\/p-admin\/stalls_finance$/, () => [204, null]],
         [
           'DELETE',
-          /\/staff\/p-admin\/stalls_admin$/,
+          /\/backoffice\/p-admin\/stalls_admin$/,
           () => [409, { error: 'cannot remove the last stalls admin' }],
         ],
       ],
@@ -505,7 +588,7 @@ describe("editing a staff member's roles", () => {
     // The grant stuck on the first attempt; the second Save must not repeat it.
     await waitFor(() =>
       expect(
-        fetch.calls.filter((c) => c.method === 'POST' && c.url.endsWith('/staff')),
+        fetch.calls.filter((c) => c.method === 'POST' && c.url.endsWith('/backoffice')),
       ).toHaveLength(1),
     );
   });
@@ -513,7 +596,7 @@ describe("editing a staff member's roles", () => {
   /** ⚠️ Revoking used to be one click on an × in a dense row. It is a dialog
    *  now, and the × must be gone rather than merely duplicated. */
   test('a role can no longer be revoked by a single click in the table', async () => {
-    base(page([staff()]));
+    base(page([backoffice()]));
     render();
 
     await screen.findByText('Vikram Sethu');
@@ -526,10 +609,10 @@ describe("editing a staff member's roles", () => {
 /**
  * 🔴 Scope, on the dialog that grants.
  *
- * The two dialogs this replaced disagreed: the one that ADDED a staff member
- * offered seasons and bays, and the one that edited an existing person's roles
+ * The two dialogs this replaced disagreed: the one that ADDED a backoffice member
+ * offered editions and bays, and the one that edited an existing person's roles
  * did not — it called `grantRole` with no scope at all. Empty means EVERY
- * season and EVERY bay, so the most-used of the two silently handed out the
+ * edition and EVERY bay, so the most-used of the two silently handed out the
  * widest grant the module can express, with nothing on screen saying so.
  */
 describe('what a grant reaches', () => {
@@ -538,7 +621,7 @@ describe('what a grant reaches', () => {
   };
 
   test('a role granted to somebody already in the list carries the bays chosen for it', async () => {
-    const fetch = base(page([staff()]), [['POST', /\/staff$/, () => [204, null]]]);
+    const fetch = base(page([backoffice()]), [['POST', /\/backoffice$/, () => [204, null]]]);
     render();
     const user = userEvent.setup();
 
@@ -549,7 +632,7 @@ describe('what a grant reaches', () => {
     await user.click(screen.getByRole('button', { name: /^Save$/ }));
 
     await waitFor(() => {
-      const call = fetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/staff'));
+      const call = fetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/backoffice'));
       expect(call?.body).toMatchObject({
         personRef: 'p-admin',
         roleKey: 'stalls_volunteer',
@@ -561,7 +644,7 @@ describe('what a grant reaches', () => {
   test('the scope a grant already has is shown, not silently reset', async () => {
     base(
       page([
-        staff({
+        backoffice({
           grants: [{ roleKey: 'stalls_admin', editionScope: ['e-2026'], zoneScope: ['B2'] }],
         }),
       ]),
@@ -576,13 +659,13 @@ describe('what a grant reaches', () => {
     expect(await screen.findByRole('combobox', { name: 'Bays for Admin' })).toHaveTextContent(
       'B2 — Bay B2',
     );
-    expect(screen.getByRole('combobox', { name: 'Seasons for Admin' })).toHaveTextContent('2026');
+    expect(screen.getByRole('combobox', { name: 'Editions for Admin' })).toHaveTextContent('2026');
   });
 
   // ⚠️ A re-grant RESETS scope on the server, so narrowing one has to travel as
   // a whole grant — and a role nobody touched must not travel at all.
   test('narrowing the role somebody already holds re-sends that one grant', async () => {
-    const fetch = base(page([staff()]), [['POST', /\/staff$/, () => [204, null]]]);
+    const fetch = base(page([backoffice()]), [['POST', /\/backoffice$/, () => [204, null]]]);
     render();
     const user = userEvent.setup();
 
@@ -592,7 +675,7 @@ describe('what a grant reaches', () => {
     await user.click(screen.getByRole('button', { name: /^Save$/ }));
 
     await waitFor(() => {
-      const sent = fetch.calls.filter((c) => c.method === 'POST' && c.url.endsWith('/staff'));
+      const sent = fetch.calls.filter((c) => c.method === 'POST' && c.url.endsWith('/backoffice'));
       expect(sent).toHaveLength(1);
       expect(sent[0]?.body).toMatchObject({ roleKey: 'stalls_admin', zoneScope: ['A1'] });
     });
@@ -603,8 +686,8 @@ describe('what a grant reaches', () => {
   // ⚠️ Empty is EVERYTHING on both axes, which is the opposite of how a picker
   // usually reads — so the control SAYS it while empty rather than sitting
   // blank and leaving the reader to guess which way round it is.
-  test('an empty scope says it means every season and every bay', async () => {
-    base(page([staff()]));
+  test('an empty scope says it means every edition and every bay', async () => {
+    base(page([backoffice()]));
     render();
     const user = userEvent.setup();
 
@@ -613,23 +696,23 @@ describe('what a grant reaches', () => {
     expect(await screen.findByRole('combobox', { name: 'Bays for Admin' })).toHaveTextContent(
       'Every bay',
     );
-    expect(screen.getByRole('combobox', { name: 'Seasons for Admin' })).toHaveTextContent(
-      'Every season, including ones created later',
+    expect(screen.getByRole('combobox', { name: 'Editions for Admin' })).toHaveTextContent(
+      'Every edition, including ones created later',
     );
   });
 
   // The dialog that adds somebody is the same dialog, so it narrows the same
   // way — this is the half that used to be the only one that could.
   test('a grant made from the add dialog carries its scope too', async () => {
-    const fetch = base(page([staff()]), [
+    const fetch = base(page([backoffice()]), [
       [
         'GET',
-        /\/staff\/search$/,
+        /\/backoffice\/search$/,
         () => [
           { personId: 'p-new', displayName: 'Kavya Nair', email: 'kavya.n@ishafoundation.org' },
         ],
       ],
-      ['POST', /\/staff$/, () => [204, null]],
+      ['POST', /\/backoffice$/, () => [204, null]],
     ]);
     render();
     const user = userEvent.setup();
@@ -645,7 +728,7 @@ describe('what a grant reaches', () => {
     await user.click(screen.getByRole('button', { name: 'Assign' }));
 
     await waitFor(() => {
-      const call = fetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/staff'));
+      const call = fetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/backoffice'));
       expect(call?.body).toMatchObject({ roleKey: 'stalls_volunteer', zoneScope: ['B2'] });
     });
   });
@@ -695,7 +778,7 @@ describe('editing a requester', () => {
   });
 
   /** ⚠️ The one thing the screen must say out loud: the account's address
-   *  moves, the password login does not. Staff who do not know that will
+   *  moves, the password login does not. Backoffice who do not know that will
    *  correct an address and then wonder why the vendor still cannot sign in. */
   test('says plainly that an existing password sign-in keeps the old address', async () => {
     base(page([requester({ signInState: 'OK' })]));
@@ -725,7 +808,7 @@ describe('editing a requester', () => {
   });
 
   test('a reader who may not write is offered no Edit at all', async () => {
-    base(page([staff(), requester()]), [], ME_LEAD);
+    base(page([backoffice(), requester()]), [], ME_LEAD);
     render();
 
     await screen.findByText('Priya Venkat');

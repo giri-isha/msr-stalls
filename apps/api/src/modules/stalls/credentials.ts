@@ -84,6 +84,55 @@ export async function setPassword(db: Db, credentialId: string, password: string
   });
 }
 
+/**
+ * A password chosen for a requester by somebody at a desk, rather than by the
+ * requester themselves.
+ *
+ * ⚠️ EVERY credential the account holds, for the same reason `clearLockout`
+ * clears every one: an account registered on both an address and a number has
+ * two, and setting the one a desk happened to look at leaves the other still
+ * opening the account on the password the vendor has lost.
+ *
+ * A requester who never registered holds none, and gets one minted on
+ * `fallback` — which is the whole point of the action. It is confirmed on
+ * creation: confirmation exists to prove somebody holds the contact, and a
+ * desk that has just spoken to them has proved it by a better route than a
+ * link the vendor could not follow in the first place.
+ *
+ * Reports whether it created one, so the caller can say which happened. A
+ * `loginValue` another account already holds surfaces as a unique-constraint
+ * failure, which the caller turns into a 409 — see `CannotSetPasswordError`.
+ *
+ * ⚠️ TEMPORARY, with the rest of this file.
+ */
+export async function setAccountPassword(
+  db: Db,
+  accountId: string,
+  password: string,
+  fallback: Contact,
+): Promise<{ created: boolean }> {
+  const passwordHash = await hashPassword(password);
+  const { count } = await db.stallCredential.updateMany({
+    where: { accountId },
+    // Confirmed, unlocked and with the failure count cleared: the desk has
+    // just handed over a password that works, and leaving a live lockout on
+    // the row would refuse it for the next fifteen minutes.
+    data: { passwordHash, failedCount: 0, lockedUntil: null, confirmedAt: new Date() },
+  });
+  if (count > 0) return { created: false };
+
+  await db.stallCredential.create({
+    data: {
+      accountId,
+      loginValue: fallback.value,
+      loginKind: fallback.kind,
+      passwordHash,
+      confirmedAt: new Date(),
+    },
+  });
+  return { created: true };
+}
+
 /** The credential behind a contact and a password, or `InvalidCredentialsError`.
  *
  *  ⚠️ EVERY failure raises that one error — no contact, no credential, not yet

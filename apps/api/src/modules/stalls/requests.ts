@@ -176,7 +176,7 @@ export async function getRequest(db: Db, id: string): Promise<RequestDetail> {
   };
 }
 
-/** Correcting a request on the staff side.
+/** Correcting a request on the backoffice side.
  *
  *  🔴 Two jobs, one route. The first is ordinary: "in case there are any other
  *  changes, we anyway speak to them over call and make that" — a phone number
@@ -211,7 +211,7 @@ export async function patchRequest(
   if (!r) throw new UnknownRequestError(id);
 
   // Both bays are checked against the edition's OWN zones. `ZoneCodeValue` only
-  // says a string is shaped like a bay code; whether this season has that bay
+  // says a string is shaped like a bay code; whether this edition has that bay
   // is a row, and Admin adds and removes them.
   for (const code of [input.preferredZoneCode, input.agreedZoneCode]) {
     if (!code) continue;

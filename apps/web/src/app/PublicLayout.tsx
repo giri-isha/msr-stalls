@@ -1,6 +1,6 @@
 // SHELL — the chrome around the public forms. Discarded at migration.
 //
-// ⚠️ Deliberately NOT the staff shell. There is no sidebar, no account chip and
+// ⚠️ Deliberately NOT the backoffice shell. There is no sidebar, no account chip and
 // no theme control: the reader is a vendor with a link from an email, on a
 // phone, filling in one form once. Every control that is not the form is a
 // thing to get wrong. What it does share is the token scope — `Frame` is the

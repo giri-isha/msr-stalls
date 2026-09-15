@@ -46,7 +46,7 @@ import type {
   RequesterSession,
   SendEmailResult,
   SetDiscretionaryFeeInput,
-  StaffMember,
+  BackofficeMember,
   CreateRoleInput,
   ListPrivilegesResponse,
   ListRolesResponse,
@@ -120,7 +120,7 @@ export const continueMyStep = (body: ContinueStepInput) =>
     json: body,
   });
 
-// ── Staff: me, dashboard ────────────────────────────────────────────────────
+// ── Backoffice: me, dashboard ────────────────────────────────────────────────────
 
 export const getMe = () => apiFetch<MeResponse>(`${BASE}/me`);
 /** The live roles, each marked with whether THIS caller may hand it out.
@@ -128,7 +128,7 @@ export const getMe = () => apiFetch<MeResponse>(`${BASE}/me`);
  *  bundle ships. */
 export const listRoles = () => apiFetch<ListRolesResponse>(`${BASE}/roles`);
 
-// ── Staff: authoring roles ──────────────────────────────────────────────────
+// ── Backoffice: authoring roles ──────────────────────────────────────────────────
 //
 // Composition, not vocabulary. The privileges themselves are code and arrive
 // with the bundle (`PRIVILEGE_CATEGORIES`); which of them a role bundles is
@@ -155,7 +155,7 @@ export const deleteRole = (roleKey: string) =>
   apiFetch<void>(`${BASE}/roles/${roleKey}`, { method: 'DELETE' });
 export const getDashboard = () => apiFetch<DashboardCounts>(`${BASE}/dashboard`);
 
-// ── Staff: requests ─────────────────────────────────────────────────────────
+// ── Backoffice: requests ─────────────────────────────────────────────────────────
 
 export const listRequests = (q: Partial<ListRequestsQuery> = {}) =>
   apiFetch<RequestPage>(
@@ -175,7 +175,7 @@ export const flagRequest = (id: string, reason: string) =>
 export const unflagRequest = (id: string) =>
   apiFetch<void>(`${BASE}/requests/${id}/flag`, { method: 'DELETE' });
 
-// ── Staff: selection ────────────────────────────────────────────────────────
+// ── Backoffice: selection ────────────────────────────────────────────────────────
 
 const post = (id: string, action: string) =>
   apiFetch<void>(`${BASE}/requests/${id}/${action}`, { method: 'POST' });
@@ -199,7 +199,7 @@ export const releaseAllocation = (allocationId: string) =>
 export const availableStalls = (zoneCode?: string) =>
   apiFetch<AvailableStall[]>(`${BASE}/stalls/available${qs({ zoneCode })}`);
 
-// ── Staff: planning ─────────────────────────────────────────────────────────
+// ── Backoffice: planning ─────────────────────────────────────────────────────────
 
 export const getPlan = () => apiFetch<ZonePlanView>(`${BASE}/planning`);
 export const putPlan = (input: ZonePlanInput) =>
@@ -207,15 +207,15 @@ export const putPlan = (input: ZonePlanInput) =>
 export const applyPlan = () =>
   apiFetch<ApplyPlanResult>(`${BASE}/planning/apply`, { method: 'POST' });
 
-// ── Staff: config ───────────────────────────────────────────────────────────
+// ── Backoffice: config ───────────────────────────────────────────────────────────
 
-export interface StaffConfig {
+export interface BackofficeConfig {
   edition: {
     id: string;
     year: number;
     name: string;
     isActive: boolean;
-    /** Finance issues these per season; null until they have. A request with no
+    /** Finance issues these per edition; null until they have. A request with no
      *  prefix quotes no account to pay into. */
     virtualAccountRentPrefix: string | null;
     virtualAccountDepositPrefix: string | null;
@@ -246,10 +246,10 @@ export interface StaffConfig {
   }>;
 }
 
-export const getConfig = () => apiFetch<StaffConfig>(`${BASE}/config`);
+export const getConfig = () => apiFetch<BackofficeConfig>(`${BASE}/config`);
 
 /** The edition's bays alone. Behind `requests:read`, so every screen that
- *  filters by bay can read the season's own list rather than carrying a copy
+ *  filters by bay can read the edition's own list rather than carrying a copy
  *  that goes stale the year the venue is redrawn. */
 export const listZones = () => apiFetch<Array<ZoneView & { id: string }>>(`${BASE}/zones`);
 export const listEditions = () =>
@@ -287,7 +287,7 @@ export const updateEditionSettings = (
     virtualAccountRentPrefix: string | null;
     virtualAccountDepositPrefix: string | null;
     maxStallsPerRequest: number;
-    /** Where this season's terms can be read, linked beside the acceptance
+    /** Where this edition's terms can be read, linked beside the acceptance
      *  tick-box on the bank form. Null until the legal team issues one. */
     termsUrl: string | null;
   },
@@ -296,7 +296,7 @@ export const putRateCard = (entries: RateCardEntry[]) =>
   apiFetch<unknown>(`${BASE}/config/rate-card`, { method: 'PUT', json: { entries } });
 export const putCharges = (input: ChargesInput) =>
   apiFetch<unknown>(`${BASE}/config/charges`, { method: 'PUT', json: input });
-export const putFlow = (input: StaffConfig['flow']) =>
+export const putFlow = (input: BackofficeConfig['flow']) =>
   apiFetch<unknown>(`${BASE}/config/flow`, { method: 'PUT', json: input });
 export const putFineType = (input: {
   reason: string;
@@ -316,38 +316,50 @@ export const patchCustomField = (id: string, patch: Record<string, unknown>) =>
 export const deleteCustomField = (id: string) =>
   apiFetch<void>(`${BASE}/config/custom-fields/${id}`, { method: 'DELETE' });
 
-// ── Staff: users ────────────────────────────────────────────────────────────
+// ── Backoffice: users ────────────────────────────────────────────────────────────
 
-export const listStaff = () => apiFetch<StaffMember[]>(`${BASE}/staff`);
+export const listBackoffice = () => apiFetch<BackofficeMember[]>(`${BASE}/backoffice`);
 export const searchPeople = (q: string) =>
   apiFetch<Array<{ personId: string; email: string; displayName: string }>>(
-    `${BASE}/staff/search${qs({ q })}`,
+    `${BASE}/backoffice/search${qs({ q })}`,
   );
 export const grantRole = (
   personRef: string,
   roleKey: string,
   scope: { editionScope?: string[]; zoneScope?: string[] } = {},
-) => apiFetch<void>(`${BASE}/staff`, { method: 'POST', json: { personRef, roleKey, ...scope } });
+) =>
+  apiFetch<void>(`${BASE}/backoffice`, { method: 'POST', json: { personRef, roleKey, ...scope } });
 export const revokeRole = (personRef: string, roleKey: string) =>
-  apiFetch<void>(`${BASE}/staff/${personRef}/${roleKey}`, { method: 'DELETE' });
+  apiFetch<void>(`${BASE}/backoffice/${personRef}/${roleKey}`, { method: 'DELETE' });
 
 /** A requester's own details, corrected from the directory. Requesters only —
- *  a staff member's name and address belong to the Foundation. */
+ *  a backoffice member's name and address belong to the Foundation. */
 export const updateAccount = (id: string, body: UpdateAccountInput) =>
   apiFetch<void>(`${BASE}/users/${id}`, { method: 'PATCH', json: body });
 
-/** The directory: staff and requesters in one list, with the tile counts. */
+/** The directory: backoffice and requesters in one list, with the tile counts. */
 export const listUsers = (q: Partial<ListUsersQuery> = {}) =>
   apiFetch<ListUsersResponse>(`${BASE}/users${qs(q)}`);
 
-/** The three support actions. Each answers 204 and sends to the contact the
- *  account already holds — none of them returns a link to the caller. */
+/** The three link-sending support actions. Each answers 204 and sends to the
+ *  contact the account already holds — none of them returns a link to the
+ *  caller. The fourth, below, is the one that does not follow that rule. */
 export const unlockAccount = (accountId: string) =>
   apiFetch<void>(`${BASE}/users/${accountId}/unlock`, { method: 'POST' });
 export const resendConfirmation = (accountId: string) =>
   apiFetch<void>(`${BASE}/users/${accountId}/resend-confirmation`, { method: 'POST' });
 export const sendAccessLinkTo = (accountId: string) =>
   apiFetch<void>(`${BASE}/users/${accountId}/access-link`, { method: 'POST' });
+
+/** A password chosen for a requester at a desk and read out to them.
+ *
+ *  🔴 The one account action that hands over a way in rather than causing one
+ *  to be sent, which is why it holds `passwords.write` and not `users.write`.
+ *
+ *  ⚠️ TEMPORARY, with the whole requester password login — it goes when the
+ *  host signs requesters in through Isha SSO. */
+export const setRequesterPassword = (accountId: string, password: string) =>
+  apiFetch<void>(`${BASE}/users/${accountId}/password`, { method: 'POST', json: { password } });
 
 // ════════════════════════════════════════════════════════════════════════════
 // PHASE 2 — Onboarding & money
@@ -437,10 +449,10 @@ export const presignPublicUpload = (token: string) => (input: PresignUploadInput
     json: input,
   });
 
-export const presignStaffUpload = (input: PresignUploadInput) =>
+export const presignBackofficeUpload = (input: PresignUploadInput) =>
   apiFetch<PresignUploadResponse>(`${BASE}/uploads`, { method: 'POST', json: input });
 
-// ── Staff: communication ────────────────────────────────────────────────────
+// ── Backoffice: communication ────────────────────────────────────────────────────
 
 export interface TemplatesResponse {
   templates: EmailTemplateView[];
@@ -479,7 +491,7 @@ export const logReminder = (requestId: string, kind: ReminderKind, note?: string
     json: { kind, note },
   });
 
-// ── Staff: onboarding ───────────────────────────────────────────────────────
+// ── Backoffice: onboarding ───────────────────────────────────────────────────────
 
 export const listOnboarding = () => apiFetch<OnboardingRow[]>(`${BASE}/onboarding`);
 export const getOnboarding = (id: string) => apiFetch<OnboardingDetail>(`${BASE}/onboarding/${id}`);
@@ -498,11 +510,11 @@ export const verifyFssai = (id: string, verified: boolean) =>
     json: { verified },
   });
 export const listVendorStaff = (id: string) =>
-  apiFetch<VendorStaffView[]>(`${BASE}/onboarding/${id}/staff`);
+  apiFetch<VendorStaffView[]>(`${BASE}/onboarding/${id}/backoffice`);
 export const removeVendorStaff = (id: string) =>
   apiFetch<void>(`${BASE}/staff-registrations/${id}`, { method: 'DELETE' });
 
-// ── Staff: the contract signature ───────────────────────────────────────────
+// ── Backoffice: the contract signature ───────────────────────────────────────────
 
 export const getSignature = (id: string) =>
   apiFetch<SignatureView>(`${BASE}/requests/${id}/signature`);
@@ -514,7 +526,7 @@ export const sendForSignature = (id: string) =>
 export const refreshSignature = (id: string) =>
   apiFetch<SignatureView>(`${BASE}/requests/${id}/signature/refresh`, { method: 'POST' });
 
-// ── Staff: finance ──────────────────────────────────────────────────────────
+// ── Backoffice: finance ──────────────────────────────────────────────────────────
 
 export const listPayments = () => apiFetch<PaymentRow[]>(`${BASE}/finance/payments`);
 export const confirmPayment = (requestId: string, body: ConfirmPaymentInput) =>

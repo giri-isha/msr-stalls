@@ -234,7 +234,7 @@ export async function chargesFor(db: Db, editionId: string) {
   return c;
 }
 
-/** What the public form needs, and NOTHING staff-only. Only active custom
+/** What the public form needs, and NOTHING backoffice-only. Only active custom
  *  fields, only public form types.
  *
  *  ⚠️ `scope` decides which rents come back. The same bay is priced differently
@@ -409,7 +409,7 @@ export async function replacePlanCategories(
   return planCategoriesFor(db, editionId);
 }
 
-/** The season's own settings — the name, the two virtual-account prefixes
+/** The edition's own settings — the name, the two virtual-account prefixes
  *  Finance issues, and the cap on stalls per request. */
 export async function updateEditionSettings(
   db: PrismaClient,
@@ -425,7 +425,7 @@ export async function updateEditionSettings(
 ) {
   const updated = await db.stallEdition.update({
     where: { id: editionId },
-    // An empty string is "there is no document this season", not a link to
+    // An empty string is "there is no document this edition", not a link to
     // nowhere — the form shows the consent without a link rather than a href
     // that 404s.
     data: { ...input, termsUrl: input.termsUrl?.trim() || null },
@@ -436,7 +436,7 @@ export async function updateEditionSettings(
     action: 'stall_edition.settings_updated',
     subjectRef: editionId,
     // The prefixes are not secret — they are printed on every payment letter —
-    // but recording them is what answers "which account was this season's".
+    // but recording them is what answers "which account was this edition's".
     detail: input,
   });
   return updated;

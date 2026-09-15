@@ -46,7 +46,7 @@ export async function register(db: Db, deps: SendDeps, input: RegisterInput): Pr
 
   // ⚠️ An existing account is a REFUSAL, not a claim. Attaching a password to
   // an account somebody else built would hand over that vendor's requests,
-  // bank details and allocation to anyone who knows their number. Staff do
+  // bank details and allocation to anyone who knows their number. The backoffice does
   // this linking; the warning below is how the real holder finds out.
   const existing = await findAccountByContact(db, input.contact);
   if (existing) {
@@ -79,7 +79,7 @@ export async function register(db: Db, deps: SendDeps, input: RegisterInput): Pr
  * Mints a confirmation link and sends it over the channel the credential was
  * registered on.
  *
- * Shared by `register` and the staff-side resend. The channel comes from the
+ * Shared by `register` and the backoffice-side resend. The channel comes from the
  * CONTACT, never from the account row: an account registered on a mobile
  * carries a placeholder email that nothing can deliver to.
  */
