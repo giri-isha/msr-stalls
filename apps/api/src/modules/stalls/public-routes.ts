@@ -2,19 +2,27 @@
 // session can reach lives in this file and nowhere else, so the boundary is one
 // screen to review.
 //
-// Every route here is gated by one of exactly two credentials:
+// Every route here is gated by one of exactly three credentials:
 //
 //   • a signed access LINK  — status page, bank form, FSSAI upload. The token
 //     names the request; nothing in a body ever does, so holding one link can
 //     never write to another vendor's record.
 //   • a staff COUPON        — staff registration. Same rule: the coupon names
 //     the stall.
+//   • a requester SESSION   — the stall request form and the submission behind
+//     it. A password today, the host's Isha OIDC when it lands; `session.ts` is
+//     the seam and no route here knows which it was.
 //
-// Three routes take no credential: `GET /config`, which is the public form's
-// own configuration and contains no vendor data; `POST /requests`, the one open
-// write in the system; and `POST /access-link`, which reads nothing back to the
-// caller and can only ever send a link to the address already on the account.
-// All three are rate-limited per IP.
+// Four routes take no credential: `GET /config`, which is the public form's own
+// configuration and contains no vendor data; `POST /access-link`; `POST
+// /register`; and `POST /password-reset`. The last three read nothing back to
+// the caller and answer identically to a hit, a miss and a malformed contact —
+// anything else would make them a way of asking whether a particular person has
+// applied. All are rate-limited per IP.
+//
+// ⚠️ `POST /requests` used to be in that list. It is not any more: the account a
+// request belongs to now comes from the session rather than from the email typed
+// into the form.
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
@@ -205,10 +213,13 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
       },
     },
     async (req, reply): Promise<SubmitRequestResponse> => {
-      const { reference, statusToken } = await submitRequest(prisma, req.body, {
-        mail: deps.mail,
-        statusUrl: deps.statusUrl,
-      });
+      const requester = await requireRequester(prisma, req);
+      const { reference, statusToken } = await submitRequest(
+        prisma,
+        req.body,
+        { mail: deps.mail, whatsapp: deps.whatsapp, statusUrl: deps.statusUrl },
+        requester.id,
+      );
       reply.status(201);
       return { reference, statusToken };
     },

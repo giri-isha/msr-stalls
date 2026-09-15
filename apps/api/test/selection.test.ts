@@ -17,7 +17,15 @@ import {
   shortlist,
 } from '../src/modules/stalls/selection';
 import { submitRequest } from '../src/modules/stalls/submit';
-import { LogMailer, SYSTEM, prisma, resetDatabase, seedEdition, vendorBody } from './helpers/db';
+import {
+  accountFor,
+  LogMailer,
+  prisma,
+  resetDatabase,
+  seedEdition,
+  SYSTEM,
+  vendorBody,
+} from './helpers/db';
 import { makeStalls } from './helpers/plan';
 
 let edition: StallEdition;
@@ -27,11 +35,16 @@ beforeEach(async () => {
   await makeStalls(edition.id, 'A4', { VENDOR_FOOD: 5 });
 });
 
-const submit = (body: Record<string, unknown> = {}) =>
-  submitRequest(prisma, SubmitRequestInput.parse(vendorBody(body)), {
-    mail: new LogMailer(),
-    statusUrl: (t) => t,
-  });
+const submit = async (body: Record<string, unknown> = {}) =>
+  submitRequest(
+    prisma,
+    SubmitRequestInput.parse(vendorBody(body)),
+    {
+      mail: new LogMailer(),
+      statusUrl: (t) => t,
+    },
+    await accountFor(body),
+  );
 
 const statusOf = async (id: string) =>
   (await prisma.stallRequest.findUniqueOrThrow({ where: { id } })).status;

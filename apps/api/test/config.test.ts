@@ -11,7 +11,15 @@ import {
 import { activeEdition } from '../src/modules/stalls/editions';
 import { CustomFieldInUseError, NoActiveEditionError } from '../src/modules/stalls/errors';
 import { submitRequest } from '../src/modules/stalls/submit';
-import { LogMailer, SYSTEM, prisma, resetDatabase, seedEdition, vendorBody } from './helpers/db';
+import {
+  accountFor,
+  LogMailer,
+  prisma,
+  resetDatabase,
+  seedEdition,
+  SYSTEM,
+  vendorBody,
+} from './helpers/db';
 
 beforeEach(resetDatabase);
 
@@ -179,6 +187,7 @@ describe('deleteCustomField', () => {
       prisma,
       SubmitRequestInput.parse(vendorBody({ customFields: { [f.id]: 'greenleaf.example' } })),
       { mail: new LogMailer(), statusUrl: (t) => `http://x/${t}` },
+      await accountFor(),
     );
     await expect(deleteCustomField(prisma, f.id, SYSTEM)).rejects.toBeInstanceOf(
       CustomFieldInUseError,

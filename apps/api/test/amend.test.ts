@@ -11,12 +11,14 @@ import { buildApp } from '../src/app';
 import { TooManyStallsRequestedError } from '../src/modules/stalls/errors';
 import { submitRequest } from '../src/modules/stalls/submit';
 import {
+  accountFor,
   LogMailer,
-  type Staff,
   prisma,
   resetDatabase,
   seedEdition,
+  seedRequester,
   seedStaff,
+  type Staff,
   vendorBody,
 } from './helpers/db';
 import { makeStalls } from './helpers/plan';
@@ -31,11 +33,16 @@ beforeAll(async () => {
 });
 afterAll(() => app.close());
 
-const submit = (body: Record<string, unknown> = {}) =>
-  submitRequest(prisma, SubmitRequestInput.parse(vendorBody(body)), {
-    mail: new LogMailer(),
-    statusUrl: (t) => t,
-  });
+const submit = async (body: Record<string, unknown> = {}) =>
+  submitRequest(
+    prisma,
+    SubmitRequestInput.parse(vendorBody(body)),
+    {
+      mail: new LogMailer(),
+      statusUrl: (t) => t,
+    },
+    await accountFor(body),
+  );
 
 beforeEach(async () => {
   await resetDatabase();
@@ -60,6 +67,7 @@ describe('the cap on stalls in one bay', () => {
       method: 'POST',
       url: '/api/m/stalls/public/requests',
       payload: vendorBody({ numStallsRequested: 5 }),
+      cookies: (await seedRequester(app)).cookies,
     });
     expect(res.statusCode).toBe(422);
     expect(res.json().error).toContain('at most 2');
@@ -75,6 +83,7 @@ describe('the cap on stalls in one bay', () => {
       method: 'POST',
       url: '/api/m/stalls/public/requests',
       payload: vendorBody({ numStallsRequested: 5 }),
+      cookies: (await seedRequester(app)).cookies,
     });
     expect(res.statusCode).toBe(201);
   });

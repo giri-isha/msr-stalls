@@ -7,13 +7,14 @@ import { applyPlan, readPlan, writePlan } from '../src/modules/stalls/planning';
 import { selectRequest } from '../src/modules/stalls/selection';
 import { submitRequest } from '../src/modules/stalls/submit';
 import {
+  accountFor,
   LogMailer,
-  SYSTEM,
-  type Staff,
   prisma,
   resetDatabase,
   seedEdition,
   seedStaff,
+  SYSTEM,
+  type Staff,
   vendorBody,
 } from './helpers/db';
 import { counts, makeStalls } from './helpers/plan';
@@ -88,10 +89,12 @@ describe('applyPlan', () => {
 
   test('NEVER removes a stall that holds a live allocation', async () => {
     await makeStalls(edition.id, 'A4', { VENDOR_FOOD: 30 });
-    const req = await submitRequest(prisma, SubmitRequestInput.parse(vendorBody()), {
-      mail: new LogMailer(),
-      statusUrl: (t) => t,
-    });
+    const req = await submitRequest(
+      prisma,
+      SubmitRequestInput.parse(vendorBody()),
+      { mail: new LogMailer(), statusUrl: (t) => t },
+      await accountFor(),
+    );
     await selectRequest(prisma, { requestId: req.requestId, stallNumbers: ['A4-5'] }, SYSTEM);
 
     const r = await makeStalls(edition.id, 'A4', { VENDOR_FOOD: 3 });
@@ -109,10 +112,12 @@ describe('applyPlan', () => {
 
   test('reports an allocated stall in `kept` when the plan no longer wants its category, and re-labels a free one rather than churning it', async () => {
     await makeStalls(edition.id, 'A4', { VENDOR_FOOD: 2 });
-    const req = await submitRequest(prisma, SubmitRequestInput.parse(vendorBody()), {
-      mail: new LogMailer(),
-      statusUrl: (t) => t,
-    });
+    const req = await submitRequest(
+      prisma,
+      SubmitRequestInput.parse(vendorBody()),
+      { mail: new LogMailer(), statusUrl: (t) => t },
+      await accountFor(),
+    );
     await selectRequest(prisma, { requestId: req.requestId, stallNumbers: ['A4-1'] }, SYSTEM);
 
     const r = await makeStalls(edition.id, 'A4', { ASHRAM_FOOD: 1 });

@@ -2,7 +2,15 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { buildApp } from '../src/app';
 import { shortlist } from '../src/modules/stalls/selection';
-import { LogMailer, SYSTEM, prisma, resetDatabase, seedEdition, vendorBody } from './helpers/db';
+import {
+  LogMailer,
+  prisma,
+  resetDatabase,
+  seedEdition,
+  seedRequester,
+  SYSTEM,
+  vendorBody,
+} from './helpers/db';
 
 let app: FastifyInstance;
 const mail = new LogMailer();
@@ -16,8 +24,21 @@ beforeEach(async () => {
   mail.sent.length = 0;
 });
 
-const post = (body: Record<string, unknown>) =>
-  app.inject({ method: 'POST', url: '/api/m/stalls/public/requests', payload: body });
+// The form is behind a session now, so posting one means being logged in.
+//
+// Registering sends a confirmation message of its own. That is scaffolding, not
+// something any test here is asserting about, so the mail log is cleared once
+// the requester exists and before the submission that the test cares about.
+const post = async (body: Record<string, unknown>) => {
+  const { cookies } = await seedRequester(app, String(body.email ?? 'priya@greenleaf.example'));
+  mail.sent.length = 0;
+  return app.inject({
+    method: 'POST',
+    url: '/api/m/stalls/public/requests',
+    payload: body,
+    cookies,
+  });
+};
 
 describe('GET /public/config', () => {
   test('answers the form what it needs, and nothing staff-only', async () => {

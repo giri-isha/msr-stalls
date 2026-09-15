@@ -15,7 +15,14 @@ import {
   requireRequester,
   startSession,
 } from '../src/modules/stalls/session';
-import { LogMailer, prisma, resetDatabase, seedEdition } from './helpers/db';
+import {
+  LogMailer,
+  prisma,
+  resetDatabase,
+  seedEdition,
+  seedRequester,
+  vendorBody,
+} from './helpers/db';
 import { recordingWhatsApp } from './helpers/onboarding';
 
 let app: FastifyInstance;
@@ -105,7 +112,12 @@ describe('authenticate', () => {
     const messages: string[] = [];
     for (const attempt of attempts) {
       await expect(attempt).rejects.toBeInstanceOf(InvalidCredentialsError);
-      messages.push(await attempt.catch((e: Error) => e.message));
+      messages.push(
+        await attempt.then(
+          () => 'resolved',
+          (e: Error) => e.message,
+        ),
+      );
     }
     expect(new Set(messages).size).toBe(1);
   });
@@ -614,5 +626,85 @@ describe('password reset', () => {
       payload: { contact: 'never@vendor.example', password: 'brandnewpassword' },
     });
     expect(res.statusCode).toBe(200);
+  });
+});
+
+describe('the apply gate', () => {
+  test('submitting without a session is refused, and writes nothing', async () => {
+    const res = await app.inject({ method: 'POST', url: url('requests'), payload: vendorBody() });
+    expect(res.statusCode).toBe(404);
+    expect(await prisma.stallRequest.count()).toBe(0);
+  });
+
+  // 🔴 The hole this closes. Before the gate, the account came from
+  // `findOrCreateAccount(input.email)` — the address TYPED INTO THE FORM — so
+  // typing a known vendor's address attached the request to their account and
+  // mailed them the receipt, status link and all.
+  test('a typed email cannot choose an account', async () => {
+    const victim = await account('victim@vendor.example', '9840011111');
+    const { accountId, cookies } = await seedRequester(app, 'attacker@vendor.example');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: url('requests'),
+      payload: vendorBody({ email: 'victim@vendor.example' }),
+      cookies,
+    });
+    expect(res.statusCode).toBe(201);
+
+    const created = await prisma.stallRequest.findFirstOrThrow();
+    expect(created.accountId).toBe(accountId);
+    expect(created.accountId).not.toBe(victim.id);
+    // The typed address still lives on the row — it is a fact about this
+    // request, and staff need it. It just no longer selects anything.
+    expect(created.email).toBe('victim@vendor.example');
+  });
+
+  // The receipt carries a status link, which is a credential for the whole
+  // account. It must not follow a typed address.
+  test('the receipt goes to the account, not to the address typed in the form', async () => {
+    const { cookies } = await seedRequester(app, 'owner@vendor.example');
+    mail.sent.length = 0;
+
+    await app.inject({
+      method: 'POST',
+      url: url('requests'),
+      payload: vendorBody({ email: 'somebody-else@vendor.example' }),
+      cookies,
+    });
+
+    expect(mail.sent).toHaveLength(1);
+    expect(mail.sent[0].to).toBe('owner@vendor.example');
+  });
+
+  test('a requester registered on a mobile gets the receipt on WhatsApp', async () => {
+    const { cookies } = await seedRequester(app, '9840012399');
+    mail.sent.length = 0;
+    whatsapp.sent.length = 0;
+
+    await app.inject({
+      method: 'POST',
+      url: url('requests'),
+      payload: vendorBody(),
+      cookies,
+    });
+
+    expect(mail.sent).toHaveLength(0);
+    expect(whatsapp.sent).toHaveLength(1);
+    expect(whatsapp.sent[0].to).toBe('9840012399');
+  });
+
+  test('two requests from one login sit under one account', async () => {
+    const { accountId, cookies } = await seedRequester(app);
+    for (const stallName of ['First Stall', 'Second Stall']) {
+      const res = await app.inject({
+        method: 'POST',
+        url: url('requests'),
+        payload: vendorBody({ stallName }),
+        cookies,
+      });
+      expect(res.statusCode).toBe(201);
+    }
+    expect(await prisma.stallRequest.count({ where: { accountId } })).toBe(2);
   });
 });

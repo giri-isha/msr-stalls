@@ -11,13 +11,14 @@ import { buildApp } from '../src/app';
 import { selectRequest } from '../src/modules/stalls/selection';
 import { submitRequest } from '../src/modules/stalls/submit';
 import {
+  accountFor,
   LogMailer,
-  SYSTEM,
-  type Staff,
   prisma,
   resetDatabase,
   seedEdition,
   seedStaff,
+  SYSTEM,
+  type Staff,
   vendorBody,
 } from './helpers/db';
 import { makeStalls } from './helpers/plan';
@@ -49,6 +50,7 @@ beforeEach(async () => {
       }),
     ),
     { mail: new LogMailer(), statusUrl: (t) => t },
+    await accountFor(),
   );
   requestId = r.requestId;
   await selectRequest(prisma, { requestId, stallNumbers: ['A4-1'] }, SYSTEM);

@@ -1,9 +1,11 @@
 import type { Prisma, PrismaClient, StallRequestType } from '@prisma/client';
 import { type SubmitRequestInput, formatReference } from '@msr/stalls';
-import { findOrCreateAccount, mintAccessLink } from './accounts';
+import { mintAccessLink, normalizeEmail } from './accounts';
 import { type Db, activeEdition } from './editions';
 import { TooManyStallsRequestedError } from './errors';
 import type { Mailer } from './mailer';
+import { isPlaceholderEmail } from './registration';
+import type { WhatsAppSender } from './whatsapp';
 
 /** How long a status link stays live. Long: the vendor comes back to it in
  *  Phase 2 for the bank form and in Phase 3 for FSSAI, months after submitting. */
@@ -11,6 +13,9 @@ export const STATUS_LINK_TTL_DAYS = 365;
 
 export interface SubmitDeps {
   mail: Mailer;
+  /** Optional: only reached for an account registered on a mobile, which has
+   *  no address to mail the receipt to. */
+  whatsapp?: WhatsAppSender;
   /** Builds the absolute URL the receipt email carries. The module does not
    *  know its own public origin — the shell does. */
   statusUrl(token: string): string;
@@ -52,6 +57,14 @@ export async function submitRequest(
   db: PrismaClient,
   input: SubmitRequestInput,
   deps: SubmitDeps,
+  /** The logged-in requester. NOT derived from `input`.
+   *
+   *  🔴 This used to be `findOrCreateAccount(input.email)`, which meant the
+   *  account was chosen by the address TYPED INTO THE FORM — so typing a known
+   *  vendor's address attached the request to their account and sent the
+   *  receipt, carrying a status link, to them. The session decides now, and
+   *  the contact fields on the form are per-request facts that select nothing. */
+  accountId: string,
 ): Promise<SubmitResult> {
   const now = deps.now?.() ?? new Date();
 
@@ -70,11 +83,7 @@ export async function submitRequest(
       throw new TooManyStallsRequestedError(input.numStallsRequested, edition.maxStallsPerRequest);
     }
 
-    const account = await findOrCreateAccount(tx, {
-      email: input.email,
-      phone: input.contactNumber,
-      displayName: input.requesterName,
-    });
+    const account = await tx.stallAccount.findUniqueOrThrow({ where: { id: accountId } });
     const seq = await nextSequence(tx, edition.id, input.requestType);
     const reference = formatReference(input.requestType, edition.year, seq);
 
@@ -99,7 +108,10 @@ export async function submitRequest(
         stallName: input.stallName,
         requesterName: input.requesterName,
         contactNumber: input.contactNumber,
-        email: account.email,
+        // The typed address, not the account's: a department files for several
+        // contact people under one login, and this is the one for THIS request.
+        // It is a fact on the row, never a credential — see the receipt below.
+        email: normalizeEmail(input.email),
         address: input.address ?? null,
         itemsSelling: input.itemsSelling,
         numStallsRequested: input.numStallsRequested,
@@ -155,17 +167,34 @@ export async function submitRequest(
       now,
     });
 
-    return { requestId: request.id, reference, statusToken: token, email: account.email };
+    return {
+      requestId: request.id,
+      reference,
+      statusToken: token,
+      account: { email: account.email, phone: account.phone },
+    };
   });
 
   // After commit. A mail failure must not roll back a request that is already
   // real — the vendor can be re-sent the link by staff. Swallowed deliberately.
+  //
+  // ⚠️ To the ACCOUNT's contact, never to `input.email`. This letter carries a
+  // status link, and a status link is a credential for the whole account — so
+  // it goes to the contact the requester proved they hold when they registered,
+  // not to an address they typed a moment ago.
+  const statusUrl = deps.statusUrl(result.statusToken);
   try {
-    await deps.mail.send(
-      receiptMail(result.email, input, result.reference, deps.statusUrl(result.statusToken)),
-    );
+    if (!isPlaceholderEmail(result.account.email)) {
+      await deps.mail.send(receiptMail(result.account.email, input, result.reference, statusUrl));
+    } else if (deps.whatsapp && result.account.phone) {
+      // Registered on a mobile: there is no address to write to.
+      await deps.whatsapp.send({
+        to: result.account.phone,
+        text: `Your MSR stall request ${result.reference} has been received. ${statusUrl}`,
+      });
+    }
   } catch {
-    // logged by the mailer implementation; the submission stands
+    // logged by the adapter; the submission stands
   }
 
   return {

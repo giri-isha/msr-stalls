@@ -340,6 +340,8 @@ function seedDeps(mail: LogMailer): StallsDeps {
     mail,
     statusUrl: (t) => `${origin}/stalls/status/${t}`,
     bankFormUrl: (t) => `${origin}/stalls/bank/${t}`,
+    registerConfirmUrl: (t) => `${origin}/stalls/confirm/${t}`,
+    passwordResetUrl: (t) => `${origin}/stalls/reset/${t}`,
     fssaiUrl: (t) => `${origin}/stalls/fssai/${t}`,
     staffRegistrationUrl: (c) => `${origin}/stalls/staff/${c}`,
     signatureUrl: (t) => `${origin}/stalls/sign/${t}`,
@@ -417,10 +419,25 @@ async function main() {
   const mail = new LogMailer();
   const ids: string[] = [];
   for (const body of REQUESTS) {
-    const r = await submitRequest(prisma, SubmitRequestInput.parse(body), {
-      mail,
-      statusUrl: (t) => `http://localhost:5173/stalls/status/${t}`,
+    // The form is behind a session in the app; the seed has no browser, so it
+    // creates the account the session would have named. Passwordless on
+    // purpose — a seeded account cannot be logged into, and a developer who
+    // wants to log in registers through the form like a vendor would.
+    const account = await prisma.stallAccount.upsert({
+      where: { email: String(body.email).trim().toLowerCase() },
+      update: {},
+      create: {
+        email: String(body.email).trim().toLowerCase(),
+        phone: String(body.contactNumber),
+        displayName: String(body.requesterName),
+      },
     });
+    const r = await submitRequest(
+      prisma,
+      SubmitRequestInput.parse(body),
+      { mail, statusUrl: (t) => `http://localhost:5173/stalls/status/${t}` },
+      account.id,
+    );
     ids.push(r.requestId);
   }
   console.log(`Requests: ${ids.length}`);

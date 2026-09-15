@@ -7,7 +7,7 @@ import { submitRequest } from '../../src/modules/stalls/submit';
 import type { OutboundWhatsApp, WhatsAppSender } from '../../src/modules/stalls/whatsapp';
 import { DiskMediaStore } from '../../src/storage/disk-media-store';
 import type { MediaStore } from '../../src/storage/media-namespace';
-import { LogMailer, SYSTEM, prisma, vendorBody } from './db';
+import { accountFor, LogMailer, prisma, SYSTEM, vendorBody } from './db';
 
 /** A media store that presigns without a disk behind it. The Phase 2 tests
  *  care that a key is minted, checked against the namespace and handed back —
@@ -130,10 +130,12 @@ export async function selected(
   stallNumbers: string[],
   overrides: Record<string, unknown> = {},
 ): Promise<{ requestId: string; reference: string }> {
-  const r = await submitRequest(prisma, SubmitRequestInput.parse(vendorBody(overrides)), {
-    mail: new LogMailer(),
-    statusUrl: (t) => t,
-  });
+  const r = await submitRequest(
+    prisma,
+    SubmitRequestInput.parse(vendorBody(overrides)),
+    { mail: new LogMailer(), statusUrl: (t) => t },
+    await accountFor(overrides),
+  );
   await selectRequest(prisma, { requestId: r.requestId, stallNumbers }, SYSTEM);
   return { requestId: r.requestId, reference: r.reference };
 }
