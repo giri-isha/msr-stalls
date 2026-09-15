@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import {
+  type DirectoryGrant,
   type DirectoryUser,
   type DirectoryView,
   type SignInState,
   type RoleSummary,
   isPlaceholderEmail,
 } from '@msr/stalls';
-import * as api from '../api';
-import { Panel } from '../components/Panel';
-import { useDebounced, useLoad } from '../hooks';
+import * as api from '../../api';
+import { Panel } from '../../components/Panel';
+import { useDebounced, useLoad } from '../../hooks';
+import { useMe } from '../../me';
 import {
   Avatar,
   Btn,
@@ -17,10 +19,12 @@ import {
   Empty,
   ErrorBox,
   Field,
+  FormField,
   Icon,
   IconBtn,
   Input,
   Loading,
+  MultiSelect,
   OptionRow,
   Pager,
   PopHeader,
@@ -41,7 +45,7 @@ import {
   useIsMobile,
   usePageSize,
   useToast,
-} from '../ui';
+} from '../../ui';
 
 /**
  * Everyone who can reach this module, in one directory.
@@ -66,49 +70,45 @@ import {
  * usually reads — so the empty state says so in words rather than leaving the
  * blank row to be guessed at.
  */
-function ScopePicker({
+function ScopeField({
   label,
   all,
   options,
   chosen,
   onChange,
+  forName,
 }: {
   label: string;
+  /** What an EMPTY list means, shown as the control's own placeholder. */
   all: string;
   options: Array<{ value: string; label: string }>;
   chosen: string[];
   onChange: (next: string[]) => void;
+  /**
+   * The role these bays or seasons belong to.
+   *
+   * ⚠️ Not decoration. The dialog draws one of these per axis UNDER EVERY ROLE
+   * a person holds, so "Bays" alone names four different controls on one
+   * screen — to a screen reader and to the suite alike.
+   */
+  forName?: string;
 }) {
   if (options.length === 0) return null;
+  const id = `scope-${forName ?? ''}-${label}`;
   return (
-    <div style={{ marginTop: 10 }}>
-      <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--mfg)' }}>{label}</div>
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
-        {options.map((o) => (
-          <label
-            key={o.value}
-            htmlFor={`scope-${label}-${o.value}`}
-            style={{ display: 'flex', gap: 5 }}
-          >
-            <Checkbox
-              id={`scope-${label}-${o.value}`}
-              checked={chosen.includes(o.value)}
-              onChange={() =>
-                onChange(
-                  chosen.includes(o.value)
-                    ? chosen.filter((v) => v !== o.value)
-                    : [...chosen, o.value],
-                )
-              }
-            />
-            <span style={{ fontSize: 12 }}>{o.label}</span>
-          </label>
-        ))}
-      </div>
-      <div style={{ fontSize: 11.5, color: 'var(--mfg)', marginTop: 3 }}>
-        {chosen.length === 0 ? all : `Limited to ${chosen.length}`}
-      </div>
-    </div>
+    <FormField id={id} label={label}>
+      <MultiSelect
+        label={forName ? `${label} for ${forName}` : label}
+        values={chosen}
+        onChange={onChange}
+        options={options}
+        // ⚠️ The placeholder IS the explanation. Empty means EVERY bay and
+        // EVERY season — the opposite of how a picker usually reads — so the
+        // control says so while empty rather than sitting blank under a
+        // sentence somebody has to find.
+        placeholder={all}
+      />
+    </FormField>
   );
 }
 
@@ -128,6 +128,18 @@ function useRoles() {
   return { roles, assignable: roles.filter((r) => r.assignable) };
 }
 
+/**
+ * What one grant reaches, in a few words — the chip's tooltip.
+ *
+ * ⚠️ Empty is EVERYTHING on both axes, which is the opposite of how a filter
+ * reads, so it is spelled out rather than left blank.
+ */
+function scopeSummary(g: DirectoryGrant): string {
+  const bays = g.zoneScope.length === 0 ? 'every bay' : g.zoneScope.join(', ');
+  const seasons = g.editionScope.length === 0 ? 'every season' : `${g.editionScope.length} seasons`;
+  return `Reaches ${bays}, ${seasons}`;
+}
+
 /** The role's name as an admin reads it, falling back to the key.
  *
  *  A grant can name a role this list has not loaded yet, and a half-drawn table
@@ -136,7 +148,9 @@ function roleName(roles: RoleSummary[], roleKey: string): string {
   return roles.find((r) => r.roleKey === roleKey)?.name ?? roleKey;
 }
 
-export function Users({ writable }: { writable: boolean }) {
+export function Users() {
+  const { can } = useMe();
+  const writable = can('users.write');
   const toast = useToast();
   const mobile = useIsMobile();
   const { roles } = useRoles();
@@ -191,28 +205,10 @@ export function Users({ writable }: { writable: boolean }) {
 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
-      <Panel
-        title='Roles'
-        note='What each role may do. Declared by the module, not by the platform. A requester holds none of these — they are not staff, and the directory below shows them with no role for that reason.'
-      >
-        <Table>
-          <THead>
-            <TR>
-              <TH>Role</TH>
-              <TH>Access</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {roles.map((r) => (
-              <TR key={r.roleKey}>
-                <TD style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{r.name}</TD>
-                <TD muted>{r.description}</TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
-      </Panel>
-
+      {/* ⚠️ The read-only table of role descriptions that used to sit here is
+          gone. Roles & Privileges is a screen of its own now, and a second
+          rendering of the same list is a second thing to keep in step — this
+          one had no counts, no hierarchy and no way to reach the editor. */}
       <StatTiles
         tiles={dir.data?.counts ?? []}
         noun='user'
@@ -292,7 +288,7 @@ export function Users({ writable }: { writable: boolean }) {
         {writable && (
           <div style={{ marginLeft: 'auto' }}>
             <Btn kind='primary' onClick={() => setAdding(true)}>
-              <Icon name='user-plus' size={14} /> Add a staff member
+              <Icon name='user-plus' size={14} /> Add user
             </Btn>
           </div>
         )}
@@ -381,12 +377,13 @@ export function Users({ writable }: { writable: boolean }) {
       </Panel>
 
       {adding && (
-        <AddStaff
+        <AssignDialog
           onClose={() => setAdding(false)}
-          onGranted={() => {
+          onSaved={() => {
             setAdding(false);
             dir.reload();
           }}
+          onChanged={dir.reload}
         />
       )}
 
@@ -402,7 +399,7 @@ export function Users({ writable }: { writable: boolean }) {
       )}
 
       {editing?.kind === 'STAFF' && (
-        <EditRoles
+        <AssignDialog
           user={editing}
           onClose={() => setEditing(null)}
           onSaved={() => {
@@ -575,7 +572,7 @@ function cell(key: ColKey, u: DirectoryUser, roles: RoleSummary[]): React.ReactN
         </Tag>
       );
     case 'roles':
-      return u.roleKeys.length === 0 ? (
+      return u.grants.length === 0 ? (
         <span style={{ color: 'var(--mfg)' }}>—</span>
       ) : (
         /* 🔴 These carried an × each, which made revoking a role a single
@@ -584,9 +581,9 @@ function cell(key: ColKey, u: DirectoryUser, roles: RoleSummary[]): React.ReactN
            from the row's Edit now, where every role is visible at once and
            the change is reviewed before it is sent. */
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {u.roleKeys.map((rk) => (
-            <Tag key={rk} tone='violet' size='sm'>
-              {roleName(roles, rk)}
+          {u.grants.map((g) => (
+            <Tag key={g.roleKey} tone='violet' size='sm' title={scopeSummary(g)}>
+              {roleName(roles, g.roleKey)}
             </Tag>
           ))}
         </div>
@@ -716,188 +713,118 @@ function EditRequester({
   );
 }
 
+// ── Assigning roles ─────────────────────────────────────────────────────────
+
+/** One role a person holds, as the dialog is editing it. */
+interface Draft {
+  roleKey: string;
+  editionScope: string[];
+  zoneScope: string[];
+}
+
+const sameScope = (a: Draft, b: DirectoryGrant): boolean =>
+  [...a.editionScope].sort().join() === [...b.editionScope].sort().join() &&
+  [...a.zoneScope].sort().join() === [...b.zoneScope].sort().join();
+
 /**
- * Which of this module's roles a staff member holds.
+ * Granting and revoking, in one dialog.
  *
- * ⚠️ **Roles only.** Their name and address are the Foundation's, and a module
- * reads that directory without ever writing it — see `staff.ts`. Showing them
- * here as fields would offer an edit this application cannot make.
+ * 🔴 **One, because two disagreed.** Adding a staff member offered seasons and
+ * bays; editing an existing person's roles called `grantRole` with no scope at
+ * all. Empty means EVERY season and EVERY bay, so the more-used of the two
+ * silently handed out the widest grant the module can express, with nothing on
+ * screen saying so. A single dialog cannot drift from itself.
  *
- * ⚠️ **Saves the difference, not the ticks.** Each grant and each revoke is
- * its own audited call, so re-sending every ticked role would write a row per
- * role per visit into the trail that answers "who gave this person finance".
+ * ⚠️ **Roles only.** A staff member's name and address are the Foundation's,
+ * and a module reads that directory without ever writing it — see `staff.ts`.
+ * Fields for them here would offer an edit this application cannot make, which
+ * is also why there is no "add them to the directory" link: this module grants
+ * the role; it never creates the person.
+ *
+ * ⚠️ **Saves the difference, not the ticks.** Each grant and each revoke is its
+ * own audited call, so re-sending every ticked role would write a row per role
+ * per visit into the trail that answers "who gave this person finance". A role
+ * whose SCOPE changed does travel, because a re-grant resets scope on the
+ * server — the whole grant is the unit, not the ticked box.
  *
  * ⚠️ **Not atomic, and says so by what it does on failure.** The calls go one
  * at a time; a refusal — the last-admin guard is the one that bites — leaves
  * the earlier ones applied. So the dialog stops at the failure, reports it,
- * reloads the row behind it and stays open on the truth, rather than claiming
- * a rollback that never happened.
+ * reloads the row behind it and stays open on the truth, rather than claiming a
+ * rollback that never happened.
  */
-function EditRoles({
+function AssignDialog({
   user,
   onClose,
   onSaved,
   onChanged,
 }: {
-  user: DirectoryUser;
+  /** The person being edited. Absent means the directory is searched first. */
+  user?: DirectoryUser;
   onClose: () => void;
   onSaved: () => void;
+  /** Something was written but the dialog stayed open — the row behind it is
+   *  now out of date. */
   onChanged: () => void;
 }) {
   const toast = useToast();
-  const { roles } = useRoles();
+  const { roles, assignable } = useRoles();
+
   /**
-   * Every role this person holds, plus every role the caller may hand out.
+   * The bays and seasons a grant can be narrowed to.
    *
-   * ⚠️ A role they hold that the caller may NOT assign is listed and disabled
-   * rather than hidden. Hiding it would draw an account that is missing a role
-   * it actually has — and the first thing an admin would do is tick the boxes
-   * they can see and press Save, believing they had described the person. The
-   * server refuses the change either way; this is about the dialog telling the
-   * truth about who it is editing.
+   * Loaded best-effort. `/zones` needs one of the request or planning reads and
+   * `/editions` needs `config.read`; somebody holding `users.write` and neither
+   * simply grants unscoped, which is what they could do before scope existed.
    */
-  const shown = roles.filter((r) => r.assignable || user.roleKeys.includes(r.roleKey));
-  const [held, setHeld] = useState<string[]>(user.roleKeys);
-  const [ticked, setTicked] = useState<Set<string>>(() => new Set(user.roleKeys));
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const zones = useLoad(() => api.listZones().catch(() => []), []);
+  const editions = useLoad(() => api.listEditions().catch(() => []), []);
+  const zoneOptions = (zones.data ?? []).map((z) => ({
+    value: z.code,
+    label: `${z.code} — ${z.name}`,
+  }));
+  const editionOptions = (editions.data ?? []).map((e) => ({
+    value: e.id,
+    label: String(e.year),
+  }));
 
-  const granting = [...ticked].filter((rk) => !held.includes(rk));
-  const revoking = held.filter((rk) => !ticked.has(rk));
-  const dirty = granting.length > 0 || revoking.length > 0;
-
-  const save = async () => {
-    setSaving(true);
-    setError(null);
-    const granted: string[] = [];
-    const revoked: string[] = [];
-    try {
-      for (const rk of granting) {
-        await api.grantRole(user.id, rk);
-        granted.push(rk);
-      }
-      for (const rk of revoking) {
-        await api.revokeRole(user.id, rk);
-        revoked.push(rk);
-      }
-      toast.ok('Saved');
-      onSaved();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      // What actually stuck, so the ticks and the Save button describe the row
-      // as it now is rather than as it was asked to be — and so a second Save
-      // asks only for what is left. Re-sending a revoke that already succeeded
-      // would write to the trail that a role was taken away twice.
-      setHeld((prev) => [...new Set([...prev, ...granted])].filter((rk) => !revoked.includes(rk)));
-      setSaving(false);
-      onChanged();
-    }
-  };
-
-  return (
-    <Dialog
-      title={`Roles for ${user.displayName}`}
-      note='What this module has granted them. Their name and address belong to the Foundation directory.'
-      onClose={onClose}
-      footer={
-        <>
-          <Btn onClick={onClose}>Cancel</Btn>
-          <Btn kind='primary' onClick={save} disabled={!dirty || saving}>
-            Save
-          </Btn>
-        </>
-      }
-    >
-      {error && <ErrorBox>{error}</ErrorBox>}
-      <div style={{ display: 'grid', gap: 2 }}>
-        {shown.map((r) => (
-          <label
-            key={r.roleKey}
-            htmlFor={`role-${r.roleKey}`}
-            style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: 10,
-              padding: '9px 4px',
-              cursor: 'pointer',
-            }}
-          >
-            <Checkbox
-              id={`role-${r.roleKey}`}
-              /* The label holds the role's description too, so the tick is
-                 named explicitly rather than by everything beside it. */
-              aria-label={r.name}
-              checked={ticked.has(r.roleKey)}
-              onChange={() =>
-                setTicked((prev) => {
-                  const next = new Set(prev);
-                  if (!next.delete(r.roleKey)) next.add(r.roleKey);
-                  return next;
-                })
-              }
-              style={{ marginTop: 2 }}
-            />
-            <span style={{ minWidth: 0 }}>
-              <span style={{ fontSize: 13, fontWeight: 600 }}>{r.name}</span>
-              <span style={{ display: 'block', fontSize: 11.5, color: 'var(--mfg)' }}>
-                {r.description}
-              </span>
-            </span>
-          </label>
-        ))}
-      </div>
-    </Dialog>
-  );
-}
-
-// ── Adding a staff member ───────────────────────────────────────────────────
-
-/**
- * The Foundation directory, searched, and a role to grant.
- *
- * ⚠️ A dialog rather than the block that used to sit permanently under the
- * table. Granting a role is something you go and do a handful of times a
- * season; leaving its search box, its Search button and its role select open
- * beneath every visit made the table look like a footnote to a form.
- */
-function AddStaff({ onClose, onGranted }: { onClose: () => void; onGranted: () => void }) {
-  const toast = useToast();
+  // ── Add mode: who, then which role ────────────────────────────────────────
   const [q, setQ] = useState('');
   const [found, setFound] = useState<Array<{
     personId: string;
     email: string;
     displayName: string;
   }> | null>(null);
-  const { assignable } = useRoles();
-  /**
-   * The bays and seasons a grant can be narrowed to.
-   *
-   * ⚠️ Both default to EVERYTHING, and that is the safe direction here rather
-   * than the permissive one: an empty list means "every season", so a person
-   * given the whole event does not lose next year the moment somebody creates
-   * it, with nothing watching. A seasonal helper gets an explicit list instead.
-   *
-   * Loaded best-effort. `/zones` needs one of the request or planning reads and
-   * `/editions` needs `config.read`; somebody holding `users.write` and neither
-   * simply grants unscoped, which is what they could do before this existed.
-   */
-  const zones = useLoad(() => api.listZones().catch(() => []), []);
-  const editions = useLoad(() => api.listEditions().catch(() => []), []);
-  const [zoneScope, setZoneScope] = useState<string[]>([]);
-  const [editionScope, setEditionScope] = useState<string[]>([]);
+  const [picked, setPicked] = useState<{ personId: string; displayName: string } | null>(null);
   /**
    * Deliberately NO default role.
    *
-   * ⚠️ This used to open on `ROLES[1]` — Lead — a fixed index that skipped
-   * Admin on purpose. That index cannot survive roles becoming data: the list
-   * is now the caller's assignable set, ordered by the tree, so position 0 is
-   * the MOST privileged role they hold and any positional default makes Admin
-   * the thing granted by an admin who never touched the dropdown.
-   *
-   * There is no honest default left to pick — the app cannot know which role is
-   * meant — so Grant stays disabled until somebody chooses one.
+   * ⚠️ This used to open on `ROLES[1]` — a fixed index that skipped Admin on
+   * purpose. That index cannot survive roles becoming data: the list is now the
+   * caller's assignable set, ordered by the tree, so position 0 is the MOST
+   * privileged role they hold and any positional default makes Admin the thing
+   * granted by an admin who never touched the dropdown. There is no honest
+   * default left, so Assign stays disabled until somebody chooses.
    */
-  const [roleKey, setRoleKey] = useState('');
+  const [newRole, setNewRole] = useState('');
+  const [newScope, setNewScope] = useState<{ editionScope: string[]; zoneScope: string[] }>({
+    editionScope: [],
+    zoneScope: [],
+  });
+
+  // ── Edit mode: the ONE role this person holds ─────────────────────────────
+  //
+  // 🔴 One, not a set. A person in this module holds exactly one role, so the
+  // list below is a choice rather than a basket: picking another REPLACES what
+  // they hold. `held` is still a list because the table can hand us a person
+  // who somehow has two — an older grant, or a write made outside this screen —
+  // and the save has to be able to clear all of them.
+  const [held, setHeld] = useState<DirectoryGrant[]>(user?.grants ?? []);
+  const [chosen, setChosen] = useState<Draft | null>(
+    user?.grants[0] ? { ...user.grants[0] } : null,
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const search = async () => {
     if (!q.trim()) return setFound(null);
@@ -908,90 +835,319 @@ function AddStaff({ onClose, onGranted }: { onClose: () => void; onGranted: () =
     }
   };
 
-  const grant = async (personId: string) => {
+  const grantOne = async (personRef: string) => {
+    setSaving(true);
+    setError(null);
     try {
-      await api.grantRole(personId, roleKey, { editionScope, zoneScope });
-      toast.ok('Granted');
-      onGranted();
+      await api.grantRole(personRef, newRole, newScope);
+      toast.ok('Assigned');
+      onSaved();
     } catch (e) {
-      toast.fail(e);
+      setError(e instanceof Error ? e.message : String(e));
+      setSaving(false);
     }
   };
 
+  /**
+   * A role this person holds that the CALLER may not hand out is listed and
+   * disabled rather than hidden.
+   *
+   * ⚠️ Hiding it would draw an account missing a role it actually has — and the
+   * first thing an admin would do is tick what they can see and press Save,
+   * believing they had described the person. The server refuses either way;
+   * this is about the dialog telling the truth about who it is editing.
+   */
+  const shown = roles.filter((r) => r.assignable || held.some((g) => g.roleKey === r.roleKey));
+
+  const setScope = (patch: Partial<Draft>) =>
+    setChosen((prev) => (prev ? { ...prev, ...patch } : prev));
+
+  /** A newly chosen role starts unscoped — every season and every bay, which is
+   *  what it would have been granted as before scope existed, and what the two
+   *  placeholders beneath it say. Re-picking the role they already hold brings
+   *  its existing scope back rather than clearing it. */
+  const choose = (roleKey: string) => {
+    const before = held.find((g) => g.roleKey === roleKey);
+    setChosen(before ? { ...before } : { roleKey, editionScope: [], zoneScope: [] });
+  };
+
+  // What has to travel: the chosen role if it is new or its scope moved, and
+  // every OTHER role they still hold.
+  const granting = (() => {
+    if (!chosen) return null;
+    const before = held.find((g) => g.roleKey === chosen.roleKey);
+    return !before || !sameScope(chosen, before) ? chosen : null;
+  })();
+  const revoking = held.filter((g) => g.roleKey !== chosen?.roleKey);
+  const dirty = Boolean(granting) || revoking.length > 0;
+
+  const save = async () => {
+    if (!user) return;
+    setSaving(true);
+    setError(null);
+    let granted: Draft | null = null;
+    const gone: string[] = [];
+    try {
+      // ⚠️ Grant BEFORE revoke. The calls are not atomic, so the order decides
+      // what a refusal leaves behind — this way a failure leaves them holding
+      // both roles, which an admin can see and fix, rather than holding none.
+      if (granting) {
+        await api.grantRole(user.id, granting.roleKey, {
+          editionScope: granting.editionScope,
+          zoneScope: granting.zoneScope,
+        });
+        granted = granting;
+      }
+      for (const g of revoking) {
+        await api.revokeRole(user.id, g.roleKey);
+        gone.push(g.roleKey);
+      }
+      toast.ok('Saved');
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      // What actually stuck, so the list and the Save button describe the row
+      // as it now is rather than as it was asked to be — and so a second Save
+      // asks only for what is left. Re-sending a grant that already succeeded
+      // would write to the trail that a role was given twice.
+      setHeld((prev) =>
+        [
+          ...prev.filter((g) => !gone.includes(g.roleKey) && g.roleKey !== granted?.roleKey),
+          ...(granted ? [{ ...granted }] : []),
+        ].sort((a, b) => a.roleKey.localeCompare(b.roleKey)),
+      );
+      setSaving(false);
+      onChanged();
+    }
+  };
+
+  /** The two axes the chosen role can be narrowed to, side by side beneath it. */
+  const scopeFor = (draft: Draft, roleLabel: string) => (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))',
+        gap: 10,
+        margin: '2px 0 4px 26px',
+        padding: 10,
+        borderRadius: 'var(--r2)',
+        background: 'var(--mut)',
+      }}
+    >
+      <ScopeField
+        label='Bays'
+        forName={roleLabel}
+        all='Every bay'
+        options={zoneOptions}
+        chosen={draft.zoneScope}
+        onChange={(zoneScope) => setScope({ zoneScope })}
+      />
+      <ScopeField
+        label='Seasons'
+        forName={roleLabel}
+        all='Every season, including ones created later'
+        options={editionOptions}
+        chosen={draft.editionScope}
+        onChange={(editionScope) => setScope({ editionScope })}
+      />
+    </div>
+  );
+
+  // ── Adding somebody who is not in the list yet ────────────────────────────
+  if (!user) {
+    return (
+      <Dialog
+        title='Add user'
+        note='Somebody already in the Foundation directory. This module grants the role; it never creates the person.'
+        onClose={onClose}
+        width={520}
+        footer={
+          <>
+            <Btn onClick={onClose}>Cancel</Btn>
+            <Btn
+              kind='primary'
+              disabled={!picked || !newRole || saving}
+              onClick={() => picked && grantOne(picked.personId)}
+            >
+              Assign
+            </Btn>
+          </>
+        }
+      >
+        {error && <ErrorBox>{error}</ErrorBox>}
+
+        <div style={{ display: 'grid', gap: 14 }}>
+          <FormField
+            id='person-search'
+            label='Person'
+            help='Searched in the Foundation directory. Somebody who is not there has to be added to it first — this module never writes that table.'
+          >
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <Search
+                label='Search people'
+                value={q}
+                onChange={setQ}
+                placeholder='Search name or email…'
+              />
+              <Btn onClick={search}>
+                <Icon name='search' size={14} /> Search
+              </Btn>
+            </div>
+
+            {found !== null && (
+              <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+                {found.length === 0 && <Empty>Nobody in the directory matches that.</Empty>}
+                {found.map((p) => (
+                  <label
+                    key={p.personId}
+                    htmlFor={`person-${p.personId}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '8px 10px',
+                      borderRadius: 'var(--r2)',
+                      border: `1px solid ${
+                        picked?.personId === p.personId ? 'var(--pri)' : 'var(--bd)'
+                      }`,
+                      background: picked?.personId === p.personId ? 'var(--pri-t)' : 'var(--card)',
+                      fontSize: 12.5,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Checkbox
+                      id={`person-${p.personId}`}
+                      type='radio'
+                      name='person'
+                      aria-label={p.displayName}
+                      checked={picked?.personId === p.personId}
+                      onChange={() =>
+                        setPicked({ personId: p.personId, displayName: p.displayName })
+                      }
+                    />
+                    <Avatar name={p.displayName} size={26} />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontWeight: 600 }}>{p.displayName}</span>
+                      <span style={{ display: 'block', color: 'var(--mfg)' }}>{p.email}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </FormField>
+
+          <FormField id='new-role' label='Role'>
+            <Select
+              id='new-role'
+              aria-label='Role'
+              value={newRole}
+              onChange={(e) => setNewRole(e.target.value)}
+            >
+              <option value=''>Choose a role…</option>
+              {assignable.map((r) => (
+                <option key={r.roleKey} value={r.roleKey}>
+                  {r.name}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+
+          {/* Only once a role is chosen: scope belongs to a GRANT, and there is
+              no grant to narrow until then. Leaving both empty grants exactly
+              what was granted before scope existed, which is what the two
+              placeholders say. */}
+          {newRole && (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))',
+                gap: 10,
+              }}
+            >
+              <ScopeField
+                label='Bays'
+                all='Every bay'
+                options={zoneOptions}
+                chosen={newScope.zoneScope}
+                onChange={(zoneScope) => setNewScope((prev) => ({ ...prev, zoneScope }))}
+              />
+              <ScopeField
+                label='Seasons'
+                all='Every season, including ones created later'
+                options={editionOptions}
+                chosen={newScope.editionScope}
+                onChange={(editionScope) => setNewScope((prev) => ({ ...prev, editionScope }))}
+              />
+            </div>
+          )}
+        </div>
+      </Dialog>
+    );
+  }
+
+  // ── Editing somebody already in the list ──────────────────────────────────
   return (
     <Dialog
-      title='Add a staff member'
-      note='Somebody already in the Foundation directory. This module grants the role; it never creates the person.'
+      title={`Roles for ${user.displayName}`}
+      note='What this module has granted them. Their name and address belong to the Foundation directory.'
       onClose={onClose}
-      width={520}
+      width={560}
+      footer={
+        <>
+          <Btn onClick={onClose}>Cancel</Btn>
+          <Btn kind='primary' onClick={save} disabled={!dirty || saving}>
+            Save
+          </Btn>
+        </>
+      }
     >
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        <Search
-          label='Search people'
-          value={q}
-          onChange={setQ}
-          placeholder='Search name or email…'
-        />
-        <Btn onClick={search}>
-          <Icon name='search' size={14} /> Search
-        </Btn>
-        <Select
-          aria-label='Role'
-          value={roleKey}
-          onChange={(e) => setRoleKey(e.target.value)}
-          style={{ width: 'auto', minWidth: 200 }}
-        >
-          <option value=''>Choose a role…</option>
-          {assignable.map((r) => (
-            <option key={r.roleKey} value={r.roleKey}>
-              {r.name}
-            </option>
-          ))}
-        </Select>
+      {error && <ErrorBox>{error}</ErrorBox>}
+
+      {/* ⚠️ Said in words, not left to be inferred from the shape of the
+          controls: these are radios because a person holds exactly one role,
+          and picking another takes the old one away. */}
+      <div style={{ fontSize: 12, color: 'var(--mfg)', marginBottom: 8 }}>
+        One role at a time — choosing another replaces the one they hold.
       </div>
 
-      {/* Ticking nothing is "everything", so an admin who ignores these two
-          rows grants exactly what they granted before grant scope existed. */}
-      <ScopePicker
-        label='Bays'
-        all='Every bay'
-        options={(zones.data ?? []).map((z) => ({ value: z.code, label: `${z.code} — ${z.name}` }))}
-        chosen={zoneScope}
-        onChange={setZoneScope}
-      />
-      <ScopePicker
-        label='Seasons'
-        all='Every season, including ones created later'
-        options={(editions.data ?? []).map((e) => ({ value: e.id, label: String(e.year) }))}
-        chosen={editionScope}
-        onChange={setEditionScope}
-      />
-
-      <div style={{ display: 'grid', gap: 6, marginTop: 12 }}>
-        {found !== null && found.length === 0 && (
-          <Empty>Nobody in the directory matches that.</Empty>
-        )}
-        {(found ?? []).map((p) => (
-          <div
-            key={p.personId}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '9px 12px',
-              borderRadius: 'var(--r2)',
-              background: 'var(--mut)',
-              fontSize: 12.5,
-            }}
-          >
-            <span style={{ flex: 1, minWidth: 0 }}>
-              {p.displayName} <span style={{ color: 'var(--mfg)' }}>· {p.email}</span>
-            </span>
-            <Btn kind='primary' disabled={!roleKey} onClick={() => grant(p.personId)}>
-              Grant
-            </Btn>
-          </div>
-        ))}
+      <div role='radiogroup' aria-label='Role' style={{ display: 'grid', gap: 4 }}>
+        {shown.map((r) => {
+          const on = chosen?.roleKey === r.roleKey;
+          return (
+            <div key={r.roleKey} style={{ padding: '4px 0' }}>
+              <label
+                htmlFor={`role-${r.roleKey}`}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 10,
+                  padding: '5px 4px',
+                  cursor: r.assignable ? 'pointer' : 'not-allowed',
+                }}
+              >
+                <Checkbox
+                  id={`role-${r.roleKey}`}
+                  type='radio'
+                  name='held-role'
+                  /* The label holds the role's description too, so the choice is
+                     named explicitly rather than by everything beside it. */
+                  aria-label={r.name}
+                  checked={on}
+                  disabled={!r.assignable}
+                  onChange={() => choose(r.roleKey)}
+                  style={{ marginTop: 2 }}
+                />
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{r.name}</span>
+                  <span style={{ display: 'block', fontSize: 11.5, color: 'var(--mfg)' }}>
+                    {r.description}
+                  </span>
+                </span>
+              </label>
+              {on && chosen && scopeFor(chosen, r.name)}
+            </div>
+          );
+        })}
       </div>
     </Dialog>
   );

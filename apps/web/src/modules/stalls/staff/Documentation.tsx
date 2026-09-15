@@ -463,7 +463,7 @@ const TROUBLE: Array<{ q: string; a: string }> = [
   },
   {
     q: 'Someone cannot see a screen in the nav.',
-    a: 'The nav hides what a role does not grant, and the API refuses it regardless. Grants are made in Admin → Users; the Roles table on this page says what each one carries.',
+    a: 'The nav hides what a role does not grant, and the API refuses it regardless. Grants are made in Access → Users; Access → Roles & Privileges says what each role carries.',
   },
 ];
 
@@ -1580,8 +1580,8 @@ function ReferencePanel() {
       {/*
         ⚠️ The PRIVILEGES, not the roles.
         This panel used to list the six shipped roles and what each granted.
-        Roles are data now — an admin composes them in Admin → Users without a
-        deploy — so a list compiled into this bundle would describe whatever was
+        Roles are data now — an admin composes them in Access → Roles & Privileges
+        without a deploy — so a list compiled into this bundle would describe whatever was
         true on the day it was built, and would say nothing at all about a role
         somebody created afterwards. The vocabulary is the half that IS still
         code, because a privilege means nothing unless a route enforces it, so
@@ -1589,7 +1589,7 @@ function ReferencePanel() {
       */}
       <Panel
         title='Privileges'
-        note='The fixed vocabulary roles are composed from, in Admin → Users. The nav hides what a role does not carry, and the API refuses it regardless.'
+        note='The fixed vocabulary roles are composed from, in Access → Roles & Privileges. The nav hides what a role does not carry, and the API refuses it regardless.'
       >
         <div style={{ display: 'grid', gap: 12 }}>
           {PRIVILEGE_CATEGORIES.map((category) => (

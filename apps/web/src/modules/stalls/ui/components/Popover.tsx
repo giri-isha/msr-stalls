@@ -158,19 +158,38 @@ export function OptionRow({
   label,
   count,
   onClick,
+  role,
+  active,
 }: {
   ticked: boolean;
   label: string;
   count?: number;
   onClick: () => void;
+  /**
+   * `option`, inside a listbox.
+   *
+   * ⚠️ On the row ITSELF rather than on a wrapper around it. `MultiSelect` used
+   * to announce the wrapper as the option while this row held the click, so the
+   * element assistive tech reaches was not the element that does anything —
+   * which a real pointer hides, because a click lands on the deepest node.
+   */
+  role?: 'option';
+  /** The keyboard cursor, moved by the arrow keys in `MultiSelect`. */
+  active?: boolean;
 }) {
   const mobile = useIsMobile();
   return (
     // A 29px-tall row is a fine mouse target and a poor thumb one, so it grows
     // to 44px on touch — the same rows, twice the height, inside the sheet.
+    // `role` arrives as a prop, so the rule reads this as a plain div; `aria-selected`
+    // is set only on the branch where the role IS `option`, where it is required.
+    // biome-ignore lint/a11y/useAriaPropsSupportedByRole: the role is set at runtime, not statically
     <div
       onClick={onClick}
+      role={role}
+      aria-selected={role === 'option' ? ticked : undefined}
       style={{
+        ...(active ? { background: 'var(--pri-t)' } : null),
         display: 'flex',
         alignItems: 'center',
         gap: 9,

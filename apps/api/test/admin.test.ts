@@ -409,7 +409,7 @@ describe('the roles endpoint', () => {
       url: '/api/m/stalls/roles',
       headers: who.headers,
     });
-    return res.json().roles as Array<{ roleKey: string; assignable: boolean; depth: number }>;
+    return res.json().roles as Array<{ roleKey: string; assignable: boolean; level: number }>;
   };
 
   test('lists every role, so a held one can always be named', async () => {
@@ -431,8 +431,12 @@ describe('the roles endpoint', () => {
     expect(byKey.get('stalls_volunteer')).toBe(true);
   });
 
-  test('carries the depth the picker indents by, derived from the tree', async () => {
-    const byKey = new Map((await roles(admin)).map((r) => [r.roleKey, r.depth]));
+  // ⚠️ The STORED level, not a depth walked from the parent chain. It is a
+  // label an admin may set, and the shipped tree ships with levels that match
+  // its own shape — so this reads the same as it always did while being a
+  // different fact underneath.
+  test('carries the level the picker indents by', async () => {
+    const byKey = new Map((await roles(admin)).map((r) => [r.roleKey, r.level]));
     expect(byKey.get('stalls_admin')).toBe(0);
     expect(byKey.get('stalls_lead')).toBe(1);
     expect(byKey.get('stalls_volunteer')).toBe(2);

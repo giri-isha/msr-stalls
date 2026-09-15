@@ -158,7 +158,15 @@ export function Select({
  * one thing it gets wrong on a token palette — the fill — is the one thing
  * `accentColor` fixes.
  */
-export function Checkbox({ style, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
+/**
+ * ⚠️ `ComponentProps<'input'>` rather than `InputHTMLAttributes`, so a caller
+ * can pass a `ref`. The tri-state tick on the role editor's category rows needs
+ * one: `indeterminate` is a DOM PROPERTY with no matching attribute, so "some
+ * but not all of this category" cannot be expressed in JSX at all without
+ * reaching the element. React 19 passes `ref` to a function component as an
+ * ordinary prop, so the spread below is all it takes.
+ */
+export function Checkbox({ style, ...props }: React.ComponentProps<'input'>) {
   return (
     <input
       type='checkbox'

@@ -569,6 +569,15 @@ model StallRole {
   /// SetNull` re-parents orphans to the root rather than cascading a subtree
   /// out of existence when one role is removed.
   parentKey   String? @map("parent_key")
+  /// The rank an admin typed, 0 being the top.
+  ///
+  /// ⚠️ STORED rather than derived by walking `parentKey`, which is how the
+  /// reference module holds it too. It is a LABEL for the card and the picker:
+  /// who may hand out which role is decided by the TREE and nothing else, so a
+  /// level that disagrees with the parent chain reads oddly and changes
+  /// nobody's reach. Derived depth was the alternative and it cannot express
+  /// what an admin wants here — two sibling roles at different ranks.
+  level       Int     @default(0)
   /// Shipped with the module. Blocks deletion and re-keying — never the editing
   /// of privileges, which is the whole point of roles being data.
   isSystem    Boolean @default(false) @map("is_system")

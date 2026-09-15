@@ -45,6 +45,7 @@ export async function seedRbac(db: PrismaClient): Promise<void> {
       name: role.name,
       description: role.description,
       parentKey: role.parentKey,
+      level: role.level,
       isSystem: true,
       allPrivileges: role.allPrivileges,
       canAssignSameLevel: role.canAssignSameLevel,

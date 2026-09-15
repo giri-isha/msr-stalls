@@ -27,8 +27,6 @@ import {
   useToast,
 } from '../ui';
 import { Panel } from '../components/Panel';
-import { Roles } from './Roles';
-import { Users } from './Users';
 
 const TABS = [
   { label: 'Bays', glyph: 'map-pin' },
@@ -38,8 +36,6 @@ const TABS = [
   { label: 'Fines', glyph: 'ban' },
   { label: 'Custom fields', glyph: 'sliders' },
   { label: 'Flow', glyph: 'arrow-left-right' },
-  { label: 'Users', glyph: 'users' },
-  { label: 'Roles', glyph: 'shield' },
   { label: 'Editions', glyph: 'calendar' },
 ] as const;
 type Tab = (typeof TABS)[number]['label'];
@@ -183,8 +179,9 @@ export function Admin() {
       {tab === 'Fines' && <Fines c={c} writable={writable} run={run} />}
       {tab === 'Custom fields' && <CustomFields c={c} writable={writable} run={run} />}
       {tab === 'Flow' && <Flow c={c} writable={writable} run={run} />}
-      {tab === 'Users' && <Users writable={can('users.write')} />}
-      {tab === 'Roles' && <Roles writable={can('roles.write')} />}
+      {/* ⚠️ Users and Roles used to be two tabs here. They are screens of their
+          own under Access now — each one a full page with its own toolbar,
+          rather than a page inside a strip that had grown to ten items. */}
       {tab === 'Editions' && (
         <div style={{ display: 'grid', gap: 16 }}>
           <EditionSettings c={c} writable={writable} run={run} />

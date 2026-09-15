@@ -119,8 +119,9 @@ describe('the union', () => {
     const staffRow = body.users.find((u) => u.kind === 'STAFF');
     const reqRow = body.users.find((u) => u.kind === 'REQUESTER');
 
-    expect(staffRow).toMatchObject({ roleKeys: ['stalls_admin'], requestCount: null, phone: null });
-    expect(reqRow).toMatchObject({ roleKeys: [], requestCount: 1, phone: '9840012345' });
+    expect(staffRow?.grants.map((g) => g.roleKey)).toEqual(['stalls_admin']);
+    expect(staffRow).toMatchObject({ requestCount: null, phone: null });
+    expect(reqRow).toMatchObject({ grants: [], requestCount: 1, phone: '9840012345' });
   });
 
   test('a request in another edition is not counted against this one', async () => {
@@ -151,6 +152,56 @@ describe('the union', () => {
 
     const { body } = await list(admin.headers);
     expect(body.users.find((u) => u.kind === 'REQUESTER')?.requestCount).toBe(0);
+  });
+});
+
+/**
+ * What each grant REACHES, on the row.
+ *
+ * ⚠️ The dialog that edits somebody's roles has to send the whole grant back —
+ * role, seasons and bays — because a re-grant RESETS scope (see `grantRole`).
+ * Without the scope on the row, an admin who opened that dialog to add one role
+ * would silently widen every role the person already held to "every season,
+ * every bay". So the scope travels with the list, not on a second request.
+ */
+describe('what a grant reaches', () => {
+  test('a staff row carries the seasons and bays each of its roles is scoped to', async () => {
+    const admin = await seedStaff(['stalls_admin'], 'vikram.s@ishafoundation.org');
+    const marshal = await seedStaff([], 'marshal@example.org');
+    const edition = await prisma.stallEdition.findFirstOrThrow({ where: { year: 2026 } });
+    await prisma.stallStaffRole.create({
+      data: {
+        personRef: marshal.personId,
+        roleKey: 'stalls_volunteer',
+        grantedBy: admin.personId,
+        editionScope: [edition.id],
+        zoneScope: ['A1'],
+      },
+    });
+
+    const { body } = await list(admin.headers);
+    const row = body.users.find((u) => u.email === 'marshal@example.org');
+    expect(row?.grants).toEqual([
+      { roleKey: 'stalls_volunteer', editionScope: [edition.id], zoneScope: ['A1'] },
+    ]);
+  });
+
+  // Empty is EVERY season and EVERY bay, not none — the opposite of how a
+  // filter reads, and the reason the dialog says so in words.
+  test('an unscoped grant arrives with both lists empty', async () => {
+    const admin = await seedStaff(['stalls_admin'], 'vikram.s@ishafoundation.org');
+
+    const { body } = await list(admin.headers);
+    const row = body.users.find((u) => u.email === 'vikram.s@ishafoundation.org');
+    expect(row?.grants).toEqual([{ roleKey: 'stalls_admin', editionScope: [], zoneScope: [] }]);
+  });
+
+  test('a requester holds no grants at all', async () => {
+    const admin = await seedStaff(['stalls_admin']);
+    await requester();
+
+    const { body } = await list(admin.headers);
+    expect(body.users.find((u) => u.kind === 'REQUESTER')?.grants).toEqual([]);
   });
 });
 

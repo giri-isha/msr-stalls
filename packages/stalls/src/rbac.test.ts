@@ -8,12 +8,12 @@ import {
   type RoleNode,
   assignableRoleKeys,
   can,
+  privilegeCategoryName,
   canReach,
   canReachRequestType,
   cannotAssign,
   cannotEdit,
   editableRoleKeys,
-  roleDepth,
   unionEditionScope,
   unionPrivileges,
   unionRequestTypeScope,
@@ -439,26 +439,6 @@ describe('zoneOfRequest', () => {
   });
 });
 
-describe('roleDepth', () => {
-  test('is derived from the tree rather than stored beside it', () => {
-    expect(roleDepth(TREE, 'stalls_admin')).toBe(0);
-    expect(roleDepth(TREE, 'stalls_lead')).toBe(1);
-    expect(roleDepth(TREE, 'stalls_volunteer')).toBe(2);
-  });
-
-  test('a tangled tree reports a depth instead of throwing inside a list', () => {
-    const tree: RoleNode[] = [
-      { roleKey: 'a', parentKey: 'b', canAssignSameLevel: false },
-      { roleKey: 'b', parentKey: 'a', canAssignSameLevel: false },
-    ];
-    expect(typeof roleDepth(tree, 'a')).toBe('number');
-  });
-
-  test('an unknown role is a root rather than an error', () => {
-    expect(roleDepth(TREE, 'not_a_role')).toBe(0);
-  });
-});
-
 describe('the refusals', () => {
   test('naming the role, for the grant that was refused', () => {
     expect(cannotAssign('Admin')).toContain('Admin');
@@ -471,5 +451,24 @@ describe('the refusals', () => {
     const message = cannotEdit('Deepa Ramanathan', 'Admin');
     expect(message).toContain('Deepa Ramanathan');
     expect(message).toContain('Admin');
+  });
+});
+
+/**
+ * The catalogue stores a category KEY; the screens draw a name.
+ *
+ * ⚠️ One resolver rather than a map in each screen. The role editor and the
+ * privilege table group by the same field, and two copies of "finance means
+ * Finance" is how they drift apart.
+ */
+describe('naming a privilege category', () => {
+  test('resolves the key the table stores to the name a reader sees', () => {
+    expect(privilegeCategoryName('finance')).toBe('Finance');
+  });
+
+  // A category retired from the code is still a category rows carry. The key
+  // is ugly but true; a blank heading would lose the rows underneath it.
+  test('falls back to the key when the code no longer names it', () => {
+    expect(privilegeCategoryName('legacy_exports')).toBe('legacy_exports');
   });
 });

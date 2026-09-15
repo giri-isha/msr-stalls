@@ -48,6 +48,7 @@ import type {
   SetDiscretionaryFeeInput,
   StaffMember,
   CreateRoleInput,
+  ListPrivilegesResponse,
   ListRolesResponse,
   RoleDetail,
   SaveRoleInput,
@@ -134,6 +135,15 @@ export const listRoles = () => apiFetch<ListRolesResponse>(`${BASE}/roles`);
 // data, and these are how it is edited.
 
 export const getRole = (roleKey: string) => apiFetch<RoleDetail>(`${BASE}/roles/${roleKey}`);
+
+/** The privilege catalogue — the vocabulary, with what each code means.
+ *
+ *  ⚠️ Fetched rather than read off `PRIVILEGE_CATEGORIES`, which ships in this
+ *  bundle. The bundle is the right source for what a privilege MEANS and the
+ *  wrong one for which are live: a privilege is retired by clearing `isActive`
+ *  on the row, and a compiled-in list cannot know it happened. There is no
+ *  sibling that writes — see `privileges.ts` on the API. */
+export const listPrivileges = () => apiFetch<ListPrivilegesResponse>(`${BASE}/privileges`);
 
 export const createRole = (body: CreateRoleInput) =>
   apiFetch<RoleDetail>(`${BASE}/roles`, { method: 'POST', json: body });

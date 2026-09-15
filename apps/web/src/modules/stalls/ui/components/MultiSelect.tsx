@@ -28,11 +28,22 @@ export function MultiSelect({
   options,
   placeholder = 'Select one or more',
   groupSelectAll = false,
+  label,
 }: {
   values: string[];
   onChange: (v: string[]) => void;
   options: MultiOption[];
   placeholder?: string;
+  /**
+   * The accessible name of the control.
+   *
+   * ⚠️ Without it the combobox is named by its own VALUE — "Every bay" while
+   * empty, "A1 — Bay A1" once picked — so it renames itself as it is used and
+   * announces nothing about what it is for. The assignment dialog draws one of
+   * these per axis per role, where "which of these four is the bays picker for
+   * Finance" is the only question that matters.
+   */
+  label?: string;
   /** Offers "select all" / "clear" on each group header. Only the scope
    *  picker asks for it — granting a whole region is one click there and
    *  eight everywhere else. */
@@ -113,6 +124,7 @@ export function MultiSelect({
         // press would close this panel AND the dialog around it, discarding
         // everything typed. SearchSelect guards the same hazard the same way.
         role='combobox'
+        aria-label={label}
         aria-expanded={open}
         aria-haspopup='listbox'
         aria-controls={open ? listId : undefined}
@@ -263,22 +275,14 @@ export function MultiSelect({
                       </div>
                     )}
                     {items.map((o) => (
-                      <div
+                      <OptionRow
                         key={o.value}
                         role='option'
-                        aria-selected={values.includes(o.value)}
-                        style={
-                          flat[active] === o.value
-                            ? { background: 'var(--pri-t)', borderRadius: 'var(--r2)' }
-                            : undefined
-                        }
-                      >
-                        <OptionRow
-                          ticked={values.includes(o.value)}
-                          label={o.label}
-                          onClick={() => toggle(o.value)}
-                        />
-                      </div>
+                        active={flat[active] === o.value}
+                        ticked={values.includes(o.value)}
+                        label={o.label}
+                        onClick={() => toggle(o.value)}
+                      />
                     ))}
                   </div>
                 );
