@@ -236,13 +236,20 @@ describe('the vendor detail', () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByText('Green Leaf Organics'));
-    const dialog = await screen.findByRole('dialog');
-    const field = within(dialog).getByLabelText('Admits');
+    const record = within(await screen.findByRole('dialog', { name: 'Green Leaf Organics' }));
+    // The record STATES the cap; the pencil is what changes it.
+    expect(record.getByText('8')).toBeInTheDocument();
+    await user.click(record.getByLabelText('Edit coupon capacity'));
+
+    // ⚠️ A box over a box: the record is a dialog too, so the query names the
+    // one it means rather than taking whichever comes first.
+    const box = within(await screen.findByRole('dialog', { name: 'Coupon capacity' }));
+    const field = box.getByLabelText('Admits (people)');
     expect(field).toHaveValue(8);
 
     await user.clear(field);
     await user.type(field, '12');
-    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await user.click(box.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => {
       const call = fetch.calls.find((c) => c.method === 'PUT');
@@ -266,13 +273,16 @@ describe('the vendor detail', () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByText('Green Leaf Organics'));
-    const dialog = await screen.findByRole('dialog');
-    const field = within(dialog).getByLabelText('Admits');
+    const record = within(await screen.findByRole('dialog', { name: 'Green Leaf Organics' }));
+    await user.click(record.getByLabelText('Edit coupon capacity'));
+
+    const box = within(await screen.findByRole('dialog', { name: 'Coupon capacity' }));
+    const field = box.getByLabelText('Admits (people)');
     await user.clear(field);
     await user.type(field, '2');
 
-    expect(within(dialog).getByText('5 already registered')).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(box.getByText(/5 already registered/)).toBeInTheDocument();
+    expect(box.getByRole('button', { name: 'Save' })).toBeDisabled();
   });
 
   test('backoffice numbers are shown in full to the team, unlike the vendor’s own page', async () => {

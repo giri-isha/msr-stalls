@@ -48,6 +48,7 @@ export {
 } from './paging';
 
 export { Dialog, Field, inputStyle } from './components/Dialog';
+export { AddBtn, DialogButtons, EditBtn } from './components/EditAction';
 export { Facts, Section } from './components/FactSection';
 export {
   Checkbox,
@@ -71,6 +72,7 @@ export {
   useEscape,
   useFocusTrap,
   useLockScroll,
+  useTopmostOverlay,
 } from './components/Overlay';
 export { pageSlice, Pager } from './components/Pager';
 export { OptionRow, PopHeader, Popover } from './components/Popover';

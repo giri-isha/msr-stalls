@@ -17,21 +17,46 @@ export function Panel({
   note,
   children,
   footer,
+  actions,
 }: {
   title: string;
   note?: React.ReactNode;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  /**
+   * What the panel does as a whole — in practice the "Add …" that opens the
+   * creation dialog.
+   *
+   * ⚠️ In the HEADER, not the footer. The footer is where a form's Save lives,
+   * and the panels that have both would otherwise put "Add a bay" next to
+   * "Save settings" as though the two were the same kind of thing. Add makes a
+   * new record; Save commits the one already open.
+   */
+  actions?: React.ReactNode;
 }) {
   return (
     <Card pad={0} style={{ overflow: 'hidden' }}>
-      <div style={{ padding: '15px 18px 13px', borderBottom: '1px solid var(--line)' }}>
-        <div style={{ fontSize: 14, fontWeight: 700 }}>{title}</div>
-        {note && (
-          <div style={{ fontSize: 12, color: 'var(--mfg)', marginTop: 3, lineHeight: 1.55 }}>
-            {note}
-          </div>
-        )}
+      <div
+        style={{
+          padding: '15px 18px 13px',
+          borderBottom: '1px solid var(--line)',
+          display: 'flex',
+          // Wraps rather than shrinks: on a phone the action drops under the
+          // title instead of squeezing it to one word per line.
+          flexWrap: 'wrap',
+          alignItems: 'flex-start',
+          gap: 10,
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>{title}</div>
+          {note && (
+            <div style={{ fontSize: 12, color: 'var(--mfg)', marginTop: 3, lineHeight: 1.55 }}>
+              {note}
+            </div>
+          )}
+        </div>
+        {actions && <div style={{ display: 'flex', gap: 8, flex: 'none' }}>{actions}</div>}
       </div>
       <div style={{ padding: 18 }}>{children}</div>
       {footer && (

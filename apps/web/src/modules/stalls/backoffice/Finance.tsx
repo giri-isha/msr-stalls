@@ -19,6 +19,7 @@ import {
   Card,
   Checkbox,
   Dialog,
+  EditBtn,
   Empty,
   ErrorBox,
   FormField,
@@ -366,6 +367,19 @@ function ConfirmPanel() {
  *  rate with nothing beside it is indistinguishable from a typo six months on,
  *  when whoever agreed it has moved on and Finance is closing the edition.
  */
+/**
+ * The fee actually agreed for one stall, where it differs from the quote.
+ *
+ * 🔴 Was a form that unfolded INSIDE the row — open by default whenever a
+ * concession existed, so a screen of local-welfare stalls was a column of
+ * expanded forms and the figures they were supposed to make readable were the
+ * hardest thing on the page to find. The agreed fee is a fact the row states;
+ * changing it is a dialog, like every other record in the module.
+ *
+ * ⚠️ Both figures are kept. The quote is what the rates say; this is what was
+ * agreed. Neither replaces the other, which is why clearing a concession is
+ * "back to the quoted fee" and not a delete.
+ */
 function Concession({
   row,
   onToast,
@@ -376,14 +390,69 @@ function Concession({
   onDone: () => void;
 }) {
   const set = row.quote.discretionaryFeePaise !== null;
-  const [open, setOpen] = useState(set);
+  const [editing, setEditing] = useState(false);
+
+  if (row.quote.unpriced) return null;
+
+  return (
+    <>
+      {set ? (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12.5 }}>
+            Agreed{' '}
+            <strong style={{ fontVariantNumeric: 'tabular-nums' }}>
+              {formatInr(row.quote.discretionaryFeePaise ?? 0)}
+            </strong>
+            <span style={{ color: 'var(--mfg)' }}>
+              {' '}
+              — quoted {formatInr(row.quote.feeTotalPaise)}
+            </span>
+          </span>
+          {row.quote.discretionaryReason && (
+            <span style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
+              {row.quote.discretionaryReason}
+            </span>
+          )}
+          <EditBtn what='agreed fee' onClick={() => setEditing(true)} />
+        </span>
+      ) : (
+        <Btn onClick={() => setEditing(true)}>
+          <Icon name='pencil' size={14} />
+          Agree a different fee for this stall…
+        </Btn>
+      )}
+      {editing && (
+        <ConcessionDialog
+          row={row}
+          onToast={onToast}
+          onClose={() => setEditing(false)}
+          onDone={() => {
+            setEditing(false);
+            onDone();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function ConcessionDialog({
+  row,
+  onToast,
+  onClose,
+  onDone,
+}: {
+  row: PaymentRow;
+  onToast: ReturnType<typeof useToast>;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const set = row.quote.discretionaryFeePaise !== null;
   const [fee, setFee] = useState(
     set ? String(paiseToRupees(row.quote.discretionaryFeePaise ?? 0)) : '',
   );
   const [reason, setReason] = useState(row.quote.discretionaryReason ?? '');
   const [busy, setBusy] = useState(false);
-
-  if (row.quote.unpriced) return null;
 
   const save = async (clear: boolean) => {
     const rupees = Number(fee);
@@ -405,56 +474,55 @@ function Concession({
       onDone();
     } catch (e) {
       onToast.fail(e);
-    } finally {
       setBusy(false);
     }
   };
 
-  if (!open) {
-    return (
-      <Btn onClick={() => setOpen(true)}>
-        <Icon name='pencil' size={14} />
-        Agree a different fee for this stall…
-      </Btn>
-    );
-  }
-
   return (
-    <Card pad={12} style={{ display: 'grid', gap: 10 }}>
-      <div style={{ fontSize: 12.5, color: 'var(--mfg)' }}>
-        Quoted {formatInr(row.quote.feeTotalPaise)} incl. GST. Recording a different figure leaves
-        the quote untouched — both are kept.
-      </div>
-      <FormField id='concession-fee' label='Fee agreed (₹)'>
-        <Input
-          id='concession-fee'
-          type='number'
-          min={0}
-          value={fee}
-          onChange={(e) => setFee(e.target.value)}
-        />
-      </FormField>
-      <FormField id='concession-reason' label='Why'>
-        <Input
-          id='concession-reason'
-          value={reason}
-          placeholder='e.g. Local welfare — agreed by the department'
-          onChange={(e) => setReason(e.target.value)}
-        />
-      </FormField>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <Btn kind='primary' disabled={busy} onClick={() => save(false)}>
-          <Icon name='check' size={14} />
-          Save agreed fee
-        </Btn>
-        {set && (
-          <Btn disabled={busy} onClick={() => save(true)}>
-            <Icon name='undo' size={14} />
-            Back to the quoted fee
+    <Dialog
+      title='Fee agreed for this stall'
+      note={`Quoted ${formatInr(row.quote.feeTotalPaise)} incl. GST. Recording a different figure leaves the quote untouched — both are kept.`}
+      onClose={onClose}
+      width={460}
+      footer={
+        <>
+          {/* ⚠️ Clearing sits in the footer beside Cancel rather than among the
+              fields: it is the other WAY OUT of this box, not another thing to
+              fill in, and it is only offered when there is something to clear. */}
+          {set && (
+            <Btn disabled={busy} onClick={() => save(true)}>
+              <Icon name='undo' size={14} />
+              Back to the quoted fee
+            </Btn>
+          )}
+          <Btn onClick={onClose}>Cancel</Btn>
+          <Btn kind='primary' disabled={busy} onClick={() => save(false)}>
+            <Icon name='check' size={14} />
+            Save agreed fee
           </Btn>
-        )}
+        </>
+      }
+    >
+      <div style={{ display: 'grid', gap: 12 }}>
+        <FormField id='concession-fee' label='Fee agreed (₹)'>
+          <Input
+            id='concession-fee'
+            type='number'
+            min={0}
+            value={fee}
+            onChange={(e) => setFee(e.target.value)}
+          />
+        </FormField>
+        <FormField id='concession-reason' label='Why'>
+          <Input
+            id='concession-reason'
+            value={reason}
+            placeholder='e.g. Local welfare — agreed by the department'
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </FormField>
       </div>
-    </Card>
+    </Dialog>
   );
 }
 

@@ -1,4 +1,10 @@
-import { useEffect, type CSSProperties, type RefObject } from 'react';
+import {
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+  type RefObject,
+} from 'react';
 
 /**
  * The behaviour every overlay in the app shares — the dialog, the toolbar
@@ -10,6 +16,64 @@ import { useEffect, type CSSProperties, type RefObject } from 'react';
  * is the difference between a usable sheet and a sheet that slides the content
  * out from under itself.
  */
+
+/**
+ * Which overlay is on top.
+ *
+ * 🔴 Overlays NEST — the coupon capacity box opens over the onboarding record,
+ * which is itself a dialog — and `useEscape` binds to `document`. Two bound
+ * handlers means one Escape closes both: the inner box and the record behind
+ * it, so correcting a number and changing your mind about it threw away the
+ * whole screen. `RequestDetail` already had a hand-rolled gate for exactly this
+ * (`reasonFor === null && !selecting && !amending`), which works until somebody
+ * adds a fourth overlay and forgets to name it in the condition.
+ *
+ * So the overlays keep a stack and only the top of it answers the key. The same
+ * answer gates the focus trap: two traps fighting over Tab is the same bug in a
+ * quieter form.
+ *
+ * ⚠️ Registration happens in an EFFECT, and React runs a child's effects before
+ * its parent's. That is the right order here — a nested dialog mounts in a
+ * later commit than the one it opens over, so it registers later and lands on
+ * top — but two overlays mounting in the SAME commit would register innermost
+ * first and the outer one would win. Nothing in the module does that, and a
+ * depth-aware stack is more machinery than the case deserves until something
+ * does.
+ */
+let seq = 0;
+const stack: number[] = [];
+const subs = new Set<() => void>();
+const notify = () => {
+  for (const cb of subs) cb();
+};
+
+export function useTopmostOverlay(active = true): boolean {
+  const [id] = useState(() => ++seq);
+
+  useEffect(() => {
+    if (!active) return;
+    stack.push(id);
+    notify();
+    return () => {
+      const i = stack.indexOf(id);
+      if (i >= 0) stack.splice(i, 1);
+      notify();
+    };
+  }, [id, active]);
+
+  return useSyncExternalStore(
+    (cb) => {
+      subs.add(cb);
+      return () => {
+        subs.delete(cb);
+      };
+    },
+    () => !active || stack[stack.length - 1] === id,
+    // On the server there is one overlay at most and it is the top of a stack
+    // of one.
+    () => true,
+  );
+}
 
 /** Closes on Escape while `active`. */
 export function useEscape(onClose: () => void, active = true) {

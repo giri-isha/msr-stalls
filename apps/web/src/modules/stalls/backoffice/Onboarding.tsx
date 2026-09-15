@@ -1,6 +1,6 @@
 import type { OnboardingRow } from '@msr/stalls';
 import { formatInr } from '@msr/stalls';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   getOnboarding,
   issueCoupon,
@@ -16,9 +16,12 @@ import {
   Btn,
   Card,
   Dialog,
+  DialogButtons,
+  EditBtn,
   Empty,
   ErrorBox,
   Facts,
+  FormField,
   H1,
   Icon,
   Input,
@@ -499,6 +502,16 @@ function OnboardingDetailDialog({
  * welfare stall, whose form never asks — and a cap of zero read as "no limit"
  * is how a stall with eight passes registered eighty.
  */
+/**
+ * How many people the stall's coupon admits: read here, changed in a box.
+ *
+ * 🔴 Was a number field and a Save sitting in the middle of a panel. The figure
+ * is a CAP that the registration form enforces — lower it below the people
+ * already registered and the stall is over its own limit with no reading of the
+ * number that makes sense any more — and a bare input invites that as a typo
+ * rather than as a decision. `EditBtn` is the same pencil every other record in
+ * the module is changed through.
+ */
 function CouponCapacity({
   requestId,
   capacity,
@@ -512,16 +525,53 @@ function CouponCapacity({
   writable: boolean;
   onSaved: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+      <span>
+        Admits <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{capacity}</strong>
+        {capacity === 1 ? ' person' : ' people'}
+      </span>
+      <EditBtn what='coupon capacity' writable={writable} onClick={() => setEditing(true)} />
+      {editing && (
+        <CouponCapacityDialog
+          requestId={requestId}
+          capacity={capacity}
+          registered={registered}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            onSaved();
+          }}
+        />
+      )}
+    </span>
+  );
+}
+
+function CouponCapacityDialog({
+  requestId,
+  capacity,
+  registered,
+  onClose,
+  onSaved,
+}: {
+  requestId: string;
+  capacity: number;
+  registered: number;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const toast = useToast();
   const [value, setValue] = useState(String(capacity));
   const [saving, setSaving] = useState(false);
-  useEffect(() => setValue(String(capacity)), [capacity]);
 
   const next = Math.floor(Number(value));
-  // Lowering below what is already registered would leave the stall over its
-  // own cap with no way to read the number as a limit again.
+  // ⚠️ Lowering below what is already registered would leave the stall over its
+  // own cap with no way to read the number as a limit again. Refused here, in
+  // front of the person, rather than by the API after the box has closed.
   const tooLow = next < registered;
-  const dirty = next !== capacity && next >= 1 && !tooLow;
+  const valid = next >= 1 && !tooLow;
 
   const save = async () => {
     setSaving(true);
@@ -531,30 +581,39 @@ function CouponCapacity({
       onSaved();
     } catch (e) {
       toast.fail(e);
-    } finally {
       setSaving(false);
     }
   };
 
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-      <label htmlFor='coupon-capacity'>Admits</label>
-      <Input
-        id='coupon-capacity'
-        type='number'
-        min={1}
-        max={200}
-        value={value}
-        disabled={!writable || saving}
-        onChange={(e) => setValue(e.target.value)}
-        style={{ width: 72, padding: '5px 8px', fontSize: 12.5, textAlign: 'right' }}
-      />
-      <span>people</span>
-      {tooLow && <span style={{ color: 'var(--warn-fg)' }}>{registered} already registered</span>}
-      <Btn disabled={!writable || !dirty || saving} onClick={save}>
-        <Icon name='check' size={14} />
-        Save
-      </Btn>
-    </span>
+    <Dialog
+      title='Coupon capacity'
+      note={`How many of the stall's own team the coupon will register. ${registered} ${registered === 1 ? 'person has' : 'people have'} registered so far.`}
+      onClose={onClose}
+      width={420}
+      footer={
+        <DialogButtons
+          onClose={onClose}
+          onSave={save}
+          disabled={saving || !valid || next === capacity}
+        />
+      }
+    >
+      <FormField id='coupon-capacity' label='Admits (people)'>
+        <Input
+          id='coupon-capacity'
+          type='number'
+          min={1}
+          max={200}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        {tooLow && (
+          <div style={{ fontSize: 12, color: 'var(--warn-fg)', marginTop: 6 }}>
+            {registered} already registered — the cap cannot go below that.
+          </div>
+        )}
+      </FormField>
+    </Dialog>
   );
 }

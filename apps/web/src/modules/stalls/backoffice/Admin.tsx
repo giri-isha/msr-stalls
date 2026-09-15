@@ -13,6 +13,9 @@ import {
   FormField,
   H1,
   Icon,
+  AddBtn,
+  DialogButtons,
+  EditBtn,
   IconBtn,
   Input,
   Loading,
@@ -205,48 +208,6 @@ type PanelProps = {
 };
 
 /**
- * The row action that opens an edit dialog.
- *
- * ⚠️ One helper rather than a pencil spelled out in six places. Every table on
- * this screen grew its own inline fields once, and the point of moving them all
- * behind a dialog is that a row now reads as a record instead of as a form — so
- * the control that opens the dialog has to be the same control everywhere, or
- * the tables drift apart again in the dimension that was just unified.
- */
-function EditBtn({
-  what,
-  writable,
-  onClick,
-}: {
-  what: string;
-  writable: boolean;
-  onClick: () => void;
-}) {
-  return <IconBtn label={`Edit ${what}`} glyph='pencil' disabled={!writable} onClick={onClick} />;
-}
-
-/** The footer every edit dialog wears: cancel, then the primary save. */
-function DialogButtons({
-  onClose,
-  onSave,
-  disabled,
-}: {
-  onClose: () => void;
-  onSave: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <>
-      <Btn onClick={onClose}>Cancel</Btn>
-      <Btn kind='primary' disabled={disabled} onClick={onSave}>
-        <Icon name='check' size={14} />
-        Save
-      </Btn>
-    </>
-  );
-}
-
-/**
  * Bays, added and removed from here.
  *
  * 🔴 The venue layout is redrawn every year. This used to be a closed union of
@@ -259,34 +220,17 @@ function DialogButtons({
  * who stood where with them.
  */
 function Zones({ c, writable, run }: PanelProps) {
-  const [code, setCode] = useState('');
-  const [name, setName] = useState('');
-  const [crowd, setCrowd] = useState('');
-  const [closed, setClosed] = useState(false);
   // ⚠️ Held by the PANEL, not the row. A dialog is a <div>, and a <div> inside
   // a <tr> is invalid markup React will complain about — so the row raises the
   // intent and the box is rendered out here, beside the table.
   const [editing, setEditing] = useState<api.BackofficeConfig['zones'][number] | null>(null);
-  const valid = /^[A-Z]{1,2}\d{0,2}$/.test(code.trim().toUpperCase()) && name.trim() !== '';
-
-  const add = () =>
-    run(`${code.toUpperCase()} added`, async () => {
-      await api.createZone({
-        code: code.trim().toUpperCase(),
-        name: name.trim(),
-        expectedCrowd: Number(crowd) || 0,
-        isClosedToVendors: closed,
-      });
-      setCode('');
-      setName('');
-      setCrowd('');
-      setClosed(false);
-    });
+  const [adding, setAdding] = useState(false);
 
   return (
     <Panel
       title='Bays'
       note='The physical areas stalls are planned into. The layout is redrawn each edition, so bays are added and removed here rather than in a migration.'
+      actions={<AddBtn what='bay' writable={writable} onClick={() => setAdding(true)} />}
     >
       <Table>
         <THead>
@@ -308,56 +252,7 @@ function Zones({ c, writable, run }: PanelProps) {
 
       {editing && <ZoneDialog z={editing} run={run} onClose={() => setEditing(null)} />}
 
-      <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Add a bay</div>
-        <Grid>
-          <FormField id='nz-code' label='Code'>
-            <Input
-              id='nz-code'
-              value={code}
-              placeholder='D1'
-              disabled={!writable}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-            />
-          </FormField>
-          <FormField id='nz-name' label='Name'>
-            <Input
-              id='nz-name'
-              value={name}
-              placeholder='D1 — new lawn'
-              disabled={!writable}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </FormField>
-          <FormField id='nz-crowd' label='Expected crowd'>
-            <Input
-              id='nz-crowd'
-              type='number'
-              min={0}
-              value={crowd}
-              disabled={!writable}
-              onChange={(e) => setCrowd(e.target.value)}
-            />
-          </FormField>
-          <FormField id='nz-closed' label='Closed to vendors'>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-              <Checkbox
-                id='nz-closed'
-                checked={closed}
-                disabled={!writable}
-                onChange={(e) => setClosed(e.target.checked)}
-              />
-              Ashram and local welfare only
-            </span>
-          </FormField>
-        </Grid>
-        <div style={{ marginTop: 12 }}>
-          <Btn kind='primary' disabled={!writable || !valid} onClick={add}>
-            <Icon name='plus' size={14} />
-            Add bay
-          </Btn>
-        </div>
-      </div>
+      {adding && <ZoneAddDialog run={run} onClose={() => setAdding(false)} />}
     </Panel>
   );
 }
@@ -375,16 +270,11 @@ function Zones({ c, writable, run }: PanelProps) {
  */
 function PlanCategories({ c, writable, run }: PanelProps) {
   const [rows, setRows] = useState(c.planCategories);
-  const [key, setKey] = useState('');
-  const [name, setName] = useState('');
-  const [isFood, setIsFood] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
+  const [adding, setAdding] = useState(false);
   useEffect(() => setRows(c.planCategories), [c.planCategories]);
 
   const dirty = JSON.stringify(rows) !== JSON.stringify(c.planCategories);
-  const keyValid =
-    /^[A-Z][A-Z0-9_]{0,39}$/.test(key.trim().toUpperCase()) &&
-    !rows.some((r) => r.key === key.trim().toUpperCase());
 
   const save = () =>
     run('Columns saved', () =>
@@ -397,6 +287,7 @@ function PlanCategories({ c, writable, run }: PanelProps) {
     <Panel
       title='Planning columns'
       note='What can occupy a stall position. These are the Planning grid’s columns, in this order. A column something is already planned or allocated against cannot be removed.'
+      actions={<AddBtn what='column' writable={writable} onClick={() => setAdding(true)} />}
       footer={
         <Btn kind='primary' disabled={!writable || !dirty} onClick={save}>
           <Icon name='check' size={14} />
@@ -475,66 +366,16 @@ function PlanCategories({ c, writable, run }: PanelProps) {
         />
       )}
 
-      <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Add a column</div>
-        <Grid>
-          <FormField id='nc-key' label='Key'>
-            <Input
-              id='nc-key'
-              value={key}
-              placeholder='SPONSOR_FOOD'
-              disabled={!writable}
-              onChange={(e) => setKey(e.target.value.toUpperCase())}
-            />
-          </FormField>
-          <FormField id='nc-name' label='Column heading'>
-            <Input
-              id='nc-name'
-              value={name}
-              placeholder='Sponsor food'
-              disabled={!writable}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </FormField>
-          <FormField id='nc-food' label='Food'>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-              <Checkbox
-                id='nc-food'
-                checked={isFood}
-                disabled={!writable}
-                onChange={(e) => setIsFood(e.target.checked)}
-              />
-              Counts as a food stall
-            </span>
-          </FormField>
-        </Grid>
-        <div style={{ marginTop: 12 }}>
-          <Btn
-            disabled={!writable || !keyValid || name.trim() === ''}
-            onClick={() => {
-              setRows((rs) => [
-                ...rs,
-                {
-                  key: key.trim().toUpperCase(),
-                  name: name.trim(),
-                  isFood,
-                  sortOrder: rs.length,
-                  inUse: false,
-                },
-              ]);
-              setKey('');
-              setName('');
-              setIsFood(false);
-            }}
-          >
-            <Icon name='plus' size={14} />
-            Add column
-          </Btn>
-          <span style={{ fontSize: 11.5, color: 'var(--mfg)', marginLeft: 10 }}>
-            Added to the list below — nothing is written until Save columns.
-          </span>
-        </div>
-      </div>
+      {adding && (
+        <PlanCategoryAddDialog
+          taken={rows.map((r) => r.key)}
+          onAdd={(row) => {
+            setRows((rs) => [...rs, { ...row, sortOrder: rs.length, inUse: false }]);
+            setAdding(false);
+          }}
+          onClose={() => setAdding(false)}
+        />
+      )}
     </Panel>
   );
 }
@@ -548,6 +389,84 @@ function PlanCategories({ c, writable, run }: PanelProps) {
  * the only thing that crosses the wire. The footer says so, because a box with
  * a Save button in it that does not save is otherwise a lie.
  */
+/**
+ * A new planning column.
+ *
+ * ⚠️ Writes NOTHING, like `ColumnDialog`. The columns are saved whole by the
+ * panel, so this hands a row back and the panel's own Save is still the only
+ * thing that reaches the API — which is also why the key is checked against the
+ * DRAFT list rather than the saved one. Adding SPONSOR_FOOD twice before
+ * pressing Save has to be refused by the second dialog, and the server has not
+ * heard of the first one yet.
+ */
+function PlanCategoryAddDialog({
+  taken,
+  onAdd,
+  onClose,
+}: {
+  taken: string[];
+  onAdd: (row: { key: string; name: string; isFood: boolean }) => void;
+  onClose: () => void;
+}) {
+  const [key, setKey] = useState('');
+  const [name, setName] = useState('');
+  const [isFood, setIsFood] = useState(false);
+  const code = key.trim().toUpperCase();
+  const valid = /^[A-Z][A-Z0-9_]{0,39}$/.test(code) && !taken.includes(code);
+
+  return (
+    <Dialog
+      title='Add a column'
+      note='Added to the list — nothing is written until Save columns. The key is what every saved plan will refer to, so it cannot be changed afterwards.'
+      onClose={onClose}
+      footer={
+        <DialogButtons
+          onClose={onClose}
+          onSave={() => onAdd({ key: code, name: name.trim(), isFood })}
+          disabled={!valid || name.trim() === ''}
+          save='Add column'
+        />
+      }
+    >
+      <div style={{ display: 'grid', gap: 12 }}>
+        <FormField id='nc-key' label='Key'>
+          <Input
+            id='nc-key'
+            value={key}
+            placeholder='SPONSOR_FOOD'
+            onChange={(e) => setKey(e.target.value.toUpperCase())}
+          />
+        </FormField>
+        <FormField id='nc-name' label='Column heading'>
+          <Input
+            id='nc-name'
+            value={name}
+            placeholder='Sponsor food'
+            onChange={(e) => setName(e.target.value)}
+          />
+        </FormField>
+        <FormField id='nc-food' label='Food'>
+          {/* biome-ignore lint/a11y/noLabelWithoutControl: the label WRAPS its control,
+              which associates them implicitly; the rule cannot see the input inside
+              <Checkbox>. */}
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 13,
+              cursor: 'pointer',
+            }}
+          >
+            <Checkbox checked={isFood} onChange={(e) => setIsFood(e.target.checked)} />
+            Counts as a food stall
+          </label>
+        </FormField>
+      </div>
+    </Dialog>
+  );
+}
+
 function ColumnDialog({
   row,
   onApply,
@@ -765,6 +684,92 @@ function ZoneRow({
         />
       </TD>
     </TR>
+  );
+}
+
+/**
+ * A new bay.
+ *
+ * ⚠️ The code is asked for HERE and nowhere else. `ZoneDialog` cannot change it
+ * — it is the bay's identity, and the stalls, allocations and planning rows
+ * hanging off it all name it — so this is the one moment it is a question.
+ */
+function ZoneAddDialog({ run, onClose }: { run: PanelProps['run']; onClose: () => void }) {
+  const [code, setCode] = useState('');
+  const [name, setName] = useState('');
+  const [crowd, setCrowd] = useState('');
+  const [closed, setClosed] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const valid = /^[A-Z]{1,2}\d{0,2}$/.test(code.trim().toUpperCase()) && name.trim() !== '';
+
+  const add = async () => {
+    setSaving(true);
+    const ok = await run(`${code.toUpperCase()} added`, () =>
+      api.createZone({
+        code: code.trim().toUpperCase(),
+        name: name.trim(),
+        expectedCrowd: Number(crowd) || 0,
+        isClosedToVendors: closed,
+      }),
+    );
+    if (ok) onClose();
+    else setSaving(false);
+  };
+
+  return (
+    <Dialog
+      title='Add a bay'
+      note='The code is the bay’s identity and cannot be changed afterwards.'
+      onClose={onClose}
+      footer={
+        <DialogButtons onClose={onClose} onSave={add} disabled={saving || !valid} save='Add bay' />
+      }
+    >
+      <div style={{ display: 'grid', gap: 12 }}>
+        <FormField id='nz-code' label='Code'>
+          <Input
+            id='nz-code'
+            value={code}
+            placeholder='D1'
+            onChange={(e) => setCode(e.target.value.toUpperCase())}
+          />
+        </FormField>
+        <FormField id='nz-name' label='Name'>
+          <Input
+            id='nz-name'
+            value={name}
+            placeholder='D1 — new lawn'
+            onChange={(e) => setName(e.target.value)}
+          />
+        </FormField>
+        <FormField id='nz-crowd' label='Expected crowd'>
+          <Input
+            id='nz-crowd'
+            type='number'
+            min={0}
+            value={crowd}
+            onChange={(e) => setCrowd(e.target.value)}
+          />
+        </FormField>
+        <FormField id='nz-closed' label='Vendors'>
+          {/* biome-ignore lint/a11y/noLabelWithoutControl: the label WRAPS its control,
+              which associates them implicitly; the rule cannot see the input inside
+              <Checkbox>. */}
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 13,
+              cursor: 'pointer',
+            }}
+          >
+            <Checkbox checked={closed} onChange={(e) => setClosed(e.target.checked)} />
+            Closed to vendors — ashram and local welfare only
+          </label>
+        </FormField>
+      </div>
+    </Dialog>
   );
 }
 
@@ -1166,11 +1171,14 @@ function Charges({ c, writable, run }: PanelProps) {
 }
 
 function Fines({ c, writable, run }: PanelProps) {
-  const [reason, setReason] = useState('');
-  const [amount, setAmount] = useState('');
   const [editing, setEditing] = useState<api.BackofficeConfig['fineTypes'][number] | null>(null);
+  const [adding, setAdding] = useState(false);
   return (
-    <Panel title='Fine types' note='Deducted from the deposit in Phase 3. Configured here.'>
+    <Panel
+      title='Fine types'
+      note='Deducted from the deposit in Phase 3. Configured here.'
+      actions={<AddBtn what='fine type' writable={writable} onClick={() => setAdding(true)} />}
+    >
       {c.fineTypes.length === 0 ? (
         <Empty>No fine types yet.</Empty>
       ) : (
@@ -1210,60 +1218,70 @@ function Fines({ c, writable, run }: PanelProps) {
 
       {editing && <FineDialog ft={editing} run={run} onClose={() => setEditing(null)} />}
 
-      {writable && (
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'flex-end',
-            gap: 12,
-            marginTop: 18,
-            paddingTop: 16,
-            borderTop: '1px solid var(--line)',
-          }}
-        >
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <FormField id='fr' label='New fine'>
-              <Input
-                id='fr'
-                placeholder='Reason'
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-              />
-            </FormField>
-          </div>
-          <div style={{ width: 140 }}>
-            <FormField id='fa' label='Amount (₹)'>
-              <Input
-                id='fa'
-                type='number'
-                min={0}
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-              />
-            </FormField>
-          </div>
-          <Btn
-            kind='primary'
-            disabled={!reason.trim() || !amount}
-            onClick={() =>
-              run('Fine added', async () => {
-                await api.putFineType({
-                  reason: reason.trim(),
-                  defaultAmountPaise: rupeesToPaise(Number(amount)),
-                  isActive: true,
-                });
-                setReason('');
-                setAmount('');
-              })
-            }
-          >
-            <Icon name='plus' size={14} />
-            Add
-          </Btn>
-        </div>
-      )}
+      {adding && <FineAddDialog run={run} onClose={() => setAdding(false)} />}
     </Panel>
+  );
+}
+
+/**
+ * A new fine type.
+ *
+ * ⚠️ The reason is asked for here and never again: `putFineType` upserts ON it,
+ * so it is the row's key, and `FineDialog` shows it rather than editing it. A
+ * fine that needs renaming is retired and re-added.
+ */
+function FineAddDialog({ run, onClose }: { run: PanelProps['run']; onClose: () => void }) {
+  const [reason, setReason] = useState('');
+  const [amount, setAmount] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const add = async () => {
+    setSaving(true);
+    const ok = await run('Fine added', () =>
+      api.putFineType({
+        reason: reason.trim(),
+        defaultAmountPaise: rupeesToPaise(Number(amount)),
+        isActive: true,
+      }),
+    );
+    if (ok) onClose();
+    else setSaving(false);
+  };
+
+  return (
+    <Dialog
+      title='Add a fine type'
+      note='The reason is the fine’s identity and cannot be changed afterwards — a fine that needs renaming is retired and re-added.'
+      onClose={onClose}
+      footer={
+        <DialogButtons
+          onClose={onClose}
+          onSave={add}
+          disabled={saving || !reason.trim() || !amount}
+          save='Add fine type'
+        />
+      }
+    >
+      <div style={{ display: 'grid', gap: 12 }}>
+        <FormField id='fr' label='Reason'>
+          <Input
+            id='fr'
+            placeholder='Chairs returned broken'
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </FormField>
+        <FormField id='fa' label='Default amount (₹)'>
+          <Input
+            id='fa'
+            type='number'
+            min={0}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </FormField>
+      </div>
+    </Dialog>
   );
 }
 
@@ -1349,16 +1367,13 @@ function FineDialog({
 const FORM_TYPES = ['VENDOR', 'LOCAL_WELFARE', 'ASHRAM', 'ASHRAM_FOOD', 'BANK', 'FSSAI'] as const;
 
 function CustomFields({ c, writable, run }: PanelProps) {
-  const [formType, setFormType] = useState<(typeof FORM_TYPES)[number]>('VENDOR');
-  const [label, setLabel] = useState('');
-  const [labelTa, setLabelTa] = useState('');
-  const [fieldType, setFieldType] = useState('text');
-  const [required, setRequired] = useState(false);
   const [editing, setEditing] = useState<api.BackofficeConfig['customFields'][number] | null>(null);
+  const [adding, setAdding] = useState(false);
   return (
     <Panel
       title='Custom fields'
       note='Appended to the end of a base form. A field that has been answered can be deactivated but not deleted.'
+      actions={<AddBtn what='field' writable={writable} onClick={() => setAdding(true)} />}
     >
       {c.customFields.length === 0 ? (
         <Empty>No custom fields on any form yet.</Empty>
@@ -1424,82 +1439,124 @@ function CustomFields({ c, writable, run }: PanelProps) {
 
       {editing && <CustomFieldDialog f={editing} run={run} onClose={() => setEditing(null)} />}
 
-      {writable && (
-        <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
-          <Grid min={170}>
-            <FormField id='cf-form' label='Form'>
-              <Select
-                id='cf-form'
-                value={formType}
-                onChange={(e) => setFormType(e.target.value as (typeof FORM_TYPES)[number])}
-              >
-                {FORM_TYPES.map((t) => (
-                  <option key={t}>{t}</option>
-                ))}
-              </Select>
-            </FormField>
-            <FormField id='cf-label' label='Label'>
-              <Input id='cf-label' value={label} onChange={(e) => setLabel(e.target.value)} />
-            </FormField>
-            <FormField id='cf-ta' label='Tamil label (optional)'>
-              <Input
-                id='cf-ta'
-                className='msrs-tamil'
-                value={labelTa}
-                onChange={(e) => setLabelTa(e.target.value)}
-              />
-            </FormField>
-            <FormField id='cf-type' label='Type'>
-              <Select id='cf-type' value={fieldType} onChange={(e) => setFieldType(e.target.value)}>
-                <option value='text'>Text</option>
-                <option value='textarea'>Paragraph</option>
-                <option value='number'>Number</option>
-                <option value='checkbox'>Checkbox</option>
-              </Select>
-            </FormField>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, paddingBottom: 1 }}>
-              {/* biome-ignore lint/a11y/noLabelWithoutControl: the label WRAPS its
-                  control, which associates them implicitly; the rule cannot see the
-                  input inside <Checkbox>. */}
-              <label
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  fontSize: 13,
-                  cursor: 'pointer',
-                  height: 37,
-                }}
-              >
-                <Checkbox checked={required} onChange={(e) => setRequired(e.target.checked)} />
-                Required
-              </label>
-              <Btn
-                kind='primary'
-                disabled={!label.trim()}
-                onClick={() =>
-                  run('Field added', async () => {
-                    await api.createCustomField({
-                      formType,
-                      label: label.trim(),
-                      labelTa: labelTa.trim() || null,
-                      fieldType,
-                      isRequired: required,
-                      sortOrder: c.customFields.filter((f) => f.formType === formType).length,
-                    });
-                    setLabel('');
-                    setLabelTa('');
-                  })
-                }
-              >
-                <Icon name='plus' size={14} />
-                Add
-              </Btn>
-            </div>
-          </Grid>
-        </div>
+      {adding && (
+        <CustomFieldAddDialog
+          countOn={(t) => c.customFields.filter((f) => f.formType === t).length}
+          run={run}
+          onClose={() => setAdding(false)}
+        />
       )}
     </Panel>
+  );
+}
+
+/**
+ * A new custom field.
+ *
+ * ⚠️ The form it goes on is asked HERE and cannot be changed afterwards: moving
+ * a field between forms would leave the answers already given filed under a
+ * form that never asked the question. `CustomFieldDialog` shows the form and
+ * does not offer it, for the same reason.
+ */
+function CustomFieldAddDialog({
+  countOn,
+  run,
+  onClose,
+}: {
+  /** How many fields the chosen form already carries — the new one's sort
+   *  order, so it lands at the end of that form rather than the end of all of
+   *  them. */
+  countOn: (t: (typeof FORM_TYPES)[number]) => number;
+  run: PanelProps['run'];
+  onClose: () => void;
+}) {
+  const [formType, setFormType] = useState<(typeof FORM_TYPES)[number]>('VENDOR');
+  const [label, setLabel] = useState('');
+  const [labelTa, setLabelTa] = useState('');
+  const [fieldType, setFieldType] = useState('text');
+  const [required, setRequired] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const add = async () => {
+    setSaving(true);
+    const ok = await run('Field added', () =>
+      api.createCustomField({
+        formType,
+        label: label.trim(),
+        labelTa: labelTa.trim() || null,
+        fieldType,
+        isRequired: required,
+        sortOrder: countOn(formType),
+      }),
+    );
+    if (ok) onClose();
+    else setSaving(false);
+  };
+
+  return (
+    <Dialog
+      title='Add a custom field'
+      note='Appended to the end of the form it is put on. Which form that is cannot be changed afterwards.'
+      onClose={onClose}
+      footer={
+        <DialogButtons
+          onClose={onClose}
+          onSave={add}
+          disabled={saving || !label.trim()}
+          save='Add field'
+        />
+      }
+    >
+      <div style={{ display: 'grid', gap: 12 }}>
+        <FormField id='cf-form' label='Form'>
+          <Select
+            id='cf-form'
+            value={formType}
+            onChange={(e) => setFormType(e.target.value as (typeof FORM_TYPES)[number])}
+          >
+            {FORM_TYPES.map((t) => (
+              <option key={t}>{t}</option>
+            ))}
+          </Select>
+        </FormField>
+        <FormField id='cf-label' label='Label'>
+          <Input id='cf-label' value={label} onChange={(e) => setLabel(e.target.value)} />
+        </FormField>
+        <FormField id='cf-ta' label='Tamil label (optional)'>
+          <Input
+            id='cf-ta'
+            className='msrs-tamil'
+            value={labelTa}
+            onChange={(e) => setLabelTa(e.target.value)}
+          />
+        </FormField>
+        <FormField id='cf-type' label='Type'>
+          <Select id='cf-type' value={fieldType} onChange={(e) => setFieldType(e.target.value)}>
+            <option value='text'>Text</option>
+            <option value='textarea'>Paragraph</option>
+            <option value='number'>Number</option>
+            <option value='checkbox'>Checkbox</option>
+          </Select>
+        </FormField>
+        <FormField id='cf-req' label='Required'>
+          {/* biome-ignore lint/a11y/noLabelWithoutControl: the label WRAPS its control,
+              which associates them implicitly; the rule cannot see the input inside
+              <Checkbox>. */}
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 13,
+              cursor: 'pointer',
+            }}
+          >
+            <Checkbox checked={required} onChange={(e) => setRequired(e.target.checked)} />
+            The form will not submit without an answer
+          </label>
+        </FormField>
+      </div>
+    </Dialog>
   );
 }
 
@@ -1690,12 +1747,12 @@ function Flow({ c, writable, run }: PanelProps) {
 
 function Editions({ writable, run }: { writable: boolean; run: PanelProps['run'] }) {
   const eds = useLoad(api.listEditions);
-  const [year, setYear] = useState(String(new Date().getFullYear() + 1));
-  const [name, setName] = useState('');
+  const [adding, setAdding] = useState(false);
   return (
     <Panel
       title='Editions'
       note='One per MSR. Exactly one is active; the public forms and every backoffice screen read it. Creating a new one seeds zones, rates and charges from the 2025 defaults.'
+      actions={<AddBtn what='edition' writable={writable} onClick={() => setAdding(true)} />}
     >
       {eds.data === null ? (
         <Loading />
@@ -1737,51 +1794,83 @@ function Editions({ writable, run }: { writable: boolean; run: PanelProps['run']
         </Table>
       )}
 
-      {writable && (
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'flex-end',
-            gap: 12,
-            marginTop: 18,
-            paddingTop: 16,
-            borderTop: '1px solid var(--line)',
+      {adding && (
+        <EditionAddDialog
+          run={run}
+          onClose={() => setAdding(false)}
+          onCreated={() => {
+            setAdding(false);
+            eds.reload();
           }}
-        >
-          <div style={{ width: 120 }}>
-            <FormField id='ey' label='Year'>
-              <Input id='ey' type='number' value={year} onChange={(e) => setYear(e.target.value)} />
-            </FormField>
-          </div>
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <FormField id='en' label='Name'>
-              <Input
-                id='en'
-                placeholder={`MSR ${year}`}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </FormField>
-          </div>
-          <Btn
-            kind='primary'
-            onClick={() =>
-              run('Edition created', async () => {
-                await api.createEdition({
-                  year: Number(year),
-                  name: name.trim() || `MSR ${year}`,
-                  activate: true,
-                });
-                eds.reload();
-              })
-            }
-          >
-            <Icon name='plus' size={14} />
-            Create and activate
-          </Btn>
-        </div>
+        />
       )}
     </Panel>
+  );
+}
+
+/**
+ * A new edition.
+ *
+ * 🔴 Creating one ACTIVATES it, and every backoffice screen reads the active
+ * edition — so pressing this moves the whole module to a year with no requests
+ * in it. That was a bare "Create and activate" at the bottom of a panel, a
+ * mis-click away from a screen full of empty tables; behind a dialog it is
+ * something a person has to mean, and the note says what happens before they
+ * commit rather than after.
+ */
+function EditionAddDialog({
+  run,
+  onClose,
+  onCreated,
+}: {
+  run: PanelProps['run'];
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [year, setYear] = useState(String(new Date().getFullYear() + 1));
+  const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const create = async () => {
+    setSaving(true);
+    const ok = await run('Edition created', () =>
+      api.createEdition({
+        year: Number(year),
+        name: name.trim() || `MSR ${year}`,
+        activate: true,
+      }),
+    );
+    if (ok) onCreated();
+    else setSaving(false);
+  };
+
+  return (
+    <Dialog
+      title='Add an edition'
+      note='Created and made active immediately — every backoffice screen reads the active edition, so this moves the module to the new year. Zones, rates and charges are seeded from the 2025 defaults.'
+      onClose={onClose}
+      footer={
+        <DialogButtons
+          onClose={onClose}
+          onSave={create}
+          disabled={saving || !Number(year)}
+          save='Create and activate'
+        />
+      }
+    >
+      <div style={{ display: 'grid', gap: 12 }}>
+        <FormField id='ey' label='Year'>
+          <Input id='ey' type='number' value={year} onChange={(e) => setYear(e.target.value)} />
+        </FormField>
+        <FormField id='en' label='Name'>
+          <Input
+            id='en'
+            placeholder={`MSR ${year}`}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </FormField>
+      </div>
+    </Dialog>
   );
 }

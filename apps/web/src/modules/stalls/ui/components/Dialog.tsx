@@ -1,7 +1,15 @@
 import { useRef, type ReactNode } from 'react';
 import { Icon } from '../icons';
 import { useIsMobile } from '../useBreakpoint';
-import { SheetGrip, scrim, sheet, useEscape, useFocusTrap, useLockScroll } from './Overlay';
+import {
+  SheetGrip,
+  scrim,
+  sheet,
+  useEscape,
+  useFocusTrap,
+  useLockScroll,
+  useTopmostOverlay,
+} from './Overlay';
 
 /**
  * Modal shell. Escape and the scrim both close it.
@@ -28,9 +36,15 @@ export function Dialog({
 }) {
   const mobile = useIsMobile();
   const box = useRef<HTMLDivElement>(null);
-  useEscape(onClose);
+  // ⚠️ Escape and the focus trap answer only while nothing is stacked on top.
+  // A dialog opened FROM a dialog would otherwise take both boxes down with one
+  // key press, and both traps would fight over Tab. The scroll lock is the
+  // exception — it counts, so the inner one closing must not free the outer
+  // one's hold on the page.
+  const top = useTopmostOverlay();
+  useEscape(onClose, top);
   useLockScroll();
-  useFocusTrap(box);
+  useFocusTrap(box, top);
 
   const surface: React.CSSProperties = mobile
     ? sheet

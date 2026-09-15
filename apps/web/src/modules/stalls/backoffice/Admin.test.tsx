@@ -109,10 +109,13 @@ describe('bays', () => {
     const user = userEvent.setup();
 
     await screen.findByLabelText('Edit C1');
-    await user.type(screen.getByLabelText('Code'), 'D1');
-    await user.type(screen.getByLabelText('Name'), 'D1 — new lawn');
-    await user.type(screen.getByLabelText('Expected crowd'), '8000');
-    await user.click(screen.getByRole('button', { name: /add bay/i }));
+    // The panel's header button opens the box; the fields are inside it.
+    await user.click(screen.getByRole('button', { name: 'Add bay' }));
+    const box = within(await screen.findByRole('dialog'));
+    await user.type(box.getByLabelText('Code'), 'D1');
+    await user.type(box.getByLabelText('Name'), 'D1 — new lawn');
+    await user.type(box.getByLabelText('Expected crowd'), '8000');
+    await user.click(box.getByRole('button', { name: 'Add bay' }));
 
     await waitFor(() => {
       const call = fetch.calls.find((c) => c.method === 'POST' && c.url.endsWith('/config/zones'));
@@ -140,9 +143,9 @@ describe('bays', () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByLabelText('Edit C1'));
-    // ⚠️ Scoped to the dialog. "Add a bay" is still on the page behind it with
-    // a Name and an Expected crowd of its own, and an unscoped query would be
-    // ambiguous at best and typing into the wrong form at worst.
+    // Scoped to the dialog. Kept scoped although the add form is a dialog of
+    // its own now and cannot be open at the same time: the box is what the
+    // test is about, and naming it is how the assertion stays readable.
     const box = within(screen.getByRole('dialog'));
     await user.clear(box.getByLabelText('Name'));
     await user.type(box.getByLabelText('Name'), 'C1 — Moon side, widened');
@@ -190,9 +193,12 @@ describe('planning columns', () => {
     const user = userEvent.setup();
     await open(user);
 
-    await user.type(screen.getByLabelText('Key'), 'SPONSOR_FOOD');
-    await user.type(screen.getByLabelText('Column heading'), 'Sponsor food');
-    await user.click(screen.getByRole('button', { name: /add column/i }));
+    await user.click(screen.getByRole('button', { name: 'Add column' }));
+    const box = within(await screen.findByRole('dialog'));
+    await box.findByLabelText('Key');
+    await user.type(box.getByLabelText('Key'), 'SPONSOR_FOOD');
+    await user.type(box.getByLabelText('Column heading'), 'Sponsor food');
+    await user.click(box.getByRole('button', { name: 'Add column' }));
     await user.click(screen.getByRole('button', { name: /save columns/i }));
 
     await waitFor(() => {
