@@ -975,9 +975,10 @@ model StallRequest {
   messages    StallMessageLog[]
   bankDetail  StallBankDetail?
   reminders   StallReminderCall[]
-  paymentPlan StallPaymentPlan?
-  payments    StallPaymentRecord[]
-  fines       StallFine[]
+  paymentPlan   StallPaymentPlan?
+  payments      StallPaymentRecord[]
+  paymentClaims StallPaymentClaim[]
+  fines         StallFine[]
   refund      StallRefund?
   coupons     StallStaffCoupon[]
   staff       StallVendorStaff[]
@@ -1098,6 +1099,71 @@ enum StallPaymentPurpose {
   RENT
   DEPOSIT
 
+  @@schema("stalls")
+}
+
+enum StallPaymentClaimStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+
+  @@schema("stalls")
+}
+
+/// A vendor's own account of a transfer they have made.
+///
+/// 🔴 NOT a `StallPaymentRecord`. That table is finance-entered — `confirmedBy`
+/// is required — so every row in it is money the Foundation has seen on its
+/// statement. A claim is what somebody SAYS they paid, and the two must never be
+/// the same table: every query that reads a payment as settled would then need a
+/// `WHERE confirmed_by IS NOT NULL`, and the one that forgot would count
+/// unverified money silently.
+///
+/// The 2025 letter filled this gap with "please send transfer details on E-mail
+/// IDs finance.support@… once you make the payment" — a mailbox, matched by
+/// hand.
+model StallPaymentClaim {
+  id        String                   @id @default(uuid()) @db.Uuid
+  requestId String                   @map("request_id") @db.Uuid
+  purpose   StallPaymentPurpose
+  status    StallPaymentClaimStatus  @default(PENDING)
+
+  /// What the vendor typed off their bank statement.
+  referenceNo  String   @map("reference_no")
+  amountPaise  Int      @map("amount_paise")
+  /// A banking DATE, not an instant — the day the transfer shows on the
+  /// statement, which is what finance matches against.
+  paidOn       DateTime @map("paid_on") @db.Date
+  remitterName String?  @map("remitter_name")
+  /// A media-store key. Optional: a vendor who transferred at a branch counter
+  /// may have only a stamped slip they cannot photograph well, and refusing the
+  /// claim over that sends them back to email.
+  receiptKey   String?  @map("receipt_key")
+  note         String?
+
+  submittedAt DateTime @default(now()) @map("submitted_at") @db.Timestamptz
+
+  reviewedAt DateTime? @map("reviewed_at") @db.Timestamptz
+  reviewedBy String?   @map("reviewed_by")
+  /// ⚠️ Required on REJECTED, enforced by a CHECK rather than by application
+  /// code. A rejection with no reason is one the vendor cannot act on, and this
+  /// text is shown to them.
+  rejectReason String? @map("reject_reason")
+
+  /// The confirmed receipt this claim became, set on VERIFIED.
+  paymentRecordId String? @map("payment_record_id") @db.Uuid
+
+  request       StallRequest        @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  paymentRecord StallPaymentRecord? @relation(fields: [paymentRecordId], references: [id], onDelete: SetNull)
+
+  /// ⚠️ The real constraint is a PARTIAL unique index Prisma cannot express —
+  /// `stall_payment_claim_live_reference`, over (request, reference) where the
+  /// status is not REJECTED. A rejected claim keeps its reference so the vendor
+  /// can be shown what was wrong, and they must still be able to resubmit a
+  /// corrected claim carrying the same UTR.
+  @@index([requestId])
+  @@index([status, submittedAt])
+  @@map("stall_payment_claim")
   @@schema("stalls")
 }
 
@@ -1365,7 +1431,8 @@ model StallPaymentRecord {
   confirmedAt  DateTime            @default(now()) @map("confirmed_at") @db.Timestamptz
   confirmedBy  String              @map("confirmed_by")
 
-  request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  request StallRequest        @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  claims  StallPaymentClaim[]
 
   /// One reference number is one credit. Entering it twice — the same NEFT
   /// pasted into two rows on a busy afternoon — would double-count what the

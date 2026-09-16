@@ -1,14 +1,16 @@
-import type { PaymentRow, RefundRow } from '@msr/stalls';
+import type { PaymentClaimRow, PaymentRow, RefundRow, ReviewPaymentClaimInput } from '@msr/stalls';
 import { formatInr, paiseToRupees, rupeesToPaise } from '@msr/stalls';
 import { useMemo, useState } from 'react';
 import {
   confirmPayment,
   deletePaymentRecord,
   getConfig,
+  getPaymentClaims,
   listPayments,
   listRefunds,
   sendEmails,
   setDiscretionaryFee,
+  reviewPaymentClaim,
   setVoucherRef,
   submitRefund,
 } from '../api';
@@ -34,6 +36,7 @@ import {
   Search,
   Select,
   Tag,
+  Textarea,
   TBody,
   TD,
   TH,
@@ -55,7 +58,7 @@ import { Tabs } from './Communication';
  * the balance back after the event.
  */
 export function Finance() {
-  const [tab, setTab] = useState<'due' | 'confirm' | 'refund'>('due');
+  const [tab, setTab] = useState<'due' | 'claims' | 'confirm' | 'refund'>('due');
   const { can } = useMe();
 
   if (!can('finance.read')) {
@@ -78,6 +81,10 @@ export function Finance() {
       <Tabs
         tabs={[
           ['due', 'Payment details'],
+          // 🔴 Between "what to pay" and "what landed": what the vendor SAYS
+          // they paid. That step used to be a mailbox — the 2025 letter ended
+          // "please send transfer details on E-mail IDs finance.support@…".
+          ['claims', 'Reported transfers'],
           ['confirm', 'Payment confirmation'],
           ['refund', 'Refunds & deductions'],
         ]}
@@ -85,6 +92,7 @@ export function Finance() {
         onPick={(t) => setTab(t as typeof tab)}
       />
       {tab === 'due' && <DuePanel />}
+      {tab === 'claims' && <ClaimsPanel />}
       {tab === 'confirm' && <ConfirmPanel />}
       {tab === 'refund' && <RefundPanel />}
     </div>
@@ -336,6 +344,195 @@ function Money({ row }: { row: PaymentRow }) {
 }
 
 // ── Tab 2: confirming a credit ──────────────────────────────────────────────
+
+// ── Tab 2: what the vendor says they paid ───────────────────────────────────
+
+/**
+ * The claims queue.
+ *
+ * 🔴 A claim is what somebody SAYS they transferred, not money the Foundation
+ * has seen. Verifying one writes the `StallPaymentRecord` — that write is what
+ * makes it real and what advances the stall's stage — so this screen is the
+ * gate, not a notification.
+ *
+ * ⚠️ `expected` sits beside `claimed` so a mismatch is visible without opening
+ * the request. That comparison is the whole job: the common failure is a vendor
+ * transferring the rent and the deposit as one amount into one account.
+ */
+function ClaimsPanel() {
+  const toast = useToast();
+  const { can } = useMe();
+  const { data, error, loading, reload } = useLoad(getPaymentClaims);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState<PaymentClaimRow | null>(null);
+  const canWrite = can('finance.write');
+
+  if (loading && !data) return <Loading />;
+  if (error) return <ErrorBox>{error.message}</ErrorBox>;
+
+  const rows = data?.claims ?? [];
+
+  const settle = async (row: PaymentClaimRow, input: ReviewPaymentClaimInput) => {
+    setBusy(row.id);
+    try {
+      await reviewPaymentClaim(row.id, input);
+      toast.ok(input.verdict === 'VERIFY' ? 'Payment confirmed.' : 'Marked as not found.');
+      setRejecting(null);
+      reload();
+    } catch (e) {
+      toast.fail(e);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div style={{ fontSize: 12.5, color: 'var(--mfg)', maxWidth: 680 }}>
+        What requesters have told us they transferred. Check each reference against the bank
+        statement. Confirming one records the credit and moves the stall on; if you cannot find it,
+        say why — the requester is shown that and can report it again.
+      </div>
+
+      {rows.length === 0 ? (
+        <Empty>No reported transfers waiting.</Empty>
+      ) : (
+        <Card pad={0} style={{ overflow: 'hidden' }}>
+          <Table>
+            <THead>
+              <TR>
+                <TH>Vendor</TH>
+                <TH>For</TH>
+                <TH>Reference</TH>
+                <TH align='right'>Claimed</TH>
+                <TH align='right'>Expected</TH>
+                <TH>Paid on</TH>
+                <TH align='right'>{canWrite ? 'Settle' : ''}</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {rows.map((c) => {
+                // ⚠️ A mismatch is flagged, not refused. A vendor who paid a
+                // little over, or whose bank deducted a charge, is a normal
+                // case that finance settles by eye.
+                const mismatched = c.expectedPaise !== null && c.expectedPaise !== c.amountPaise;
+                return (
+                  <TR key={c.id}>
+                    <TD>
+                      <div style={{ fontWeight: 600 }}>{c.stallName}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
+                        {c.reference} · {c.requesterName}
+                      </div>
+                    </TD>
+                    <TD>
+                      <Tag tone='neutral' size='sm'>
+                        {c.purpose === 'RENT' ? 'Rent' : 'Deposit'}
+                      </Tag>
+                    </TD>
+                    <TD mono style={{ fontSize: 12 }}>
+                      {c.referenceNo}
+                      {c.remitterName && (
+                        <div style={{ fontSize: 11, color: 'var(--mfg)' }}>{c.remitterName}</div>
+                      )}
+                    </TD>
+                    <TD align='right' style={{ color: mismatched ? 'var(--des-fg)' : undefined }}>
+                      {formatInr(c.amountPaise)}
+                    </TD>
+                    <TD align='right' muted>
+                      {c.expectedPaise === null ? '—' : formatInr(c.expectedPaise)}
+                    </TD>
+                    <TD muted style={{ fontSize: 11.5 }}>
+                      {formatDate(c.paidOn)}
+                    </TD>
+                    <TD align='right'>
+                      {canWrite && (
+                        <div style={{ display: 'inline-flex', gap: 6 }}>
+                          <Btn
+                            kind='primary'
+                            onClick={() => void settle(c, { verdict: 'VERIFY' })}
+                            disabled={busy !== null}
+                          >
+                            {busy === c.id ? 'Saving…' : 'Confirm'}
+                          </Btn>
+                          <Btn onClick={() => setRejecting(c)} disabled={busy !== null}>
+                            Not found
+                          </Btn>
+                        </div>
+                      )}
+                    </TD>
+                  </TR>
+                );
+              })}
+            </TBody>
+          </Table>
+        </Card>
+      )}
+
+      {rejecting && (
+        <RejectDialog
+          claim={rejecting}
+          busy={busy !== null}
+          onClose={() => setRejecting(null)}
+          onReject={(reason) => void settle(rejecting, { verdict: 'REJECT', rejectReason: reason })}
+        />
+      )}
+    </div>
+  );
+}
+
+/** ⚠️ The reason is REQUIRED, and it is shown to the requester. A rejection
+ *  they cannot act on sends them back to the mailbox this step replaced. */
+function RejectDialog({
+  claim,
+  busy,
+  onClose,
+  onReject,
+}: {
+  claim: PaymentClaimRow;
+  busy: boolean;
+  onClose: () => void;
+  onReject: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState('');
+  return (
+    <Dialog
+      title='Payment not found'
+      onClose={onClose}
+      footer={
+        <>
+          <Btn onClick={onClose}>Cancel</Btn>
+          <Btn
+            kind='danger'
+            onClick={() => onReject(reason.trim())}
+            disabled={busy || reason.trim() === ''}
+          >
+            Mark as not found
+          </Btn>
+        </>
+      }
+    >
+      <div style={{ display: 'grid', gap: 12 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--mfg)' }}>
+          {claim.stallName} · {claim.referenceNo} · {formatInr(claim.amountPaise)}
+        </div>
+        <FormField
+          id='reject-reason'
+          label='What should they correct?'
+          help='The requester is shown this, so write it for them rather than for the file.'
+          required
+        >
+          <Textarea
+            id='reject-reason'
+            rows={3}
+            value={reason}
+            placeholder='e.g. No credit against this reference on the statement.'
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </FormField>
+      </div>
+    </Dialog>
+  );
+}
 
 function ConfirmPanel() {
   const toast = useToast();

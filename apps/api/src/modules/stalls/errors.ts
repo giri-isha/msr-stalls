@@ -658,3 +658,25 @@ export class UnauthorableFieldTypeError extends Error {
     this.name = 'UnauthorableFieldTypeError';
   }
 }
+
+/** A claim finance has already settled.
+ *
+ *  ⚠️ Re-verifying would write a SECOND payment record for one transfer, which
+ *  double-counts what the vendor paid and shrinks their refund — the same reason
+ *  `stall_payment_record` refuses a repeated reference number. */
+export class ClaimAlreadyReviewedError extends Error {
+  constructor(readonly id: string) {
+    super('This payment claim has already been settled.');
+    this.name = 'ClaimAlreadyReviewedError';
+  }
+}
+
+/** ⚠️ The reason is shown to the requester, and it is the only thing that tells
+ *  them what to correct. A rejection without one returns them to the mailbox
+ *  this whole step replaced. */
+export class MissingRejectReasonError extends Error {
+  constructor() {
+    super('Please say why the payment could not be verified — the requester is shown this.');
+    this.name = 'MissingRejectReasonError';
+  }
+}

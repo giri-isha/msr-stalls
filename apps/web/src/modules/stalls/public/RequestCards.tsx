@@ -3,12 +3,14 @@ import { Link } from 'react-router';
 import {
   type PendingStep,
   type CouponSummary,
+  type PaymentClaimView,
   type PublicPaymentDue,
   type PublicRequestStatus,
   formatInr,
   isSelfServe,
 } from '@msr/stalls';
 import { StatusPill, TYPE_LABEL } from '../components/StatusPill';
+import { PaymentClaim } from './PaymentClaim';
 import { formatDate } from '../hooks';
 import { Btn, Card, Icon, Tag, useToast } from '../ui';
 
@@ -38,6 +40,11 @@ export interface RequestCardsProps {
   openStep(reference: string, step: 'BANK_FORM' | 'FSSAI'): Promise<{ url: string }>;
   /** Issues the staff coupon, or returns the one already issued. Idempotent. */
   getCoupon(reference: string): Promise<{ code: string }>;
+  /** Re-reads the requests. ⚠️ Needed because reporting a transfer changes what
+   *  this page should show — the claim appears in the list beneath the figures —
+   *  and a page that did not re-read would leave the requester unsure whether
+   *  it had been received, which is exactly the doubt the mailbox created. */
+  reload(): void;
 }
 
 const STATUS_COPY: Record<string, string> = {
@@ -53,7 +60,7 @@ const STATUS_COPY: Record<string, string> = {
   CANCELLED: 'Cancelled.',
 };
 
-export function RequestCards({ requests, openStep, getCoupon }: RequestCardsProps) {
+export function RequestCards({ requests, openStep, getCoupon, reload }: RequestCardsProps) {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {requests.map((r) => (
@@ -109,7 +116,7 @@ export function RequestCards({ requests, openStep, getCoupon }: RequestCardsProp
                   </span>
                 </div>
               )}
-              <Pending request={r} openStep={openStep} />
+              <Pending request={r} openStep={openStep} reload={reload} />
               <Backoffice request={r} getCoupon={getCoupon} />
             </div>
             <StatusPill status={r.status} />
@@ -135,9 +142,11 @@ export function RequestCards({ requests, openStep, getCoupon }: RequestCardsProp
 function Pending({
   request,
   openStep,
+  reload,
 }: {
   request: PublicRequestStatus;
   openStep: RequestCardsProps['openStep'];
+  reload: RequestCardsProps['reload'];
 }) {
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
@@ -166,9 +175,12 @@ function Pending({
         <Step
           key={p.step}
           step={p}
+          reference={request.reference}
           payment={request.payment}
+          claims={request.paymentClaims}
           busy={busy}
           onOpen={() => void open(p.step as 'BANK_FORM' | 'FSSAI')}
+          onClaimed={reload}
         />
       ))}
     </div>
@@ -178,14 +190,20 @@ function Pending({
 /** One chip, with whatever that step needs sitting under it. */
 function Step({
   step,
+  reference,
   payment,
+  claims,
   busy,
   onOpen,
+  onClaimed,
 }: {
   step: PendingStep;
+  reference: string;
   payment: PublicPaymentDue | null;
+  claims: PaymentClaimView[];
   busy: string | null;
   onOpen(): void;
+  onClaimed(): void;
 }) {
   return (
     <div style={{ display: 'grid', gap: 8, justifyItems: 'start' }}>
@@ -201,6 +219,18 @@ function Step({
         )}
       </div>
       {step.step === 'PAYMENT' && payment && <PaymentDue payment={payment} />}
+      {/* 🔴 Reporting the transfer, where the 2025 letter said to send an email.
+          Offered even with no quote yet: a requester who paid against a letter
+          can still tell us, and finance would rather have the reference than a
+          mailbox. */}
+      {step.step === 'PAYMENT' && (
+        <PaymentClaim
+          reference={reference}
+          payment={payment}
+          claims={claims}
+          onSubmitted={onClaimed}
+        />
+      )}
     </div>
   );
 }

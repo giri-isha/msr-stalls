@@ -80,6 +80,10 @@ import type {
   VendorStaffView,
   ZonePlanInput,
   ZonePlanView,
+  PaymentClaimView,
+  PaymentClaimsResponse,
+  ReviewPaymentClaimInput,
+  SubmitPaymentClaimInput,
 } from '@msr/stalls';
 import { apiFetch } from './api-client';
 
@@ -537,6 +541,18 @@ export async function uploadFile(
   if (!res.ok) throw new Error(`Could not upload ${file.name} (${res.status})`);
   return { key, name: file.name };
 }
+
+/** What a requester says they transferred. The SESSION is the credential; the
+ *  reference in the body only picks which of their requests it is about. */
+export const submitPaymentClaim = (input: SubmitPaymentClaimInput) =>
+  apiFetch<PaymentClaimView>(`${P}/requests/payment-claim`, { method: 'POST', json: input });
+
+// ── Backoffice: payment claims ──────────────────────────────────────────────
+
+export const getPaymentClaims = () => apiFetch<PaymentClaimsResponse>(`${BASE}/finance/claims`);
+
+export const reviewPaymentClaim = (id: string, input: ReviewPaymentClaimInput) =>
+  apiFetch<void>(`${BASE}/finance/claims/${id}`, { method: 'POST', json: input });
 
 export const presignPublicUpload = (token: string) => (input: PresignUploadInput) =>
   apiFetch<PresignUploadResponse>(`${P}/uploads/${encodeURIComponent(token)}`, {

@@ -71,6 +71,7 @@ describe('StatusPage', () => {
               allocatedStalls: [],
               pending: [],
               payment: null,
+              paymentClaims: [],
               staff: { coupons: [], capacity: 0, registered: 0 },
             },
           ],

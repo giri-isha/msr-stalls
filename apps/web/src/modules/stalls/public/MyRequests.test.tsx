@@ -38,6 +38,7 @@ const withPending = (
       allocatedStalls: ['C1-4'],
       pending,
       payment: null,
+      paymentClaims: [],
       staff: null,
       ...extra,
     },

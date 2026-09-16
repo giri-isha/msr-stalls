@@ -49,7 +49,9 @@ import {
   RequestAccessLinkInput,
   RequestCouponInput,
   type SubmitRequestResponse,
+  type PaymentClaimView,
   SubmitBankDetailsInput,
+  SubmitPaymentClaimInput,
   SubmitFssaiInput,
   SubmitRequestInput,
   isPlaceholderEmail,
@@ -59,6 +61,7 @@ import type { ZodTypeProvider } from '../../zod-validation';
 import { resolveAccessLink } from './accounts';
 import { getBankForm, submitBankDetails } from './bank';
 import { declarationsForForm } from './declarations';
+import { submitPaymentClaim } from './payment-claims';
 import { publicFormFor } from './form-builder';
 import { getPublicConfig } from './config';
 import type { StallsDeps } from './deps';
@@ -295,6 +298,35 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
     async (req): Promise<ContinueStepResponse> => {
       const account = await requireRequester(prisma, req);
       return stepLink(prisma, deps, account.id, req.body);
+    },
+  );
+
+  /** What a requester says they transferred.
+   *
+   *  🔴 A CLAIM, not a receipt. It lands PENDING and moves nothing: the stage
+   *  advances when finance verifies it and the payment record is written. A
+   *  stage that moved on submission would tell the backoffice list a stall had
+   *  paid because the stall said so.
+   *
+   *  This replaces "please send transfer details on E-mail IDs
+   *  finance.support@… once you make the payment" — a mailbox, matched by hand.
+   *
+   *  ⚠️ The SESSION is the credential and `reference` only picks which of that
+   *  account's requests is meant, exactly as `/requests/continue` does. */
+  zod.post(
+    '/requests/payment-claim',
+    {
+      schema: { body: SubmitPaymentClaimInput },
+      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
+    },
+    async (req): Promise<PaymentClaimView> => {
+      const account = await requireRequester(prisma, req);
+      const request = await prisma.stallRequest.findFirst({
+        where: { accountId: account.id, reference: req.body.reference },
+        select: { id: true },
+      });
+      if (!request) throw new UnknownAccessLinkError();
+      return submitPaymentClaim(prisma, request.id, req.body);
     },
   );
 

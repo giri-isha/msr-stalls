@@ -20,7 +20,7 @@ import { RequestCards } from './RequestCards';
  */
 export function StatusPage() {
   const { token = '' } = useParams();
-  const { data, error, loading } = useLoad(() => getStatus(token), [token]);
+  const { data, error, loading, reload } = useLoad(() => getStatus(token), [token]);
 
   if (loading) return <Loading />;
 
@@ -73,6 +73,7 @@ export function StatusPage() {
         requests={data.requests}
         openStep={(reference, step) => continueStep(token, { reference, step })}
         getCoupon={(reference) => requestCoupon(token, { reference })}
+        reload={reload}
       />
     </div>
   );

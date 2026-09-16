@@ -21,6 +21,8 @@ import {
   DeclarationExistsError,
   DeclarationsChangedError,
   BuiltInFieldLockedError,
+  ClaimAlreadyReviewedError,
+  MissingRejectReasonError,
   StructuralFieldLockedError,
   UnauthorableFieldTypeError,
   RoleInUseError,
@@ -113,6 +115,8 @@ function statusFor(err: unknown): number | null {
     err instanceof DeclarationsChangedError ||
     err instanceof BuiltInFieldLockedError ||
     err instanceof StructuralFieldLockedError ||
+    err instanceof ClaimAlreadyReviewedError ||
+    err instanceof MissingRejectReasonError ||
     err instanceof SystemRoleError ||
     err instanceof RoleCycleError ||
     err instanceof CustomFieldInUseError ||

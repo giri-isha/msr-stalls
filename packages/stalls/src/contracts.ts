@@ -286,6 +286,12 @@ export interface PublicRequestStatus {
    *  The gap between the two is the concession and that is the team's to see;
    *  showing a trader the figure they were talked down from serves nobody. */
   payment: PublicPaymentDue | null;
+  /** What this requester has told us they transferred, newest first.
+   *
+   *  🔴 Includes REJECTED claims with their reason. That reason is the only
+   *  thing that tells them what to correct, and a rejection they never see
+   *  returns them to the mailbox this step replaced. */
+  paymentClaims: PaymentClaimView[];
   /** The staff coupon and how far the vendor's own team has got.
    *
    *  ⚠️ An EMPTY `coupons` means none has been ISSUED, which is not the same as
@@ -1607,6 +1613,90 @@ export const ConfirmPaymentInput = z.object({
   note: z.string().trim().max(500).optional(),
 });
 export type ConfirmPaymentInput = z.infer<typeof ConfirmPaymentInput>;
+
+// ── Payment claims (public: a vendor says what they transferred) ────────────
+
+export const PaymentClaimStatus = z.enum(['PENDING', 'VERIFIED', 'REJECTED']);
+export type PaymentClaimStatus = z.infer<typeof PaymentClaimStatus>;
+
+/**
+ * What a requester submits after they have paid.
+ *
+ * 🔴 A CLAIM, not a receipt. `StallPaymentRecord` is finance-entered and every
+ * row in it is money the Foundation has seen on its statement; this is what
+ * somebody says they sent. The 2025 letter filled the gap with "please send
+ * transfer details on E-mail IDs finance.support@… once you make the payment" —
+ * a mailbox, matched by hand.
+ *
+ * ⚠️ The receipt upload is OPTIONAL. A vendor who transferred at a branch
+ * counter may have only a stamped slip they cannot photograph well, and
+ * refusing the claim over that sends them back to email — which is the thing
+ * this replaces. The reference number is what finance actually matches.
+ */
+export const SubmitPaymentClaimInput = z.object({
+  /** Which of the account's requests this is about. ⚠️ The SESSION is the
+   *  credential; this only picks which request, so a reference belonging to
+   *  somebody else 404s exactly as one that never existed does. */
+  reference: z.string().trim().min(1).max(40),
+  /** Rent and deposit are paid SEPARATELY, into different virtual accounts, so
+   *  a claim is always about one of them. */
+  purpose: PaymentPurpose,
+  referenceNo: z.string().trim().min(4).max(80),
+  amountPaise: z.number().int().positive().max(100_000_000),
+  /** A banking date — the day it shows on the statement. */
+  paidOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected a date as YYYY-MM-DD'),
+  remitterName: z.string().trim().max(200).optional(),
+  receiptKey: z.string().trim().max(400).optional(),
+  note: z.string().trim().max(1000).optional(),
+});
+export type SubmitPaymentClaimInput = z.infer<typeof SubmitPaymentClaimInput>;
+
+/** Finance settling one. */
+export const ReviewPaymentClaimInput = z.object({
+  verdict: z.enum(['VERIFY', 'REJECT']),
+  /** ⚠️ Required on REJECT and shown to the requester. A rejection with no
+   *  reason is one they cannot act on. The database enforces it too. */
+  rejectReason: z.string().trim().max(500).optional(),
+  /** The virtual-account code the credit landed on, where finance can see one.
+   *  Carried onto the payment record. */
+  eCollectCode: z.string().trim().max(60).optional(),
+  /** Overrides what the requester typed, where finance reads a different figure
+   *  off the statement — the claim keeps what was claimed. */
+  amountPaise: z.number().int().positive().max(100_000_000).optional(),
+});
+export type ReviewPaymentClaimInput = z.infer<typeof ReviewPaymentClaimInput>;
+
+export interface PaymentClaimView {
+  id: string;
+  purpose: PaymentPurpose;
+  status: PaymentClaimStatus;
+  referenceNo: string;
+  amountPaise: number;
+  paidOn: string;
+  remitterName: string | null;
+  note: string | null;
+  submittedAt: string;
+  reviewedAt: string | null;
+  /** ⚠️ Shown to the REQUESTER on a rejected claim: it is the only thing that
+   *  tells them what to correct. */
+  rejectReason: string | null;
+  hasReceipt: boolean;
+}
+
+/** One row on the finance queue, with enough of the request to act on. */
+export interface PaymentClaimRow extends PaymentClaimView {
+  requestId: string;
+  reference: string;
+  stallName: string;
+  requesterName: string;
+  /** What the plan says is owed for this purpose, so finance can see at a
+   *  glance whether the claimed figure matches. */
+  expectedPaise: number | null;
+}
+
+export interface PaymentClaimsResponse {
+  claims: PaymentClaimRow[];
+}
 
 export interface PaymentRecordView {
   id: string;
