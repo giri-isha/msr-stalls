@@ -11,7 +11,7 @@ beforeEach(() => vi.unstubAllGlobals());
 // ── Electrical ──────────────────────────────────────────────────────────────
 
 const SHEET = {
-  editionName: 'MSR 2026',
+  editionName: 'Stalls 2026',
   zoneCode: null,
   rows: [
     {
@@ -34,7 +34,7 @@ describe('the electrical sheet', () => {
   // The bay tabs are the edition's own zones, loaded rather than baked in — the
   // venue layout is redrawn every year. The screen asks /config for them.
   const CONFIG = {
-    edition: { id: 'e1', year: 2026, name: 'MSR 2026', isActive: true },
+    edition: { id: 'e1', year: 2026, name: 'Stalls 2026', isActive: true },
     zones: ['A3', 'A4', 'B2', 'B3', 'B4', 'C1', 'C2'].map((code, i) => ({
       id: `z-${code}`,
       code,
@@ -302,7 +302,7 @@ describe('chairs and tables', () => {
           extraChairs: 2,
           extraTables: 0,
           extraChargePaise: 10_000,
-          editionName: 'MSR 2026',
+          editionName: 'Stalls 2026',
           printedAt: '2026-02-13T09:00:00.000Z',
         }),
       ],

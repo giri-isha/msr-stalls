@@ -61,7 +61,7 @@ export function Electrical() {
     <div>
       <style>{PRINT_CSS}</style>
 
-      <div className='msrs-noprint'>
+      <div className='stalls-noprint'>
         <H1
           icon={<Icon name='sliders' size={18} />}
           sub='Stall-wise plug points and appliance load, shared with the electrical and venue prep teams. Pick a cluster, then print.'
@@ -104,7 +104,7 @@ export function Electrical() {
       {loading && !data ? (
         <Loading />
       ) : rows.length === 0 ? (
-        <div className='msrs-noprint'>
+        <div className='stalls-noprint'>
           <Empty>
             No allocated stalls in this cluster yet. The sheet is built from stall allocations, so
             it fills up as selection proceeds.
@@ -114,12 +114,12 @@ export function Electrical() {
         <>
           {/* Only visible on paper: a sheet handed to another team has to say
               what it is and which bay it covers without anyone writing on it. */}
-          <div className='msrs-printonly msrs-printhead'>
+          <div className='stalls-printonly stalls-printhead'>
             <span>Electrical &amp; Venue Prep — {zone ? `Cluster ${zone}` : 'All clusters'}</span>
             <span>{data?.editionName}</span>
           </div>
 
-          <div className='msrs-sheet'>
+          <div className='stalls-sheet'>
             <Card pad={0} style={{ overflow: 'hidden' }}>
               <Table>
                 <THead>
@@ -163,7 +163,7 @@ export function Electrical() {
           </div>
 
           <div
-            className='msrs-noprint'
+            className='stalls-noprint'
             style={{
               display: 'flex',
               gap: 18,
@@ -189,25 +189,25 @@ export function Electrical() {
  *
  * Scoped to `@media print` and injected by this screen rather than added to
  * `index.css`, because it hides the app shell — a global rule doing that would
- * silently break printing on every other screen. `msrs-noprint` on the chrome,
- * `msrs-printonly` on the paper header, and the table forced back to visible
+ * silently break printing on every other screen. `stalls-noprint` on the chrome,
+ * `stalls-printonly` on the paper header, and the table forced back to visible
  * borders because the screen's colour tokens print as nothing on white.
  */
 const PRINT_CSS = `
-.msrs-printonly { display: none; }
+.stalls-printonly { display: none; }
 @media print {
   @page { size: A4 landscape; margin: 12mm; }
   body { background: #fff !important; }
-  .msrs-noprint, nav, header, aside, [data-app-chrome] { display: none !important; }
-  .msrs-printonly { display: flex !important; justify-content: space-between;
+  .stalls-noprint, nav, header, aside, [data-app-chrome] { display: none !important; }
+  .stalls-printonly { display: flex !important; justify-content: space-between;
     font-size: 12px; font-weight: 700; margin-bottom: 8px; }
-  .msrs-sheet { border: 0 !important; box-shadow: none !important; }
-  .msrs-sheet table { font-size: 10px !important; width: 100%; }
-  .msrs-sheet th, .msrs-sheet td {
+  .stalls-sheet { border: 0 !important; box-shadow: none !important; }
+  .stalls-sheet table { font-size: 10px !important; width: 100%; }
+  .stalls-sheet th, .stalls-sheet td {
     border: 1px solid #999 !important; padding: 3px 5px !important;
     color: #000 !important; background: #fff !important;
     white-space: normal !important; position: static !important;
   }
-  .msrs-sheet tr { break-inside: avoid; }
+  .stalls-sheet tr { break-inside: avoid; }
 }
 `;

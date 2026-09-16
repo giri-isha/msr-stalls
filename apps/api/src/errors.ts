@@ -11,7 +11,7 @@ export class NotAuthorizedError extends Error {
   }
 }
 
-/** One bad field. In the host this is published by `@msr/shared`; the shape is
+/** One bad field. In the host this is published by `@stalls/shared`; the shape is
  *  identical here so the web client's field-error rendering is the same code. */
 export interface FieldViolation {
   row: number;

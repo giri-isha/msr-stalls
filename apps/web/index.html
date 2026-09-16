@@ -8,7 +8,7 @@
          module — the bottom sheet, the update toast — resolves to 0 without
          it. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>MSR Stalls</title>
+    <title>Stalls</title>
 
     <!-- The colour of the browser chrome around the app, and of the splash
          while it launches. `--pri` converted from oklch — see the note in
@@ -20,7 +20,7 @@
          wants this link, at 180px, or it screenshots the page and uses that. -->
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
-    <meta name="apple-mobile-web-app-title" content="MSR Stalls" />
+    <meta name="apple-mobile-web-app-title" content="Stalls" />
 
     <script>
       // Apply the saved (or system) theme before paint to avoid a flash.
@@ -34,7 +34,7 @@
       // the choice instead of arguing with it.
       (function () {
         try {
-          var stored = localStorage.getItem('msr-theme');
+          var stored = localStorage.getItem('stalls-theme');
           var dark = stored
             ? stored === 'dark'
             : window.matchMedia('(prefers-color-scheme: dark)').matches;

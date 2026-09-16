@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { type PrivilegeCatalogEntry, privilegeCategoryName } from '@msr/stalls';
+import { type PrivilegeCatalogEntry, privilegeCategoryName } from '@stalls/core';
 import { Empty, Search, Select, TBody, TD, TH, THead, TR, Table, Tag } from '../../ui';
 import { KIND_TONE } from './catalogue';
 

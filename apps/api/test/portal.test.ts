@@ -34,7 +34,7 @@ beforeEach(async () => {
 const askForLink = (contact: string) =>
   app.inject({ method: 'POST', url: '/api/m/stalls/public/access-link', payload: { contact } });
 
-/** The token out of the most recent "Your MSR stall requests" email — followed
+/** The token out of the most recent "Your stall requests" email — followed
  *  the way a vendor follows it, rather than read out of the database. */
 const mailedToken = (): string => {
   const last = mail.sent.at(-1);

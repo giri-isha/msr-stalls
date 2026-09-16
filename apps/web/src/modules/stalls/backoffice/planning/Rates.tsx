@@ -1,5 +1,5 @@
-import type { RateCardEntry, RateScope } from '@msr/stalls';
-import { formatInr } from '@msr/stalls';
+import type { RateCardEntry, RateScope } from '@stalls/core';
+import { formatInr } from '@stalls/core';
 import { Fragment, useEffect, useState } from 'react';
 import * as api from '../../api';
 import { Grid, type PanelProps, RupeeInput } from '../../components/config';

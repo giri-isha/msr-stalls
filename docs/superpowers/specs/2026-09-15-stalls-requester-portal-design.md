@@ -1,4 +1,4 @@
-# MSR Stalls — The Requester's Portal, Behind the Session
+# Stall Management — The Requester's Portal, Behind the Session
 
 Date: 2026-09-15
 Status: Approved, building

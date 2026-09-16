@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'vitest';
-import { type RateScope, lookupRate } from '@msr/stalls';
+import { type RateScope, lookupRate } from '@stalls/core';
 import {
   createEdition,
   getPublicConfig,
@@ -14,7 +14,7 @@ beforeEach(resetDatabase);
 
 describe('activeEdition', () => {
   test('throws when none is active rather than picking one', async () => {
-    await createEdition(prisma, { year: 2025, name: 'MSR 2025', activate: false }, SYSTEM);
+    await createEdition(prisma, { year: 2025, name: 'Stalls 2025', activate: false }, SYSTEM);
     await expect(activeEdition(prisma)).rejects.toBeInstanceOf(NoActiveEditionError);
   });
 

@@ -1,4 +1,4 @@
-import { type PrivilegeCatalogEntry, privilegeCategoryName } from '@msr/stalls';
+import { type PrivilegeCatalogEntry, privilegeCategoryName } from '@stalls/core';
 import { type Tone, titleCase } from '../../ui';
 
 /**

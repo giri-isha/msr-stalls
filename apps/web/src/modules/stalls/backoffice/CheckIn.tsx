@@ -1,4 +1,4 @@
-import type { CheckInRow } from '@msr/stalls';
+import type { CheckInRow } from '@stalls/core';
 import { useMemo, useState } from 'react';
 import { checkIn, listCheckIns, undoCheckIn } from '../api';
 import { TypeBadge } from '../components/StatusPill';

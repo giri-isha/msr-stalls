@@ -1,5 +1,5 @@
-import type { CouponView, RegisterStaffInput } from '@msr/stalls';
-import { asFormField, formFields } from '@msr/stalls';
+import type { CouponView, RegisterStaffInput } from '@stalls/core';
+import { asFormField, formFields } from '@stalls/core';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { fieldErrorsFrom } from '../api-client';

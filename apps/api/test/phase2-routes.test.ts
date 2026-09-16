@@ -1,4 +1,4 @@
-import { DEFAULT_STAFF_COUPON_CAPACITY } from '@msr/stalls';
+import { DEFAULT_STAFF_COUPON_CAPACITY } from '@stalls/core';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import type { StallEdition } from '@prisma/client';

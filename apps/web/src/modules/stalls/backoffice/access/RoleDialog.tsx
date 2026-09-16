@@ -5,7 +5,7 @@ import {
   type RoleDetail,
   type RoleSummary,
   type StallPrivilege,
-} from '@msr/stalls';
+} from '@stalls/core';
 import * as api from '../../api';
 import { useMe } from '../../me';
 import {

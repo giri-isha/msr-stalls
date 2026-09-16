@@ -51,7 +51,7 @@ export const TEMPLATE_PLACEHOLDERS: Array<{ key: string; description: string }> 
   { key: 'virtualAccountRent', description: 'Virtual account for the rent' },
   { key: 'virtualAccountDeposit', description: 'Virtual account for the deposit' },
   { key: 'signatureUrl', description: 'Link to sign the stall agreement' },
-  { key: 'editionName', description: 'e.g. Maha Shivratri 2026' },
+  { key: 'editionName', description: 'e.g. Stalls 2026' },
   { key: 'feeTotal', description: 'Fee including GST, formatted' },
   { key: 'depositTotal', description: 'Refundable deposit, formatted' },
   { key: 'grandTotal', description: 'Fee plus deposit, formatted' },
@@ -268,7 +268,7 @@ export const DEFAULT_TEMPLATES: TemplateSeed[] = [
       'unclean stall.',
       '',
       'Pranam,',
-      'Isha — MSR Stalls Team',
+      'Isha — Stall Management Team',
     ].join('\n'),
   },
   {

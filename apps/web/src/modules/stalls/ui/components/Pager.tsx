@@ -53,11 +53,11 @@ export function Pager({
       {onSize && (
         <label
           style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}
-          htmlFor='msrs-rows-per-page'
+          htmlFor='stalls-rows-per-page'
         >
           Rows
           <select
-            id='msrs-rows-per-page'
+            id='stalls-rows-per-page'
             aria-label='Rows per Page'
             value={size}
             onChange={(e) => {

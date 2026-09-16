@@ -4,7 +4,7 @@ import {
   isPlaceholderEmail,
   type SubmitRequestInput,
   validateAgainstForm,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { mintAccessLink, normalizeEmail } from './accounts';
 import { allowedCustomValues } from './custom-values';
 import { declarationsForForm, recordConsent, sameDeclarations } from './declarations';
@@ -279,7 +279,7 @@ export async function submitRequest(
       // Registered on a mobile: there is no address to write to.
       await deps.whatsapp.send({
         to: result.account.phone,
-        text: `Your MSR stall request ${result.reference} has been received. ${statusUrl}`,
+        text: `Your stall request ${result.reference} has been received. ${statusUrl}`,
       });
     }
   } catch {
@@ -295,7 +295,7 @@ export async function submitRequest(
 
 function receiptMail(to: string, input: SubmitRequestInput, reference: string, statusUrl: string) {
   const text = [
-    `Your MSR stall request has been received.`,
+    `Your stall request has been received.`,
     ``,
     `Reference: ${reference}`,
     `Stall name: ${input.stallName}`,
@@ -310,7 +310,7 @@ function receiptMail(to: string, input: SubmitRequestInput, reference: string, s
     `Submission of a stall request does not guarantee allocation. Allocation is at the`,
     `sole discretion of the Isha Stall Team. Only selected stalls will be informed.`,
   ].join('\n');
-  return { to, subject: `MSR stall request received — ${reference}`, text };
+  return { to, subject: `Stall request received — ${reference}`, text };
 }
 
 export type { Db };

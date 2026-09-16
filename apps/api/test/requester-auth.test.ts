@@ -171,7 +171,7 @@ describe('session', () => {
   test('a started session resolves back to its account', async () => {
     const acct = await account();
     const token = await startSession(prisma, acct.id);
-    const got = await requireRequester(prisma, { cookies: { msr_stall_requester: token } });
+    const got = await requireRequester(prisma, { cookies: { stall_requester: token } });
     expect(got.id).toBe(acct.id);
   });
 
@@ -186,7 +186,7 @@ describe('session', () => {
     const token = await startSession(prisma, acct.id);
     await endSession(prisma, token);
     await expect(
-      requireRequester(prisma, { cookies: { msr_stall_requester: token } }),
+      requireRequester(prisma, { cookies: { stall_requester: token } }),
     ).rejects.toBeInstanceOf(UnknownAccessLinkError);
   });
 
@@ -197,7 +197,7 @@ describe('session', () => {
     await endAllSessions(prisma, acct.id);
     for (const token of [first, second]) {
       await expect(
-        requireRequester(prisma, { cookies: { msr_stall_requester: token } }),
+        requireRequester(prisma, { cookies: { stall_requester: token } }),
       ).rejects.toBeInstanceOf(UnknownAccessLinkError);
     }
   });
@@ -219,7 +219,7 @@ describe('session', () => {
       ttlDays: 180,
     });
     await expect(
-      requireRequester(prisma, { cookies: { msr_stall_requester: bank } }),
+      requireRequester(prisma, { cookies: { stall_requester: bank } }),
     ).rejects.toBeInstanceOf(UnknownAccessLinkError);
   });
 
@@ -231,7 +231,7 @@ describe('session', () => {
       data: { expiresAt: new Date(Date.now() - 1000) },
     });
     await expect(
-      requireRequester(prisma, { cookies: { msr_stall_requester: token } }),
+      requireRequester(prisma, { cookies: { stall_requester: token } }),
     ).rejects.toBeInstanceOf(UnknownAccessLinkError);
   });
 });
@@ -406,7 +406,7 @@ async function loggedIn(contact = 'new@vendor.example', password = 'hunter2hunte
     url: url('login'),
     payload: { contact, password },
   });
-  return res.cookies.find((c) => c.name === 'msr_stall_requester')?.value ?? '';
+  return res.cookies.find((c) => c.name === 'stall_requester')?.value ?? '';
 }
 
 describe('login and logout', () => {
@@ -425,7 +425,7 @@ describe('login and logout', () => {
     });
     expect(res.statusCode).toBe(200);
 
-    const cookie = res.cookies.find((c) => c.name === 'msr_stall_requester');
+    const cookie = res.cookies.find((c) => c.name === 'stall_requester');
     expect(cookie).toBeDefined();
     expect(cookie?.httpOnly).toBe(true);
     expect(cookie?.sameSite?.toLowerCase()).toBe('lax');
@@ -440,7 +440,7 @@ describe('login and logout', () => {
       password: 'hunter2hunter2',
       displayName: 'New Vendor',
     });
-    expect(res.cookies.find((c) => c.name === 'msr_stall_requester')).toBeUndefined();
+    expect(res.cookies.find((c) => c.name === 'stall_requester')).toBeUndefined();
   });
 
   test('login sets the session cookie and the session route answers', async () => {
@@ -448,7 +448,7 @@ describe('login and logout', () => {
     await app.inject({
       method: 'POST',
       url: url('logout'),
-      cookies: { msr_stall_requester: value },
+      cookies: { stall_requester: value },
     });
 
     const res = await app.inject({
@@ -457,12 +457,12 @@ describe('login and logout', () => {
       payload: { contact: 'new@vendor.example', password: 'hunter2hunter2' },
     });
     expect(res.statusCode).toBe(200);
-    const fresh = res.cookies.find((c) => c.name === 'msr_stall_requester')?.value ?? '';
+    const fresh = res.cookies.find((c) => c.name === 'stall_requester')?.value ?? '';
 
     const me = await app.inject({
       method: 'GET',
       url: url('session'),
-      cookies: { msr_stall_requester: fresh },
+      cookies: { stall_requester: fresh },
     });
     expect(me.statusCode).toBe(200);
     expect(me.json()).toMatchObject({ displayName: 'New Vendor', email: 'new@vendor.example' });
@@ -498,7 +498,7 @@ describe('login and logout', () => {
     const me = await app.inject({
       method: 'GET',
       url: url('session'),
-      cookies: { msr_stall_requester: value },
+      cookies: { stall_requester: value },
     });
     expect(me.json().email).toBe('');
     expect(me.json().phone).toBe('9840012399');
@@ -509,12 +509,12 @@ describe('login and logout', () => {
     await app.inject({
       method: 'POST',
       url: url('logout'),
-      cookies: { msr_stall_requester: value },
+      cookies: { stall_requester: value },
     });
     const after = await app.inject({
       method: 'GET',
       url: url('session'),
-      cookies: { msr_stall_requester: value },
+      cookies: { stall_requester: value },
     });
     expect(after.statusCode).toBe(404);
   });
@@ -566,7 +566,7 @@ describe('password reset', () => {
     const dead = await app.inject({
       method: 'GET',
       url: url('session'),
-      cookies: { msr_stall_requester: stale },
+      cookies: { stall_requester: stale },
     });
     expect(dead.statusCode).toBe(404);
 

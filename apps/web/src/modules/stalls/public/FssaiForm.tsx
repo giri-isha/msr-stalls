@@ -1,4 +1,4 @@
-import { asFormField, formFields } from '@msr/stalls';
+import { asFormField, formFields } from '@stalls/core';
 import { useState } from 'react';
 import { useParams } from 'react-router';
 import { getFssaiForm, presignPublicUpload, submitFssai, uploadFile } from '../api';

@@ -19,10 +19,10 @@ import { UnknownAccessLinkError } from './errors';
  *  one function, and it is already covered by the access-link tests.
  */
 
-/** ⚠️ NOT `msr_session`. That cookie is the BACKOFFICE session and the host's own
+/** ⚠️ NOT `stalls_session`. That cookie is the BACKOFFICE session and the host's own
  *  auth reads it; a requester holding one would be a backoffice member. Two
  *  populations, two cookies, and the names must never converge. */
-export const REQUESTER_COOKIE = 'msr_stall_requester';
+export const REQUESTER_COOKIE = 'stall_requester';
 
 /** Long, because the alternative is a vendor locked out of their own
  *  onboarding halfway through an edition. Revocation is the real control —

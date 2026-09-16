@@ -1,4 +1,4 @@
-import { type RequestStatus, STALL_REQUEST_TYPES } from '@msr/stalls';
+import { type RequestStatus, STALL_REQUEST_TYPES } from '@stalls/core';
 import { Link } from 'react-router';
 import { getDashboard } from '../api';
 import { requestStatusTone, STATUS_LABEL, TYPE_LABEL } from '../components/StatusPill';
@@ -73,7 +73,7 @@ function Tile({
   const box: React.CSSProperties = { ...card, padding: mobile ? 12 : 14 };
   if (!to) return <div style={box}>{face}</div>;
   return (
-    <Link to={to} className='msrs-lift' style={{ ...box, display: 'block', color: 'inherit' }}>
+    <Link to={to} className='stalls-lift' style={{ ...box, display: 'block', color: 'inherit' }}>
       {face}
     </Link>
   );
@@ -131,7 +131,7 @@ export function Dashboard() {
   const s = data.byStatus;
   return (
     <div>
-      <H1 icon={<Icon name='home' size={18} />} sub='Maha Shivratri · MSR Stalls Program'>
+      <H1 icon={<Icon name='home' size={18} />} sub='Requests, selection and operations'>
         Dashboard
       </H1>
 

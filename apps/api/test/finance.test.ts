@@ -1,4 +1,4 @@
-import { rupeesToPaise } from '@msr/stalls';
+import { rupeesToPaise } from '@stalls/core';
 import type { StallEdition } from '@prisma/client';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { sendTemplate } from '../src/modules/stalls/comms';

@@ -2,7 +2,7 @@
 // list. The host mounts `stallsBackofficeRoutes` under its /m/stalls and
 // `stallsPublicRoutes` wherever it serves public pages. Nothing here knows
 // which shell it is inside.
-import type { StallPrivilege } from '@msr/stalls';
+import type { StallPrivilege } from '@stalls/core';
 import { Navigate, type RouteObject, useLocation, useParams } from 'react-router';
 import { AccessLink } from './public/AccessLink';
 import { BankForm } from './public/BankForm';
@@ -184,7 +184,7 @@ export interface StallsNavItem {
  * Whether a nav item is reachable by someone.
  *
  * 🔴 Takes `can` rather than a privilege LIST, and both readers of the nav go
- * through it. A write implies its read (`IMPLIED_READ` in `@msr/stalls`), so a
+ * through it. A write implies its read (`IMPLIED_READ` in `@stalls/core`), so a
  * plain `privileges.includes(...)` hides a screen from the one person it is
  * for — the sidebar did exactly that until this was shared.
  */

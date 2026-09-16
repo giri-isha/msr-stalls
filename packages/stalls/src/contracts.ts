@@ -11,8 +11,8 @@ import { VIRTUAL_ACCOUNT_PREFIX_PATTERN } from './virtual-account';
 import { SIGNATURE_STATUSES } from './signing';
 
 /** The shapes that cross the network, shared by api and web so a rename breaks
- *  the build rather than production. Host convention: `@msr/shared` publishes
- *  wire contracts; `@msr/volunteering` does the same for one module. This is
+ *  the build rather than production. Host convention: `@stalls/shared` publishes
+ *  wire contracts; `@stalls/volunteering` does the same for one module. This is
  *  that, for stalls. */
 
 // ── Enums as wire values ────────────────────────────────────────────────────
@@ -890,7 +890,7 @@ export const DateWindowInput = z.discriminatedUnion('mode', [
  *
  * 🔴 Shape only, exactly as everywhere else in this file. Whether a maximum
  * sits below its minimum, or a pattern is an expression that compiles, is
- * `checkRuleShape` in `@msr/stalls` — one function, read by the screen before
+ * `checkRuleShape` in `@stalls/core` — one function, read by the screen before
  * it saves and by the API before it writes. A Zod refinement here would be a
  * second opinion the two sides could drift apart on.
  */

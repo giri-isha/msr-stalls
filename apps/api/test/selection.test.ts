@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'vitest';
-import { SubmitRequestInput } from '@msr/stalls';
+import { SubmitRequestInput } from '@stalls/core';
 import type { StallEdition } from '@prisma/client';
 import {
   InvalidTransitionError,

@@ -1,4 +1,4 @@
-import type { RoleSummary } from '@msr/stalls';
+import type { RoleSummary } from '@stalls/core';
 import { Icon, IconBtn, Tag, card } from '../../ui';
 import { scopeLabel } from './catalogue';
 

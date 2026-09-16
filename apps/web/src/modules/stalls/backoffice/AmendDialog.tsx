@@ -1,4 +1,4 @@
-import type { PatchRequestInput, RequestDetail } from '@msr/stalls';
+import type { PatchRequestInput, RequestDetail } from '@stalls/core';
 import { useState } from 'react';
 import { ApiError } from '../api-client';
 import { listZones, patchRequest } from '../api';

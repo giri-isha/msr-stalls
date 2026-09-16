@@ -139,7 +139,7 @@ panels from a *Copy from…* button in each panel's `actions` — disabled unles
 Pick the source edition; the dialog loads the preview and renders three groups:
 **New**, **Overwritten** with *before → after* per changed field, and
 **Skipped** with its reason. Unchanged is a count. Confirm reads
-*Copy 11 changes into MSR 2026* and is disabled at zero.
+*Copy 11 changes into Stalls 2026* and is disabled at zero.
 
 ## 4 · Tests
 

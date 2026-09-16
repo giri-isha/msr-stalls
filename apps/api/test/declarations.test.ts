@@ -5,7 +5,7 @@
 // answer that does not change when somebody edits a paragraph. These tests are
 // that promise.
 import type { FastifyInstance } from 'fastify';
-import { SubmitRequestInput } from '@msr/stalls';
+import { SubmitRequestInput } from '@stalls/core';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { buildApp } from '../src/app';
 import {

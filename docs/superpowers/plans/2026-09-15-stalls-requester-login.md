@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Spec: `docs/superpowers/specs/2026-09-15-stalls-vendor-login-design.md`. Read it before Task 1.
-- **The requester session cookie is `msr_stall_requester`.** Staff already use `msr_session` (`test/helpers/db.ts:50`). These must never collide.
+- **The requester session cookie is `stall_requester`.** Staff already use `stalls_session` (`test/helpers/db.ts:50`). These must never collide.
 - **The requester session type is `RequesterSession`, fetched by `getRequesterSession()`.** Staff already own `MeResponse` / `getMe()` / `useMe()`. Do not reuse either.
 - Every new public route carries `config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } }`.
 - `POST /public/register` and `POST /public/password-reset` return `202 {ok:true}` for **every** input — hit, miss, or unparseable contact. This is decision 17 and it is load-bearing; a test asserts the responses are identical.
@@ -58,7 +58,7 @@
 - `apps/web/src/app/PublicLayout.tsx` — "logged in as", Log out.
 
 **Docs — modify (Task 11)**
-- `docs/superpowers/specs/2026-09-13-msr-stalls-phase2-phase3-design.md`
+- `docs/superpowers/specs/2026-09-13-stall-management-phase2-phase3-design.md`
 - `docs/requirements-traceability.md`
 - `docs/migration-to-host.md`
 
@@ -179,7 +179,7 @@ git commit -m "feat(db): a requester credential, in its own table so SSO can dro
 - Modify: `apps/api/src/modules/stalls/http-errors.ts`
 
 **Interfaces:**
-- Consumes: `StallCredential` from Task 1; `parseContact` from `@msr/stalls`; `Db` from `./editions`.
+- Consumes: `StallCredential` from Task 1; `parseContact` from `@stalls/core`; `Db` from `./editions`.
 - Produces:
   - `hashPassword(plain: string): Promise<string>`
   - `verifyPassword(plain: string, stored: string): Promise<boolean>`
@@ -363,7 +363,7 @@ In `apps/api/src/modules/stalls/http-errors.ts`, add `InvalidCredentialsError` t
 import { randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import type { StallCredential } from '@prisma/client';
-import { type Contact, parseContact } from '@msr/stalls';
+import { type Contact, parseContact } from '@stalls/core';
 import type { Db } from './editions';
 import { InvalidCredentialsError } from './errors';
 
@@ -483,7 +483,7 @@ export async function authenticate(
 }
 ```
 
-Export `Contact` from `@msr/stalls` if it is not already exported — check `packages/stalls/src/index.ts` and add `export type { Contact }` from `./access` if missing.
+Export `Contact` from `@stalls/core` if it is not already exported — check `packages/stalls/src/index.ts` and add `export type { Contact }` from `./access` if missing.
 
 - [ ] **Step 6: Run the tests to verify they pass**
 
@@ -508,7 +508,7 @@ git commit -m "feat: a requester password, and one error for every way it fails"
 **Interfaces:**
 - Consumes: `mintAccessLink`, `resolveAccessLink` from `./accounts`; `SESSION` purpose from Task 1.
 - Produces:
-  - `REQUESTER_COOKIE = 'msr_stall_requester'`
+  - `REQUESTER_COOKIE = 'stall_requester'`
   - `SESSION_TTL_DAYS = 30`
   - `startSession(db, accountId): Promise<string>` — returns the raw token
   - `setSessionCookie(reply, token): void`
@@ -529,7 +529,7 @@ describe('session', () => {
   test('a started session resolves back to its account', async () => {
     const acct = await account();
     const token = await startSession(prisma, acct.id);
-    const got = await requireRequester(prisma, { cookies: { msr_stall_requester: token } });
+    const got = await requireRequester(prisma, { cookies: { stall_requester: token } });
     expect(got.id).toBe(acct.id);
   });
 
@@ -544,7 +544,7 @@ describe('session', () => {
     const token = await startSession(prisma, acct.id);
     await endSession(prisma, token);
     await expect(
-      requireRequester(prisma, { cookies: { msr_stall_requester: token } }),
+      requireRequester(prisma, { cookies: { stall_requester: token } }),
     ).rejects.toBeInstanceOf(UnknownAccessLinkError);
   });
 
@@ -566,7 +566,7 @@ describe('session', () => {
       ttlDays: 180,
     });
     await expect(
-      requireRequester(prisma, { cookies: { msr_stall_requester: bank } }),
+      requireRequester(prisma, { cookies: { stall_requester: bank } }),
     ).rejects.toBeInstanceOf(UnknownAccessLinkError);
   });
 
@@ -578,7 +578,7 @@ describe('session', () => {
       data: { expiresAt: new Date(Date.now() - 1000) },
     });
     await expect(
-      requireRequester(prisma, { cookies: { msr_stall_requester: token } }),
+      requireRequester(prisma, { cookies: { stall_requester: token } }),
     ).rejects.toBeInstanceOf(UnknownAccessLinkError);
   });
 });
@@ -598,10 +598,10 @@ import { mintAccessLink, resolveAccessLink } from './accounts';
 import type { Db } from './editions';
 import { UnknownAccessLinkError } from './errors';
 
-/** ⚠️ NOT `msr_session`. That cookie is the STAFF session and is read by the
+/** ⚠️ NOT `stalls_session`. That cookie is the STAFF session and is read by the
  *  host's own auth; a requester holding one would be a staff member. Two
  *  populations, two cookies, and the names must never converge. */
-export const REQUESTER_COOKIE = 'msr_stall_requester';
+export const REQUESTER_COOKIE = 'stall_requester';
 
 /** Long, because the alternative is a vendor locked out of their own
  *  onboarding mid-season. Revocation is the real control: logout and a
@@ -695,7 +695,7 @@ git commit -m "feat: the requester session is an access link with a purpose"
   - `confirmRegistration(db, token): Promise<{ accountId: string }>`
   - `requestPasswordReset(db, deps, contact: string): Promise<void>`
   - `completePasswordReset(db, token, password): Promise<{ accountId: string }>`
-  - Types in `@msr/stalls`: `RegisterInput`, `LoginInput`, `ConfirmRegistrationInput`, `PasswordResetInput`, `PasswordResetConfirmInput`, `RequesterSession`
+  - Types in `@stalls/core`: `RegisterInput`, `LoginInput`, `ConfirmRegistrationInput`, `PasswordResetInput`, `PasswordResetConfirmInput`, `RequesterSession`
   - `StallsDeps.registerConfirmUrl(token)`, `StallsDeps.passwordResetUrl(token)`
 
 - [ ] **Step 1: Add the shared types**
@@ -884,7 +884,7 @@ Expected: FAIL — 404 on `/public/register` (the route does not exist yet).
 
 ```ts
 import type { StallAccount } from '@prisma/client';
-import { type RegisterInput, parseContact } from '@msr/stalls';
+import { type RegisterInput, parseContact } from '@stalls/core';
 import { findAccountByContact, mintAccessLink, resolveAccessLink } from './accounts';
 import { confirmCredential, createCredential, setPassword } from './credentials';
 import type { StallsDeps } from './deps';
@@ -1052,7 +1052,7 @@ export async function completePasswordReset(
 
 - [ ] **Step 6: Wire the register route**
 
-In `apps/api/src/modules/stalls/public-routes.ts`, import `RegisterInput` from `@msr/stalls` and `register` from `./registration`, then add:
+In `apps/api/src/modules/stalls/public-routes.ts`, import `RegisterInput` from `@stalls/core` and `register` from `./registration`, then add:
 
 ```ts
   /** Registration, which answers the same 202 for a free contact, a taken one
@@ -1146,14 +1146,14 @@ describe('confirm, login, logout', () => {
       payload: { contact: 'new@vendor.example', password: 'hunter2hunter2' },
     });
     expect(res.statusCode).toBe(200);
-    const cookie = res.cookies.find((c) => c.name === 'msr_stall_requester');
+    const cookie = res.cookies.find((c) => c.name === 'stall_requester');
     expect(cookie).toBeDefined();
     expect(cookie?.httpOnly).toBe(true);
 
     const me = await app.inject({
       method: 'GET',
       url: url('session'),
-      cookies: { msr_stall_requester: cookie?.value ?? '' },
+      cookies: { stall_requester: cookie?.value ?? '' },
     });
     expect(me.statusCode).toBe(200);
     expect(me.json().displayName).toBe('Vendor');
@@ -1198,17 +1198,17 @@ describe('confirm, login, logout', () => {
       url: url('login'),
       payload: { contact: 'out@vendor.example', password: 'hunter2hunter2' },
     });
-    const value = login.cookies.find((c) => c.name === 'msr_stall_requester')?.value ?? '';
+    const value = login.cookies.find((c) => c.name === 'stall_requester')?.value ?? '';
 
     await app.inject({
       method: 'POST',
       url: url('logout'),
-      cookies: { msr_stall_requester: value },
+      cookies: { stall_requester: value },
     });
     const after = await app.inject({
       method: 'GET',
       url: url('session'),
-      cookies: { msr_stall_requester: value },
+      cookies: { stall_requester: value },
     });
     expect(after.statusCode).toBe(404);
   });
@@ -1222,7 +1222,7 @@ Expected: FAIL — 404 on `/public/login`.
 
 - [ ] **Step 3: Add the four routes**
 
-In `public-routes.ts`, import `ConfirmRegistrationInput`, `LoginInput` from `@msr/stalls`; `authenticate` from `./credentials`; `confirmRegistration` from `./registration`; and `clearSessionCookie`, `endSession`, `REQUESTER_COOKIE`, `requireRequester`, `setSessionCookie`, `startSession` from `./session`. Then:
+In `public-routes.ts`, import `ConfirmRegistrationInput`, `LoginInput` from `@stalls/core`; `authenticate` from `./credentials`; `confirmRegistration` from `./registration`; and `clearSessionCookie`, `endSession`, `REQUESTER_COOKIE`, `requireRequester`, `setSessionCookie`, `startSession` from `./session`. Then:
 
 ```ts
   zod.post(
@@ -1334,7 +1334,7 @@ describe('password reset', () => {
       url: url('login'),
       payload: { contact: 'reset@vendor.example', password: 'hunter2hunter2' },
     });
-    const old = login.cookies.find((c) => c.name === 'msr_stall_requester')?.value ?? '';
+    const old = login.cookies.find((c) => c.name === 'stall_requester')?.value ?? '';
 
     const { completePasswordReset } = await import('../src/modules/stalls/registration');
     const { mintAccessLink } = await import('../src/modules/stalls/accounts');
@@ -1348,7 +1348,7 @@ describe('password reset', () => {
     const stale = await app.inject({
       method: 'GET',
       url: url('session'),
-      cookies: { msr_stall_requester: old },
+      cookies: { stall_requester: old },
     });
     expect(stale.statusCode).toBe(404);
 
@@ -1450,8 +1450,8 @@ export async function seedRequester(
     url: '/api/m/stalls/public/login',
     payload: { contact, password },
   });
-  const value = login.cookies.find((c) => c.name === 'msr_stall_requester')?.value ?? '';
-  return { accountId: cred.accountId, cookies: { msr_stall_requester: value } };
+  const value = login.cookies.find((c) => c.name === 'stall_requester')?.value ?? '';
+  return { accountId: cred.accountId, cookies: { stall_requester: value } };
 }
 ```
 
@@ -1607,12 +1607,12 @@ export const completePasswordReset = (token: string, password: string) =>
   post<{ ok: true }>('/public/password-reset/confirm', { token, password }).then(() => undefined);
 ```
 
-Match the file's existing `get`/`post` helper names exactly — read the top of `api.ts` first. Add the types to the `@msr/stalls` import block.
+Match the file's existing `get`/`post` helper names exactly — read the top of `api.ts` first. Add the types to the `@stalls/core` import block.
 
 - [ ] **Step 2: Write `requester.tsx`**
 
 ```tsx
-import type { RequesterSession } from '@msr/stalls';
+import type { RequesterSession } from '@stalls/core';
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { getRequesterSession } from './api';
 
@@ -1884,7 +1884,7 @@ git commit -m "feat(web): /stalls/apply asks who you are before it shows the for
 ### Task 11: The documents that now contradict the code
 
 **Files:**
-- Modify: `docs/superpowers/specs/2026-09-13-msr-stalls-phase2-phase3-design.md`
+- Modify: `docs/superpowers/specs/2026-09-13-stall-management-phase2-phase3-design.md`
 - Modify: `docs/requirements-traceability.md`
 - Modify: `docs/migration-to-host.md`
 
@@ -1961,4 +1961,4 @@ git commit -m "docs: the login the module said it did not have"
 
 **Placeholder scan:** none. Every code step carries its code; Task 9 step 3 and Task 10 steps 3–5 specify screens by requirement and template rather than full JSX, which is the established pattern for this codebase's presentational files and is bounded by the tests written first in each task.
 
-**Type consistency:** `RequesterSession` (not `MeResponse`), `getRequesterSession` (not `getMe`), `msr_stall_requester` (not `msr_session`), `startSession`/`endSession`/`endAllSessions`/`requireRequester` used identically in Tasks 3, 5, 6, 7. `createCredential` takes `contact: Contact`, and Task 4 passes the parsed object, not the raw string.
+**Type consistency:** `RequesterSession` (not `MeResponse`), `getRequesterSession` (not `getMe`), `stall_requester` (not `stalls_session`), `startSession`/`endSession`/`endAllSessions`/`requireRequester` used identically in Tasks 3, 5, 6, 7. `createCredential` takes `contact: Contact`, and Task 4 passes the parsed object, not the raw string.

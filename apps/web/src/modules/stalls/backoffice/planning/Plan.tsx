@@ -1,4 +1,4 @@
-import { type ZoneCode, type ZonePlanView, suggestStallCount } from '@msr/stalls';
+import { type ZoneCode, type ZonePlanView, suggestStallCount } from '@stalls/core';
 import { useEffect, useState } from 'react';
 import { applyPlan, getPlan, putPlan } from '../../api';
 import { Panel } from '../../components/Panel';

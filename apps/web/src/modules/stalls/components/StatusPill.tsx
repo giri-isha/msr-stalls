@@ -1,4 +1,4 @@
-import type { RequestStage, RequestStatus } from '@msr/stalls';
+import type { RequestStage, RequestStatus } from '@stalls/core';
 import { Tag, type Tone } from '../ui';
 
 /**

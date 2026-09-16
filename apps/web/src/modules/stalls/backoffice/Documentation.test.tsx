@@ -1,6 +1,6 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { PRIVILEGE_CATEGORIES } from '@msr/stalls';
+import { PRIVILEGE_CATEGORIES } from '@stalls/core';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ME_ADMIN, installFetch, renderAt } from '../test-utils';
 import { Documentation } from './Documentation';
@@ -39,7 +39,7 @@ describe('the documentation screen', () => {
   test('picking a tab puts it in the URL, so a section can be pointed at', async () => {
     const { router } = render();
 
-    await userEvent.setup().click(await screen.findByRole('button', { name: 'Reference' }));
+    await userEvent.setup().click(await screen.findByRole('tab', { name: 'Reference' }));
     expect(router.state.location.search).toBe('?tab=reference');
   });
 

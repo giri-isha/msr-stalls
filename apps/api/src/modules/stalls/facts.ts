@@ -5,7 +5,7 @@ import {
   deriveStage,
   payableFeePaise,
   pendingSteps,
-} from '@msr/stalls';
+} from '@stalls/core';
 import type { Db } from './editions';
 import { flowFor } from './config';
 
@@ -13,7 +13,7 @@ import { flowFor } from './config';
  *
  *  Six screens ask it — Onboarding, Communication, Finance, Check-in, the
  *  vendor's own portal, and the request drawer. They read the same include and
- *  call the same two functions from `@msr/stalls/onboarding.ts`, so a vendor
+ *  call the same two functions from `@stalls/core/onboarding.ts`, so a vendor
  *  cannot be "all set" on one screen and "payment pending" on another.
  */
 export const factsInclude = {

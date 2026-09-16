@@ -1,5 +1,5 @@
-import type { PaymentClaimRow, PaymentRow, RefundRow, ReviewPaymentClaimInput } from '@msr/stalls';
-import { formatInr, paiseToRupees, rupeesToPaise } from '@msr/stalls';
+import type { PaymentClaimRow, PaymentRow, RefundRow, ReviewPaymentClaimInput } from '@stalls/core';
+import { formatInr, paiseToRupees, rupeesToPaise } from '@stalls/core';
 import { useMemo, useState } from 'react';
 import {
   confirmPayment,
@@ -43,10 +43,10 @@ import {
   THead,
   TR,
   Table,
+  Tabs,
   useIsMobile,
   useToast,
 } from '../ui';
-import { Tabs } from './Communication';
 
 /**
  * Finance — what is owed, what has arrived, and what goes back.
@@ -79,14 +79,15 @@ export function Finance() {
         Finance
       </H1>
       <Tabs
+        label='Finance Sections'
         tabs={[
-          ['due', 'Payment details'],
+          { key: 'due', label: 'Payment details', glyph: 'rupee' },
           // 🔴 Between "what to pay" and "what landed": what the vendor SAYS
           // they paid. That step used to be a mailbox — the 2025 letter ended
           // "please send transfer details on E-mail IDs finance.support@…".
-          ['claims', 'Reported transfers'],
-          ['confirm', 'Payment confirmation'],
-          ['refund', 'Refunds & deductions'],
+          { key: 'claims', label: 'Reported transfers', glyph: 'arrow-right' },
+          { key: 'confirm', label: 'Payment confirmation', glyph: 'circle-check' },
+          { key: 'refund', label: 'Refunds & deductions', glyph: 'undo' },
         ]}
         active={tab}
         onPick={(t) => setTab(t as typeof tab)}

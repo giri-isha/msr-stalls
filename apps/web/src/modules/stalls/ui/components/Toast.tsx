@@ -89,9 +89,9 @@ function ToastHost({ toasts, onDrop }: { toasts: Toast[]; onDrop: (id: number) =
     // clear of the offline banner and the header. Above the dialog layer (201)
     // so a save failure raised from inside a sheet is not hidden behind it.
     //
-    // 🔴 `msrs` is on this element, and it is the only reason the coloured
+    // 🔴 `stalls` is on this element, and it is the only reason the coloured
     // plates below resolve to anything. The module's tokens are scoped to
-    // `.msrs` (`tokens.css`), which `Frame` puts around the ROUTE — but
+    // `.stalls` (`tokens.css`), which `Frame` puts around the ROUTE — but
     // `ToastProvider` sits ABOVE the router on purpose, so a confirmation
     // outlives the screen that raised it, and that puts this fixed overlay
     // outside `Frame`. Without the class every `var(--ok-s)` / `var(--des-s)` /
@@ -101,7 +101,7 @@ function ToastHost({ toasts, onDrop }: { toasts: Toast[]; onDrop: (id: number) =
     // It shipped that way — the solid plates of module ADR 0020 were written
     // correctly and were invisible in the browser from the first load.
     <div
-      className='msrs'
+      className='stalls'
       aria-live='polite'
       style={{
         position: 'fixed',
@@ -165,7 +165,7 @@ function ToastItem({ toast, onDrop }: { toast: Toast; onDrop: (id: number) => vo
         border: '1px solid var(--on-solid-line)',
         boxShadow: 'var(--solid-sh)',
         pointerEvents: 'auto',
-        animation: 'msrs-rise .22s ease both',
+        animation: 'stalls-rise .22s ease both',
       }}
     >
       <span style={{ display: 'flex', flex: 'none', color: 'var(--on-solid)' }}>

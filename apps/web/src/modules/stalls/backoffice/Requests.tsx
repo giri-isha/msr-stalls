@@ -1,4 +1,4 @@
-import { type ListRequestsQuery, type RequestSummary, STALL_REQUEST_TYPES } from '@msr/stalls';
+import { type ListRequestsQuery, type RequestSummary, STALL_REQUEST_TYPES } from '@stalls/core';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { listRequests, listZones } from '../api';

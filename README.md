@@ -1,6 +1,6 @@
-# MSR Stalls
+# Stall Management
 
-Stalls for Maha Shivratri, from request to refund — replacing the four Google
+Stalls from request to refund — replacing the four Google
 Forms and the spreadsheets around them.
 
 Built standalone, designed to move: every line under `apps/*/src/modules/stalls/`
@@ -72,16 +72,16 @@ Requires Node 22+ and a local PostgreSQL.
 
 ```bash
 npm install
-createdb msr_stalls_dev && createdb msr_stalls_test
+createdb stalls_dev && createdb stalls_test
 
 cp apps/api/.env.example apps/api/.env            # edit DATABASE_URL
 cp apps/api/.env.test.example apps/api/.env.test  # edit DATABASE_URL
-# .env sets MSR_DEV_MEDIA_DIR — without it, document uploads are off and the
+# .env sets STALLS_DEV_MEDIA_DIR — without it, document uploads are off and the
 # bank and FSSAI forms say so rather than failing silently.
 
 npm run db:migrate                                # dev database
 npm run db:test:deploy --workspace=apps/api       # test database
-npm run db:seed                                   # MSR 2027 edition, the backoffice, a full pipeline
+npm run db:seed                                   # Stalls 2027 edition, the backoffice, a full pipeline
 
 npm run dev                                       # api :3000, web :5173
 ```
@@ -107,7 +107,7 @@ pages are reachable only through links like those.
 ## Check it
 
 ```bash
-npm test                 # @msr/stalls (pure), api (against Postgres), web (jsdom)
+npm test                 # @stalls/core (pure), api (against Postgres), web (jsdom)
 npm run typecheck
 npm run check            # biome
 npm run lint:boundaries  # module may import only what the host provides
@@ -116,7 +116,7 @@ npm run lint:boundaries  # module may import only what the host provides
 ## Layout
 
 ```
-packages/stalls/            @msr/stalls — pure logic and wire contracts   MOVES
+packages/stalls/            @stalls/core — pure logic and wire contracts   MOVES
 apps/api/src/modules/stalls/  the API module                              MOVES
 apps/web/src/modules/stalls/  the screens                                 MOVES
 apps/api/src/*.ts             Foundation stubs with the host's signatures  shell

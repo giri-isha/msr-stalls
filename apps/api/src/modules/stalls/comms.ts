@@ -14,7 +14,7 @@ import {
   formatInr,
   renderTemplate,
   virtualAccountFor,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { recordActivity } from '../../activity';
 import { mintAccessLink } from './accounts';
 import type { StallsDeps } from './deps';

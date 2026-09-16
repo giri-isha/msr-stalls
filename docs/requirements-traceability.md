@@ -1,6 +1,6 @@
 # Requirements → where they live
 
-Every line of the MSR 2026 stalls requirement, against the code that answers
+Every line of the Stalls 2026 stalls requirement, against the code that answers
 it. Written as a cross-check, so the three columns that matter are: what was
 asked, where it is, and where what was built differs from what was asked.
 
@@ -11,7 +11,7 @@ Status vocabulary:
   each of these is a decision the stalls team can reverse.
 - **Open** — not built, and worth a decision.
 
-Paths are the screen (web) or the route (api). `@msr/stalls` is the pure
+Paths are the screen (web) or the route (api). `@stalls/core` is the pure
 package both sides share.
 
 ---
@@ -118,7 +118,7 @@ package both sides share.
 | Requirement | Where | Status |
 |---|---|---|
 | Vendor name, stall number, staff registered, vehicle passes | Check-in, `GET /checkin` | Built |
-| What is still pending — payment, FSSAI, backoffice | `pendingSteps` in `@msr/stalls`, the same function the vendor's page reads | Built |
+| What is still pending — payment, FSSAI, backoffice | `pendingSteps` in `@stalls/core`, the same function the vendor's page reads | Built |
 | Ashram stalls check in too | Same screen; the pending list adapts to the requester type | Built |
 | Nothing blocks a check-in | Deliberate: the chips inform, they do not gate | Built |
 
@@ -164,7 +164,7 @@ package both sides share.
 | Requirement | Where | Status |
 |---|---|---|
 | External vendors / local welfare / ashram stall vendors | Requester types on the account side (`StallRequestType`), never backoffice roles | Built |
-| Admin, Lead, Volunteer | `stall_role` / `stall_privilege`, seeded from `SEED_ROLES` in `@msr/stalls/rbac.ts`. Roles are DATA — an admin retunes them in Access → Roles & Privileges without a deploy | Built |
+| Admin, Lead, Volunteer | `stall_role` / `stall_privilege`, seeded from `SEED_ROLES` in `@stalls/core/rbac.ts`. Roles are DATA — an admin retunes them in Access → Roles & Privileges without a deploy | Built |
 | — | A fourth role, **Finance**, exists because the finance requirement needs one that is not the Lead | Differs — an addition, not a substitution |
 | The local welfare team works inside the application and files on behalf of their traders | A fifth role, **Local Welfare**, scoped to `LOCAL_WELFARE` requests. `scope.ts` narrows every list and guards every request-addressed route, so the role's write access cannot reach a commercial vendor's record | Built |
 

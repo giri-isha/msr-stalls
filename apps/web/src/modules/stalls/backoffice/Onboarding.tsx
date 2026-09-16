@@ -1,5 +1,5 @@
-import type { CouponSummary, OnboardingRow } from '@msr/stalls';
-import { formatInr } from '@msr/stalls';
+import type { CouponSummary, OnboardingRow } from '@stalls/core';
+import { formatInr } from '@stalls/core';
 import { useMemo, useState } from 'react';
 import {
   getOnboarding,
@@ -8,7 +8,7 @@ import {
   setCouponCapacity,
   verifyFssai,
 } from '../api';
-import { ONBOARDING_STEPS } from '@msr/stalls';
+import { ONBOARDING_STEPS } from '@stalls/core';
 import { TYPE_LABEL, TypeBadge } from '../components/StatusPill';
 import { formatDate, formatDateTime, useLoad } from '../hooks';
 import { listOnboarding } from '../api';

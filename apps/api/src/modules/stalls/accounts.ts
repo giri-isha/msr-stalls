@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { StallAccessLink, StallAccessPurpose, StallAccount } from '@prisma/client';
-import { parseContact } from '@msr/stalls';
+import { parseContact } from '@stalls/core';
 import type { Db } from './editions';
 import { UnknownAccessLinkError } from './errors';
 

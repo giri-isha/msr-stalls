@@ -6,7 +6,7 @@ import {
   type ListUsersQuery,
   type ListUsersResponse,
   type SignInState,
-} from '@msr/stalls';
+} from '@stalls/core';
 import type { Db } from './editions';
 
 /**
@@ -26,7 +26,7 @@ import type { Db } from './editions';
  *
  * ⚠️ **What that costs.** Both tables are read WHOLE on every call, so this
  * holds while the directory is thousands of rows, not hundreds of thousands.
- * One MSR edition is a few hundred accounts and a few dozen backoffice members. If an
+ * One edition is a few hundred accounts and a few dozen backoffice members. If an
  * edition ever arrives where that is wrong, the fix is a real paged query per
  * population with the counts computed separately — not a bigger `take`.
  */

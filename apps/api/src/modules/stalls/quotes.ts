@@ -6,13 +6,13 @@ import {
   type ZoneCode,
   payableFeePaise as payableFeePaise_,
   quoteRequest,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { rateCardFor, chargesFor } from './config';
 import type { Db } from './editions';
 
 /** What a selected request costs, computed from the edition's live rate card.
  *
- *  The calculation itself is in `@msr/stalls/quote.ts` and is pure. This file
+ *  The calculation itself is in `@stalls/core/quote.ts` and is pure. This file
  *  is only the part that has to talk to the database: fetch the rate card and
  *  the charge config once, then price many requests against them.
  *

@@ -1,7 +1,7 @@
 // The form definitions: seeding them from the constants, reading them back, and
 // the writes the Form Builder makes.
 //
-// ⚠️ Nothing here decides what a form LOOKS like — `renderForm` in `@msr/stalls`
+// ⚠️ Nothing here decides what a form LOOKS like — `renderForm` in `@stalls/core`
 // groups and orders, and the public page, the Admin preview and the submit
 // validator all call it. This file moves rows.
 import { Prisma } from '@prisma/client';
@@ -29,7 +29,7 @@ import {
   rulesAfterRetype,
   ruleKnobsFor,
   seedFieldFrom,
-} from '@msr/stalls';
+} from '@stalls/core';
 import {
   BadFieldMediaError,
   BadFieldRuleError,
@@ -496,7 +496,7 @@ function ruleColumns(rules: FieldRuleValues) {
  *
  * 🔴 The built-in lock is enforced HERE, not only on the screen. A screen that
  * disables an input is a suggestion; this is what makes it a rule — and the two
- * agree because both read the same functions from `@msr/stalls`.
+ * agree because both read the same functions from `@stalls/core`.
  *
  * ⚠️ What is locked on a built-in is its `name` and the SHAPE of its answer,
  * not its type. Its answer goes into a typed column on `stall_request`, and the

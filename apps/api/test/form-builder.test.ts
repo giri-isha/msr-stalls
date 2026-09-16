@@ -1,7 +1,7 @@
 // The forms, as rows: what gets seeded, what an admin may change, and the one
 // thing having a database underneath makes impossible.
 import type { FastifyInstance } from 'fastify';
-import { NO_RULES, SubmitRequestInput } from '@msr/stalls';
+import { NO_RULES, SubmitRequestInput } from '@stalls/core';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { buildApp } from '../src/app';
 import {
@@ -87,7 +87,7 @@ describe('seeded from the printed forms', () => {
     ]);
     expect(forms.find((f) => f.formType === 'VENDOR')?.title).toBe('Vendor Stall Request Form');
     expect(forms.find((f) => f.formType === 'BANK')?.title).toBe(
-      'MSR Stalls Bank Details and Requirements',
+      'Stall Management Bank Details and Requirements',
     );
   });
 
@@ -333,7 +333,7 @@ describe('deleteFormField', () => {
     const f = await appended('Website');
     const other = await createEdition(
       prisma,
-      { year: 2031, name: 'MSR 2031', activate: false },
+      { year: 2031, name: 'Stalls 2031', activate: false },
       SYSTEM,
     );
     await expect(deleteFormField(prisma, other.id, f.id)).rejects.toBeInstanceOf(

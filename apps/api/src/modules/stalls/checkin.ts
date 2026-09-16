@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import type { CheckInRow } from '@msr/stalls';
+import type { CheckInRow } from '@stalls/core';
 import { recordActivity } from '../../activity';
 import { flowFor } from './config';
 import type { Db } from './editions';
@@ -23,7 +23,7 @@ import { type RequestScope, UNSCOPED, scopeWhere } from './scope';
  *  registered".
  *
  *  The pending list is NOT computed here — it is `pendingSteps` from
- *  `@msr/stalls`, the same function the vendor's own portal and the Onboarding
+ *  `@stalls/core`, the same function the vendor's own portal and the Onboarding
  *  table call. A volunteer at a counter at six in the morning and the vendor
  *  standing in front of them must be looking at the same answer.
  *

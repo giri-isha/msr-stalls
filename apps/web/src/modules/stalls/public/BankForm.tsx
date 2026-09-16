@@ -1,5 +1,5 @@
-import type { BuiltFormField, PresignUploadInput, SubmitBankDetailsInput } from '@msr/stalls';
-import { asFormField, formFields, uploadPurposeFor } from '@msr/stalls';
+import type { BuiltFormField, PresignUploadInput, SubmitBankDetailsInput } from '@stalls/core';
+import { asFormField, formFields, uploadPurposeFor } from '@stalls/core';
 import { useState } from 'react';
 import { useParams } from 'react-router';
 import { fieldErrorsFrom } from '../api-client';
@@ -12,7 +12,7 @@ import { useLoad } from '../hooks';
 import { Btn, Card, ErrorBox, FormField, H1, Icon, Loading, Tag, Textarea, useToast } from '../ui';
 
 /**
- * "MSR Stalls Bank Details and Requirements" — the vendor's own Phase 2 form.
+ * "Stall Management Bank Details and Requirements" — the vendor's own Phase 2 form.
  *
  * Reached only from the link in the selection email. The link is what says
  * which request this is; nothing the browser sends does. That is why there is

@@ -1,5 +1,5 @@
-import type { FieldRuleValues, FormField, PublicConfig, StallRequestType } from '@msr/stalls';
-import { resolveWindow, ruleHintFor, ruleKindOf, todayISO, zoneOptions } from '@msr/stalls';
+import type { FieldRuleValues, FormField, PublicConfig, StallRequestType } from '@stalls/core';
+import { resolveWindow, ruleHintFor, ruleKindOf, todayISO, zoneOptions } from '@stalls/core';
 import { formImageUrl } from '../api';
 import { useState } from 'react';
 import { type ApplianceRow, ApplianceRows } from './ApplianceRows';
@@ -109,7 +109,7 @@ export function FieldControl({
       {f.helpTa && (
         <>
           {' / '}
-          <span className='msrs-tamil' lang='ta'>
+          <span className='stalls-tamil' lang='ta'>
             {f.helpTa}
           </span>
         </>
@@ -329,7 +329,7 @@ function DisplayBlock({ field: f }: { field: FormField }) {
           {f.helpTa && (
             <>
               {' / '}
-              <span className='msrs-tamil' lang='ta'>
+              <span className='stalls-tamil' lang='ta'>
                 {f.helpTa}
               </span>
             </>

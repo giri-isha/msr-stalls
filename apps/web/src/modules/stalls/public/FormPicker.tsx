@@ -1,4 +1,4 @@
-import { FORM_DEFINITIONS, type StallRequestType } from '@msr/stalls';
+import { FORM_DEFINITIONS, type StallRequestType } from '@stalls/core';
 import { Link } from 'react-router';
 import { useRequester } from '../requester';
 import { Btn, card, Card, H1, Icon, Loading } from '../ui';
@@ -148,7 +148,7 @@ function Tile({ type }: { type: StallRequestType }) {
   const b = BLURB[type];
   return (
     <div
-      className='msrs-lift'
+      className='stalls-lift'
       style={{
         ...card,
         padding: 15,
@@ -181,7 +181,7 @@ function Tile({ type }: { type: StallRequestType }) {
         <div style={{ fontSize: 12, color: 'var(--mfg)', marginTop: 3 }}>{b.who}</div>
         {b.whoTa && (
           <div
-            className='msrs-tamil'
+            className='stalls-tamil'
             lang='ta'
             style={{ fontSize: 12, color: 'var(--mfg)', marginTop: 1 }}
           >

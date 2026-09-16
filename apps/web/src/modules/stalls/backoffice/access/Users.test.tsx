@@ -97,8 +97,8 @@ const ZONES = [
   { id: 'z-b2', code: 'B2', name: 'Bay B2' },
 ];
 const EDITIONS = [
-  { id: 'e-2026', year: 2026, name: 'MSR 2026', isActive: true },
-  { id: 'e-2025', year: 2025, name: 'MSR 2025', isActive: false },
+  { id: 'e-2026', year: 2026, name: 'Stalls 2026', isActive: true },
+  { id: 'e-2025', year: 2025, name: 'Stalls 2025', isActive: false },
 ];
 
 /** ⚠️ Extras FIRST. `installFetch` takes the first route that matches, so a

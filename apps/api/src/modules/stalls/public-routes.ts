@@ -56,7 +56,7 @@ import {
   SubmitFssaiInput,
   SubmitRequestInput,
   isPlaceholderEmail,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { prisma } from '../../prisma';
 import type { ZodTypeProvider } from '../../zod-validation';
 import { resolveAccessLink } from './accounts';

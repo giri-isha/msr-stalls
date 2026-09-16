@@ -5,7 +5,7 @@
 // 0018: they are DATA — `StallRole` / `StallRolePrivilege`, editable by an
 // admin without a deploy — and this file is where those rows become an answer.
 //
-// The rules themselves live in `@msr/stalls` and take resolved rows, so they
+// The rules themselves live in `@stalls/core` and take resolved rows, so they
 // stay testable without a database. Nothing here decides anything; it reads.
 import type { PrismaClient } from '@prisma/client';
 import type { FastifyRequest } from 'fastify';
@@ -22,7 +22,7 @@ import {
   unionPrivileges,
   unionRequestTypeScope,
   unionZoneScope,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { getCurrentPerson } from '../../auth';
 import { NotAuthorizedError } from '../../errors';
 import { EditionForbiddenError } from './errors';

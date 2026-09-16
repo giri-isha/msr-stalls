@@ -12,7 +12,7 @@ import {
   needsBankStep,
   needsPaymentStep,
   normalizeCouponCode,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { recordActivity } from '../../activity';
 import type { MediaStore } from '../../storage/media-namespace';
 import { flowFor } from './config';
@@ -26,7 +26,7 @@ import {
   UnknownCouponError,
   UnknownRequestError,
 } from './errors';
-import { DEFAULT_STAFF_COUPON_CAPACITY } from '@msr/stalls';
+import { DEFAULT_STAFF_COUPON_CAPACITY } from '@stalls/core';
 import {
   allocatedNumbers,
   factsInclude,

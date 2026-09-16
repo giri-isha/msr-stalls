@@ -135,7 +135,7 @@ export function StatTiles({
             // by something a screen reader reaches — the same reason `Chip`
             // announces its pressed state.
             aria-pressed={on}
-            className='msrs-lift'
+            className='stalls-lift'
             // ⚠️ The RAW label, never the retitled one: "All" is a filter the
             // server understands and "Total Volunteers" is not.
             onClick={() => onPick(t.label)}

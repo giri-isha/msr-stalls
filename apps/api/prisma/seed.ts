@@ -6,7 +6,7 @@
 // Refuses to run against a database that already has an edition, so it can
 // never double-seed. Pass --force to wipe the stalls tables first.
 import { randomUUID } from 'node:crypto';
-import { SubmitRequestInput, type ZoneCode } from '@msr/stalls';
+import { SubmitRequestInput, type ZoneCode } from '@stalls/core';
 import { LogMailer } from '../src/email';
 import { createUnconfiguredSigner } from '../src/modules/stalls/signer';
 import { createLoggingWhatsAppSender } from '../src/modules/stalls/whatsapp';
@@ -36,7 +36,7 @@ import type { MediaStore } from '../src/storage/media-namespace';
 const SYSTEM = '00000000-0000-0000-0000-000000000000';
 const force = process.argv.includes('--force');
 
-/** The edition this seed builds — MSR 2027, the one a developer starting today
+/** The edition this seed builds — Stalls 2027, the one a developer starting today
  *  is working towards. Everything dated below hangs off it — the payment dates,
  *  the bank references that carry those dates, the prior edition a flag refers
  *  back to — so rolling the seed forward a year is this one number and nothing
@@ -448,7 +448,7 @@ async function main() {
   // Edition + plan
   const edition = await createEdition(
     prisma,
-    { year: EDITION_YEAR, name: `MSR ${EDITION_YEAR}`, activate: true },
+    { year: EDITION_YEAR, name: `Stalls ${EDITION_YEAR}`, activate: true },
     SYSTEM,
   );
   await writePlan(

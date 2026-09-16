@@ -98,7 +98,7 @@ export function DevSignIn({ onSignedIn }: { onSignedIn: () => void }) {
             <button
               key={p.personId}
               type='button'
-              className='msrs-lift'
+              className='stalls-lift'
               disabled={busy !== null}
               onClick={() => signIn(p.email)}
               style={{

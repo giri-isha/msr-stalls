@@ -1,5 +1,5 @@
-import type { PaymentClaimView, PublicPaymentDue } from '@msr/stalls';
-import { formatInr } from '@msr/stalls';
+import type { PaymentClaimView, PublicPaymentDue } from '@stalls/core';
+import { formatInr } from '@stalls/core';
 import { useState } from 'react';
 import { submitPaymentClaim } from '../api';
 import { fieldErrorsFrom } from '../api-client';

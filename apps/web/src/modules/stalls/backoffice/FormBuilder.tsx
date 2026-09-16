@@ -23,7 +23,7 @@ import {
   STALL_FORM_TYPES,
   type StallFormType,
   todayISO,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { useState } from 'react';
 import * as api from '../api';
 import { Panel } from '../components/Panel';
@@ -283,7 +283,7 @@ function FormOutline({
               <>
                 {g.section.heading}
                 {g.section.headingTa && (
-                  <span className='msrs-tamil' lang='ta' style={{ color: 'var(--mfg)' }}>
+                  <span className='stalls-tamil' lang='ta' style={{ color: 'var(--mfg)' }}>
                     {g.section.headingTa}
                   </span>
                 )}
@@ -376,7 +376,7 @@ function FieldRow({
           </div>
         )}
         {field.labelTa && (
-          <div className='msrs-tamil' lang='ta' style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
+          <div className='stalls-tamil' lang='ta' style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
             {field.labelTa}
           </div>
         )}
@@ -603,7 +603,7 @@ function FieldDialog({
         <FormField id='fb-label-ta' label='Tamil (Optional)'>
           <Input
             id='fb-label-ta'
-            className='msrs-tamil'
+            className='stalls-tamil'
             lang='ta'
             value={v.labelTa ?? ''}
             onChange={(e) => setV({ ...v, labelTa: e.target.value })}
@@ -1324,7 +1324,7 @@ function SectionDialog({
         <FormField id='sec-heading-ta' label='Tamil (Optional)'>
           <Input
             id='sec-heading-ta'
-            className='msrs-tamil'
+            className='stalls-tamil'
             lang='ta'
             value={headingTa}
             onChange={(e) => setHeadingTa(e.target.value)}

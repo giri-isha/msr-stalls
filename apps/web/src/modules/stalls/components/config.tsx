@@ -1,4 +1,4 @@
-import { paiseToRupees, rupeesToPaise } from '@msr/stalls';
+import { paiseToRupees, rupeesToPaise } from '@stalls/core';
 import { useEffect, useState } from 'react';
 import type * as api from '../api';
 import { FormField, Input } from '../ui';

@@ -92,4 +92,4 @@ CREATE UNIQUE INDEX "stall_form_field_builtin_name"
 -- The existing appended fields keep working untouched: is_built_in defaults to
 -- false, name stays null, and `definition_id` is backfilled by
 -- `seedFormDefinitions` on the next boot — it needs the definition rows, which
--- are written from the constants in `@msr/stalls` rather than from SQL.
+-- are written from the constants in `@stalls/core` rather than from SQL.

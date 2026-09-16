@@ -96,7 +96,7 @@ describe('GET /public/requests', () => {
       ttlDays: 30,
     });
 
-    expect((await myRequests({ msr_stall_requester: token })).statusCode).toBe(404);
+    expect((await myRequests({ stall_requester: token })).statusCode).toBe(404);
   });
 
   test('shows a requester nothing of anybody else’s', async () => {
@@ -196,7 +196,7 @@ describe('POST /public/requests/continue', () => {
     const res = await openStep(cookies, { reference, step: 'BANK_FORM' });
     const bankToken = res.json().url.split('/').pop();
 
-    expect((await myRequests({ msr_stall_requester: bankToken })).statusCode).toBe(404);
+    expect((await myRequests({ stall_requester: bankToken })).statusCode).toBe(404);
   });
 });
 

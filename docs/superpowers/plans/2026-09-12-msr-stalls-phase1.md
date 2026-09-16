@@ -1,4 +1,4 @@
-# MSR Stalls Phase 1 (Intake & Selection) Implementation Plan
+# Stall Management Phase 1 (Intake & Selection) Implementation Plan
 
 > **DELIVERED.** Phase 1 shipped in commits `f402f6f`…`3b85be5`. The unticked
 > boxes below were never ticked as the work went in; they are not outstanding
@@ -8,7 +8,7 @@
 
 **Goal:** Replace the four MSR stall-request Google Forms and their spreadsheets with a web application covering intake, the request pipeline, zone planning, and stall selection/allocation.
 
-**Architecture:** An npm-workspaces monorepo that mirrors `msr-app-replit` exactly. All domain code lives in `apps/api/src/modules/stalls/`, `apps/web/src/modules/stalls/` and `packages/stalls/` — those three migrate verbatim. Everything else is a Foundation stub that is thrown away at migration, so stubs expose the host's signatures rather than convenient ones. Pure logic goes in `@msr/stalls` where it is testable without a database.
+**Architecture:** An npm-workspaces monorepo that mirrors `msr-app-replit` exactly. All domain code lives in `apps/api/src/modules/stalls/`, `apps/web/src/modules/stalls/` and `packages/stalls/` — those three migrate verbatim. Everything else is a Foundation stub that is thrown away at migration, so stubs expose the host's signatures rather than convenient ones. Pure logic goes in `@stalls/core` where it is testable without a database.
 
 **Tech Stack:** Node 22+, Fastify 5, Prisma 7 (`PrismaPg` adapter), PostgreSQL, Zod 4, React 19, Vite 8, Tailwind 4, react-router 8, vitest 4, biome 2.5.5, dependency-cruiser 18.
 
@@ -18,8 +18,8 @@
 - Dependency versions match `msr-app-replit` exactly. A version drift means the module will not install cleanly in the host.
 - **Money is stored as integer paise.** Never a float, never a decimal string. Column names end in `Paise`.
 - All Prisma models and enums are prefixed `Stall` — they merge into the host's 2,500-line `schema.prisma` without collision.
-- `apps/api/src/modules/stalls/` may import only: its own folder, `@msr/stalls`, node_modules, and `../../{auth,prisma,errors,zod-validation,activity}` / `../../storage/media-namespace`. Enforced by `npm run lint:boundaries`.
-- `apps/web/src/modules/stalls/` may import only: its own folder, `@msr/stalls`, node_modules, `../../components/`, `../../lib/`.
+- `apps/api/src/modules/stalls/` may import only: its own folder, `@stalls/core`, node_modules, and `../../{auth,prisma,errors,zod-validation,activity}` / `../../storage/media-namespace`. Enforced by `npm run lint:boundaries`.
+- `apps/web/src/modules/stalls/` may import only: its own folder, `@stalls/core`, node_modules, `../../components/`, `../../lib/`.
 - Staff API mounts at `/api/m/stalls/*`. Public API mounts at `/api/m/stalls/public/*` and lives **only** in `public-routes.ts`.
 - Public form labels carry English and Tamil. Staff screens are English.
 - Handlers stay thin: authenticate → call a domain seam → map a domain error to a status. No Prisma calls in a route handler body.
@@ -29,7 +29,7 @@
 
 ## File Structure
 
-### `packages/stalls/` — `@msr/stalls`, pure logic, no I/O
+### `packages/stalls/` — `@stalls/core`, pure logic, no I/O
 
 | File | Responsibility |
 |---|---|
@@ -82,11 +82,11 @@
 
 - [ ] **Step 1: Create the package manifest**
 
-`packages/stalls/package.json` — copy `@msr/volunteering`'s shape exactly:
+`packages/stalls/package.json` — copy `@stalls/volunteering`'s shape exactly:
 
 ```json
 {
-  "name": "@msr/stalls",
+  "name": "@stalls/core",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -205,7 +205,7 @@ Expected: PASS, 4 tests
 
 ```bash
 git add packages/stalls
-git commit -m "feat: @msr/stalls package with request reference numbers"
+git commit -m "feat: @stalls/core package with request reference numbers"
 ```
 
 ---
@@ -1064,7 +1064,7 @@ git commit -m "feat: the four 2025 form definitions with bilingual labels"
 **Interfaces:**
 - Produces: `SubmitRequestInput` (Zod schema + inferred type), `PublicConfigResponse`, `RequestSummary`, `RequestDetail`, `SelectRequestInput`, `ZonePlanInput`
 
-**Context:** These are the shapes that cross the network, shared by api and web so a rename breaks the build rather than production. Host convention: `@msr/shared` publishes wire contracts; `@msr/volunteering` does the same for one module. This is that, for stalls.
+**Context:** These are the shapes that cross the network, shared by api and web so a rename breaks the build rather than production. Host convention: `@stalls/shared` publishes wire contracts; `@stalls/volunteering` does the same for one module. This is that, for stalls.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1219,7 +1219,7 @@ git commit -m "feat: shared wire contracts for the stalls module"
 
 - [ ] **Step 1: Write the manifest and configs**
 
-`apps/api/package.json` dependencies pinned to the host's: `fastify@^5.12.3`, `@fastify/cookie@^11.1.2`, `@fastify/cors@^10.0.2`, `@fastify/helmet@^13.1.1`, `@fastify/rate-limit@^11.2.0`, `@prisma/client@^7.8.0`, `@prisma/adapter-pg@^7.8.0`, `zod@^4.5.4`, `dotenv@^16.4.7`, `pino-pretty@^13.1.3`, `@msr/stalls@*`; dev: `prisma@^7.8.0`, `tsx@^4.23.0`, `typescript@^7.0.2`, `vitest@^4.1.10`, `@types/node@^26.1.1`.
+`apps/api/package.json` dependencies pinned to the host's: `fastify@^5.12.3`, `@fastify/cookie@^11.1.2`, `@fastify/cors@^10.0.2`, `@fastify/helmet@^13.1.1`, `@fastify/rate-limit@^11.2.0`, `@prisma/client@^7.8.0`, `@prisma/adapter-pg@^7.8.0`, `zod@^4.5.4`, `dotenv@^16.4.7`, `pino-pretty@^13.1.3`, `@stalls/core@*`; dev: `prisma@^7.8.0`, `tsx@^4.23.0`, `typescript@^7.0.2`, `vitest@^4.1.10`, `@types/node@^26.1.1`.
 
 Scripts: `dev`, `start`, `typecheck`, `test`, `db:generate`, `db:migrate`, `db:deploy`, `db:test:deploy`, `db:seed`, `dev:signin`.
 
@@ -1283,7 +1283,7 @@ Expected: FAIL — cannot resolve `../src/app`
 
 - [ ] **Step 6: Run and watch it pass**
 
-Run: `createdb msr_stalls_dev && createdb msr_stalls_test` then `npm run db:migrate --workspace=apps/api` and `npm test --workspace=apps/api`
+Run: `createdb msr_stalls_dev && createdb stalls_test` then `npm run db:migrate --workspace=apps/api` and `npm test --workspace=apps/api`
 Expected: PASS
 
 - [ ] **Step 7: Commit**
@@ -1431,7 +1431,7 @@ Filters: `requestType`, `status`, `stage`, `zoneCode`, free-text `q` across stal
 - Modify: `apps/api/src/modules/stalls/routes.ts`
 
 **Interfaces:**
-- Consumes: `suggestStallCount`, `planTotals`, `generateStallNumbers` from `@msr/stalls`
+- Consumes: `suggestStallCount`, `planTotals`, `generateStallNumbers` from `@stalls/core`
 - Produces: `readPlan(db, editionId)`, `writePlan(db, editionId, rows, by)`, `applyPlan(db, editionId, by)`
 - Routes: `GET /api/m/stalls/planning`, `PUT /api/m/stalls/planning`, `POST /api/m/stalls/planning/apply`
 
@@ -1499,7 +1499,7 @@ Routes for zones, rate card, charge config, fine types, custom fields, flow togg
 - Create: `apps/web/src/lib/{cn,api-client}.ts`, `src/components/ui/*` (button, input, select, checkbox, table, dialog, badge, card — shadcn, same as host)
 - Create: `apps/web/src/index.css` (Tailwind 4)
 
-Dependencies pinned to the host's: `react@^19.2.0`, `react-dom@^19.2.0`, `react-router@^8.2.0`, `tailwindcss@^4.3.2`, `@tailwindcss/vite@^4.3.2`, `lucide-react`, `clsx`, `tailwind-merge`, `class-variance-authority`, `sonner`, `@msr/stalls@*`; dev: `vite@^8.1.4`, `@vitejs/plugin-react@^6.0.3`, `vitest@^4.1.10`, `@testing-library/react@^16.3.2`, `jsdom@^30.0.0`.
+Dependencies pinned to the host's: `react@^19.2.0`, `react-dom@^19.2.0`, `react-router@^8.2.0`, `tailwindcss@^4.3.2`, `@tailwindcss/vite@^4.3.2`, `lucide-react`, `clsx`, `tailwind-merge`, `class-variance-authority`, `sonner`, `@stalls/core@*`; dev: `vite@^8.1.4`, `@vitejs/plugin-react@^6.0.3`, `vitest@^4.1.10`, `@testing-library/react@^16.3.2`, `jsdom@^30.0.0`.
 
 Vite proxies `/api` to `http://localhost:3000`.
 

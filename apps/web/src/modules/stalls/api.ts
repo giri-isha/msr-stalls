@@ -84,7 +84,7 @@ import type {
   PaymentClaimsResponse,
   ReviewPaymentClaimInput,
   SubmitPaymentClaimInput,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { apiFetch } from './api-client';
 
 /** Typed client for every stalls endpoint. One place for paths, so a route

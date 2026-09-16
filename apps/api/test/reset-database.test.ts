@@ -54,7 +54,7 @@ test('says who is holding the database rather than "deadlock detected"', async (
     expect(err).toBeInstanceOf(Error);
     expect((err as Error).message).toMatch(/another connection is holding/i);
     // It names the database, so a reader knows which one to go looking for.
-    expect((err as Error).message).toMatch(/msr_stalls_test/);
+    expect((err as Error).message).toMatch(/stalls_test/);
   } finally {
     release();
     await lock;

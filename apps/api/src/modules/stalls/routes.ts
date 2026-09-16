@@ -60,7 +60,7 @@ import {
   ZoneCodeValue,
   ZoneInput,
   ZonePlanInput,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { prisma } from '../../prisma';
 import type { ZodTypeProvider } from '../../zod-validation';
 import * as checkin from './checkin';

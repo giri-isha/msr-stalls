@@ -1,4 +1,4 @@
-import { SEED_ROLES, STALL_PRIVILEGES } from '@msr/stalls';
+import { SEED_ROLES, STALL_PRIVILEGES } from '@stalls/core';
 import { render } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { type RouteObject, RouterProvider, createMemoryRouter } from 'react-router';
@@ -94,7 +94,7 @@ export const ME_LEAD = {
 };
 
 export const PUBLIC_CONFIG = {
-  edition: { year: 2026, name: 'MSR 2026' },
+  edition: { year: 2026, name: 'Stalls 2026' },
   zones: [
     {
       code: 'A3',
@@ -483,7 +483,7 @@ export const BACKOFFICE_CONFIG = {
   edition: {
     id: 'e1',
     year: 2026,
-    name: 'MSR 2026',
+    name: 'Stalls 2026',
     isActive: true,
     virtualAccountRentPrefix: null,
     virtualAccountDepositPrefix: null,
@@ -563,8 +563,8 @@ const EDITION_SETTINGS = {
   termsUrl: null,
 };
 export const EDITIONS = [
-  { id: 'e1', year: 2026, name: 'MSR 2026', isActive: true, ...EDITION_SETTINGS },
-  { id: 'e0', year: 2025, name: 'MSR 2025', isActive: false, ...EDITION_SETTINGS },
+  { id: 'e1', year: 2026, name: 'Stalls 2026', isActive: true, ...EDITION_SETTINGS },
+  { id: 'e0', year: 2025, name: 'Stalls 2025', isActive: false, ...EDITION_SETTINGS },
 ];
 
 /** Last year's configuration, which is what `/config?editionId=e0` answers. */
@@ -574,7 +574,7 @@ export const PAST_CONFIG = {
     ...BACKOFFICE_CONFIG.edition,
     id: 'e0',
     year: 2025,
-    name: 'MSR 2025',
+    name: 'Stalls 2025',
     isActive: false,
   },
   zones: BACKOFFICE_CONFIG.zones.map((z) =>

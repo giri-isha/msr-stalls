@@ -4,7 +4,7 @@ import {
   type UpdateAccountInput,
   isPlaceholderEmail,
   parseContact,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { recordActivity } from '../../activity';
 import { normalizeEmail } from './accounts';
 import { clearLockout, setAccountPassword } from './credentials';

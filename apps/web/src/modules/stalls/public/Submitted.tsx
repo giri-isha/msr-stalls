@@ -73,7 +73,7 @@ export function Submitted() {
             a reader who navigates by links. */}
         <Link
           to='/stalls/requests'
-          className='msrs-lift'
+          className='stalls-lift'
           style={{
             display: 'flex',
             alignItems: 'center',

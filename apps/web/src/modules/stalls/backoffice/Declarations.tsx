@@ -5,7 +5,7 @@ import {
   declarationPreview,
   isDeclarationKey,
   needsNewVersion,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { useMemo, useState } from 'react';
 import * as api from '../api';
 import { DeclarationText } from '../components/DeclarationText';
@@ -431,7 +431,7 @@ function DeclarationDialog({
         <FormField id='dec-body-ta' label='Tamil (Optional)'>
           <Textarea
             id='dec-body-ta'
-            className='msrs-tamil'
+            className='stalls-tamil'
             lang='ta'
             rows={5}
             value={v.bodyTa ?? ''}
@@ -465,7 +465,7 @@ function DeclarationDialog({
             >
               <DeclarationText body={v.body} />
               {v.bodyTa?.trim() && (
-                <div className='msrs-tamil' lang='ta' style={{ marginTop: 7 }}>
+                <div className='stalls-tamil' lang='ta' style={{ marginTop: 7 }}>
                   <DeclarationText body={v.bodyTa} />
                 </div>
               )}

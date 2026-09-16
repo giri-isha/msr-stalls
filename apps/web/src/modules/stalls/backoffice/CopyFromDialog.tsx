@@ -1,4 +1,4 @@
-import { COPY_SECTION_LABELS, type CopyPlan, type CopyRow, type CopySection } from '@msr/stalls';
+import { COPY_SECTION_LABELS, type CopyPlan, type CopyRow, type CopySection } from '@stalls/core';
 import { useState } from 'react';
 import * as api from '../api';
 import { useLoad } from '../hooks';

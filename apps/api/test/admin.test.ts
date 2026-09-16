@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { StallEdition } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
-import { type RateCardEntry, SubmitRequestInput } from '@msr/stalls';
+import { type RateCardEntry, SubmitRequestInput } from '@stalls/core';
 import { buildApp } from '../src/app';
 import { seedRbac } from '../src/modules/stalls/seed-rbac';
 import { planCategoriesFor, rateCardFor } from '../src/modules/stalls/config';
@@ -476,7 +476,7 @@ describe('editions', () => {
       method: 'POST',
       url: '/api/m/stalls/editions',
       headers: admin.headers,
-      payload: { year: 2027, name: 'MSR 2027', activate: true },
+      payload: { year: 2027, name: 'Stalls 2027', activate: true },
     });
     expect(res.statusCode).toBe(201);
     const pub = await app.inject({ method: 'GET', url: '/api/m/stalls/public/config' });
@@ -621,9 +621,9 @@ describe('the edition’s own settings', () => {
       url: `/api/m/stalls/editions/${edition.id}/settings`,
       headers: admin.headers,
       payload: {
-        name: 'Maha Shivratri 2026',
-        virtualAccountRentPrefix: 'MSRRENT',
-        virtualAccountDepositPrefix: 'MSRDEP',
+        name: 'Renamed Edition 2026',
+        virtualAccountRentPrefix: 'STALLRENT',
+        virtualAccountDepositPrefix: 'STALLDEP',
         maxStallsPerRequest: 2,
       },
     });
@@ -633,7 +633,7 @@ describe('the edition’s own settings', () => {
     // against a requester.
     const pub = await app.inject({ method: 'GET', url: '/api/m/stalls/public/config' });
     expect(pub.json().maxStallsPerRequest).toBe(2);
-    expect(pub.json().edition.name).toBe('Maha Shivratri 2026');
+    expect(pub.json().edition.name).toBe('Renamed Edition 2026');
   });
 
   test('the edition’s terms document is set here and reaches the form that asks for consent', async () => {
@@ -643,7 +643,7 @@ describe('the edition’s own settings', () => {
         url: `/api/m/stalls/editions/${edition.id}/settings`,
         headers: admin.headers,
         payload: {
-          name: 'MSR 2026',
+          name: 'Stalls 2026',
           virtualAccountRentPrefix: null,
           virtualAccountDepositPrefix: null,
           maxStallsPerRequest: 2,
@@ -671,7 +671,7 @@ describe('the edition’s own settings', () => {
       url: `/api/m/stalls/editions/${edition.id}/settings`,
       headers: admin.headers,
       payload: {
-        name: 'MSR 2026',
+        name: 'Stalls 2026',
         virtualAccountRentPrefix: null,
         virtualAccountDepositPrefix: null,
         maxStallsPerRequest: 2,

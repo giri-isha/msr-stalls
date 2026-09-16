@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { PresignUploadInput, PresignUploadResponse } from '@msr/stalls';
+import type { PresignUploadInput, PresignUploadResponse } from '@stalls/core';
 import type { MediaStore } from '../../storage/media-namespace';
 import { UploadsUnavailableError } from './errors';
 

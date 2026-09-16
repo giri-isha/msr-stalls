@@ -1,4 +1,4 @@
-import { formatInr, paiseToRupees, rupeesToPaise } from '@msr/stalls';
+import { formatInr, paiseToRupees, rupeesToPaise } from '@stalls/core';
 import { useState } from 'react';
 import * as api from '../../api';
 import type { PanelProps } from '../../components/config';

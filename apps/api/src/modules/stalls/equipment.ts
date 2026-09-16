@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient, StallEquipmentIssue } from '@prisma/client';
-import type { ChallanView, EquipmentAction, EquipmentPatch, EquipmentRow } from '@msr/stalls';
-import { equipmentDeduction } from '@msr/stalls';
+import type { ChallanView, EquipmentAction, EquipmentPatch, EquipmentRow } from '@stalls/core';
+import { equipmentDeduction } from '@stalls/core';
 import { recordActivity } from '../../activity';
 import { chargesFor } from './config';
 import type { Db } from './editions';

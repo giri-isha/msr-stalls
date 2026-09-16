@@ -5,7 +5,7 @@ import {
   type Contact,
   type RegisterInput,
   parseContact,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { findAccountByContact, mintAccessLink, resolveAccessLink } from './accounts';
 import { createCredential, setPassword } from './credentials';
 import type { StallsDeps } from './deps';
@@ -38,7 +38,7 @@ type SendDeps = Pick<StallsDeps, 'mail' | 'whatsapp' | 'passwordResetUrl'>;
 
 /** Nothing sends to a placeholder address: delivery is chosen by the
  *  credential's `loginKind`, not by this column. The domain itself lives in
- *  `@msr/stalls` because the Users screen needs it too — see there. */
+ *  `@stalls/core` because the Users screen needs it too — see there. */
 function placeholderEmail(mobile: string): string {
   return `mobile+${mobile}@${PLACEHOLDER_EMAIL_DOMAIN}`;
 }

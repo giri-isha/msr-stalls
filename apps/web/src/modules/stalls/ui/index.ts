@@ -86,5 +86,6 @@ export { MultiSelect } from './components/MultiSelect';
 export { DateField } from './components/DatePicker';
 export { StatTiles } from './components/StatTiles';
 export { TBody, TD, TH, THead, TR, Table } from './components/Table';
+export { Tabs, type TabDef } from './components/Tabs';
 export { ViewToggle } from './components/ViewToggle';
 export { ToastProvider, useToast } from './components/Toast';

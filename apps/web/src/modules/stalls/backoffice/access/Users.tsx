@@ -8,7 +8,7 @@ import {
   type RoleSummary,
   MIN_PASSWORD_LENGTH,
   isPlaceholderEmail,
-} from '@msr/stalls';
+} from '@stalls/core';
 import * as api from '../../api';
 import { Panel } from '../../components/Panel';
 import { useDebounced, useLoad } from '../../hooks';

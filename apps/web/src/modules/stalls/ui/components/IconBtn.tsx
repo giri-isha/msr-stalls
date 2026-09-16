@@ -50,7 +50,7 @@ export function IconBtn({
       title={label}
       disabled={disabled}
       // Conditional: a disabled control must not answer the pointer.
-      className={disabled ? undefined : 'msrs-icon-btn'}
+      className={disabled ? undefined : 'stalls-icon-btn'}
       onClick={(e) => {
         // ⚠️ These sit inside rows that are themselves clickable, so without
         // this, deleting a thing also navigates to it.

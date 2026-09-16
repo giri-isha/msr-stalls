@@ -11,7 +11,7 @@ import {
   type FieldType,
   isBlankAnswer,
   todayISO,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { ValidationFailedError } from '../../errors';
 
 type Db = PrismaClient | Prisma.TransactionClient;

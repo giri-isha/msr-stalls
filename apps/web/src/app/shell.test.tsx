@@ -82,7 +82,7 @@ describe('the backoffice shell', () => {
     expect(within(nav).getByTitle('Dashboard')).toBeInTheDocument();
     expect(within(nav).getByTitle('All Requests')).toBeInTheDocument();
     // The crumb names the group and the title the route.
-    expect(await screen.findByText('Maha Shivratri · MSR Stalls Program')).toBeInTheDocument();
+    expect(await screen.findByText('Requests, selection and operations')).toBeInTheDocument();
   });
 
   test('hides the nav items the caller has no action for', async () => {

@@ -17,7 +17,7 @@ import {
   type ReviewPaymentClaimInput,
   type SubmitPaymentClaimInput,
   payableFeePaise,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { recordActivity } from '../../activity';
 import type { Db } from './editions';
 import {

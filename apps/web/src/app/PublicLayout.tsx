@@ -91,7 +91,7 @@ function PublicChrome() {
                     letterSpacing: '-.2px',
                   }}
                 >
-                  Maha Shivratri — Stalls
+                  Stalls
                 </span>
                 <span style={{ display: 'block', fontSize: 10.5, color: 'var(--mfg)' }}>
                   Isha Stall Team

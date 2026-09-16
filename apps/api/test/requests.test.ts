@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
-import { SubmitRequestInput } from '@msr/stalls';
+import { SubmitRequestInput } from '@stalls/core';
 import { buildApp } from '../src/app';
 import { shortlist } from '../src/modules/stalls/selection';
 import { submitRequest } from '../src/modules/stalls/submit';

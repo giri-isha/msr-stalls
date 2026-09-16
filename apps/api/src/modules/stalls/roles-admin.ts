@@ -1,7 +1,7 @@
 // Authoring roles — the half of ADR 0018 that makes "no deploy" real.
 //
 // The privilege VOCABULARY stays developer-defined (`PRIVILEGE_CATEGORIES` in
-// `@msr/stalls`, seeded by `seed-rbac.ts`). What happens here is composition:
+// `@stalls/core`, seeded by `seed-rbac.ts`). What happens here is composition:
 // which privileges a role bundles, where it sits in the hierarchy, and which
 // requester types it reaches.
 //
@@ -16,7 +16,7 @@ import {
   type SaveRoleInput,
   assignableRoleKeys,
   cannotAssign,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { recordActivity } from '../../activity';
 import {
   PrivilegeEscalationError,

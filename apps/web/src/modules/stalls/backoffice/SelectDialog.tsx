@@ -1,4 +1,4 @@
-import type { AvailableStall, RequestDetail } from '@msr/stalls';
+import type { AvailableStall, RequestDetail } from '@stalls/core';
 import { useMemo, useState } from 'react';
 import { ApiError } from '../api-client';
 import { availableStalls, listZones, select } from '../api';

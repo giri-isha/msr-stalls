@@ -1,4 +1,4 @@
-import type { StallRequestType } from '@msr/stalls';
+import type { StallRequestType } from '@stalls/core';
 import type { RouteObject } from 'react-router';
 import { RequestForm } from './RequestForm';
 

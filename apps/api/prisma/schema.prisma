@@ -1,4 +1,4 @@
-// MSR Stalls — Phase 1 data model.
+// Stall Management — Phase 1 data model.
 //
 // Everything the module owns lives in the `stalls` Postgres schema and every
 // model is prefixed `Stall`, following the host's multiSchema convention (its
@@ -219,7 +219,7 @@ enum StallAshramUsage {
 
 // ── Configuration ───────────────────────────────────────────────────────────
 
-/// One MSR. Everything hangs off an edition so 2027 does not reuse 2026's data.
+/// One edition. Everything hangs off an edition so 2027 does not reuse 2026's data.
 model StallEdition {
   id        String   @id @default(uuid()) @db.Uuid
   year      Int      @unique
@@ -658,7 +658,7 @@ model StallFormField {
   /// a number, the DIGIT count for a telephone number, and HOW MANY for a file
   /// or appliance list. One pair of columns, because they were one pair before
   /// the rest of this landed and the type already says which reading applies —
-  /// `ruleKindOf` in `@msr/stalls` is what every reader goes through.
+  /// `ruleKindOf` in `@stalls/core` is what every reader goes through.
   min         Int?
   max         Int?
   /// text — the shortest and longest the answer may be.
@@ -784,14 +784,14 @@ model StallAccessLink {
 // role MEANS is data, so an admin retunes it without a deploy.
 //
 // The split that matters: the privilege vocabulary is developer-defined and
-// seeded from `@msr/stalls`, because a privilege means nothing unless a route
+// seeded from `@stalls/core`, because a privilege means nothing unless a route
 // enforces it. Only the BUNDLING of privileges into roles is authored.
 
 /// One thing a person can be allowed to do, named after what they DO rather
 /// than after a screen — screens get renamed and merged, "may confirm a
 /// payment" does not.
 ///
-/// Seeded from `PRIVILEGE_CATEGORIES` in `@msr/stalls` and never written by the
+/// Seeded from `PRIVILEGE_CATEGORIES` in `@stalls/core` and never written by the
 /// application. `isActive` retires one without deleting it, so a role that
 /// still bundles it keeps resolving.
 model StallPrivilege {

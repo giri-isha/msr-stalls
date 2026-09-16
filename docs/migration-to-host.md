@@ -9,7 +9,7 @@ a one-line registration — none is a port.
 
 | From (this repo) | To (host) | Notes |
 |---|---|---|
-| `packages/stalls/` | `packages/stalls/` | Becomes `@msr/stalls`, next to `@msr/volunteering`. Add to root `workspaces` if not globbed. |
+| `packages/stalls/` | `packages/stalls/` | Becomes `@stalls/core`, next to `@stalls/volunteering`. Add to root `workspaces` if not globbed. |
 | `apps/api/src/modules/stalls/` | `apps/api/src/modules/stalls/` | Verbatim. Every import outside the folder resolves to a host file with the same path and signature. |
 | `apps/web/src/modules/stalls/` | `apps/web/src/modules/stalls/` | Verbatim. Imports only `../../components/ui/*` and `../../lib/*`, which the host has. |
 | `apps/api/prisma/schema.prisma` — the `stalls` section only | appended to host `schema.prisma` | Add `"stalls"` to the datasource `schemas` list. Do **not** copy the `foundation` models — they are stubs for the host's real `Person` and activity trail. `StallCredential` and `StallLoginKind` belong to the temporary password login and are dropped when SSO lands — see step 3b. |
@@ -148,4 +148,4 @@ a one-line registration — none is a port.
   ⚠️ **Confirm the host wants this module writing its directory before you keep it.** The alternative is to drop the Add-user staging arm and the backoffice half of the Edit dialog, and send admins to the Admin Console's own People screen — everything else on the Users screen stands either way. What the concession buys is that a desk can put a new coordinator into the directory and give them a role in one errand, rather than waiting on somebody with console access.
 - **`recordActivity`.** The stub writes to `activity_trail`. The host's `recordActivity` takes the same `ActivityEvent` shape; if its field names differ, the adaptation is inside the host's function, not in the module.
 - **Media namespace.** Every key the module mints begins `stalls/`. Construct the host's `MediaStore` for this module with that namespace, or `keyWithinNamespace` refuses every upload — loudly, which is the intended failure.
-- **Print stylesheets.** `Electrical.tsx` and the chairs-and-tables challan inject `@media print` rules that hide `nav`, `header` and `aside`. If the host's shell uses different landmark elements for its chrome, add its selector to the `.msrs-noprint` list in those two files — a stray sidebar on an A4 sheet is the only thing that breaks.
+- **Print stylesheets.** `Electrical.tsx` and the chairs-and-tables challan inject `@media print` rules that hide `nav`, `header` and `aside`. If the host's shell uses different landmark elements for its chrome, add its selector to the `.stalls-noprint` list in those two files — a stray sidebar on an A4 sheet is the only thing that breaks.

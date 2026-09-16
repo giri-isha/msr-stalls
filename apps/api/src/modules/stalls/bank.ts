@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import type { BankFormView, SubmitBankDetailsInput } from '@msr/stalls';
+import type { BankFormView, SubmitBankDetailsInput } from '@stalls/core';
 import { recordActivity } from '../../activity';
 import { flowFor } from './config';
 import { declarationsForForm, recordConsent, sameDeclarations } from './declarations';

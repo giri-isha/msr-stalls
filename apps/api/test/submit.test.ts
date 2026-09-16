@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'vitest';
-import { SubmitRequestInput } from '@msr/stalls';
+import { SubmitRequestInput } from '@stalls/core';
 import { submitRequest } from '../src/modules/stalls/submit';
 import {
   accountFor,

@@ -1,11 +1,11 @@
-// The module's outer box, and where `.msrs` goes for everything inside a route.
+// The module's outer box, and where `.stalls` goes for everything inside a route.
 //
 // ── PROVENANCE ──
 // This whole `ui/` folder is the MSR Volunteering module's design system,
 // copied across so the two modules read as one product. The files are
-// near-verbatim; what changed is the token SCOPE — `.msrv` became `.msrs`, and
-// the utility classes and keyframes with it (`msrs-lift`, `msrs-icon-btn`,
-// `msrs-shimmer`, `@keyframes msrs-*`).
+// near-verbatim; what changed is the token SCOPE — `.msrv` became `.stalls`, and
+// the utility classes and keyframes with it (`stalls-lift`, `stalls-icon-btn`,
+// `stalls-shimmer`, `@keyframes stalls-*`).
 //
 // ⚠️ The rename is not cosmetic. Both modules are destined for the same host
 // shell, and two sheets declaring the same class on `:root`-adjacent selectors
@@ -14,7 +14,7 @@
 // that is the change to make — not a second copy under a third name.
 //
 // ⚠️ It is NOT the only place the class is applied, and the exception is worth
-// knowing: `components/Toast.tsx` puts `msrs` on its own host too, because that
+// knowing: `components/Toast.tsx` puts `stalls` on its own host too, because that
 // host is mounted above the router (so a confirmation outlives its screen) and
 // therefore renders OUTSIDE this element. The rule is the general one — anything
 // this module renders outside the route tree has to carry the token scope with
@@ -43,7 +43,7 @@ import './tokens.css';
 export function Frame({ children }: { children: ReactNode }) {
   return (
     <div
-      className='msrs'
+      className='stalls'
       style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}
     >
       {children}

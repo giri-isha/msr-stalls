@@ -1,4 +1,4 @@
-import { PUBLIC_FORM_TYPES, isLockedRequired } from '@msr/stalls';
+import { PUBLIC_FORM_TYPES, isLockedRequired } from '@stalls/core';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { formsFor, updateFormField } from '../src/modules/stalls/form-builder';
 import { StructuralFieldLockedError } from '../src/modules/stalls/errors';

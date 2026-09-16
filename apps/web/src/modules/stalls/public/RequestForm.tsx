@@ -14,7 +14,7 @@ import {
   type StallRequestType,
   SubmitRequestInput,
   validateAgainstForm,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router';
 import { ApiError, fieldErrorsFrom } from '../api-client';
@@ -268,7 +268,7 @@ function SectionHeading({
     <div style={{ gridColumn: '1 / -1', marginTop: 4 }}>
       <div style={{ fontSize: 14, fontWeight: 700 }}>{section.heading}</div>
       {section.headingTa && (
-        <div className='msrs-tamil' lang='ta' style={{ fontSize: 12.5, color: 'var(--mfg)' }}>
+        <div className='stalls-tamil' lang='ta' style={{ fontSize: 12.5, color: 'var(--mfg)' }}>
           {section.headingTa}
         </div>
       )}
@@ -612,7 +612,7 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
           <button
             type='submit'
             disabled={submitting || !consented}
-            className={submitting || !consented ? undefined : 'msrs-lift'}
+            className={submitting || !consented ? undefined : 'stalls-lift'}
             style={{
               display: 'inline-flex',
               alignItems: 'center',

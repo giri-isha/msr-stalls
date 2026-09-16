@@ -42,15 +42,15 @@ describe('edition settings', () => {
     render();
     const user = userEvent.setup();
 
-    await openEdition(user, 'MSR 2026');
-    await user.type(screen.getByLabelText('Virtual Account Prefix — Rent'), 'MSRRENT');
+    await openEdition(user, 'Stalls 2026');
+    await user.type(screen.getByLabelText('Virtual Account Prefix — Rent'), 'STALLRENT');
     await user.click(screen.getByRole('button', { name: /^save$/i }));
 
     await waitFor(() => {
       const call = fetch.calls.find((c) => c.method === 'PATCH');
       expect(call?.body).toMatchObject({
-        name: 'MSR 2026',
-        virtualAccountRentPrefix: 'MSRRENT',
+        name: 'Stalls 2026',
+        virtualAccountRentPrefix: 'STALLRENT',
         // Never issued, and sent as null rather than an empty string — the API
         // reads null as "Finance has not issued one for this edition".
         virtualAccountDepositPrefix: null,
@@ -67,7 +67,7 @@ describe('edition settings', () => {
     render();
     const user = userEvent.setup();
 
-    await openEdition(user, 'MSR 2025');
+    await openEdition(user, 'Stalls 2025');
     await user.type(screen.getByLabelText('Virtual Account Prefix — Rent'), 'OLD');
     await user.click(screen.getByRole('button', { name: /^save$/i }));
 

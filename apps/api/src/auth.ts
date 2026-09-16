@@ -13,7 +13,7 @@ import type { Person, PrismaClient } from '@prisma/client';
 
 /** The cookie name the host uses, so the web shell's dev sign-in sets the same
  *  cookie the host's SSO callback would. */
-export const SESSION_COOKIE = 'msr_session';
+export const SESSION_COOKIE = 'stalls_session';
 
 function bearerToken(req: FastifyRequest): string | null {
   const header = req.headers.authorization;

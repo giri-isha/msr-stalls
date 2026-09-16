@@ -67,7 +67,7 @@ export async function buildApp(opts: BuildOptions = {}): Promise<FastifyInstance
   const files =
     opts.files ?? (mediaDir ? new DiskMediaStore(mediaDir, 'stalls/', DEV_MEDIA_ROUTE) : noStore);
 
-  app.get('/health', async () => ({ status: 'ok', service: 'msr-stalls-api' }));
+  app.get('/health', async () => ({ status: 'ok', service: 'stalls-api' }));
 
   // ── Dev sign-in (the shell's stand-in for Isha SSO) ───────────────────────
   // Off outside development. In the host, sign-in is the OIDC handshake and

@@ -1,5 +1,5 @@
 import { Prisma, type PrismaClient, type StallRequestStatus } from '@prisma/client';
-import { parseStallNumber } from '@msr/stalls';
+import { parseStallNumber } from '@stalls/core';
 import { recordActivity } from '../../activity';
 import {
   InvalidTransitionError,

@@ -1,4 +1,4 @@
-import type { OnboardingDetail, RequestDetail as Detail } from '@msr/stalls';
+import type { OnboardingDetail, RequestDetail as Detail } from '@stalls/core';
 import { useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { ApiError } from '../api-client';
@@ -23,6 +23,8 @@ import {
   THead,
   TR,
   Table,
+  Tabs,
+  type TabDef,
   Textarea,
   toolBtnStyle,
   useEscape,
@@ -144,17 +146,18 @@ export function RequestDetail() {
    * one says the vendor was asked and has not answered. Collapsing them would
    * make a chased vendor look identical to one nobody has to chase.
    */
-  const tabs: Array<[string, string, string]> = [['application', 'Application', 'clipboard-list']];
+  const tabs: TabDef[] = [{ key: 'application', label: 'Application', glyph: 'clipboard-list' }];
   if (forms && forms.bankDetails !== 'NOT_APPLICABLE')
-    tabs.push(['bank', 'Bank Form', 'file-text']);
-  if (forms && forms.fssai !== 'NOT_APPLICABLE') tabs.push(['fssai', 'FSSAI', 'shield']);
+    tabs.push({ key: 'bank', label: 'Bank Form', glyph: 'file-text' });
+  if (forms && forms.fssai !== 'NOT_APPLICABLE')
+    tabs.push({ key: 'fssai', label: 'FSSAI', glyph: 'shield' });
   if (forms && (forms.staffExpected > 0 || forms.staff.length > 0)) {
-    tabs.push(['staff', 'Staff', 'users']);
+    tabs.push({ key: 'staff', label: 'Staff', glyph: 'users' });
   }
-  if (tabs.length > 1) tabs.push(['all', 'All Details', 'list-view']);
+  if (tabs.length > 1) tabs.push({ key: 'all', label: 'All Details', glyph: 'list-view' });
   // A tab can vanish under the reader — the forms arrive a moment after the
   // application, and an amendment can take a stall out of the food category.
-  const active = tabs.some(([k]) => k === tab) ? tab : 'application';
+  const active = tabs.some((t) => t.key === tab) ? tab : 'application';
 
   return (
     <section aria-label='Request Detail'>
@@ -312,28 +315,8 @@ export function RequestDetail() {
             <Allocations r={r} busy={busy} canSelect={canSelect} run={run} />
           )}
 
-          {/* Tabs as toolbar buttons on the shared control skin, the way Admin
-              draws its sections — an underlined rail here would be a second
-              look for the same idea two screens apart. */}
-          <div
-            role='tablist'
-            aria-label='Record Sections'
-            style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}
-          >
-            {tabs.map(([key, label, glyph]) => (
-              <button
-                key={key}
-                type='button'
-                role='tab'
-                aria-selected={active === key}
-                onClick={() => setTab(key)}
-                style={toolBtnStyle(active === key)}
-              >
-                <Icon name={glyph} size={14} />
-                {label}
-              </button>
-            ))}
-          </div>
+          {/* The shared underlined rail, the way Admin draws its sections. */}
+          <Tabs label='Record Sections' tabs={tabs} active={active} onPick={setTab} />
 
           <Card pad={0}>
             {(active === 'application' || active === 'all') && <ApplicationPanel r={r} />}

@@ -4,7 +4,7 @@ import {
   type SignatureStatus,
   type SignatureView,
   needsSignature,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { recordActivity } from '../../activity';
 import type { StallsDeps } from './deps';
 import type { Db } from './editions';

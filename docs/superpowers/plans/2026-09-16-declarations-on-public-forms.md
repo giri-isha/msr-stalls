@@ -838,7 +838,7 @@ Expected: FAIL — module not found.
 Create `apps/web/src/modules/stalls/components/DeclarationConsent.tsx`:
 
 ```tsx
-import type { Declaration } from '@msr/stalls';
+import type { Declaration } from '@stalls/core';
 import { ChoicePlate, Checkbox, FieldError } from '../ui';
 import { DeclarationText } from './DeclarationText';
 
@@ -897,7 +897,7 @@ export function DeclarationConsent({
                   agreed to — see `DeclarationText`. */}
               <DeclarationText body={d.body} />
               {d.bodyTa && (
-                <span className='msrs-tamil' lang='ta' style={{ display: 'block', marginTop: 7 }}>
+                <span className='stalls-tamil' lang='ta' style={{ display: 'block', marginTop: 7 }}>
                   <DeclarationText body={d.bodyTa} />
                 </span>
               )}
@@ -1141,7 +1141,7 @@ In `StatusPill.tsx`, add to `TYPE_LABEL`:
   STAFF: 'Staff Registration',
 ```
 
-In `Declarations.tsx`, replace the local `FORM_TYPES` with `STALL_FORM_TYPES` imported from `@msr/stalls`, rename the `FormType` local alias to use `StallFormType`, and rename every `requestType` reference to `formType` (lines 47, 188, 397-399, plus the create form's state and payload).
+In `Declarations.tsx`, replace the local `FORM_TYPES` with `STALL_FORM_TYPES` imported from `@stalls/core`, rename the `FormType` local alias to use `StallFormType`, and rename every `requestType` reference to `formType` (lines 47, 188, 397-399, plus the create form's state and payload).
 
 ⚠️ Leave `FormBuilder.tsx:39` alone. This spec does not make the bank, FSSAI or staff forms builder-driven, and a tab that leads to "This edition has no form definition yet" is a promise the screen cannot keep.
 

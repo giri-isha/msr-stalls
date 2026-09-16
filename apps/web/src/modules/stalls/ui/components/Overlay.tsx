@@ -163,7 +163,7 @@ export const scrim: CSSProperties = {
   // A token, not a literal — see `--scrim` in tokens.css. The dark theme's
   // scrim is heavier, because the page it covers is already dark.
   background: 'var(--scrim)',
-  animation: 'msrs-fade .15s ease both',
+  animation: 'stalls-fade .15s ease both',
 };
 
 /**
@@ -185,7 +185,7 @@ export const sheet: CSSProperties = {
   borderRadius: 'var(--r4) var(--r4) 0 0',
   boxShadow: 'var(--sh-3)',
   paddingBottom: 'env(safe-area-inset-bottom)',
-  animation: 'msrs-sheet-up .22s cubic-bezier(.32,.72,0,1) both',
+  animation: 'stalls-sheet-up .22s cubic-bezier(.32,.72,0,1) both',
 };
 
 /** The short bar at the top of a sheet that says "this drags down to dismiss". */
