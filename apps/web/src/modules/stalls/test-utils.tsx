@@ -175,6 +175,23 @@ export const PUBLIC_CONFIG = {
       sortOrder: 0,
     },
   ],
+  /** ⚠️ `formType: null` — the DEFAULT wording, which every form shows unless
+   *  it has a variant of its own. A fixture that scoped this to VENDOR would
+   *  let a screen that ignores the fallback rule pass, and the fallback is what
+   *  stops a form showing the same consent twice in different words. */
+  declarations: [
+    {
+      id: '22222222-2222-4222-8222-222222222222',
+      key: 'request_submission',
+      formType: null,
+      version: 1,
+      title: 'Stall request',
+      body: 'Submission of this form does not guarantee stall allocation. Allocation is at the sole discretion of the Isha Stall Team.',
+      bodyTa: null,
+      isActive: true,
+      isCurrent: true,
+    },
+  ],
 };
 
 /** The same edition, answered at the asking form's scope.

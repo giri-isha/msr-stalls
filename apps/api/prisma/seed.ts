@@ -601,8 +601,9 @@ async function main() {
     chequeKey: await fakeUpload(deps.files, 'bank/cheque'),
     panKey: await fakeUpload(deps.files, 'bank/pan'),
     gstKey: '',
-    agreeNeft: true,
-    agreeTerms: true,
+    // Consent is declaration rows now. The seed posts no `declarationIds`,
+    // which is the documented "I make no claim about what I displayed" case —
+    // the submit path then logs whatever is live. See `DeclarationIds`.
     plugs5a: 4,
     plugs15a: 5,
     gasStoves: 1,

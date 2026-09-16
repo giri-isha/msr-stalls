@@ -135,7 +135,7 @@ const TemplateParams = z.object({ key: TemplateKeyValue });
 function declarationRow(d: {
   id: string;
   key: string;
-  requestType: string | null;
+  formType: string | null;
   version: number;
   title: string;
   body: string;

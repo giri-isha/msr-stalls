@@ -11,7 +11,7 @@
 // ones something already stands on — a bay holding stalls, a field holding
 // answers, a declaration holding consents.
 import { Prisma } from '@prisma/client';
-import type { PrismaClient, StallEdition, StallFormType, StallRequestType } from '@prisma/client';
+import type { PrismaClient, StallEdition, StallFormType } from '@prisma/client';
 import {
   COPY_SECTION_LABELS,
   type ChargesInput,
@@ -670,7 +670,7 @@ async function planForms(db: Db, from: string, to: string): Promise<SectionPlan>
 type DeclRow = {
   id: string;
   key: string;
-  requestType: StallRequestType | null;
+  formType: StallFormType | null;
   version: number;
   title: string;
   body: string;
@@ -699,14 +699,14 @@ async function planDeclarations(db: Db, from: string, to: string): Promise<Secti
     db.stallDeclaration.findMany({ where: { editionId: from, isCurrent: true } }),
     db.stallDeclaration.findMany({ where: { editionId: to, isCurrent: true } }),
   ]);
-  const keyOf = (d: DeclRow) => `${d.key}|${d.requestType ?? 'ANY'}`;
+  const keyOf = (d: DeclRow) => `${d.key}|${d.formType ?? 'ANY'}`;
   const have = new Map(dst.map((d) => [keyOf(d), d]));
   const plan = empty();
 
   for (const d of src) {
     const key = keyOf(d);
     const theirs = have.get(key) ?? null;
-    const label = `${d.title} · ${d.requestType ?? 'every form'}`;
+    const label = `${d.title} · ${d.formType ?? 'every form'}`;
     const row = { key, label, changes: changesBetween(DECLARATION_FIELDS, theirs, d) };
 
     if (!theirs) {
@@ -716,7 +716,7 @@ async function planDeclarations(db: Db, from: string, to: string): Promise<Secti
           data: {
             editionId: to,
             key: d.key,
-            requestType: d.requestType,
+            formType: d.formType,
             version: 1,
             title: d.title,
             body: d.body,
@@ -742,7 +742,7 @@ async function planDeclarations(db: Db, from: string, to: string): Promise<Secti
         // version may be current at a time — enforced by a partial unique index
         // rather than by this code.
         const current = await tx.stallDeclaration.findFirstOrThrow({
-          where: { editionId: to, key: d.key, requestType: theirs.requestType, isCurrent: true },
+          where: { editionId: to, key: d.key, formType: theirs.formType, isCurrent: true },
         });
         await tx.stallDeclaration.update({
           where: { id: current.id },
@@ -752,7 +752,7 @@ async function planDeclarations(db: Db, from: string, to: string): Promise<Secti
           data: {
             editionId: to,
             key: current.key,
-            requestType: current.requestType,
+            formType: current.formType,
             version: current.version + 1,
             title: d.title,
             body: d.body,

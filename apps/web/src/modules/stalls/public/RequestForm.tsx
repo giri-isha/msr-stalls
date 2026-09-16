@@ -18,7 +18,7 @@ import { ApiError, fieldErrorsFrom } from '../api-client';
 import { getPublicConfig, submitRequest } from '../api';
 import { type ApplianceRow, ApplianceRows } from '../components/ApplianceRows';
 import { BilingualLabel } from '../components/BilingualLabel';
-import { DeclarationText } from '../components/DeclarationText';
+import { DeclarationConsent, allTicked } from '../components/DeclarationConsent';
 import { ZoneSelect } from '../components/ZoneSelect';
 import { useLoad } from '../hooks';
 import { useRequester } from '../requester';
@@ -66,6 +66,7 @@ function buildInput(
   values: Values,
   customFieldIds: string[],
   declarationIds: string[],
+  consented: boolean,
 ): Record<string, unknown> {
   const ashram = ASHRAM_TYPES.has(type);
   const appliances = (Array.isArray(values.appliances) ? values.appliances : [])
@@ -89,7 +90,11 @@ function buildInput(
     itemsSelling: str(values.itemsSelling),
     numStallsRequested: num(values.numStallsRequested),
     remarks: str(values.remarks) || undefined,
-    agreed: values.agreed === true,
+    // 🔴 Derived from the ticks, not from a field. `agreed` is no longer a
+    // question on the form — its wording is a declaration row and its tick is
+    // drawn beside that wording above Submit. The column still records THAT
+    // somebody agreed; `declarationIds` below is what records to what.
+    agreed: consented,
     // The exact versions this page drew. The API checks them against what is
     // live and refuses the submission if the wording moved while the form was
     // open — see `DeclarationsChangedError`.
@@ -266,6 +271,20 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
   // server's, so a disagreement would show up as a refused submission nobody
   // could explain.
   const shown = declarationsFor(config.data?.declarations ?? [], type);
+  const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
+  const toggleDeclaration = (id: string, on: boolean) =>
+    setTicked((was) => {
+      const next = new Set(was);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  // 🔴 `config.data` must have ARRIVED, not merely "shown is empty". Until the
+  // config loads, `shown` is [] and `allTicked` is vacuously true — which would
+  // enable Submit on a form that does not yet know what it has to ask consent
+  // for, and post it with an empty `declarationIds` the API reads as the claim
+  // "I displayed none". A slow connection would silently skip the consent.
+  const consented = config.data !== null && allTicked(shown, ticked);
   const customFields = useMemo(
     () => (config.data?.customFields ?? []).filter((f) => f.formType === type),
     [config.data, type],
@@ -346,6 +365,7 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
       // switched off, and the one the reader actually filled in is this one.
       allFields.filter((f) => !f.isBuiltIn).map((f) => f.id),
       shown.map((d) => d.id),
+      consented,
     );
     const parsed = SubmitRequestInput.safeParse(built);
     if (!parsed.success) {
@@ -412,52 +432,6 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
         )}
       </div>
 
-      {/* The terms, on the primary tint rather than a warning one. This is the
-          thing a reader agrees to, not a thing that has gone wrong. */}
-      <div
-        style={{
-          padding: '13px 15px',
-          borderRadius: 'var(--r3)',
-          background: 'var(--pri-t)',
-          border: '1px solid var(--pri-t2)',
-          marginBottom: 16,
-        }}
-      >
-        <div style={{ display: 'flex', gap: 10 }}>
-          <span style={{ flex: 'none', color: 'var(--pri)', marginTop: 1 }}>
-            <Icon name='info' size={16} />
-          </span>
-          <div style={{ minWidth: 0, fontSize: 12.5, lineHeight: 1.65 }}>
-            {/* 🔴 The edition's own declarations, not the constant in
-                `forms.ts`. Falls back to that constant when an edition has
-                none — a form with no disclaimer at all is worse than one
-                showing last year's, and an edition seeded before this feature
-                existed has nothing in the table. */}
-            {shown.length > 0 ? (
-              shown.map((d, i) => (
-                <div key={d.id} style={{ marginTop: i === 0 ? 0 : 10 }}>
-                  <DeclarationText body={d.body} />
-                  {d.bodyTa && (
-                    <div className='msrs-tamil' lang='ta' style={{ marginTop: 7 }}>
-                      <DeclarationText body={d.bodyTa} />
-                    </div>
-                  )}
-                </div>
-              ))
-            ) : (
-              <>
-                <p style={{ margin: 0 }}>{def.disclaimer}</p>
-                {def.disclaimerTa && (
-                  <p className='msrs-tamil' lang='ta' style={{ margin: '7px 0 0' }}>
-                    {def.disclaimerTa}
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
       {topError && (
         <div
           role='alert'
@@ -506,6 +480,20 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
           </FieldStack>
         </div>
 
+        {/* 🔴 The consents, immediately above Submit and labelled by their own
+            wording. They used to be an information plate at the TOP of this
+            form with a bare "I Agree" tick thirty questions below it — by the
+            time the tick was in reach the words had been off screen for
+            minutes. */}
+        <div style={{ padding: '0 18px' }}>
+          <DeclarationConsent
+            declarations={shown}
+            ticked={ticked}
+            onToggle={toggleDeclaration}
+            error={errors.declarationIds}
+          />
+        </div>
+
         {/* ⚠️ The submit sits INSIDE the card, on its own rail, rather than
             floating on the page below it. On a phone the form is one long
             column and the button is the end of it; a detached control after a
@@ -522,8 +510,8 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
         >
           <button
             type='submit'
-            disabled={submitting || values.agreed !== true}
-            className={submitting || values.agreed !== true ? undefined : 'msrs-lift'}
+            disabled={submitting || !consented}
+            className={submitting || !consented ? undefined : 'msrs-lift'}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -537,8 +525,8 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
               boxShadow: 'var(--sh-pri)',
               fontSize: 13.5,
               fontWeight: 700,
-              cursor: submitting || values.agreed !== true ? 'not-allowed' : 'pointer',
-              opacity: submitting || values.agreed !== true ? 0.5 : 1,
+              cursor: submitting || !consented ? 'not-allowed' : 'pointer',
+              opacity: submitting || !consented ? 0.5 : 1,
             }}
           >
             {submitting ? 'Submitting…' : 'Submit request'}

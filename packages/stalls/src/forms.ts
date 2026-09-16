@@ -123,13 +123,15 @@ const YES_NO: FieldOption[] = [
   { value: 'NO', label: 'No', labelTa: null },
 ];
 
-const agreedField = (labelTa: string | null): FormField => ({
-  name: 'agreed',
-  label: 'I Agree',
-  labelTa,
-  type: 'checkbox',
-  required: true,
-});
+/* 🔴 `agreedField` is gone. It was a `checkbox` labelled "I Agree" on all four
+ * forms, sitting thirty questions below the disclaimer it consented to. The
+ * wording is a `stall_declaration` row now and its tick is drawn beside that
+ * wording directly above Submit — so a field here too would be the same consent
+ * asked twice, once with real words and once as a bare "I Agree".
+ *
+ * ⚠️ `stall_request.agreed_at` is still written. The column records THAT
+ * somebody agreed; the consent rows record to WHAT, by version. Removing the
+ * question did not remove the record. */
 
 /** The electrical block, identical on the local welfare and ashram forms. The
  *  prices in the help text are the 2025 printed ones; the Admin screen's charge
@@ -190,7 +192,6 @@ const electricalFields = (tamil: boolean): FormField[] => [
 
 const VENDOR_FIELDS: FormField[] = [
   { name: 'email', label: 'Email', labelTa: null, type: 'email', required: true },
-  agreedField('நான் ஒப்புக்கொள்கிறேன்'),
   { name: 'stallName', label: 'Stall Name', labelTa: 'ஸ்டால் பெயர்', type: 'text', required: true },
   { name: 'requesterName', label: 'Vendor Name', labelTa: null, type: 'text', required: true },
   { name: 'address', label: 'Address', labelTa: 'முகவரி', type: 'textarea', required: true },
@@ -249,7 +250,6 @@ const VENDOR_FIELDS: FormField[] = [
 
 const LOCAL_WELFARE_FIELDS: FormField[] = [
   { name: 'email', label: 'Email', labelTa: null, type: 'email', required: true },
-  agreedField('நான் ஒப்புக்கொள்கிறேன்'),
   { name: 'stallName', label: 'Stall Name', labelTa: 'ஸ்டால் பெயர்', type: 'text', required: true },
   { name: 'requesterName', label: 'Vendor Name', labelTa: null, type: 'text', required: true },
   { name: 'address', label: 'Address', labelTa: 'முகவரி', type: 'textarea', required: true },
@@ -360,7 +360,6 @@ const LOCAL_WELFARE_FIELDS: FormField[] = [
 
 const ashramFields = (food: boolean): FormField[] => [
   { name: 'email', label: 'Email', labelTa: null, type: 'email', required: true },
-  agreedField(null),
   { name: 'departmentHead', label: 'Department Head', labelTa: null, type: 'text', required: true },
   {
     name: 'departmentHeadContact',

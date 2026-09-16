@@ -6,7 +6,7 @@ import {
   validateAgainstForm,
 } from '@msr/stalls';
 import { mintAccessLink, normalizeEmail } from './accounts';
-import { declarationsForForm, recordConsent } from './declarations';
+import { declarationsForForm, recordConsent, sameDeclarations } from './declarations';
 import { formFor } from './form-builder';
 import { ValidationFailedError } from '../../errors';
 import { type Db, activeEdition } from './editions';
@@ -86,27 +86,6 @@ function formValues(input: SubmitRequestInput): Record<string, unknown> {
     requestedBy: ashram.requestedBy ?? input.requesterName,
     requesterContact: ashram.requesterContact ?? input.contactNumber,
   };
-}
-
-/** Whether the page displayed exactly the declarations that are live now.
- *
- *  Set equality, not order: the page renders them in key order and so does
- *  `declarationsFor`, but nothing should depend on two sorts agreeing.
- *
- *  ⚠️ `undefined` is not a claim and passes. A caller that does not send the
- *  field has not said what it displayed — the seed, a script, anything
- *  server-side — and refusing those would be refusing them for not
- *  participating in a check that exists to catch a stale BROWSER. An empty
- *  array IS a claim: "I showed none", which is wrong the moment one is live.
- */
-function sameDeclarations(
-  live: readonly { id: string }[],
-  posted: readonly string[] | undefined,
-): boolean {
-  if (posted === undefined) return true;
-  if (live.length !== posted.length) return false;
-  const seen = new Set(posted);
-  return live.every((d) => seen.has(d.id));
 }
 
 export async function submitRequest(
@@ -263,7 +242,7 @@ export async function submitRequest(
     // prevent. So it is refused and they re-read it.
     const live = await declarationsForForm(tx, edition.id, input.requestType);
     if (!sameDeclarations(live, input.declarationIds)) throw new DeclarationsChangedError();
-    await recordConsent(tx, request.id, live);
+    await recordConsent(tx, { requestId: request.id, formType: input.requestType }, live);
 
     const { token } = await mintAccessLink(tx, {
       accountId: account.id,

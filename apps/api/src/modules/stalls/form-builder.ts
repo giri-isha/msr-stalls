@@ -70,17 +70,26 @@ export async function seedFormDefinitions(db: Db, editionId: string): Promise<nu
     // ⚠️ The built-ins take sort orders 0..n and the fields an admin already
     // appended keep sitting after them — which is where they have always
     // rendered, so adopting them must not move them.
+    //
+    // 🔴 `agreed` is not a question any more. Its wording is a declaration row
+    // and its tick is drawn beside that wording directly above Submit — a field
+    // here too would be the same consent asked twice, once with real words and
+    // once as a bare "I Agree". Existing editions were switched off by the
+    // `declarations_per_form` migration; this is the same retirement for the
+    // editions that do not exist yet.
     await Promise.all(
-      source.fields.map((field, i) =>
-        db.stallFormField.create({
-          data: {
-            editionId,
-            definitionId: definition.id,
-            formType,
-            ...toRow(seedFieldFrom(field, i)),
-          },
-        }),
-      ),
+      source.fields
+        .filter((field) => field.name !== 'agreed')
+        .map((field, i) =>
+          db.stallFormField.create({
+            data: {
+              editionId,
+              definitionId: definition.id,
+              formType,
+              ...toRow(seedFieldFrom(field, i)),
+            },
+          }),
+        ),
     );
     const appended = await db.stallFormField.findMany({
       where: { editionId, formType, definitionId: null },

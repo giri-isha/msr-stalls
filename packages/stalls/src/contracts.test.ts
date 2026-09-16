@@ -193,7 +193,9 @@ describe('consent travels with every public form submission', () => {
    *  said what it displayed. See `sameDeclarations`. */
   test('omitting the list is allowed; an empty list is a claim', () => {
     expect(SubmitBankDetailsInput.parse(bank).declarationIds).toBeUndefined();
-    expect(SubmitBankDetailsInput.parse({ ...bank, declarationIds: [] }).declarationIds).toEqual([]);
+    expect(SubmitBankDetailsInput.parse({ ...bank, declarationIds: [] }).declarationIds).toEqual(
+      [],
+    );
   });
 
   test('staff registration and the FSSAI upload carry consent too', () => {
@@ -216,7 +218,10 @@ describe('consent travels with every public form submission', () => {
   });
 
   test('a declaration is authored against any form, including the bank form', () => {
-    expect(DeclarationInput.parse({ key: 'neft_transfer', formType: 'BANK', title: 'NEFT', body: 'x' }).formType).toBe('BANK');
+    expect(
+      DeclarationInput.parse({ key: 'neft_transfer', formType: 'BANK', title: 'NEFT', body: 'x' })
+        .formType,
+    ).toBe('BANK');
     expect(DeclarationInput.parse({ key: 'terms', title: 'T', body: 'x' }).formType).toBeNull();
   });
 });

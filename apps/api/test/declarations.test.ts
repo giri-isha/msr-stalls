@@ -12,6 +12,7 @@ import {
   consentsFor,
   createDeclaration,
   declarationsForForm,
+  recordConsent,
   updateDeclaration,
 } from '../src/modules/stalls/declarations';
 import {
@@ -83,7 +84,7 @@ describe('writing one', () => {
         editionId,
         {
           key: 'Request Submission',
-          requestType: null,
+          formType: null,
           title: 'x',
           body: 'y',
           bodyTa: null,
@@ -101,11 +102,11 @@ describe('writing one', () => {
    *  variants already written — one per printed form — so it is the wrong key
    *  to test "adding a variant" against. */
   test('the same key on a different form is a variant, not a clash', async () => {
-    const make = (requestType: 'VENDOR' | 'ASHRAM' | null, body: string) =>
+    const make = (formType: 'VENDOR' | 'ASHRAM' | null, body: string) =>
       createDeclaration(
         prisma,
         editionId,
-        { key: 'deposit_terms', requestType, title: 'Deposit', body, bodyTa: null, isActive: true },
+        { key: 'deposit_terms', formType, title: 'Deposit', body, bodyTa: null, isActive: true },
         SYSTEM,
       );
 
@@ -115,11 +116,11 @@ describe('writing one', () => {
   });
 
   test('and the variant is what that form shows, while the others keep the default', async () => {
-    const make = (requestType: 'VENDOR' | null, body: string) =>
+    const make = (formType: 'VENDOR' | null, body: string) =>
       createDeclaration(
         prisma,
         editionId,
-        { key: 'deposit_terms', requestType, title: 'Deposit', body, bodyTa: null, isActive: true },
+        { key: 'deposit_terms', formType, title: 'Deposit', body, bodyTa: null, isActive: true },
         SYSTEM,
       );
     await make(null, 'The default wording.');
@@ -137,7 +138,7 @@ describe('writing one', () => {
 describe('editing one', () => {
   const current = async () =>
     prisma.stallDeclaration.findFirstOrThrow({
-      where: { editionId, key: 'request_submission', requestType: 'VENDOR', isCurrent: true },
+      where: { editionId, key: 'request_submission', formType: 'VENDOR', isCurrent: true },
     });
 
   test('a changed title edits the version in place', async () => {
@@ -204,7 +205,7 @@ describe('editing one', () => {
         data: {
           editionId,
           key: live.key,
-          requestType: live.requestType,
+          formType: live.formType,
           version: live.version + 1,
           title: 'Sneaked in',
           body: 'A second live version.',
@@ -246,7 +247,7 @@ describe('the consent log', () => {
     const was = (await consentsFor(prisma, requestId))[0]?.body;
 
     const live = await prisma.stallDeclaration.findFirstOrThrow({
-      where: { editionId, key: 'request_submission', requestType: 'VENDOR', isCurrent: true },
+      where: { editionId, key: 'request_submission', formType: 'VENDOR', isCurrent: true },
     });
     await updateDeclaration(
       prisma,
@@ -261,12 +262,95 @@ describe('the consent log', () => {
     expect(after[0]?.body).not.toBe('Completely different terms.');
   });
 
+  /** 🔴 The case the OLD unique index swallowed. Eight people register against
+   *  one coupon and share a request id; under (request_id, declaration_id)
+   *  seven of their consents were discarded by `skipDuplicates` and the log
+   *  said one person had agreed on behalf of a team. */
+  test('two staff members on one coupon each get their own consent row', async () => {
+    const { requestId } = await submit();
+    const d = await createDeclaration(
+      prisma,
+      editionId,
+      {
+        key: 'staff_terms',
+        formType: 'STAFF',
+        title: 'Staff',
+        body: 'I will carry photo ID.',
+        bodyTa: null,
+        isActive: true,
+      },
+      SYSTEM,
+    );
+
+    const a = await prisma.stallVendorStaff.create({
+      data: { requestId, name: 'A', mobile: '9000000001', idType: 'AADHAAR', idNumber: '1111' },
+    });
+    const b = await prisma.stallVendorStaff.create({
+      data: { requestId, name: 'B', mobile: '9000000002', idType: 'AADHAAR', idNumber: '2222' },
+    });
+
+    await recordConsent(prisma, { requestId, formType: 'STAFF', staffId: a.id }, [d]);
+    await recordConsent(prisma, { requestId, formType: 'STAFF', staffId: b.id }, [d]);
+
+    expect(await prisma.stallDeclarationConsent.count({ where: { declarationId: d.id } })).toBe(2);
+  });
+
+  /** The same key, ticked on two different forms, is two consents — given
+   *  months apart, possibly against different versions of the wording. */
+  test('a consent on the request form does not swallow one on the bank form', async () => {
+    const { requestId } = await submit();
+    const shared = await createDeclaration(
+      prisma,
+      editionId,
+      {
+        key: 'shared_terms',
+        formType: null,
+        title: 'Shared',
+        body: 'Shared wording.',
+        bodyTa: null,
+        isActive: true,
+      },
+      SYSTEM,
+    );
+
+    await recordConsent(prisma, { requestId, formType: 'VENDOR' }, [shared]);
+    await recordConsent(prisma, { requestId, formType: 'BANK' }, [shared]);
+
+    const rows = await prisma.stallDeclarationConsent.findMany({
+      where: { declarationId: shared.id },
+    });
+    expect(rows.map((r) => r.formType).sort()).toEqual(['BANK', 'VENDOR']);
+  });
+
+  /** Re-posting the same form is idempotent. The PARTIAL INDEX is what enforces
+   *  that, not `skipDuplicates` alone — two concurrent writers both pass a
+   *  check in application code. */
+  test('the same form ticked twice is still one consent', async () => {
+    const { requestId } = await submit();
+    const d = await createDeclaration(
+      prisma,
+      editionId,
+      {
+        key: 'once_only',
+        formType: 'BANK',
+        title: 'Once',
+        body: 'Once.',
+        bodyTa: null,
+        isActive: true,
+      },
+      SYSTEM,
+    );
+    await recordConsent(prisma, { requestId, formType: 'BANK' }, [d]);
+    await recordConsent(prisma, { requestId, formType: 'BANK' }, [d]);
+    expect(await prisma.stallDeclarationConsent.count({ where: { declarationId: d.id } })).toBe(1);
+  });
+
   /** ⚠️ Deleting wording somebody agreed to would leave the agreement meaning
    *  nothing, so the foreign key refuses it. Retire it instead. */
   test('a declaration somebody consented to cannot be deleted', async () => {
     await submit();
     const live = await prisma.stallDeclaration.findFirstOrThrow({
-      where: { editionId, key: 'request_submission', requestType: 'VENDOR', isCurrent: true },
+      where: { editionId, key: 'request_submission', formType: 'VENDOR', isCurrent: true },
     });
     await expect(prisma.stallDeclaration.delete({ where: { id: live.id } })).rejects.toThrow();
   });
@@ -307,7 +391,7 @@ describe('over HTTP', () => {
       headers: admin.headers,
       payload: {
         key: 'deposit_terms',
-        requestType: null,
+        formType: null,
         title: 'Deposit',
         body: 'The advance is refundable after the event.',
       },

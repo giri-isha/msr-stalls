@@ -50,6 +50,12 @@ export const TYPE_LABEL: Record<string, string> = {
   ASHRAM_FOOD: 'Ashram Food',
   LOCAL_WELFARE: 'Local Welfare',
   VENDOR: 'Vendor',
+  // ⚠️ The three below are FORM types, not request types — a request is never
+  // one of them. They are here because the Declarations screen labels a
+  // consent's variant, and a consent can belong to any public form.
+  BANK: 'Bank Details',
+  FSSAI: 'FSSAI',
+  STAFF: 'Staff Registration',
 };
 
 /**

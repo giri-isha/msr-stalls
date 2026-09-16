@@ -2,6 +2,8 @@ import { SubmitBankDetailsInput } from '@msr/stalls';
 import type { StallEdition } from '@prisma/client';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { getBankForm, submitBankDetails } from '../src/modules/stalls/bank';
+import { declarationsForForm } from '../src/modules/stalls/declarations';
+import { DeclarationsChangedError } from '../src/modules/stalls/errors';
 import { sendTemplate } from '../src/modules/stalls/comms';
 import {
   BankDetailsLockedError,
@@ -57,8 +59,6 @@ async function body(overrides: Record<string, unknown> = {}) {
     micr: '641240002',
     panNumber: 'ABCDE1234F',
     gstNumber: '33ABCDE1234F1Z5',
-    agreeNeft: true,
-    agreeTerms: true,
     plugs5a: 4,
     plugs15a: 5,
     gasStoves: 1,
@@ -261,8 +261,49 @@ describe('what the form accepts', () => {
     expect(r.data?.gstNumber).toBe('NONE');
   });
 
-  test('the NEFT and terms agreements are not optional', async () => {
-    expect((await parse({ agreeNeft: false })).success).toBe(false);
-    expect((await parse({ agreeTerms: false })).success).toBe(false);
+  /** 🔴 The NEFT and terms agreements used to be `z.literal(true)` here, with
+   *  their wording in JSX and their record two bare timestamps. They are
+   *  declaration rows now, so what the CONTRACT enforces is the shape of the
+   *  ids — the wording, and whether it is still the wording that was on screen,
+   *  is enforced by `submitBankDetails` against the live rows. */
+  test('declaration ids must be uuids, and the list is optional', async () => {
+    expect((await parse({ declarationIds: ['not-a-uuid'] })).success).toBe(false);
+    expect((await parse({ declarationIds: [] })).success).toBe(true);
+    // ⚠️ Absent is not a claim about what was displayed and must pass — the
+    // seed and every server-side caller send nothing.
+    expect((await parse({})).data?.declarationIds).toBeUndefined();
+  });
+});
+
+describe('consent', () => {
+  /** 🔴 The whole point: the bank form's consents are versioned rows now, and
+   *  submitting records one per live declaration against THIS form. */
+  test('a submission records a consent per live bank declaration', async () => {
+    const { requestId } = await selected(['C1-1']);
+    const live = await declarationsForForm(prisma, edition.id, 'BANK');
+    expect(live.length).toBeGreaterThan(0);
+
+    await submitBankDetails(prisma, requestId, {
+      ...(await body()),
+      declarationIds: live.map((d) => d.id),
+    });
+
+    const rows = await prisma.stallDeclarationConsent.findMany({
+      where: { requestId, formType: 'BANK' },
+    });
+    expect(rows).toHaveLength(live.length);
+    expect(rows.every((r) => r.staffId === null)).toBe(true);
+  });
+
+  /** ⚠️ Wording that moved while the form sat open. Agreeing on the vendor's
+   *  behalf to a paragraph they never saw is what this refusal prevents. */
+  test('a stale declaration set is refused', async () => {
+    const { requestId } = await selected(['C1-1']);
+    await expect(
+      submitBankDetails(prisma, requestId, {
+        ...(await body()),
+        declarationIds: ['11111111-1111-4111-8111-111111111111'],
+      }),
+    ).rejects.toThrow(DeclarationsChangedError);
   });
 });
