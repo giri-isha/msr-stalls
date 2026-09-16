@@ -133,7 +133,7 @@ export function FormBuilder({
             run('Order saved', () => api.reorderFormFields(form.definitionId, fields))
           }
           onDeleteSection={(id) => run('Heading removed', () => api.deleteFormSection(id))}
-          onDelete={(f) => run(`"${f.label}" removed`, () => api.deleteCustomField(f.id))}
+          onDelete={(f) => run(`"${f.label}" removed`, () => api.deleteFormField(f.id))}
         />
       )}
 

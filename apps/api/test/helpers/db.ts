@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { StallEdition } from '@prisma/client';
 import { LogMailer } from '../../src/email';
 import { createEdition } from '../../src/modules/stalls/config';
+import { addFormField } from '../../src/modules/stalls/form-builder';
 import { prisma } from '../../src/prisma';
 
 /** How long the truncate waits for the tables before giving up. Generous: on an
@@ -80,6 +81,39 @@ export const SYSTEM = '00000000-0000-0000-0000-000000000000';
 /** A 2026 edition with all defaults — zones, rates, charges, sequences. */
 export async function seedEdition(year = 2026): Promise<StallEdition> {
   return createEdition(prisma, { year, name: `MSR ${year}`, activate: true }, SYSTEM);
+}
+
+/**
+ * A question appended to one of an edition's forms, as the Form Builder appends
+ * it.
+ *
+ * ⚠️ Goes through `addFormField` rather than `prisma.stallFormField.create`, so
+ * a test's field hangs off the form definition and carries the same sort order
+ * and `isBuiltIn: false` a real one does. There is no longer a seam that writes
+ * an appended field any other way — the Custom fields tab that used to own one
+ * is gone, and the Form Builder is the only way in.
+ */
+export async function appendField(
+  editionId: string,
+  formType: string,
+  label: string,
+  fieldType = 'text',
+): Promise<{ id: string }> {
+  const definition = await prisma.stallFormDefinition.findFirstOrThrow({
+    where: { editionId, formType: formType as never },
+    select: { id: true },
+  });
+  return addFormField(prisma, editionId, definition.id, {
+    label,
+    labelTa: null,
+    help: null,
+    fieldType,
+    isRequired: false,
+    sectionId: null,
+    options: null,
+    min: null,
+    max: null,
+  });
 }
 
 export interface Backoffice {

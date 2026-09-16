@@ -597,7 +597,7 @@ export const CopySectionValue = z.enum(COPY_SECTIONS);
  *  preview, the confirm button and the activity trail all say the same word. */
 export const COPY_SECTION_LABELS: Record<CopySection, string> = {
   zones: 'Bays',
-  planCategories: 'Planning columns',
+  planCategories: 'Planning Columns',
   rates: 'Rates',
   charges: 'Charges',
   fineTypes: 'Fines',
@@ -760,19 +760,6 @@ export const FineTypeInput = z.object({
   reason: z.string().trim().min(1).max(200),
   defaultAmountPaise: Paise,
   isActive: z.boolean().default(true),
-});
-
-export const CustomFieldInput = z.object({
-  formType: FormType,
-  label: z.string().trim().min(1).max(200),
-  labelTa: z.string().trim().max(200).nullable().optional(),
-  fieldType: z.enum(['text', 'textarea', 'number', 'checkbox']),
-  isRequired: z.boolean().default(false),
-  sortOrder: z.number().int().min(0).max(1000).default(0),
-});
-
-export const CustomFieldPatch = CustomFieldInput.partial().extend({
-  isActive: z.boolean().optional(),
 });
 
 /* ── The form builder ──────────────────────────────────────────────────────*/

@@ -98,9 +98,15 @@ function sentBody<T>(fetch: ReturnType<typeof installFetch>, method: string): T 
 /** Two of them, so the edition selector has something to choose between — and
  *  so the tests below can point the screen at a year that is not the one every
  *  write goes to. */
+const EDITION_SETTINGS = {
+  virtualAccountRentPrefix: null,
+  virtualAccountDepositPrefix: null,
+  maxStallsPerRequest: 3,
+  termsUrl: null,
+};
 const EDITIONS = [
-  { id: 'e1', year: 2026, name: 'MSR 2026', isActive: true },
-  { id: 'e0', year: 2025, name: 'MSR 2025', isActive: false },
+  { id: 'e1', year: 2026, name: 'MSR 2026', isActive: true, ...EDITION_SETTINGS },
+  { id: 'e0', year: 2025, name: 'MSR 2025', isActive: false, ...EDITION_SETTINGS },
 ];
 
 /** Last year's configuration, which is what `/config?editionId=e0` answers. */
@@ -261,15 +267,23 @@ describe('planning columns', () => {
 });
 
 describe('edition settings', () => {
+  /** ⚠️ Nothing is editable until a row's pencil is pressed. The settings used
+   *  to be five inputs open on the tab; they belong to an edition, so they are
+   *  reached through the edition. */
+  const openEdition = async (user: ReturnType<typeof userEvent.setup>, name: string) => {
+    await screen.findByLabelText('Edit C1');
+    await user.click(screen.getByRole('tab', { name: /editions/i }));
+    await user.click(await screen.findByLabelText(`Edit ${name}`));
+  };
+
   test('sends the account prefixes Finance issues, and empty means not issued', async () => {
     const fetch = base([['PATCH', /\/editions\/e1\/settings$/, () => ({})]]);
     render();
     const user = userEvent.setup();
 
-    await screen.findByLabelText('Edit C1');
-    await user.click(screen.getByRole('tab', { name: /editions/i }));
+    await openEdition(user, 'MSR 2026');
     await user.type(screen.getByLabelText('Virtual account prefix — rent'), 'MSRRENT');
-    await user.click(screen.getByRole('button', { name: /save settings/i }));
+    await user.click(screen.getByRole('button', { name: /^save$/i }));
 
     await waitFor(() => {
       const call = fetch.calls.find((c) => c.method === 'PATCH');
@@ -281,6 +295,24 @@ describe('edition settings', () => {
         virtualAccountDepositPrefix: null,
         maxStallsPerRequest: 3,
       });
+    });
+  });
+
+  /** 🔴 The one write on this screen that does not go to the active edition.
+   *  Every other panel writes to whatever is active regardless of the selector,
+   *  which is why they go read-only on a past year and this row does not. */
+  test('edits a past edition on its own row, not the active one', async () => {
+    const fetch = base([['PATCH', /\/editions\/e0\/settings$/, () => ({})]]);
+    render();
+    const user = userEvent.setup();
+
+    await openEdition(user, 'MSR 2025');
+    await user.type(screen.getByLabelText('Virtual account prefix — rent'), 'OLD');
+    await user.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => {
+      const call = fetch.calls.find((c) => c.method === 'PATCH');
+      expect(call?.url).toContain('/editions/e0/settings');
     });
   });
 });

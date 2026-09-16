@@ -7,6 +7,7 @@ import { buildApp } from '../src/app';
 import {
   addFormField,
   addSection,
+  deleteFormField,
   deleteSection,
   formFor,
   formsFor,
@@ -14,8 +15,13 @@ import {
   seedFormDefinitions,
   updateFormField,
 } from '../src/modules/stalls/form-builder';
-import { deleteCustomField } from '../src/modules/stalls/config';
-import { BuiltInFieldLockedError, UnauthorableFieldTypeError } from '../src/modules/stalls/errors';
+import {
+  BuiltInFieldLockedError,
+  CustomFieldInUseError,
+  UnauthorableFieldTypeError,
+  UnknownFormFieldError,
+} from '../src/modules/stalls/errors';
+import { createEdition } from '../src/modules/stalls/config';
 import { submitRequest } from '../src/modules/stalls/submit';
 import {
   accountFor,
@@ -136,7 +142,7 @@ describe('what an admin may change', () => {
 
   test('and never its existence — it is switched off instead', async () => {
     const f = await stallName();
-    await expect(deleteCustomField(prisma, f.id, SYSTEM)).rejects.toBeInstanceOf(
+    await expect(deleteFormField(prisma, editionId, f.id)).rejects.toBeInstanceOf(
       BuiltInFieldLockedError,
     );
 
@@ -182,6 +188,52 @@ describe('what an admin may change', () => {
         max: null,
       }),
     ).rejects.toBeInstanceOf(UnauthorableFieldTypeError);
+  });
+});
+
+/** Removing a question, and the two different reasons it is refused. */
+describe('deleteFormField', () => {
+  const appended = async (label: string) =>
+    addFormField(prisma, editionId, await definitionId(), {
+      label,
+      labelTa: null,
+      help: null,
+      fieldType: 'text',
+      isRequired: false,
+      sectionId: null,
+      options: null,
+      min: null,
+      max: null,
+    });
+
+  test('removes a question nobody has answered', async () => {
+    const f = await appended('Website');
+    await deleteFormField(prisma, editionId, f.id);
+    expect(await prisma.stallFormField.findUnique({ where: { id: f.id } })).toBeNull();
+  });
+
+  /** 🔴 The answers are on the record of everybody who gave them, and the
+   *  question they answered has to stay readable beside them. Switch it off. */
+  test('refuses once somebody has answered it', async () => {
+    const f = await appended('Website');
+    await submit({ customFields: { [f.id]: 'greenleaf.example' } });
+    await expect(deleteFormField(prisma, editionId, f.id)).rejects.toBeInstanceOf(
+      CustomFieldInUseError,
+    );
+  });
+
+  /** ⚠️ Scoped to the edition: a field id from another year is not found here
+   *  rather than deleted from under it. */
+  test('refuses a field belonging to another edition', async () => {
+    const f = await appended('Website');
+    const other = await createEdition(
+      prisma,
+      { year: 2031, name: 'MSR 2031', activate: false },
+      SYSTEM,
+    );
+    await expect(deleteFormField(prisma, other.id, f.id)).rejects.toBeInstanceOf(
+      UnknownFormFieldError,
+    );
   });
 });
 

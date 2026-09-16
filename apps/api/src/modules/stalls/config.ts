@@ -19,14 +19,7 @@ import { recordActivity } from '../../activity';
 import { seedDeclarations } from './declarations';
 import { publicFormsFor, seedFormDefinitions } from './form-builder';
 import { type Db, activeEdition } from './editions';
-import {
-  BuiltInFieldLockedError,
-  CategoryInUseError,
-  CustomFieldInUseError,
-  UnknownZoneError,
-  ZoneExistsError,
-  ZoneInUseError,
-} from './errors';
+import { CategoryInUseError, UnknownZoneError, ZoneExistsError, ZoneInUseError } from './errors';
 import { MODULE_KEY } from './roles';
 
 /** Charges as printed on the 2025 forms. See the warning in `forms.ts`: the
@@ -586,86 +579,23 @@ export async function upsertFineType(
   return row;
 }
 
-/** The APPENDED fields, for Admin's Custom fields tab.
+/**
+ * The APPENDED fields, on the public configuration payload.
  *
- *  ⚠️ `isBuiltIn: false`. That tab is about questions an admin added; the form's
- *  own questions are the Form Builder's, and listing them here would offer a
- *  Delete on a field whose answer is a column. */
+ * ⚠️ Read-only, and the last thing left of what was once a Custom fields tab
+ * beside the Form Builder. Both edited `stall_form_field`; the shorter screen
+ * listed the appended rows without the form they sit on, so it could not
+ * reorder and could not say where a question is asked. The Form Builder is now
+ * the only way in, and these rows survive because the public request form falls
+ * back to them for an edition seeded before forms became data — see the note on
+ * `groups` in `RequestForm`.
+ *
+ * ⚠️ `isBuiltIn: false`. The fallback appends these AFTER the constant's own
+ * fields; including a built-in would draw it twice.
+ */
 export async function listCustomFields(db: Db, editionId: string) {
   return db.stallFormField.findMany({
     where: { editionId, isBuiltIn: false },
     orderBy: [{ formType: 'asc' }, { sortOrder: 'asc' }],
-  });
-}
-
-export async function createCustomField(
-  db: PrismaClient,
-  editionId: string,
-  input: {
-    formType: 'ASHRAM' | 'ASHRAM_FOOD' | 'LOCAL_WELFARE' | 'VENDOR' | 'BANK' | 'FSSAI';
-    label: string;
-    labelTa?: string | null;
-    fieldType: string;
-    isRequired: boolean;
-    sortOrder: number;
-  },
-  by: string,
-) {
-  const row = await db.stallFormField.create({
-    data: { editionId, ...input, labelTa: input.labelTa ?? null },
-  });
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
-    action: 'stall_custom_field.created',
-    subjectRef: row.id,
-    detail: input,
-  });
-  return row;
-}
-
-export async function updateCustomField(
-  db: PrismaClient,
-  id: string,
-  patch: Partial<{
-    label: string;
-    labelTa: string | null;
-    fieldType: string;
-    isRequired: boolean;
-    sortOrder: number;
-    isActive: boolean;
-  }>,
-  by: string,
-) {
-  const row = await db.stallFormField.update({ where: { id }, data: patch });
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
-    action: 'stall_custom_field.updated',
-    subjectRef: id,
-    detail: patch,
-  });
-  return row;
-}
-
-/** Delete only while nothing has been typed into it. After that, deactivate.
- *
- *  ⚠️ And never a built-in, whatever it has been answered: its answer lives in
- *  a column the submit path writes regardless of whether the form asked, so
- *  deleting the question leaves a required column with nothing to fill it. */
-export async function deleteCustomField(db: PrismaClient, id: string, by: string): Promise<void> {
-  const field = await db.stallFormField.findUnique({
-    where: { id },
-    select: { isBuiltIn: true, label: true },
-  });
-  if (field?.isBuiltIn) throw new BuiltInFieldLockedError(field.label, 'existence');
-  const used = await db.stallCustomFieldValue.count({ where: { customFieldId: id } });
-  if (used > 0) throw new CustomFieldInUseError(id);
-  await db.stallFormField.delete({ where: { id } });
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
-    action: 'stall_custom_field.deleted',
-    subjectRef: id,
   });
 }

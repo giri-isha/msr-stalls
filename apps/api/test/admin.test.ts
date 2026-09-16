@@ -171,21 +171,30 @@ describe('rate card', () => {
   });
 });
 
-describe('custom fields', () => {
-  const create = () =>
-    app.inject({
-      method: 'POST',
-      url: '/api/m/stalls/config/custom-fields',
+describe('appended questions, over the wire', () => {
+  /** The Form Builder is the only way in — there is no Custom fields route any
+   *  more, and an appended question is added to a form DEFINITION. */
+  const create = async () => {
+    const forms = await app.inject({
+      method: 'GET',
+      url: '/api/m/stalls/config/forms',
       headers: admin.headers,
-      payload: { formType: 'VENDOR', label: 'Instagram handle', fieldType: 'text' },
     });
+    const vendor = forms.json().forms.find((f: { formType: string }) => f.formType === 'VENDOR');
+    return app.inject({
+      method: 'POST',
+      url: `/api/m/stalls/config/forms/${vendor.definitionId}/fields`,
+      headers: admin.headers,
+      payload: { label: 'Instagram handle', fieldType: 'text' },
+    });
+  };
 
   test('create, then delete while unused', async () => {
     const c = await create();
     expect(c.statusCode).toBe(201);
     const d = await app.inject({
       method: 'DELETE',
-      url: `/api/m/stalls/config/custom-fields/${c.json().id}`,
+      url: `/api/m/stalls/config/form-fields/${c.json().id}`,
       headers: admin.headers,
     });
     expect(d.statusCode).toBe(204);
@@ -202,19 +211,37 @@ describe('custom fields', () => {
     );
     const d = await app.inject({
       method: 'DELETE',
-      url: `/api/m/stalls/config/custom-fields/${id}`,
+      url: `/api/m/stalls/config/form-fields/${id}`,
       headers: admin.headers,
     });
     expect(d.statusCode).toBe(409);
     const p = await app.inject({
       method: 'PATCH',
-      url: `/api/m/stalls/config/custom-fields/${id}`,
+      url: `/api/m/stalls/config/form-fields/${id}`,
       headers: admin.headers,
       payload: { isActive: false },
     });
-    expect(p.statusCode).toBe(200);
+    expect(p.statusCode).toBe(204);
     const pub = await app.inject({ method: 'GET', url: '/api/m/stalls/public/config' });
     expect(pub.json().customFields).toEqual([]);
+  });
+
+  /** ⚠️ A built-in is refused its EXISTENCE whatever it has been answered: its
+   *  answer is a column on `stall_request`, not a row keyed by field id. */
+  test('a built-in question cannot be deleted at all', async () => {
+    const forms = await app.inject({
+      method: 'GET',
+      url: '/api/m/stalls/config/forms',
+      headers: admin.headers,
+    });
+    const vendor = forms.json().forms.find((f: { formType: string }) => f.formType === 'VENDOR');
+    const builtIn = vendor.fields.find((f: { isBuiltIn: boolean }) => f.isBuiltIn);
+    const d = await app.inject({
+      method: 'DELETE',
+      url: `/api/m/stalls/config/form-fields/${builtIn.id}`,
+      headers: admin.headers,
+    });
+    expect(d.statusCode).toBe(409);
   });
 });
 

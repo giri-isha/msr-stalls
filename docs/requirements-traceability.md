@@ -24,7 +24,7 @@ package both sides share.
 | The 2025 field lists, with their Tamil | `forms.ts` (transcribed from the 2025 PDFs) | Built |
 | Anyone with the link can register | `POST /public/register` is open and rate-limited per IP; `POST /public/requests` now needs a session | Built |
 | Register and log in with email or phone number | `POST /public/register` with an email **or** a mobile and a password, confirmed by a link sent to that contact; `POST /public/login` returns a session cookie. `/stalls/status` still emails a signed link to anyone who never registered. A logged-in requester reads the same portal at `GET /public/requests` — the session and the signed link are two credentials onto one view. | Built — see [Vendor identity](#vendor-identity) below. The password is a stopgap until the host's Isha OIDC. |
-| Admin-added questions | `StallCustomField`, Admin → Custom fields | Built |
+| Admin-added questions | `StallFormField` with `isBuiltIn: false`, Admin → Form Builder | Built — the Custom fields tab was a second screen over the same table and is gone; a question is added, reordered and removed where the form is. |
 | At most two stalls in one bay per request — "if they want another area, they raise another request, so we can individually accept one and reject the other" | `StallEdition.maxStallsPerRequest`, enforced in `submit.ts`; 422 with the cap in the message | Built |
 
 ## 2. Planning

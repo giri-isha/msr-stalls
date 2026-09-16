@@ -1,25 +1,14 @@
 import { beforeEach, describe, expect, test } from 'vitest';
-import { type RateScope, SubmitRequestInput, lookupRate } from '@msr/stalls';
+import { type RateScope, lookupRate } from '@msr/stalls';
 import {
-  createCustomField,
   createEdition,
-  deleteCustomField,
   getPublicConfig,
   listZones,
   rateCardFor,
 } from '../src/modules/stalls/config';
 import { activeEdition } from '../src/modules/stalls/editions';
-import { CustomFieldInUseError, NoActiveEditionError } from '../src/modules/stalls/errors';
-import { submitRequest } from '../src/modules/stalls/submit';
-import {
-  accountFor,
-  LogMailer,
-  prisma,
-  resetDatabase,
-  seedEdition,
-  SYSTEM,
-  vendorBody,
-} from './helpers/db';
+import { NoActiveEditionError } from '../src/modules/stalls/errors';
+import { appendField, prisma, resetDatabase, seedEdition, SYSTEM } from './helpers/db';
 
 beforeEach(resetDatabase);
 
@@ -124,27 +113,23 @@ describe('getPublicConfig', () => {
     expect(byCode.get('A3')?.isClosedToVendors).toBe(true);
   });
 
+  /** ⚠️ Only the REQUEST forms. `BANK` is a `StallFormType` but not a form the
+   *  builder serves, and a row filed under it must not reach the public config
+   *  — which is why this one is written straight to the table: there is no seam
+   *  that would create it. */
   test('exposes only active custom fields for public form types', async () => {
     const e = await seedEdition();
-    const active = await createCustomField(
-      prisma,
-      e.id,
-      {
-        formType: 'VENDOR',
-        label: 'Instagram handle',
+    const active = await appendField(e.id, 'VENDOR', 'Instagram handle');
+    await prisma.stallFormField.create({
+      data: {
+        editionId: e.id,
+        formType: 'BANK',
+        label: 'UPI id',
         fieldType: 'text',
         isRequired: false,
         sortOrder: 0,
       },
-      SYSTEM,
-    );
-    const bank = await createCustomField(
-      prisma,
-      e.id,
-      { formType: 'BANK', label: 'UPI id', fieldType: 'text', isRequired: false, sortOrder: 0 },
-      SYSTEM,
-    );
-    await prisma.stallFormField.update({ where: { id: bank.id }, data: { isActive: true } });
+    });
     const cfg = await getPublicConfig(prisma);
     expect(cfg.customFields.map((f) => f.id)).toEqual([active.id]);
   });
@@ -161,38 +146,5 @@ describe('getPublicConfig', () => {
       'maxStallsPerRequest',
       'zones',
     ]);
-  });
-});
-
-describe('deleteCustomField', () => {
-  test('deletes a field nobody has answered', async () => {
-    const e = await seedEdition();
-    const f = await createCustomField(
-      prisma,
-      e.id,
-      { formType: 'VENDOR', label: 'Website', fieldType: 'text', isRequired: false, sortOrder: 0 },
-      SYSTEM,
-    );
-    await deleteCustomField(prisma, f.id, SYSTEM);
-    expect(await prisma.stallFormField.findUnique({ where: { id: f.id } })).toBeNull();
-  });
-
-  test('refuses to delete a field that already has answers', async () => {
-    const e = await seedEdition();
-    const f = await createCustomField(
-      prisma,
-      e.id,
-      { formType: 'VENDOR', label: 'Website', fieldType: 'text', isRequired: false, sortOrder: 0 },
-      SYSTEM,
-    );
-    await submitRequest(
-      prisma,
-      SubmitRequestInput.parse(vendorBody({ customFields: { [f.id]: 'greenleaf.example' } })),
-      { mail: new LogMailer(), statusUrl: (t) => `http://x/${t}` },
-      await accountFor(),
-    );
-    await expect(deleteCustomField(prisma, f.id, SYSTEM)).rejects.toBeInstanceOf(
-      CustomFieldInUseError,
-    );
   });
 });

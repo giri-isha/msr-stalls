@@ -18,6 +18,7 @@ import {
 } from '@msr/stalls';
 import {
   BuiltInFieldLockedError,
+  CustomFieldInUseError,
   UnknownFormFieldError,
   UnknownFormError,
   UnauthorableFieldTypeError,
@@ -447,6 +448,37 @@ export async function addSection(
     data: { definitionId, ...input, sortOrder: (last._max.sortOrder ?? -1) + 1 },
     select: { id: true },
   });
+}
+
+/**
+ * Removes a question, while nothing has been typed into it.
+ *
+ * 🔴 Two refusals, and they are different refusals. A BUILT-IN is never
+ * removable whatever it has been answered: its answer lands in a typed column
+ * on `stall_request` that the submit path writes regardless of whether the form
+ * asked, so deleting the question leaves a required column with nothing to fill
+ * it. Switch it off instead. An APPENDED field is removable right up until the
+ * first answer, and after that deactivating is the only honest move — the
+ * answers are on the record of everybody who gave them, and the question they
+ * answered has to still be readable.
+ *
+ * ⚠️ Scoped to the edition like every other write here, so a field id from one
+ * year cannot be deleted while looking at another.
+ */
+export async function deleteFormField(
+  db: PrismaClient,
+  editionId: string,
+  id: string,
+): Promise<void> {
+  const field = await db.stallFormField.findFirst({
+    where: { id, editionId },
+    select: { id: true, isBuiltIn: true, label: true },
+  });
+  if (!field) throw new UnknownFormFieldError(id);
+  if (field.isBuiltIn) throw new BuiltInFieldLockedError(field.label, 'existence');
+  const answered = await db.stallCustomFieldValue.count({ where: { customFieldId: id } });
+  if (answered > 0) throw new CustomFieldInUseError(id);
+  await db.stallFormField.delete({ where: { id } });
 }
 
 /** Removes a heading. The fields under it are NOT removed — `section_id` is

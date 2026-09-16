@@ -12,8 +12,6 @@ import {
   ConfirmPaymentInput,
   CreateEditionInput,
   CreateZoneInput,
-  CustomFieldInput,
-  CustomFieldPatch,
   AddFormFieldInput,
   AddSectionInput,
   DeclarationInput,
@@ -573,31 +571,6 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     return config.upsertFineType(prisma, edition.id, req.body, caller.personId);
   });
 
-  zod.post('/config/custom-fields', { schema: { body: CustomFieldInput } }, async (req, reply) => {
-    const caller = await requireBackoffice(req, prisma);
-    requirePrivilege(caller, 'config.write');
-    const edition = await activeEditionFor(prisma, caller);
-    reply.status(201);
-    return config.createCustomField(prisma, edition.id, req.body, caller.personId);
-  });
-
-  zod.patch(
-    '/config/custom-fields/:id',
-    { schema: { params: IdParams, body: CustomFieldPatch } },
-    async (req) => {
-      const caller = await requireBackoffice(req, prisma);
-      requirePrivilege(caller, 'config.write');
-      return config.updateCustomField(prisma, req.params.id, req.body, caller.personId);
-    },
-  );
-
-  zod.delete('/config/custom-fields/:id', { schema: { params: IdParams } }, async (req, reply) => {
-    const caller = await requireBackoffice(req, prisma);
-    requirePrivilege(caller, 'config.write');
-    await config.deleteCustomField(prisma, req.params.id, caller.personId);
-    reply.status(204);
-  });
-
   /* ── The form builder ────────────────────────────────────────────────────*/
 
   zod.get(
@@ -652,6 +625,17 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
       reply.status(204);
     },
   );
+
+  /** ⚠️ Refuses a built-in, and refuses an appended field that has been
+   *  answered — the screen offers Delete only where both hold, and this is what
+   *  makes it a rule rather than a suggestion. */
+  zod.delete('/config/form-fields/:id', { schema: { params: IdParams } }, async (req, reply) => {
+    const caller = await requireBackoffice(req, prisma);
+    requirePrivilege(caller, 'config.write');
+    const edition = await activeEditionFor(prisma, caller);
+    await formBuilder.deleteFormField(prisma, edition.id, req.params.id);
+    reply.status(204);
+  });
 
   zod.put(
     '/config/forms/:definitionId/order',

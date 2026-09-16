@@ -274,8 +274,13 @@ const editionQuery = (editionId?: string) =>
  *  filters by bay can read the edition's own list rather than carrying a copy
  *  that goes stale the year the venue is redrawn. */
 export const listZones = () => apiFetch<Array<ZoneView & { id: string }>>(`${BASE}/zones`);
+/** Every edition with its own settings, newest year first.
+ *
+ *  ⚠️ Carries the settings and not just the name, because the Editions table
+ *  edits a row in place through a dialog. Reading them back per row would be a
+ *  request per pencil for figures the list already had. */
 export const listEditions = () =>
-  apiFetch<Array<{ id: string; year: number; name: string; isActive: boolean }>>(
+  apiFetch<Array<{ id: string; year: number; name: string; isActive: boolean } & EditionSettings>>(
     `${BASE}/editions`,
   );
 export const createEdition = (input: { year: number; name: string; activate: boolean }) =>
@@ -308,18 +313,17 @@ export const deleteZone = (code: string) =>
 export const putPlanCategories = (
   categories: Array<{ key: string; name: string; isFood: boolean; sortOrder: number }>,
 ) => apiFetch<unknown>(`${BASE}/config/plan-categories`, { method: 'PUT', json: { categories } });
-export const updateEditionSettings = (
-  id: string,
-  input: {
-    name: string;
-    virtualAccountRentPrefix: string | null;
-    virtualAccountDepositPrefix: string | null;
-    maxStallsPerRequest: number;
-    /** Where this edition's terms can be read, linked beside the acceptance
-     *  tick-box on the bank form. Null until the legal team issues one. */
-    termsUrl: string | null;
-  },
-) => apiFetch<unknown>(`${BASE}/editions/${id}/settings`, { method: 'PATCH', json: input });
+export type EditionSettings = {
+  name: string;
+  virtualAccountRentPrefix: string | null;
+  virtualAccountDepositPrefix: string | null;
+  maxStallsPerRequest: number;
+  /** Where this edition's terms can be read, linked beside the acceptance
+   *  tick-box on the bank form. Null until the legal team issues one. */
+  termsUrl: string | null;
+};
+export const updateEditionSettings = (id: string, input: EditionSettings) =>
+  apiFetch<unknown>(`${BASE}/editions/${id}/settings`, { method: 'PATCH', json: input });
 export const putRateCard = (entries: RateCardEntry[]) =>
   apiFetch<unknown>(`${BASE}/config/rate-card`, { method: 'PUT', json: { entries } });
 export const putCharges = (input: ChargesInput) =>
@@ -331,18 +335,6 @@ export const putFineType = (input: {
   defaultAmountPaise: number;
   isActive: boolean;
 }) => apiFetch<unknown>(`${BASE}/config/fine-types`, { method: 'PUT', json: input });
-export const createCustomField = (input: {
-  formType: string;
-  label: string;
-  labelTa?: string | null;
-  fieldType: string;
-  isRequired: boolean;
-  sortOrder: number;
-}) => apiFetch<{ id: string }>(`${BASE}/config/custom-fields`, { method: 'POST', json: input });
-export const patchCustomField = (id: string, patch: Record<string, unknown>) =>
-  apiFetch<unknown>(`${BASE}/config/custom-fields/${id}`, { method: 'PATCH', json: patch });
-export const deleteCustomField = (id: string) =>
-  apiFetch<void>(`${BASE}/config/custom-fields/${id}`, { method: 'DELETE' });
 
 // ── Backoffice: the form builder ────────────────────────────────────────────
 
@@ -357,6 +349,10 @@ export const addFormField = (definitionId: string, input: AddFormFieldInput) =>
   });
 export const patchFormField = (id: string, patch: FormFieldPatch) =>
   apiFetch<void>(`${BASE}/config/form-fields/${id}`, { method: 'PATCH', json: patch });
+/** ⚠️ 409 once the question has been answered, and 409 on a built-in whatever
+ *  it has been answered. The caller shows that; it does not force. */
+export const deleteFormField = (id: string) =>
+  apiFetch<void>(`${BASE}/config/form-fields/${id}`, { method: 'DELETE' });
 /** ⚠️ The whole order, not one moved field — see `reorderFormFields`. */
 export const reorderFormFields = (
   definitionId: string,

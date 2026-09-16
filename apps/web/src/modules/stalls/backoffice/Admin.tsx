@@ -42,7 +42,6 @@ const TABS = [
   { label: 'Charges', glyph: 'file-text' },
   { label: 'Fines', glyph: 'ban' },
   { label: 'Form builder', glyph: 'clipboard-list' },
-  { label: 'Custom fields', glyph: 'sliders' },
   { label: 'Declarations', glyph: 'scroll' },
   { label: 'Flow', glyph: 'arrow-left-right' },
   { label: 'Editions', glyph: 'calendar' },
@@ -243,13 +242,14 @@ export function Admin() {
       {tab === 'Rates' && <Rates c={c} writable={writable} run={run} reload={cfg.reload} />}
       {tab === 'Charges' && <Charges c={c} writable={writable} run={run} reload={cfg.reload} />}
       {tab === 'Fines' && <Fines c={c} writable={writable} run={run} reload={cfg.reload} />}
-      {/* ⚠️ Reads its own data. `c` is the CONFIG payload, whose `customFields`
-          is the appended questions only — this screen is about the whole form. */}
+      {/* ⚠️ Reads its own data rather than taking `c`. `c.customFields` is the
+          appended questions only, and this screen is about the whole form.
+          There used to be a Custom fields tab beside it listing exactly those
+          appended rows — the same `stall_form_field` records, minus the context
+          that says where on the form they are asked. Two screens editing one
+          table, and the shorter one could not reorder. */}
       {tab === 'Form builder' && (
         <FormBuilder writable={writable} editionId={viewing || undefined} />
-      )}
-      {tab === 'Custom fields' && (
-        <CustomFields c={c} writable={writable} run={run} reload={cfg.reload} />
       )}
       {/* ⚠️ Reads its own data rather than taking `c`. The config payload is
           what is LIVE; this screen shows every version including the archived
@@ -261,12 +261,12 @@ export function Admin() {
       {/* ⚠️ Users and Roles used to be two tabs here. They are screens of their
           own under Access now — each one a full page with its own toolbar,
           rather than a page inside a strip that had grown to ten items. */}
-      {tab === 'Editions' && (
-        <div style={{ display: 'grid', gap: 16 }}>
-          <EditionSettings c={c} writable={writable} run={run} reload={cfg.reload} />
-          <Editions writable={can('config.write')} run={run} />
-        </div>
-      )}
+      {/* ⚠️ Gated on the privilege rather than on `writable`, so it stays live
+          while a past edition is being looked at. The settings of a year are
+          edited on its own row here — which is the one thing on this screen
+          that is not about the year the selector is pointed at, and the reason
+          the panel below reads its own list rather than taking `c`. */}
+      {tab === 'Editions' && <Editions writable={can('config.write')} run={run} />}
     </div>
   );
 }
@@ -597,122 +597,6 @@ function ColumnDialog({
         </FormField>
       </div>
     </Dialog>
-  );
-}
-
-/**
- * The edition's own settings.
- *
- * The two virtual-account prefixes are Finance's: a requester's rent and their
- * deposit are paid into accounts built from the prefix and their mobile number,
- * so an edition with no prefix issued yet quotes no account to pay into.
- */
-function EditionSettings({ c, writable, run }: PanelProps) {
-  const [v, setV] = useState({
-    name: c.edition.name,
-    virtualAccountRentPrefix: '',
-    virtualAccountDepositPrefix: '',
-    maxStallsPerRequest: 1,
-    termsUrl: '',
-  });
-  const [loaded, setLoaded] = useState<string | null>(null);
-  if (c.edition.id !== loaded) {
-    setLoaded(c.edition.id);
-    setV({
-      name: c.edition.name,
-      virtualAccountRentPrefix: c.edition.virtualAccountRentPrefix ?? '',
-      virtualAccountDepositPrefix: c.edition.virtualAccountDepositPrefix ?? '',
-      maxStallsPerRequest: c.edition.maxStallsPerRequest,
-      termsUrl: c.edition.termsUrl ?? '',
-    });
-  }
-
-  return (
-    <Panel
-      title='Edition settings'
-      note='The edition’s name as it appears on every letter, the two virtual-account prefixes Finance issues for it, the cap on how many stalls one request may ask for in a single bay, and where this edition’s terms can be read.'
-      footer={
-        <Btn
-          kind='primary'
-          disabled={!writable}
-          onClick={() =>
-            run('Edition settings saved', () =>
-              api.updateEditionSettings(c.edition.id, {
-                name: v.name.trim(),
-                virtualAccountRentPrefix: v.virtualAccountRentPrefix.trim() || null,
-                virtualAccountDepositPrefix: v.virtualAccountDepositPrefix.trim() || null,
-                maxStallsPerRequest: v.maxStallsPerRequest,
-                termsUrl: v.termsUrl.trim() || null,
-              }),
-            )
-          }
-        >
-          <Icon name='check' size={14} />
-          Save settings
-        </Btn>
-      }
-    >
-      <Grid>
-        <FormField id='ed-name' label='Edition name'>
-          <Input
-            id='ed-name'
-            value={v.name}
-            disabled={!writable}
-            onChange={(e) => setV({ ...v, name: e.target.value })}
-          />
-        </FormField>
-        <FormField id='ed-rent' label='Virtual account prefix — rent'>
-          <Input
-            id='ed-rent'
-            value={v.virtualAccountRentPrefix}
-            placeholder='Not issued yet'
-            disabled={!writable}
-            onChange={(e) => setV({ ...v, virtualAccountRentPrefix: e.target.value.toUpperCase() })}
-          />
-        </FormField>
-        <FormField id='ed-dep' label='Virtual account prefix — deposit'>
-          <Input
-            id='ed-dep'
-            value={v.virtualAccountDepositPrefix}
-            placeholder='Not issued yet'
-            disabled={!writable}
-            onChange={(e) =>
-              setV({ ...v, virtualAccountDepositPrefix: e.target.value.toUpperCase() })
-            }
-          />
-        </FormField>
-        <FormField id='ed-max' label='Stalls per request'>
-          <Input
-            id='ed-max'
-            type='number'
-            min={1}
-            max={20}
-            value={v.maxStallsPerRequest}
-            disabled={!writable}
-            onChange={(e) => setV({ ...v, maxStallsPerRequest: Number(e.target.value) || 1 })}
-          />
-        </FormField>
-      </Grid>
-      {/* 🔴 The bank form records that a requester accepted the terms. This is
-          the document they accepted — without it that consent cannot be
-          produced if a stall is ever in dispute. Blank until the legal team
-          issues the edition's document, and the form then shows the consent
-          without a link rather than one that goes nowhere. */}
-      <FormField
-        id='ed-terms'
-        label='Terms and conditions link'
-        help='Shown beside the acceptance tick-box on the bank details form. Leave blank until the document is issued.'
-      >
-        <Input
-          id='ed-terms'
-          type='url'
-          value={v.termsUrl}
-          placeholder='https://…'
-          disabled={!writable}
-          onChange={(e) => setV({ ...v, termsUrl: e.target.value })}
-        />
-      </FormField>
-    </Panel>
   );
 }
 
@@ -1454,316 +1338,6 @@ function FineDialog({
   );
 }
 
-const FORM_TYPES = ['VENDOR', 'LOCAL_WELFARE', 'ASHRAM', 'ASHRAM_FOOD', 'BANK', 'FSSAI'] as const;
-
-function CustomFields({ c, writable, run }: PanelProps) {
-  const [editing, setEditing] = useState<api.BackofficeConfig['customFields'][number] | null>(null);
-  const [adding, setAdding] = useState(false);
-  return (
-    <Panel
-      title='Custom fields'
-      note='Appended to the end of a base form. A field that has been answered can be deactivated but not deleted.'
-      actions={<AddBtn what='field' writable={writable} onClick={() => setAdding(true)} />}
-    >
-      {c.customFields.length === 0 ? (
-        <Empty>No custom fields on any form yet.</Empty>
-      ) : (
-        <Table>
-          <THead>
-            <TR>
-              <TH>Form</TH>
-              <TH>Label</TH>
-              <TH>Type</TH>
-              <TH>Required</TH>
-              <TH>Active</TH>
-              <TH />
-            </TR>
-          </THead>
-          <TBody>
-            {c.customFields.map((f) => (
-              // A deactivated field is still on the record of everybody who
-              // answered it, so it fades rather than leaving.
-              <TR key={f.id} style={{ opacity: f.isActive ? 1 : 0.55 }}>
-                <TD>
-                  <Tag size='sm'>{f.formType}</Tag>
-                </TD>
-                <TD>
-                  {f.label}
-                  {f.labelTa && (
-                    <span
-                      className='msrs-tamil'
-                      lang='ta'
-                      style={{ marginLeft: 5, color: 'var(--mfg)' }}
-                    >
-                      / {f.labelTa}
-                    </span>
-                  )}
-                </TD>
-                <TD muted>{f.fieldType}</TD>
-                <TD muted>{f.isRequired ? 'Yes' : '—'}</TD>
-                <TD>
-                  {f.isActive ? (
-                    <Tag tone='ok' size='sm'>
-                      Active
-                    </Tag>
-                  ) : (
-                    <Tag size='sm'>Off</Tag>
-                  )}
-                </TD>
-                <TD align='right' style={{ whiteSpace: 'nowrap' }}>
-                  <EditBtn what={f.label} writable={writable} onClick={() => setEditing(f)} />
-                  <Btn
-                    kind='danger'
-                    disabled={!writable}
-                    onClick={() => run('Deleted', () => api.deleteCustomField(f.id))}
-                  >
-                    <Icon name='trash' size={14} />
-                    Delete
-                  </Btn>
-                </TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
-      )}
-
-      {editing && <CustomFieldDialog f={editing} run={run} onClose={() => setEditing(null)} />}
-
-      {adding && (
-        <CustomFieldAddDialog
-          countOn={(t) => c.customFields.filter((f) => f.formType === t).length}
-          run={run}
-          onClose={() => setAdding(false)}
-        />
-      )}
-    </Panel>
-  );
-}
-
-/**
- * A new custom field.
- *
- * ⚠️ The form it goes on is asked HERE and cannot be changed afterwards: moving
- * a field between forms would leave the answers already given filed under a
- * form that never asked the question. `CustomFieldDialog` shows the form and
- * does not offer it, for the same reason.
- */
-function CustomFieldAddDialog({
-  countOn,
-  run,
-  onClose,
-}: {
-  /** How many fields the chosen form already carries — the new one's sort
-   *  order, so it lands at the end of that form rather than the end of all of
-   *  them. */
-  countOn: (t: (typeof FORM_TYPES)[number]) => number;
-  run: PanelProps['run'];
-  onClose: () => void;
-}) {
-  const [formType, setFormType] = useState<(typeof FORM_TYPES)[number]>('VENDOR');
-  const [label, setLabel] = useState('');
-  const [labelTa, setLabelTa] = useState('');
-  const [fieldType, setFieldType] = useState('text');
-  const [required, setRequired] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const add = async () => {
-    setSaving(true);
-    const ok = await run('Field added', () =>
-      api.createCustomField({
-        formType,
-        label: label.trim(),
-        labelTa: labelTa.trim() || null,
-        fieldType,
-        isRequired: required,
-        sortOrder: countOn(formType),
-      }),
-    );
-    if (ok) onClose();
-    else setSaving(false);
-  };
-
-  return (
-    <Dialog
-      title='Add a custom field'
-      note='Appended to the end of the form it is put on. Which form that is cannot be changed afterwards.'
-      onClose={onClose}
-      footer={
-        <DialogButtons
-          onClose={onClose}
-          onSave={add}
-          disabled={saving || !label.trim()}
-          save='Add field'
-        />
-      }
-    >
-      <div style={{ display: 'grid', gap: 12 }}>
-        <FormField id='cf-form' label='Form'>
-          <Select
-            id='cf-form'
-            value={formType}
-            onChange={(e) => setFormType(e.target.value as (typeof FORM_TYPES)[number])}
-          >
-            {FORM_TYPES.map((t) => (
-              <option key={t}>{t}</option>
-            ))}
-          </Select>
-        </FormField>
-        <FormField id='cf-label' label='Label'>
-          <Input id='cf-label' value={label} onChange={(e) => setLabel(e.target.value)} />
-        </FormField>
-        <FormField id='cf-ta' label='Tamil label (optional)'>
-          <Input
-            id='cf-ta'
-            className='msrs-tamil'
-            value={labelTa}
-            onChange={(e) => setLabelTa(e.target.value)}
-          />
-        </FormField>
-        <FormField id='cf-type' label='Type'>
-          <Select id='cf-type' value={fieldType} onChange={(e) => setFieldType(e.target.value)}>
-            <option value='text'>Text</option>
-            <option value='textarea'>Paragraph</option>
-            <option value='number'>Number</option>
-            <option value='checkbox'>Checkbox</option>
-          </Select>
-        </FormField>
-        <FormField id='cf-req' label='Required'>
-          {/* biome-ignore lint/a11y/noLabelWithoutControl: the label WRAPS its control,
-              which associates them implicitly; the rule cannot see the input inside
-              <Checkbox>. */}
-          <label
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              fontSize: 13,
-              cursor: 'pointer',
-            }}
-          >
-            <Checkbox checked={required} onChange={(e) => setRequired(e.target.checked)} />
-            The form will not submit without an answer
-          </label>
-        </FormField>
-      </div>
-    </Dialog>
-  );
-}
-
-/**
- * A custom field's wording and whether the form still asks it.
- *
- * ⚠️ The form it belongs to is not editable. Moving a field between forms would
- * leave the answers already given filed under a form that never asked the
- * question — the field is switched off here and added to the other form
- * instead.
- */
-function CustomFieldDialog({
-  f,
-  run,
-  onClose,
-}: {
-  f: api.BackofficeConfig['customFields'][number];
-  run: PanelProps['run'];
-  onClose: () => void;
-}) {
-  const [label, setLabel] = useState(f.label);
-  const [labelTa, setLabelTa] = useState(f.labelTa ?? '');
-  const [fieldType, setFieldType] = useState(f.fieldType);
-  const [required, setRequired] = useState(f.isRequired);
-  const [active, setActive] = useState(f.isActive);
-  const [saving, setSaving] = useState(false);
-
-  const save = async () => {
-    setSaving(true);
-    const ok = await run('Field saved', () =>
-      api.patchCustomField(f.id, {
-        label: label.trim(),
-        labelTa: labelTa.trim() || null,
-        fieldType,
-        isRequired: required,
-        isActive: active,
-      }),
-    );
-    if (ok) onClose();
-    else setSaving(false);
-  };
-
-  return (
-    <Dialog
-      title={`Edit ${f.label}`}
-      note={`Asked on the ${f.formType} form. A field that has been answered can be switched off but not moved to another form.`}
-      onClose={onClose}
-      width={520}
-      footer={
-        <DialogButtons onClose={onClose} onSave={save} disabled={saving || label.trim() === ''} />
-      }
-    >
-      <div style={{ display: 'grid', gap: 12 }}>
-        <FormField id='cfd-label' label='Label'>
-          <Input id='cfd-label' value={label} onChange={(e) => setLabel(e.target.value)} />
-        </FormField>
-        <FormField id='cfd-ta' label='Tamil label (optional)'>
-          <Input
-            id='cfd-ta'
-            className='msrs-tamil'
-            value={labelTa}
-            onChange={(e) => setLabelTa(e.target.value)}
-          />
-        </FormField>
-        <FormField
-          id='cfd-type'
-          label='Type'
-          help='Changing the type of a field that has been answered leaves those answers as they were recorded.'
-        >
-          <Select id='cfd-type' value={fieldType} onChange={(e) => setFieldType(e.target.value)}>
-            <option value='text'>Text</option>
-            <option value='textarea'>Paragraph</option>
-            <option value='number'>Number</option>
-            <option value='checkbox'>Checkbox</option>
-          </Select>
-        </FormField>
-        <Grid min={180}>
-          <FormField id='cfd-req' label='Required'>
-            {/* biome-ignore lint/a11y/noLabelWithoutControl: the label WRAPS its control,
-                which associates them implicitly; the rule cannot see the input inside
-                <Checkbox>. */}
-            <label
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                fontSize: 13,
-                cursor: 'pointer',
-              }}
-            >
-              <Checkbox checked={required} onChange={(e) => setRequired(e.target.checked)} />
-              Must be answered
-            </label>
-          </FormField>
-          <FormField id='cfd-active' label='Active'>
-            {/* biome-ignore lint/a11y/noLabelWithoutControl: the label WRAPS its control,
-                which associates them implicitly; the rule cannot see the input inside
-                <Checkbox>. */}
-            <label
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                fontSize: 13,
-                cursor: 'pointer',
-              }}
-            >
-              <Checkbox checked={active} onChange={(e) => setActive(e.target.checked)} />
-              Still asked on the form
-            </label>
-          </FormField>
-        </Grid>
-      </div>
-    </Dialog>
-  );
-}
-
 function Flow({ c, writable, run }: PanelProps) {
   const [v, setV] = useState(c.flow);
   useEffect(() => setV(c.flow), [c.flow]);
@@ -1835,9 +1409,22 @@ function Flow({ c, writable, run }: PanelProps) {
   );
 }
 
+/**
+ * The editions, as records. The settings of one are read on its row and changed
+ * in the dialog its pencil opens.
+ *
+ * 🔴 The active edition's settings used to sit in a panel of their own above
+ * this table — five inputs open on the screen whether or not anybody came to
+ * change them, and reachable for the ACTIVE year only, so correcting a past
+ * edition's name meant activating it first. Every other list on this screen
+ * reads in a row and writes in a dialog; this one is the same shape now, and
+ * the pencil is per row because the settings belong to the edition rather than
+ * to the screen.
+ */
 function Editions({ writable, run }: { writable: boolean; run: PanelProps['run'] }) {
   const eds = useLoad(api.listEditions);
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<EditionRow | null>(null);
   return (
     <Panel
       title='Editions'
@@ -1852,6 +1439,8 @@ function Editions({ writable, run }: { writable: boolean; run: PanelProps['run']
             <TR>
               <TH>Year</TH>
               <TH>Name</TH>
+              <TH>Stalls per request</TH>
+              <TH>Virtual accounts</TH>
               <TH>Active</TH>
               <TH />
             </TR>
@@ -1861,8 +1450,20 @@ function Editions({ writable, run }: { writable: boolean; run: PanelProps['run']
               <TR key={e.id}>
                 <TD style={{ fontWeight: 700 }}>{e.year}</TD>
                 <TD>{e.name}</TD>
+                <TD align='right' style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {e.maxStallsPerRequest}
+                </TD>
+                {/* ⚠️ The two prefixes read together or not at all: a payment
+                    letter needs the rent account AND the deposit account, so a
+                    year holding one of them is half-issued rather than issued.
+                    "Not issued yet" is the normal state of a new edition. */}
+                <TD mono muted>
+                  {e.virtualAccountRentPrefix && e.virtualAccountDepositPrefix
+                    ? `${e.virtualAccountRentPrefix} · ${e.virtualAccountDepositPrefix}`
+                    : 'Not issued yet'}
+                </TD>
                 <TD>{e.isActive && <Tag tone='ok'>Active</Tag>}</TD>
-                <TD align='right'>
+                <TD align='right' style={{ whiteSpace: 'nowrap' }}>
                   {!e.isActive && (
                     <Btn
                       disabled={!writable}
@@ -1877,11 +1478,24 @@ function Editions({ writable, run }: { writable: boolean; run: PanelProps['run']
                       Activate
                     </Btn>
                   )}
+                  <EditBtn what={e.name} writable={writable} onClick={() => setEditing(e)} />
                 </TD>
               </TR>
             ))}
           </TBody>
         </Table>
+      )}
+
+      {editing && (
+        <EditionDialog
+          e={editing}
+          run={run}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            eds.reload();
+          }}
+        />
       )}
 
       {adding && (
@@ -1895,6 +1509,127 @@ function Editions({ writable, run }: { writable: boolean; run: PanelProps['run']
         />
       )}
     </Panel>
+  );
+}
+
+type EditionRow = Awaited<ReturnType<typeof api.listEditions>>[number];
+
+/**
+ * One edition's own settings.
+ *
+ * The two virtual-account prefixes are Finance's: a requester's rent and their
+ * deposit are paid into accounts built from the prefix and their mobile number,
+ * so an edition with no prefix issued yet quotes no account to pay into.
+ *
+ * ⚠️ Opened from a row, so it edits THAT edition — including a past one, which
+ * makes it the one write on this screen not aimed at the active year. Every
+ * other panel here writes to whatever is active regardless of what the selector
+ * at the top is showing, which is why they go read-only on a past edition and
+ * this does not: the row was pressed, and the heading names the year being
+ * changed.
+ */
+function EditionDialog({
+  e,
+  run,
+  onClose,
+  onSaved,
+}: {
+  e: EditionRow;
+  run: PanelProps['run'];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [v, setV] = useState({
+    name: e.name,
+    virtualAccountRentPrefix: e.virtualAccountRentPrefix ?? '',
+    virtualAccountDepositPrefix: e.virtualAccountDepositPrefix ?? '',
+    maxStallsPerRequest: e.maxStallsPerRequest,
+    termsUrl: e.termsUrl ?? '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    const ok = await run('Edition settings saved', () =>
+      api.updateEditionSettings(e.id, {
+        name: v.name.trim(),
+        virtualAccountRentPrefix: v.virtualAccountRentPrefix.trim() || null,
+        virtualAccountDepositPrefix: v.virtualAccountDepositPrefix.trim() || null,
+        maxStallsPerRequest: v.maxStallsPerRequest,
+        termsUrl: v.termsUrl.trim() || null,
+      }),
+    );
+    if (ok) onSaved();
+    else setSaving(false);
+  };
+
+  return (
+    <Dialog
+      title={`${e.year} settings`}
+      note='The edition’s name as it appears on every letter, the two virtual-account prefixes Finance issues for it, the cap on how many stalls one request may ask for in a single bay, and where this edition’s terms can be read.'
+      onClose={onClose}
+      footer={<DialogButtons onClose={onClose} onSave={save} disabled={saving || !v.name.trim()} />}
+    >
+      <div style={{ display: 'grid', gap: 12 }}>
+        <Grid>
+          <FormField id='ed-name' label='Edition name'>
+            <Input
+              id='ed-name'
+              value={v.name}
+              onChange={(ev) => setV({ ...v, name: ev.target.value })}
+            />
+          </FormField>
+          <FormField id='ed-max' label='Stalls per request'>
+            <Input
+              id='ed-max'
+              type='number'
+              min={1}
+              max={20}
+              value={v.maxStallsPerRequest}
+              onChange={(ev) => setV({ ...v, maxStallsPerRequest: Number(ev.target.value) || 1 })}
+            />
+          </FormField>
+          <FormField id='ed-rent' label='Virtual account prefix — rent'>
+            <Input
+              id='ed-rent'
+              value={v.virtualAccountRentPrefix}
+              placeholder='Not issued yet'
+              onChange={(ev) =>
+                setV({ ...v, virtualAccountRentPrefix: ev.target.value.toUpperCase() })
+              }
+            />
+          </FormField>
+          <FormField id='ed-dep' label='Virtual account prefix — deposit'>
+            <Input
+              id='ed-dep'
+              value={v.virtualAccountDepositPrefix}
+              placeholder='Not issued yet'
+              onChange={(ev) =>
+                setV({ ...v, virtualAccountDepositPrefix: ev.target.value.toUpperCase() })
+              }
+            />
+          </FormField>
+        </Grid>
+        {/* 🔴 The bank form records that a requester accepted the terms. This is
+            the document they accepted — without it that consent cannot be
+            produced if a stall is ever in dispute. Blank until the legal team
+            issues the edition's document, and the form then shows the consent
+            without a link rather than one that goes nowhere. */}
+        <FormField
+          id='ed-terms'
+          label='Terms and conditions link'
+          help='Shown beside the acceptance tick-box on the bank details form. Leave blank until the document is issued.'
+        >
+          <Input
+            id='ed-terms'
+            type='url'
+            value={v.termsUrl}
+            placeholder='https://…'
+            onChange={(ev) => setV({ ...v, termsUrl: ev.target.value })}
+          />
+        </FormField>
+      </div>
+    </Dialog>
   );
 }
 

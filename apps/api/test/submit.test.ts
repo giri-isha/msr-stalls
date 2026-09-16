@@ -1,14 +1,13 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 import { SubmitRequestInput } from '@msr/stalls';
-import { createCustomField } from '../src/modules/stalls/config';
 import { submitRequest } from '../src/modules/stalls/submit';
 import {
   accountFor,
+  appendField,
   LogMailer,
   prisma,
   resetDatabase,
   seedEdition,
-  SYSTEM,
   vendorBody,
 } from './helpers/db';
 
@@ -71,30 +70,8 @@ describe('submitRequest', () => {
 
   test('stores custom values only for fields of that form type, and drops the rest', async () => {
     const e = await seedEdition();
-    const mine = await createCustomField(
-      prisma,
-      e.id,
-      {
-        formType: 'VENDOR',
-        label: 'Instagram',
-        fieldType: 'text',
-        isRequired: false,
-        sortOrder: 0,
-      },
-      SYSTEM,
-    );
-    const other = await createCustomField(
-      prisma,
-      e.id,
-      {
-        formType: 'ASHRAM',
-        label: 'Cost centre',
-        fieldType: 'text',
-        isRequired: false,
-        sortOrder: 0,
-      },
-      SYSTEM,
-    );
+    const mine = await appendField(e.id, 'VENDOR', 'Instagram');
+    const other = await appendField(e.id, 'ASHRAM', 'Cost centre');
     const r = await submit({
       customFields: { [mine.id]: '@greenleaf', [other.id]: 'CC-42', junk: 'x' },
     });
