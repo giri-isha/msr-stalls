@@ -17,14 +17,20 @@ const routes = [
 
 /** The form sits behind a session now, so every render here is signed in. The
  *  signed-OUT case is `RequesterAuth.test.tsx`'s — it is about the gate, and
- *  this file is about the form. */
-const session = () =>
+ *  this file is about the form.
+ *
+ *  ⚠️ `requesterType` is NULL by default, which is an account that pre-dates
+ *  the question and may open any of the three forms. The tests below are about
+ *  the forms themselves and would each have to be registered for their own
+ *  type otherwise; the narrowing is its own test at the bottom of this file. */
+const session = (requesterType: string | null = null) =>
   [
     'GET',
     /\/public\/session$/,
     () => ({
       accountId: 'a-1',
       displayName: 'Priya Venkat',
+      requesterType,
       email: 'priya@greenleaf.example',
       phone: '9840012345',
     }),
@@ -309,5 +315,34 @@ describe('RequestForm — ashram', () => {
 
     await choose(user, stallType, 'FOOD');
     expect(screen.getByLabelText(/hold an FSSAI certificate/)).toBeInTheDocument();
+  });
+});
+
+/** 🔴 The form an account may fill, checked on the way in as well as on the
+ *  write. The picker only links to the one that opens, so arriving on another
+ *  means a bookmark or a pasted URL — and letting it render would mean filling
+ *  in two pages of form to be refused by the API at the end of it. */
+describe('RequestForm — the form this account may fill', () => {
+  const withPicker = [...routes, { path: '/stalls/apply', element: <div>the form picker</div> }];
+
+  test('sends a vendor account that opens the ashram form back to the picker', async () => {
+    installFetch([session('VENDOR'), config()]);
+    renderAt('/stalls/apply/ashram', withPicker, { requester: true });
+
+    expect(await screen.findByText('the form picker')).toBeInTheDocument();
+  });
+
+  test('opens the account’s own form', async () => {
+    installFetch([session('VENDOR'), config()]);
+    renderAt('/stalls/apply/vendor', withPicker, { requester: true });
+
+    expect(await screen.findByText('Vendor Stall Request Form')).toBeInTheDocument();
+  });
+
+  test('an account with no type on it may still open any form', async () => {
+    installFetch([session(null), config()]);
+    renderAt('/stalls/apply/local-welfare', withPicker, { requester: true });
+
+    expect(await screen.findByText('Local Welfare Stall Request Form')).toBeInTheDocument();
   });
 });

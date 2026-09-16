@@ -516,6 +516,11 @@ async function main() {
       email: 'locked.vendor@maildrop.cc',
       phone: '9840099002',
       displayName: 'Sunita Rao',
+      // ⚠️ Set, though neither of these two has ever applied. An account with
+      // no type is offered all three forms — the state a row that pre-dates the
+      // question is in — and seeding both of the module's spare accounts into
+      // it would hide the ordinary case, which is an account that may fill one.
+      requesterType: 'VENDOR',
     },
   });
   await prisma.stallCredential.upsert({
@@ -541,6 +546,7 @@ async function main() {
       email: 'linkonly.vendor@maildrop.cc',
       phone: '9840099003',
       displayName: 'Anand Prakash',
+      requesterType: 'VENDOR',
     },
   });
   console.log('Users: 1 locked out, 1 link-only (for the Users directory)');

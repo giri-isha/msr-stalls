@@ -23,6 +23,24 @@ export interface RequestFormRoute {
   type: StallRequestType;
   /** The last path segment. Also what `FormPicker` links to. */
   slug: string;
+  /** Who the form is for, in the words the picker and the registration screen
+   *  both show. 🔴 ONE copy: the tile a requester chooses their account type
+   *  from and the tile they later open the form from have to describe the same
+   *  three populations, or an ashram department registers as a vendor because
+   *  the two screens worded it differently. */
+  who: string;
+  whoTa: string | null;
+  /** A name from the shared icon registry — see `ui/icons.tsx`. */
+  glyph: string;
+  /**
+   * The plate the glyph sits on.
+   *
+   * ⚠️ The `--<tone>-t` tint family, not the `--av*` avatar plates. A tone tint
+   * is light in the light theme and dark in the dark one, so the glyph on it
+   * takes `--fg` and stays readable in both — the rule `NavTileCard`'s header
+   * spells out. An `--av*` plate is dark in BOTH and would need white.
+   */
+  tint: string;
 }
 
 /**
@@ -37,10 +55,42 @@ export interface RequestFormRoute {
  * `stallsPublicRoutes`.
  */
 export const REQUEST_FORMS: readonly RequestFormRoute[] = [
-  { type: 'VENDOR', slug: 'vendor' },
-  { type: 'LOCAL_WELFARE', slug: 'local-welfare' },
-  { type: 'ASHRAM', slug: 'ashram' },
+  {
+    type: 'VENDOR',
+    slug: 'vendor',
+    who: 'External food and retail vendors',
+    whoTa: 'வெளி விற்பனையாளர்கள்',
+    glyph: 'ticket',
+    tint: 'var(--pri-t)',
+  },
+  {
+    type: 'LOCAL_WELFARE',
+    slug: 'local-welfare',
+    who: 'Local welfare and community stalls',
+    whoTa: null,
+    glyph: 'users',
+    tint: 'var(--teal-t)',
+  },
+  // 🔴 ONE ashram entry, where there were two — "display and sales" and "food
+  // stalls". A department had to know which of them it was before being asked a
+  // question, and picking wrong meant a request of the wrong type. The form
+  // asks it instead.
+  {
+    type: 'ASHRAM',
+    slug: 'ashram',
+    who: 'Ashram departments — display, sales and food',
+    whoTa: null,
+    glyph: 'layout-grid',
+    tint: 'var(--violet-t)',
+  },
 ];
+
+/** One form's description, by type. ⚠️ Derived from the list above rather than
+ *  written beside it, so a form added to the routes is described everywhere it
+ *  is offered. */
+export const REQUEST_FORM_BY_TYPE = Object.fromEntries(
+  REQUEST_FORMS.map((f) => [f.type, f]),
+) as Record<StallRequestType, RequestFormRoute>;
 
 export const TYPE_SLUG: Record<StallRequestType, string> = Object.fromEntries(
   REQUEST_FORMS.map((f) => [f.type, f.slug]),

@@ -1,9 +1,10 @@
-import { MIN_PASSWORD_LENGTH } from '@stalls/core';
+import { FORM_DEFINITIONS, MIN_PASSWORD_LENGTH, type StallRequestType } from '@stalls/core';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { registerRequester } from '../api';
 import { BilingualLabel } from '../components/BilingualLabel';
-import { Btn, Card, FormField, H1, Icon, Input } from '../ui';
+import { Btn, Card, ChoicePlate, FieldError, FormField, H1, Icon, Input, Radio } from '../ui';
+import { REQUEST_FORMS } from './request-forms';
 
 /**
  * Creating a stall account.
@@ -29,13 +30,22 @@ export function Register() {
   const [name, setName] = useState('');
   const [contact, setContact] = useState('');
   const [password, setPassword] = useState('');
+  // 🔴 No default. A pre-picked "Vendor" would be answered by whoever did not
+  // read the question, and it is the one answer on this screen the requester
+  // cannot change afterwards without calling the stall team.
+  const [kind, setKind] = useState<StallRequestType | null>(null);
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   const [tooShort, setTooShort] = useState(false);
+  const [noKind, setNoKind] = useState(false);
 
   const submit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (busy || !name.trim() || !contact.trim()) return;
+    if (!kind) {
+      setNoKind(true);
+      return;
+    }
     if (password.length < MIN_PASSWORD_LENGTH) {
       setTooShort(true);
       return;
@@ -47,6 +57,7 @@ export function Register() {
         contact: contact.trim(),
         password,
         displayName: name.trim(),
+        requesterType: kind,
       });
     } catch {
       // Even a failure lands on the panel below. The only errors this route
@@ -81,7 +92,7 @@ export function Register() {
   }
 
   return (
-    <div style={{ display: 'grid', gap: 16, maxWidth: 440, margin: '0 auto' }}>
+    <div style={{ display: 'grid', gap: 16, maxWidth: 540, margin: '0 auto' }}>
       <H1 icon={<Icon name='user' size={18} />} sub='You need one before you can request a stall'>
         Create an Account
       </H1>
@@ -113,6 +124,68 @@ export function Register() {
               placeholder='you@example.com or 98765 43210'
             />
           </FormField>
+
+          {/* 🔴 Which form the account may fill, asked ONCE and here.
+              A trader, a village welfare requester and an ashram department are
+              asked different questions and priced off different rate scopes, so
+              the answer decides which form opens for this login — see
+              `FormPicker`. It is not a preference the apply page can talk them
+              out of, and the API refuses a request of any other type. */}
+          <fieldset
+            style={{ border: 0, margin: 0, padding: 0, display: 'grid', gap: 8 }}
+            aria-describedby={noKind ? 'reg-kind-error' : undefined}
+          >
+            <legend style={{ padding: 0, fontSize: 12.5, fontWeight: 600, marginBottom: 2 }}>
+              What kind of stall will you be requesting?
+              <span aria-hidden style={{ marginLeft: 3, color: 'var(--des-fg)' }}>
+                *
+              </span>
+            </legend>
+            <div style={{ fontSize: 12, color: 'var(--mfg)', marginBottom: 4, lineHeight: 1.6 }}>
+              This decides which form you fill. If it later turns out to be wrong, the stall team
+              can move your account — you do not have to register again.
+            </div>
+            {REQUEST_FORMS.map((form) => (
+              <ChoicePlate
+                key={form.type}
+                htmlFor={`reg-kind-${form.type}`}
+                selected={kind === form.type}
+              >
+                <Radio
+                  id={`reg-kind-${form.type}`}
+                  name='reg-kind'
+                  value={form.type}
+                  checked={kind === form.type}
+                  onChange={() => {
+                    setKind(form.type);
+                    setNoKind(false);
+                  }}
+                  style={{ marginTop: 1 }}
+                />
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'block', fontWeight: 600 }}>
+                    {FORM_DEFINITIONS[form.type].title.replace(/ Request Form$/, '')}
+                  </span>
+                  <span style={{ display: 'block', fontSize: 12, color: 'var(--mfg)' }}>
+                    {form.who}
+                  </span>
+                  {form.whoTa && (
+                    <span
+                      className='stalls-tamil'
+                      lang='ta'
+                      style={{ display: 'block', fontSize: 12, color: 'var(--mfg)' }}
+                    >
+                      {form.whoTa}
+                    </span>
+                  )}
+                </span>
+              </ChoicePlate>
+            ))}
+            <FieldError
+              of={noKind ? 'Please choose the kind of stall you will be requesting.' : undefined}
+              id='reg-kind-error'
+            />
+          </fieldset>
 
           <FormField
             id='reg-password'

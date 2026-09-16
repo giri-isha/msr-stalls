@@ -15,6 +15,7 @@ export * from './rbac';
 export * from './signing';
 export * from './reference';
 export * from './stall-numbers';
+export * from './submitted';
 export * from './templates';
 export * from './virtual-account';
 export * from './zones';

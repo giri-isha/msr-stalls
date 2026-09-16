@@ -20,12 +20,18 @@ The whole requirement, from stall request to check-in and refund.
   admin-appended custom fields. The 2025 sheets had a fourth, Ashram Food: it is
   the ashram form answered "Food", so a department is asked whether its stall
   sells food rather than made to declare it by choosing a page.
+- **One form per account**: registration asks which of the three the account is
+  for, and that is the only form it may fill — enforced on the write, not just
+  on the page that offers the tiles. The other two are drawn and locked, because
+  a department that registered as a vendor by mistake needs to see that the form
+  they want exists and that the fix is a phone call.
 - **Vendor capture**: a submission creates an account keyed on email, mints a
   private status link, and emails a receipt. No password, no OTP.
 - **Getting back in**: the status page is the vendor's portal — what is
-  outstanding, and the bank form or FSSAI upload opened straight from it. Lost
-  the email? An address or a mobile number gets the link sent back to the
-  account's own address, which is the whole of "login" here.
+  outstanding, the bank form or FSSAI upload opened straight from it, and what
+  they themselves submitted, read back to them. Lost the email? An address or a
+  mobile number gets the link sent back to the account's own address, which is
+  the whole of "login" here.
 - **Backoffice pipeline**: dashboard, request list with filters/search/cards,
   full application detail, flag for follow-up.
 - **Planning & Zones**: crowd-driven stall suggestions per zone, a category

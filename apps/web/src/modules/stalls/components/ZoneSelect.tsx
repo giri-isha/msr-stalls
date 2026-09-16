@@ -35,7 +35,24 @@ export function ZoneSelect({
 }) {
   const byCode = new Map((zones ?? []).map((z) => [z.code, z]));
   return (
-    <div style={{ display: 'grid', gap: 8 }} role='radiogroup' aria-invalid={invalid || undefined}>
+    // 🔴 A RESPONSIVE grid, not a single stack. Each plate is a bay name and a
+    // rent — two short lines — and on the wide public form a stack of them drew
+    // seven 1000px-long plates holding a sentence each, which is the one
+    // question on the form a requester has to compare options to answer. Two
+    // columns put the bays and their rents beside each other; a phone gets one,
+    // because `minmax(320px,1fr)` cannot fit two.
+    //
+    // ⚠️ The DOM order is the order of the options, so arrow-key navigation
+    // inside the radiogroup still follows the list the edition set.
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))',
+        gap: 8,
+      }}
+      role='radiogroup'
+      aria-invalid={invalid || undefined}
+    >
       {options.map((o) => {
         const z = byCode.get(o.value);
         const rent = z ? (isFood ? z.rentFoodPaise : z.rentNonFoodPaise) : null;

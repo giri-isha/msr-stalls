@@ -59,7 +59,7 @@ import {
 } from '@stalls/core';
 import { prisma } from '../../prisma';
 import type { ZodTypeProvider } from '../../zod-validation';
-import { resolveAccessLink } from './accounts';
+import { resolveAccessLink, resolveRequesterType } from './accounts';
 import { getBankForm, submitBankDetails } from './bank';
 import { declarationsForForm } from './declarations';
 import { submitPaymentClaim } from './payment-claims';
@@ -197,6 +197,10 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
     return {
       accountId: account.id,
       displayName: account.displayName,
+      // ⚠️ RESOLVED here rather than read off the column, so an account that
+      // pre-dates the question is told what it already is rather than being
+      // offered three forms it cannot use. See `resolveRequesterType`.
+      requesterType: await resolveRequesterType(prisma, account),
       // A placeholder address is not an address. Reporting it would put
       // `mobile+9840012399@stalls.invalid` in a form field a vendor then has
       // to clear by hand.

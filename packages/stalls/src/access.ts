@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { OnboardingStep } from './onboarding';
+import { STALL_REQUEST_TYPES } from './reference';
 
 /** How a vendor gets back in.
  *
@@ -64,10 +65,31 @@ export function isSelfServe(step: OnboardingStep): step is SelfServeStep {
  *  outlive the mechanism it protects and buy nothing the floor does not. */
 export const MIN_PASSWORD_LENGTH = 8;
 
+/**
+ * Which of the three forms an account is registered against.
+ *
+ * 🔴 Asked at registration, and it is what the account may FILL. A trader, a
+ * village welfare requester and an ashram department are three different
+ * populations asked three different sets of questions, priced off three
+ * different rate scopes; an account that could open any of the three forms
+ * could file itself as whichever one it liked, and the scope a request is
+ * quoted at is not a thing a requester chooses.
+ *
+ * ⚠️ Built from `STALL_REQUEST_TYPES` rather than reusing `RequestType` in
+ * `contracts.ts`, which imports THIS file — `contracts` may depend on `access`
+ * and not the other way round. Both read the same list, so they cannot
+ * disagree about what the three are.
+ */
+export const RequesterTypeValue = z.enum(STALL_REQUEST_TYPES);
+export type RequesterTypeValue = z.infer<typeof RequesterTypeValue>;
+
 export const RegisterInput = z.object({
   contact: z.string().min(1).max(254),
   password: z.string().min(MIN_PASSWORD_LENGTH).max(200),
   displayName: z.string().min(1).max(160),
+  /** ⚠️ Required. An account with no type is a legacy row — see
+   *  `RequesterSession.requesterType` — never one this route creates. */
+  requesterType: RequesterTypeValue,
 });
 export type RegisterInput = z.infer<typeof RegisterInput>;
 
@@ -115,6 +137,18 @@ export type SetRequesterPasswordInput = z.infer<typeof SetRequesterPasswordInput
 export interface RequesterSession {
   accountId: string;
   displayName: string;
+  /**
+   * Which form this account may fill — the one thing on this session that
+   * changes what the apply page offers.
+   *
+   * 🔴 Null only for an account that pre-dates the question and has never
+   * filed anything. Where such an account HAS filed, the type of what it filed
+   * is the answer — the account came in through that form, so that is what it
+   * is — and the API resolves that before this leaves the route. A page reading
+   * null therefore means "nothing has decided yet", which is the one case where
+   * all three forms are offered.
+   */
+  requesterType: RequesterTypeValue | null;
   /** Empty when the account was registered on a mobile and has no real
    *  address — the column holds a placeholder and nothing sends to it. */
   email: string;

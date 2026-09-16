@@ -60,7 +60,7 @@ const LABEL: Record<OnboardingStep, string> = {
   BANK_FORM: 'Bank details pending',
   PAYMENT: 'Payment pending',
   FSSAI: 'FSSAI certificate pending',
-  STAFF_REGISTRATION: 'Backoffice not registered',
+  STAFF_REGISTRATION: 'Staff not registered',
 };
 
 /** Ordered: the first entry is what the vendor's portal should open next, and

@@ -24,7 +24,7 @@ import { DeclarationConsent, allTicked } from '../components/DeclarationConsent'
 import { FieldControl } from '../components/FormFields';
 import { useLoad } from '../hooks';
 import { useRequester } from '../requester';
-import { Card, FieldStack, Icon, Loading } from '../ui';
+import { Card, Icon, Loading, useIsMobile } from '../ui';
 
 /** ⚠️ Includes `string[]`, for a `file`/`files` answer — a list of media-store
  *  keys. A request form has no built-in file question, but an admin can append
@@ -279,6 +279,31 @@ function SectionHeading({
   );
 }
 
+/**
+ * The question types that take the WHOLE width of the form.
+ *
+ * 🔴 The form lays its short answers two-up on a wide screen — see the grid in
+ * `Form` — and these are the ones that must not be squeezed into half of it: a
+ * paragraph box, the bay list with its rents, the appliance table, a plate of
+ * radio choices, an upload, a consent tick, and the wording blocks that are not
+ * questions at all. Everything else — a name, a number, a count — is a single
+ * line and reads better beside its neighbour than a screen-length below it.
+ *
+ * ⚠️ A type NOT in here is narrow by default, which is the safe direction: a
+ * short answer given a whole row looks generous, while a long one crushed into
+ * half a row is unusable. An admin-added type therefore starts narrow.
+ */
+const WIDE_FIELDS = new Set([
+  'textarea',
+  'zone',
+  'appliances',
+  'display',
+  'checkbox',
+  'radio',
+  'file',
+  'files',
+]);
+
 function isEmpty(v: unknown): boolean {
   if (v === undefined || v === null) return true;
   if (typeof v === 'boolean') return v === false;
@@ -303,12 +328,21 @@ export function RequestForm({ type }: { type: StallRequestType }) {
   // session to land first, or a signed-in reader is bounced on every refresh.
   if (status === 'loading') return <Loading />;
   if (!requester) return <Navigate to='/stalls/apply' replace />;
+  // 🔴 The form this account is registered for, and no other. The picker only
+  // links to the one that opens, so arriving here on the wrong type means a
+  // bookmark or a pasted URL — and the API would refuse the submission anyway
+  // (see `WrongRequesterTypeError`), which is a page of form too late to find
+  // out. The picker says which form is theirs and how to have it changed.
+  if (requester.requesterType && requester.requesterType !== type) {
+    return <Navigate to='/stalls/apply' replace />;
+  }
   return <Form type={type} requester={requester} />;
 }
 
 function Form({ type, requester }: { type: StallRequestType; requester: RequesterSession }) {
   const def = FORM_DEFINITIONS[type];
   const navigate = useNavigate();
+  const mobile = useIsMobile();
   // ⚠️ Quoted at THIS form's scope. A local welfare requester asking after A3
   // gets a figure; a vendor asking after the same bay is told it is closed to
   // trade. One bay, two answers — which is why the rent cannot be a property of
@@ -556,29 +590,51 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
       )}
 
       <Card pad={0}>
-        <div style={{ padding: 18 }}>
-          <FieldStack>
+        {/* 🔴 TWO COLUMNS on a laptop, one on a phone. The vendor form is
+            forty-odd questions and every one of them used to have a row of its
+            own in a 760px column, which made a five-minute form feel like a
+            mile of scrolling — the short answers (a name, a count, a number of
+            passes) now sit beside each other and only what needs the width
+            takes it. `minmax(0,1fr)` rather than `1fr`: a grid track defaults to
+            `min-content` width, so one long unbroken word in a help line would
+            otherwise push the column wider than the card. */}
+        <div style={{ padding: mobile ? 16 : 22 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: mobile ? '1fr' : 'repeat(2,minmax(0,1fr))',
+              gap: mobile ? 18 : '20px 22px',
+              alignItems: 'start',
+            }}
+          >
             {groups.map((g, gi) => (
               <div key={g.section?.id ?? `loose-${gi}`} style={{ display: 'contents' }}>
                 {g.section && <SectionHeading section={g.section} />}
                 {g.fields.map((f) => {
                   const key = fieldKey(f);
                   return (
-                    <FieldControl
+                    <div
                       key={f.id}
-                      field={asFormField(f, key)}
-                      value={values[key]}
-                      error={errors[key]}
-                      onChange={(v) => set(key, v ?? '')}
-                      config={config.data}
-                      type={type}
-                      isFood={isFood}
-                    />
+                      style={{
+                        minWidth: 0,
+                        gridColumn: WIDE_FIELDS.has(f.type) ? '1 / -1' : undefined,
+                      }}
+                    >
+                      <FieldControl
+                        field={asFormField(f, key)}
+                        value={values[key]}
+                        error={errors[key]}
+                        onChange={(v) => set(key, v ?? '')}
+                        config={config.data}
+                        type={type}
+                        isFood={isFood}
+                      />
+                    </div>
                   );
                 })}
               </div>
             ))}
-          </FieldStack>
+          </div>
         </div>
 
         {/* 🔴 The consents, immediately above Submit and labelled by their own

@@ -182,7 +182,12 @@ The requirement says "register & login (SSO) using email or phone number".
 address or a mobile number and a password, confirms it by following a link sent
 to that contact, and logs in for a session. `/stalls/apply` asks for an account
 before it opens a form, and a request now belongs to the session rather than to
-the address typed into it. Design:
+the address typed into it. Registration also asks WHICH of the three forms the
+account is for: that is the only form the picker opens for it, and
+`submitRequest` refuses a request of any other type — the type decides which
+questions are asked and which rate scope prices the stall, so it cannot be a
+field a post chooses freely. An account that pre-dates the question resolves to
+the type of what it has already filed. Design:
 `docs/superpowers/specs/2026-09-15-stalls-vendor-login-design.md`.
 
 Item 1, **delivery is email only**, is closed with it: a mobile registration

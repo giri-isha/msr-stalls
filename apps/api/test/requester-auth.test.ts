@@ -39,8 +39,16 @@ beforeEach(async () => {
 });
 
 const url = (p: string) => `/api/m/stalls/public/${p}`;
+/** ⚠️ `requesterType` is defaulted rather than spelled out in every body: the
+ *  tests below are about the CONTACT and the silence around it, and the type is
+ *  a required field they would otherwise all have to carry. The tests that are
+ *  about the type pass their own. */
 const postRegister = (body: Record<string, unknown>) =>
-  app.inject({ method: 'POST', url: url('register'), payload: body });
+  app.inject({
+    method: 'POST',
+    url: url('register'),
+    payload: { requesterType: 'VENDOR', ...body },
+  });
 
 async function account(email = 'priya@greenleaf.example', phone = '9840012345') {
   return prisma.stallAccount.create({
@@ -310,6 +318,47 @@ describe('POST /public/register', () => {
     expect(junk.body).toBe(free.body);
   });
 
+  /** 🔴 Which form the account may fill, asked here and enforced on the write.
+   *
+   *  The three populations are asked different questions and priced off
+   *  different rate scopes, so this is not a preference — see
+   *  `WrongRequesterTypeError`. */
+  test('stores the form the account registered for', async () => {
+    await postRegister({
+      contact: 'welfare@village.example',
+      password: 'hunter2hunter2',
+      displayName: 'Village Welfare',
+      requesterType: 'LOCAL_WELFARE',
+    });
+
+    const acct = await prisma.stallAccount.findUniqueOrThrow({
+      where: { email: 'welfare@village.example' },
+    });
+    expect(acct.requesterType).toBe('LOCAL_WELFARE');
+  });
+
+  test('refuses a body with no form on it, and one naming a form that does not exist', async () => {
+    const missing = await app.inject({
+      method: 'POST',
+      url: url('register'),
+      payload: {
+        contact: 'new@vendor.example',
+        password: 'hunter2hunter2',
+        displayName: 'New Vendor',
+      },
+    });
+    const nonsense = await postRegister({
+      contact: 'new2@vendor.example',
+      password: 'hunter2hunter2',
+      displayName: 'New Vendor',
+      requesterType: 'ASHRAM_FOOD',
+    });
+
+    expect(missing.statusCode).toBe(400);
+    expect(nonsense.statusCode).toBe(400);
+    expect(await prisma.stallAccount.count()).toBe(0);
+  });
+
   // 🔴 The refusal is real, it just travels by the account's own channel.
   test('registering on a taken contact warns the ACCOUNT and makes no credential', async () => {
     await account('taken@vendor.example', '9840012345');
@@ -466,6 +515,67 @@ describe('login and logout', () => {
     });
     expect(me.statusCode).toBe(200);
     expect(me.json()).toMatchObject({ displayName: 'New Vendor', email: 'new@vendor.example' });
+  });
+
+  /** The session carries the form the account may fill, because the apply page
+   *  draws its tiles from it. */
+  test('the session names the form the account registered for', async () => {
+    const value = await loggedIn();
+    const me = await app.inject({
+      method: 'GET',
+      url: url('session'),
+      cookies: { stall_requester: value },
+    });
+    expect(me.json().requesterType).toBe('VENDOR');
+  });
+
+  /** 🔴 The accounts that pre-date the question. An account which has FILED
+   *  came in through one of the three forms, and that is what it is — resolved
+   *  on the way out rather than left null, or such a requester would be offered
+   *  three forms and refused two of them on submit. */
+  test('an account with no stored type is told the type of what it filed', async () => {
+    const value = await loggedIn();
+    const cred = await prisma.stallCredential.findUniqueOrThrow({
+      where: { loginValue: 'new@vendor.example' },
+    });
+    await app.inject({
+      method: 'POST',
+      url: url('requests'),
+      payload: vendorBody({ email: 'new@vendor.example' }),
+      cookies: { stall_requester: value },
+    });
+    // Back to the state a row created before the column was added is in.
+    await prisma.stallAccount.update({
+      where: { id: cred.accountId },
+      data: { requesterType: null },
+    });
+
+    const me = await app.inject({
+      method: 'GET',
+      url: url('session'),
+      cookies: { stall_requester: value },
+    });
+    expect(me.json().requesterType).toBe('VENDOR');
+  });
+
+  /** Null only for an account that has never applied — the one state in which
+   *  all three forms are offered. */
+  test('an account that has never applied has no type resolved for it', async () => {
+    const value = await loggedIn();
+    const cred = await prisma.stallCredential.findUniqueOrThrow({
+      where: { loginValue: 'new@vendor.example' },
+    });
+    await prisma.stallAccount.update({
+      where: { id: cred.accountId },
+      data: { requesterType: null },
+    });
+
+    const me = await app.inject({
+      method: 'GET',
+      url: url('session'),
+      cookies: { stall_requester: value },
+    });
+    expect(me.json().requesterType).toBeNull();
   });
 
   // 🔴 Two different failures, one response, down to the byte.
@@ -682,5 +792,61 @@ describe('the apply gate', () => {
       expect(res.statusCode).toBe(201);
     }
     expect(await prisma.stallRequest.count({ where: { accountId } })).toBe(2);
+  });
+
+  /** 🔴 The type gate. The apply page offers an account only its own form, so
+   *  a requester never meets this — what it stops is a post that did not come
+   *  from that page, and the cost of not stopping it is a trader priced off the
+   *  local welfare rate card. */
+  test('a form the account is not registered for is refused, and writes nothing', async () => {
+    const { cookies } = await seedRequester(
+      app,
+      'welfare@village.example',
+      'hunter2hunter2',
+      'Village Welfare',
+      'LOCAL_WELFARE',
+    );
+
+    const res = await app.inject({
+      method: 'POST',
+      url: url('requests'),
+      payload: vendorBody({ email: 'welfare@village.example' }),
+      cookies,
+    });
+    expect(res.statusCode).toBe(403);
+    expect(await prisma.stallRequest.count()).toBe(0);
+  });
+
+  /** The other half of the answer for a row that pre-dates the question: the
+   *  type of what you file is what you are, written back so the next post is
+   *  checked against it. */
+  test('an account with no type adopts the one it files, and is held to it after', async () => {
+    const { accountId, cookies } = await seedRequester(app);
+    await prisma.stallAccount.update({ where: { id: accountId }, data: { requesterType: null } });
+
+    const first = await app.inject({
+      method: 'POST',
+      url: url('requests'),
+      payload: vendorBody(),
+      cookies,
+    });
+    expect(first.statusCode).toBe(201);
+    expect(
+      (await prisma.stallAccount.findUniqueOrThrow({ where: { id: accountId } })).requesterType,
+    ).toBe('VENDOR');
+
+    const second = await app.inject({
+      method: 'POST',
+      url: url('requests'),
+      // ⚠️ `depositAcknowledged`, or the schema refuses a local welfare body
+      // with a 400 before the gate this test is about ever runs.
+      payload: vendorBody({
+        requestType: 'LOCAL_WELFARE',
+        stallName: 'Village Stall',
+        depositAcknowledged: true,
+      }),
+      cookies,
+    });
+    expect(second.statusCode).toBe(403);
   });
 });

@@ -1,5 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto';
-import type { StallAccessLink, StallAccessPurpose, StallAccount } from '@prisma/client';
+import type {
+  StallAccessLink,
+  StallAccessPurpose,
+  StallAccount,
+  StallRequestType,
+} from '@prisma/client';
 import { parseContact } from '@stalls/core';
 import type { Db } from './editions';
 import { UnknownAccessLinkError } from './errors';
@@ -22,6 +27,36 @@ export async function findOrCreateAccount(
   return db.stallAccount.create({
     data: { email, phone: input.phone, displayName: input.displayName },
   });
+}
+
+/**
+ * Which form this account may fill.
+ *
+ * 🔴 The stored answer, and where there is none, the type of what the account
+ * has already FILED. An account created before registration asked the question
+ * came in through one of the three forms, and that is what it is — the
+ * migration backfills exactly this, and this function is what keeps a row the
+ * backfill could not reach (an account the team filed for afterwards) honest
+ * without a second backfill.
+ *
+ * ⚠️ The FIRST request, so an account the team later filed a second type
+ * against keeps what it came in as rather than the most recent thing on it.
+ *
+ * Null only for an account that has never applied. That is the one state in
+ * which all three forms are offered — nothing has decided yet — and the next
+ * submission settles it; see `submitRequest`.
+ */
+export async function resolveRequesterType(
+  db: Db,
+  account: { id: string; requesterType: StallRequestType | null },
+): Promise<StallRequestType | null> {
+  if (account.requesterType) return account.requesterType;
+  const first = await db.stallRequest.findFirst({
+    where: { accountId: account.id },
+    orderBy: [{ submittedAt: 'asc' }, { id: 'asc' }],
+    select: { requestType: true },
+  });
+  return first?.requestType ?? null;
 }
 
 /** The account behind an email address or a mobile number, for a vendor who

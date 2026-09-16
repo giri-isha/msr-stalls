@@ -45,7 +45,14 @@ function Loaded() {
 
   return (
     <div>
-      <H1 sub={data?.displayName ?? undefined}>Your Stall Requests</H1>
+      {/* ⚠️ "My Requests", the words on the tab that got the reader here. The
+          heading said "Your Stall Requests" while the nav said My Requests,
+          and a page whose title is not the name of the thing you pressed is a
+          page you check twice to be sure you arrived. The emailed-link portal
+          keeps its own heading — `StatusPage` has no nav above it. */}
+      <H1 icon={<Icon name='list-view' size={18} />} sub={data?.displayName ?? undefined}>
+        My Requests
+      </H1>
 
       {requests.length === 0 ? (
         <Card pad={18} style={{ display: 'grid', gap: 12, textAlign: 'center' }}>
@@ -71,8 +78,10 @@ function Loaded() {
             getCoupon={(reference) => requestMyCoupon({ reference })}
             reload={reload}
           />
-          <p style={{ fontSize: 12.5, color: 'var(--mfg)', marginTop: 18, lineHeight: 1.6 }}>
-            Need another stall? <Link to='/stalls/apply'>Send in Another Request</Link>.
+          <p style={{ fontSize: 12.5, color: 'var(--mfg)', marginTop: 20, lineHeight: 1.6 }}>
+            Need another stall? <Link to='/stalls/apply'>Send in Another Request</Link>. A request
+            is capped at what one decision can cover, so ground in a second area is a second
+            request.
           </p>
         </>
       )}

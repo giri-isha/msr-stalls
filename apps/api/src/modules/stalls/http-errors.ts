@@ -60,6 +60,7 @@ import {
   SameEditionCopyError,
   UploadsUnavailableError,
   WrongTemplateError,
+  WrongRequesterTypeError,
   ZoneExistsError,
   ZoneInUseError,
 } from './errors';
@@ -82,6 +83,10 @@ function statusFor(err: unknown): number | null {
   if (
     err instanceof NotAuthorizedError ||
     err instanceof RequestTypeForbiddenError ||
+    // An account posting a form it is not registered for. 403 rather than 422:
+    // the body is well formed and the questions are answered — it is the
+    // caller who may not file this kind of request.
+    err instanceof WrongRequesterTypeError ||
     err instanceof ZoneForbiddenError ||
     err instanceof EditionForbiddenError ||
     err instanceof RoleAboveYouError ||

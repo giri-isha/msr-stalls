@@ -187,11 +187,14 @@ export async function seedRequester(
   contact = 'priya@greenleaf.example',
   password = 'hunter2hunter2',
   displayName = 'Priya Venkat',
+  /** Which form the account may fill. VENDOR because `vendorBody` is what most
+   *  tests submit — an account registered for anything else is refused it. */
+  requesterType = 'VENDOR',
 ): Promise<{ accountId: string; cookies: Record<string, string> }> {
   await app.inject({
     method: 'POST',
     url: '/api/m/stalls/public/register',
-    payload: { contact, password, displayName },
+    payload: { contact, password, displayName, requesterType },
   });
   const login = await app.inject({
     method: 'POST',

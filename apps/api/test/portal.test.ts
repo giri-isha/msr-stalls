@@ -119,6 +119,67 @@ describe('GET /public/status/:token', () => {
     expect(steps).toEqual(['BANK_FORM', 'PAYMENT', 'FSSAI']);
   });
 
+  /** 🔴 What they filled in, read back to them. Before this the portal could
+   *  say what had been DECIDED about a request and nothing about the request
+   *  itself, so a vendor asked in October what they had answered in June had
+   *  one place to look — a form they no longer had — and the stall team took the
+   *  call. */
+  test('reads the requester’s own answers back to them', async () => {
+    await selected(['C1-1'], { plugs15a: 2, chairsNeeded: 4, remarks: 'Arriving a day early' });
+    mail.sent.length = 0;
+    await askForLink('priya@greenleaf.example');
+
+    const submitted = (await statusOf(mailedToken())).json().requests[0].submitted;
+    const find = (title: string, label: string) =>
+      submitted
+        .find((sec: { title: string }) => sec.title === title)
+        ?.facts.find((f: { label: string }) => f.label === label)?.value;
+
+    expect(find('Your Request', 'Stall Name')).toBe('Green Leaf Organics');
+    expect(find('Your Request', 'Location Requested')).toBe('C1');
+    expect(find('Your Request', 'Remarks')).toBe('Arriving a day early');
+    expect(find('Your Details', 'Mobile')).toBe('9840012345');
+    expect(find('Electrical', '15 A Plug Points')).toBe('2');
+    expect(find('Logistics', 'Chairs')).toBe('4');
+  });
+
+  /** ⚠️ The answers are the requester's own from the moment they pressed
+   *  Submit. `pending`, `payment` and `staff` wait for a decision; this block
+   *  must not, because a request under review is the one they come back to
+   *  check. */
+  test('reads the answers back on a request that has not been decided', async () => {
+    await app.inject({
+      method: 'POST',
+      url: '/api/m/stalls/public/requests',
+      payload: vendorBody(),
+      cookies: (await seedRequester(app)).cookies,
+    });
+    mail.sent.length = 0;
+    await askForLink('priya@greenleaf.example');
+
+    const request = (await statusOf(mailedToken())).json().requests[0];
+    expect(request.status).toBe('SUBMITTED');
+    expect(request.pending).toEqual([]);
+    expect(request.submitted.map((s: { title: string }) => s.title)).toContain('Your Request');
+  });
+
+  /** Nothing the TEAM has decided is in the block — see `submittedSections`.
+   *  A requester's own page is not a window onto the triage of their request. */
+  test('the answers carry nothing the team has since decided', async () => {
+    const { requestId } = await selected(['C1-1']);
+    await prisma.stallRequest.update({
+      where: { id: requestId },
+      data: { agreedZoneCode: 'A4', flagReason: 'Confirm the GST number' },
+    });
+    mail.sent.length = 0;
+    await askForLink('priya@greenleaf.example');
+
+    const submitted = (await statusOf(mailedToken())).json().requests[0].submitted;
+    const flat = JSON.stringify(submitted);
+    expect(flat).not.toContain('A4');
+    expect(flat).not.toContain('GST number');
+  });
+
   test('lists nothing outstanding for a request that has not been selected', async () => {
     await app.inject({
       method: 'POST',

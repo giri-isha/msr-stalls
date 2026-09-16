@@ -135,8 +135,8 @@ describe('the documentation screen', () => {
   test('the vendor tab walks the public side, paths included', async () => {
     render('/m/stalls/docs?tab=vendor');
 
-    expect(await screen.findByText('Choose a form')).toBeInTheDocument();
-    expect(screen.getByText('/stalls/status/:token')).toBeInTheDocument();
+    expect(await screen.findByText('Register, and open your form')).toBeInTheDocument();
+    expect(screen.getByText('/stalls/requests, or /stalls/status/:token')).toBeInTheDocument();
     expect(screen.getByText('/stalls/staff/:code')).toBeInTheDocument();
   });
 

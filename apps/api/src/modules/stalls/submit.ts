@@ -5,13 +5,17 @@ import {
   type SubmitRequestInput,
   validateAgainstForm,
 } from '@stalls/core';
-import { mintAccessLink, normalizeEmail } from './accounts';
+import { mintAccessLink, normalizeEmail, resolveRequesterType } from './accounts';
 import { allowedCustomValues } from './custom-values';
 import { declarationsForForm, recordConsent, sameDeclarations } from './declarations';
 import { formFor } from './form-builder';
 import { ValidationFailedError } from '../../errors';
 import { type Db, activeEdition } from './editions';
-import { DeclarationsChangedError, TooManyStallsRequestedError } from './errors';
+import {
+  DeclarationsChangedError,
+  TooManyStallsRequestedError,
+  WrongRequesterTypeError,
+} from './errors';
 import type { Mailer } from './mailer';
 import type { WhatsAppSender } from './whatsapp';
 
@@ -120,6 +124,30 @@ export async function submitRequest(
     }
 
     const account = await tx.stallAccount.findUniqueOrThrow({ where: { id: accountId } });
+
+    // 🔴 The FORM this account is registered for, enforced on the write and not
+    // only in the page that offers the tiles. A trader, a village welfare
+    // requester and an ashram department are asked different questions and
+    // priced off different rate scopes, so which of the three a request is
+    // cannot be a field a post chooses freely: a vendor filing as local welfare
+    // would land on the concessionary rate card.
+    //
+    // ⚠️ An account with no type ADOPTS the one it files. That is the other half
+    // of the answer for rows that pre-date the question — the type of what you
+    // filed is what you are — and it means the null shrinks as accounts apply
+    // rather than needing a backfill that would have to guess for an account
+    // that never has.
+    const registered = await resolveRequesterType(tx, account);
+    if (registered && registered !== input.requestType) {
+      throw new WrongRequesterTypeError(registered, input.requestType);
+    }
+    if (!account.requesterType) {
+      await tx.stallAccount.update({
+        where: { id: account.id },
+        data: { requesterType: input.requestType },
+      });
+    }
+
     const seq = await nextSequence(tx, edition.id, input.requestType);
     const reference = formatReference(input.requestType, edition.year, seq);
 

@@ -68,6 +68,11 @@ export async function register(db: Db, deps: SendDeps, input: RegisterInput): Pr
       email: contact.kind === 'EMAIL' ? contact.value : placeholderEmail(contact.value),
       phone: contact.kind === 'MOBILE' ? contact.value : '',
       displayName: input.displayName,
+      // 🔴 Which form this account may fill, asked on the registration screen.
+      // It is not a preference and it is not advice to the page: `submitRequest`
+      // refuses a request of any other type, because the type decides which
+      // questions are asked and which rate scope prices the stall.
+      requesterType: input.requesterType,
     },
   });
   await createCredential(db, {

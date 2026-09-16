@@ -18,6 +18,8 @@ import { ResetPassword } from './ResetPassword';
 const SESSION = {
   accountId: 'a-1',
   displayName: 'Priya Venkat',
+  /** Which of the three forms this account may fill — see `FormPicker`. */
+  requesterType: 'VENDOR',
   email: 'priya@greenleaf.example',
   phone: '9840012345',
 };
@@ -80,6 +82,7 @@ describe('Register', () => {
 
     await userEvent.type(await screen.findByLabelText(/your name/i), 'Priya');
     await userEvent.type(screen.getByLabelText(/email address or mobile/i), 'a@b.example');
+    await userEvent.click(screen.getByRole('radio', { name: /vendor/i }));
     await userEvent.type(screen.getByLabelText(/password/i), 'hunter2hunter2');
     await userEvent.click(screen.getByRole('button', { name: /create my account/i }));
 
@@ -103,11 +106,54 @@ describe('Register', () => {
 
     await userEvent.type(await screen.findByLabelText(/your name/i), 'Priya');
     await userEvent.type(screen.getByLabelText(/email address or mobile/i), 'a@b.example');
+    await userEvent.click(screen.getByRole('radio', { name: /vendor/i }));
     await userEvent.type(screen.getByLabelText(/password/i), 'short');
     await userEvent.click(screen.getByRole('button', { name: /create my account/i }));
 
     expect(await screen.findByText(/at least 8/i)).toBeInTheDocument();
     expect(calls.some((c) => c.url.endsWith('/public/register'))).toBe(false);
+  });
+
+  /** 🔴 Which form the account may fill, asked here and nowhere else. It
+   *  decides which form opens for this login and the API refuses a request of
+   *  any other type, so an account created without it would be an account that
+   *  cannot apply. */
+  test('sends the kind of stall the account is for', async () => {
+    const { calls } = installFetch([
+      SIGNED_OUT,
+      ['POST', /\/public\/register$/, () => [202, { ok: true }]],
+    ]);
+    renderAt('/register', [{ path: '/register', element: <Register /> }], { requester: true });
+
+    await userEvent.type(await screen.findByLabelText(/your name/i), 'Priya');
+    await userEvent.type(screen.getByLabelText(/email address or mobile/i), 'a@b.example');
+    await userEvent.click(screen.getByRole('radio', { name: /local welfare/i }));
+    await userEvent.type(screen.getByLabelText(/password/i), 'hunter2hunter2');
+    await userEvent.click(screen.getByRole('button', { name: /create my account/i }));
+
+    await screen.findByText(/it is ready now/i);
+    const sent = calls.find((c) => c.url.endsWith('/public/register'))?.body;
+    expect(sent).toMatchObject({ requesterType: 'LOCAL_WELFARE' });
+  });
+
+  // ⚠️ Nothing is pre-picked. It is the one answer on this screen a requester
+  // cannot change afterwards without calling the stall team, so it is asked
+  // rather than defaulted — and asking means refusing to send without it.
+  test('will not send an account with no kind chosen', async () => {
+    const { calls } = installFetch([
+      SIGNED_OUT,
+      ['POST', /\/public\/register$/, () => [202, { ok: true }]],
+    ]);
+    renderAt('/register', [{ path: '/register', element: <Register /> }], { requester: true });
+
+    await userEvent.type(await screen.findByLabelText(/your name/i), 'Priya');
+    await userEvent.type(screen.getByLabelText(/email address or mobile/i), 'a@b.example');
+    await userEvent.type(screen.getByLabelText(/password/i), 'hunter2hunter2');
+    await userEvent.click(screen.getByRole('button', { name: /create my account/i }));
+
+    expect(await screen.findByText(/choose the kind of stall/i)).toBeInTheDocument();
+    expect(calls.some((c) => c.url.endsWith('/public/register'))).toBe(false);
+    expect(screen.getAllByRole('radio').every((r) => !(r as HTMLInputElement).checked)).toBe(true);
   });
 });
 
@@ -160,5 +206,48 @@ describe('the apply gate', () => {
 
     expect(await screen.findByRole('link', { name: /vendor/i })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /create an account/i })).not.toBeInTheDocument();
+  });
+
+  /** 🔴 One form opens: the one the account is registered for. The three
+   *  populations are asked different questions and priced off different rate
+   *  scopes, so which one a request is cannot be picked here. */
+  test('only the account’s own form is a link', async () => {
+    installFetch([SIGNED_IN, CONFIG]);
+    renderAt('/apply', [{ path: '/apply', element: <FormPicker /> }], { requester: true });
+
+    // Relative to wherever the picker is mounted — `/apply` in this harness.
+    expect(await screen.findByRole('link', { name: /vendor/i })).toHaveAttribute(
+      'href',
+      '/apply/vendor',
+    );
+    expect(screen.queryByRole('link', { name: /ashram/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /local welfare/i })).not.toBeInTheDocument();
+  });
+
+  /** ⚠️ Drawn, and locked, rather than hidden. A department that registered as
+   *  a vendor by mistake has to see that the form they want exists and that the
+   *  fix is a phone call — a tile that silently vanished says neither. */
+  test('the other two forms stay on screen, and say whose account this is', async () => {
+    installFetch([SIGNED_IN, CONFIG]);
+    renderAt('/apply', [{ path: '/apply', element: <FormPicker /> }], { requester: true });
+
+    expect(await screen.findByText('Ashram Stall Request Form')).toBeInTheDocument();
+    expect(screen.getByText('Local Welfare Stall Request Form')).toBeInTheDocument();
+    expect(screen.getByText(/registered for/i)).toBeInTheDocument();
+    expect(screen.getByText(/contact the stall team/i)).toBeInTheDocument();
+  });
+
+  /** An account that has never applied and pre-dates the question: nothing has
+   *  decided yet, so all three are open. See `resolveRequesterType`. */
+  test('an account with no type on it is offered all three forms', async () => {
+    installFetch([
+      ['GET', /\/public\/session$/, () => ({ ...SESSION, requesterType: null })],
+      CONFIG,
+    ]);
+    renderAt('/apply', [{ path: '/apply', element: <FormPicker /> }], { requester: true });
+
+    expect(await screen.findByRole('link', { name: /vendor/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /ashram/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /local welfare/i })).toBeInTheDocument();
   });
 });

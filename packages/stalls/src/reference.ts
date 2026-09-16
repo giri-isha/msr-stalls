@@ -1,13 +1,13 @@
 /** A request's human-facing handle. Backoffice read these aloud on the phone and
  *  write them on paper challans, so the prefix has to say what kind of request
  *  it is without a lookup. */
-export type StallRequestType = 'ASHRAM' | 'LOCAL_WELFARE' | 'VENDOR';
+/** ⚠️ A TUPLE, and the type is derived from it rather than written twice. A
+ *  `z.enum` needs the tuple — `RequesterTypeValue` in `access.ts` is built from
+ *  this list, so the three forms an account may be registered against cannot
+ *  drift from the three references that can be minted. */
+export const STALL_REQUEST_TYPES = ['ASHRAM', 'LOCAL_WELFARE', 'VENDOR'] as const;
 
-export const STALL_REQUEST_TYPES: readonly StallRequestType[] = [
-  'ASHRAM',
-  'LOCAL_WELFARE',
-  'VENDOR',
-];
+export type StallRequestType = (typeof STALL_REQUEST_TYPES)[number];
 
 const PREFIX: Record<StallRequestType, string> = {
   ASHRAM: 'ASH',

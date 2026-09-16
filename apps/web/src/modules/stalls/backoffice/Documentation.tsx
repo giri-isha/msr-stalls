@@ -66,7 +66,7 @@ const PHASES: Phase[] = [
     glyph: 'clipboard-list',
     title: 'They apply',
     who: 'Vendor · Ashram · Local Welfare',
-    body: 'A requester fills one of the four public forms. Submitting creates an account on their email address, mints a reference like VEN-2026-0042, and emails them a receipt carrying a private link to their own status page.',
+    body: 'A requester registers an account, saying which of the three forms it is for, and fills that form. Submitting mints a reference like VEN-2026-0042 and emails them a receipt carrying a private link to their own requests.',
   },
   {
     glyph: 'layers',
@@ -167,28 +167,28 @@ interface JourneyStep {
 
 const JOURNEY: JourneyStep[] = [
   {
-    title: 'Choose a form',
-    where: '/stalls/apply',
-    body: 'Three forms — Vendor, Local Welfare and Ashram — each transcribed from the 2025 Google Form with its Tamil labels intact, plus any extra questions an admin has appended. The 2025 sheets had a fourth, Ashram Food; it is the ashram form answered "Food", so a department is asked rather than made to choose a page.',
-    note: 'Which form they pick decides the reference prefix, the questions they are asked, and which of the later steps will ever apply to them.',
+    title: 'Register, and open your form',
+    where: '/stalls/register, then /stalls/apply',
+    body: 'Three forms — Vendor, Local Welfare and Ashram — each transcribed from the 2025 Google Form with its Tamil labels intact, plus any extra questions an admin has appended. The 2025 sheets had a fourth, Ashram Food; it is the ashram form answered "Food", so a department is asked rather than made to choose a page. Registration asks which of the three the account is for, and the apply page opens that one: the other two are drawn and locked.',
+    note: 'The type decides the reference prefix, the questions they are asked, the rate scope their stall is priced at, and which later steps ever apply — so the API refuses a request of any other type rather than relabelling it. An account registered for the wrong one is moved by the team, on a call; the requester does not register twice.',
   },
   {
     title: 'Fill it in and submit',
     where: '/stalls/apply/vendor, /local-welfare, /ashram',
-    body: 'Who they are, what they sell, the zone they would like, plug points and appliances, gas stoves, chairs, tables and passes, and the two consent lines. No password and no OTP: submitting is the signup.',
+    body: 'Who they are, what they sell, the zone they would like, plug points and appliances, gas stoves, chairs, tables and passes, and the two consent lines. The account is already theirs by this point, so the request belongs to the session rather than to the address typed into the form.',
     note: 'Appliances are rows, not four fixed boxes — the electrical sheet sums whatever is listed.',
   },
   {
     title: 'The receipt lands',
     where: 'Email',
-    body: 'The submission creates or matches an account keyed on the email address, mints the reference, and emails a receipt carrying a long unguessable link to that vendor’s own status page.',
+    body: 'The submission mints the reference and emails a receipt carrying a long unguessable link to that requester’s own status page. It goes to the contact on the ACCOUNT, never to an address typed into the form — the link is a credential for the whole account.',
     note: 'Only the hash of that link is stored, so a database copy hands out no live links.',
   },
   {
-    title: 'They watch their own status',
-    where: '/stalls/status/:token',
-    body: 'Their requests, where each has reached, and what they have to do next — the outstanding steps are listed, and the two a vendor can act on alone (the bank form, the FSSAI upload) open straight from there. This is the only read path into vendor data in the whole system.',
-    note: 'Lost the email? /stalls/status with no token takes an email address or mobile number and sends the link to the address on the account — never to whoever asked.',
+    title: 'They watch their own requests',
+    where: '/stalls/requests, or /stalls/status/:token',
+    body: 'Their requests, where each has reached, what they have to do next — the two steps a vendor can act on alone, the bank form and the FSSAI upload, open straight from there — and what they themselves submitted, read back to them under each request. This is the only read path into requester data in the whole system.',
+    note: 'Two credentials, one view: the My Requests tab for anyone logged in, and the signed link in the receipt for anyone who is not. Lost the email? /stalls/status with no token takes an email address or mobile number and sends the link to the address on the account — never to whoever asked.',
   },
   {
     title: 'The selection letter',

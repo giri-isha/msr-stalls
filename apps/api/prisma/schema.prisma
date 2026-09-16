@@ -716,12 +716,24 @@ model StallFlowConfig {
 /// An external requester. Created on first submission; no password, no
 /// verification (design decision 6). Never a host Person.
 model StallAccount {
-  id          String   @id @default(uuid()) @db.Uuid
+  id            String            @id @default(uuid()) @db.Uuid
   /// Normalised: trimmed, lowercased. The one lookup key.
-  email       String   @unique
-  phone       String
-  displayName String   @map("display_name")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  email         String            @unique
+  phone         String
+  displayName   String            @map("display_name")
+  /// Which of the three forms this account may fill — asked at registration.
+  ///
+  /// NULLABLE for one reason only: the accounts that existed before the
+  /// question. Those are resolved from what they have already FILED — the type
+  /// of their first request — and the resolution is written back on their next
+  /// submission, so the null shrinks over time rather than needing a backfill
+  /// that would have to guess for an account that never applied.
+  ///
+  /// The submission route enforces it (`submitRequest`): a request of another
+  /// type is refused, not quietly relabelled, because the type decides which
+  /// questions are asked and which rate scope prices the stall.
+  requesterType StallRequestType? @map("requester_type")
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz
 
   requests    StallRequest[]
   accessLinks StallAccessLink[]
@@ -1014,20 +1026,20 @@ model StallRequest {
   allocations  StallAllocation[]
   accessLinks  StallAccessLink[]
 
-  messages    StallMessageLog[]
-  bankDetail  StallBankDetail?
-  reminders   StallReminderCall[]
+  messages      StallMessageLog[]
+  bankDetail    StallBankDetail?
+  reminders     StallReminderCall[]
   paymentPlan   StallPaymentPlan?
   payments      StallPaymentRecord[]
   paymentClaims StallPaymentClaim[]
   fines         StallFine[]
-  refund      StallRefund?
-  coupons     StallStaffCoupon[]
-  staff       StallVendorStaff[]
-  fssai       StallFssaiCertificate?
-  checkIn     StallCheckIn?
-  equipment   StallEquipmentIssue?
-  signature   StallContractSignature?
+  refund        StallRefund?
+  coupons       StallStaffCoupon[]
+  staff         StallVendorStaff[]
+  fssai         StallFssaiCertificate?
+  checkIn       StallCheckIn?
+  equipment     StallEquipmentIssue?
+  signature     StallContractSignature?
 
   @@index([editionId, status, stage])
   @@index([editionId, requestType])
@@ -1165,10 +1177,10 @@ enum StallPaymentClaimStatus {
 /// IDs finance.support@… once you make the payment" — a mailbox, matched by
 /// hand.
 model StallPaymentClaim {
-  id        String                   @id @default(uuid()) @db.Uuid
-  requestId String                   @map("request_id") @db.Uuid
+  id        String                  @id @default(uuid()) @db.Uuid
+  requestId String                  @map("request_id") @db.Uuid
   purpose   StallPaymentPurpose
-  status    StallPaymentClaimStatus  @default(PENDING)
+  status    StallPaymentClaimStatus @default(PENDING)
 
   /// What the vendor typed off their bank statement.
   referenceNo  String   @map("reference_no")
@@ -1185,12 +1197,12 @@ model StallPaymentClaim {
 
   submittedAt DateTime @default(now()) @map("submitted_at") @db.Timestamptz
 
-  reviewedAt DateTime? @map("reviewed_at") @db.Timestamptz
-  reviewedBy String?   @map("reviewed_by")
+  reviewedAt   DateTime? @map("reviewed_at") @db.Timestamptz
+  reviewedBy   String?   @map("reviewed_by")
   /// ⚠️ Required on REJECTED, enforced by a CHECK rather than by application
   /// code. A rejection with no reason is one the vendor cannot act on, and this
   /// text is shown to them.
-  rejectReason String? @map("reject_reason")
+  rejectReason String?   @map("reject_reason")
 
   /// The confirmed receipt this claim became, set on VERIFIED.
   paymentRecordId String? @map("payment_record_id") @db.Uuid
@@ -1424,7 +1436,7 @@ model StallPaymentPlan {
   ///
   /// Null on plans frozen before this column existed; the letter then prints
   /// the summed figures it always did.
-  lines                 Json?
+  lines Json?
 
   /// What was actually agreed, where the team agreed something other than the
   /// quote.
@@ -1544,15 +1556,15 @@ model StallVendorStaff {
   idType       StallIdType? @map("id_type")
   /// For an Aadhaar this is the last four digits only — enough to match the
   /// card at the gate, not enough to be a copy of it.
-  idNumber     String?     @map("id_number")
+  idNumber     String?      @map("id_number")
   role         String?
-  registeredAt DateTime    @default(now()) @map("registered_at") @db.Timestamptz
+  registeredAt DateTime     @default(now()) @map("registered_at") @db.Timestamptz
   /// WHICH coupon this person came in on, so a stall holding two codes can be
   /// told how far each has been used. Nullable for the registrations that
   /// predate a stall being able to hold more than one.
-  couponId     String?     @map("coupon_id") @db.Uuid
+  couponId     String?      @map("coupon_id") @db.Uuid
 
-  request  StallRequest              @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  request      StallRequest              @relation(fields: [requestId], references: [id], onDelete: Cascade)
   coupon       StallStaffCoupon?         @relation(fields: [couponId], references: [id], onDelete: SetNull)
   consents     StallDeclarationConsent[]
   customValues StallCustomFieldValue[]

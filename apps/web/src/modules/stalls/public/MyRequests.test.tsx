@@ -17,6 +17,7 @@ const render = () => renderAt('/stalls/requests', routes, { requester: true });
 const SESSION = {
   accountId: 'a-1',
   displayName: 'Priya Venkat',
+  requesterType: 'VENDOR',
   email: 'priya@greenleaf.example',
   phone: '9840012345',
 };
@@ -40,10 +41,29 @@ const withPending = (
       payment: null,
       paymentClaims: [],
       staff: null,
+      submitted: SUBMITTED,
       ...extra,
     },
   ],
 });
+
+/** What the API reads back off the row — see `submittedSections`. */
+const SUBMITTED = [
+  {
+    title: 'Your Request',
+    glyph: 'clipboard-list',
+    facts: [
+      { label: 'Stall Name', value: 'Green Leaf Organics' },
+      { label: 'Location Requested', value: 'C1' },
+      { label: 'Items', value: 'Organic spices, cold-pressed oils, honey' },
+    ],
+  },
+  {
+    title: 'Electrical',
+    glyph: 'sliders',
+    facts: [{ label: '15 A Plug Points', value: '2' }],
+  },
+];
 
 const PAYMENT = {
   feePaise: 11_800_000, // ₹1,18,000
@@ -195,7 +215,7 @@ describe('MyRequests', () => {
 
   test('shows the coupon and the way to register under the staff chip', async () => {
     signedIn(
-      withPending([{ step: 'STAFF_REGISTRATION', label: 'Backoffice not registered' }], {
+      withPending([{ step: 'STAFF_REGISTRATION', label: 'Staff not registered' }], {
         staff: {
           coupons: [{ id: 'c-1', code: 'GLO-2026-K7Q4M2X9', capacity: 8, registered: 0 }],
           capacity: 8,
@@ -205,18 +225,18 @@ describe('MyRequests', () => {
     );
     render();
 
-    expect(await screen.findByText('Backoffice not registered')).toBeInTheDocument();
+    expect(await screen.findByText('Staff not registered')).toBeInTheDocument();
     expect(screen.getByText('GLO-2026-K7Q4M2X9')).toBeInTheDocument();
     // ⚠️ Never "0 of 8": the cap is what the coupon admits, not what the stall
     // owes. Reading it as a quota is the misreading this wording exists to stop.
     expect(screen.getByText('up to 8 people')).toBeInTheDocument();
     expect(screen.queryByText('0 of 8')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Register Backoffice/ })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /Register Staff/ })).toHaveAttribute(
       'href',
       '/stalls/staff/GLO-2026-K7Q4M2X9',
     );
     // The chip above already carries the warning; the panel adds no second one.
-    expect(screen.queryByText('Backoffice registration')).not.toBeInTheDocument();
+    expect(screen.queryByText('Staff registration')).not.toBeInTheDocument();
   });
 
   test('offers a coupon to a vendor who has none, without inventing a chore', async () => {
@@ -227,7 +247,7 @@ describe('MyRequests', () => {
     // ⚠️ `pendingSteps` said nothing is outstanding — it cannot, with no coupon
     // to register against — so this page must not say otherwise.
     expect(screen.queryByText('Still to do')).not.toBeInTheDocument();
-    expect(screen.getByText('Backoffice registration')).toBeInTheDocument();
+    expect(screen.getByText('Staff registration')).toBeInTheDocument();
   });
 
   test('asking for a coupon names its own request and reveals the code', async () => {
@@ -246,7 +266,7 @@ describe('MyRequests', () => {
 
     expect(await screen.findByText('GLO-2026-K7Q4M2X9')).toBeInTheDocument();
     expect(fx.last().body).toEqual({ reference: 'VEN-2026-0001' });
-    expect(screen.getByRole('link', { name: /Register Backoffice/ })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /Register Staff/ })).toHaveAttribute(
       'href',
       '/stalls/staff/GLO-2026-K7Q4M2X9',
     );
@@ -256,7 +276,7 @@ describe('MyRequests', () => {
     // 🔴 The vendor forwards one code to their kitchen team and the other to a
     // caterer. One button beside a list of codes would not say which is which.
     signedIn(
-      withPending([{ step: 'STAFF_REGISTRATION', label: 'Backoffice not registered' }], {
+      withPending([{ step: 'STAFF_REGISTRATION', label: 'Staff not registered' }], {
         staff: {
           coupons: [
             { id: 'c-1', code: 'GLO-2026-K7Q4M2X9', capacity: 8, registered: 2 },
@@ -272,7 +292,7 @@ describe('MyRequests', () => {
     expect(await screen.findByText('GLO-2026-K7Q4M2X9')).toBeInTheDocument();
     expect(screen.getByText('GLO-2026-B4K2M7PW')).toBeInTheDocument();
 
-    const links = screen.getAllByRole('link', { name: /Register Backoffice/ });
+    const links = screen.getAllByRole('link', { name: /Register Staff/ });
     expect(links.map((a) => a.getAttribute('href'))).toEqual([
       '/stalls/staff/GLO-2026-K7Q4M2X9',
       '/stalls/staff/GLO-2026-B4K2M7PW',
@@ -282,6 +302,37 @@ describe('MyRequests', () => {
     expect(screen.getByText('2 registered, up to 8')).toBeInTheDocument();
     expect(screen.getByText('0 registered, up to 4')).toBeInTheDocument();
     expect(screen.getByText('up to 12 people')).toBeInTheDocument();
+  });
+
+  /** 🔴 What they filled in, read back to them — the question the portal could
+   *  not answer at all. Closed on arrival: the page's job first is to say what
+   *  has been decided and what is outstanding, and a full application unfolded
+   *  above those would bury both. */
+  test('reads back what the requester submitted, from a section they open', async () => {
+    signedIn(withPending([]));
+    render();
+
+    const open = await screen.findByText(/what you submitted/i);
+    // Present but not unfolded: `details` keeps its contents out of the
+    // accessibility tree until the summary is pressed.
+    expect(screen.queryByText('Location Requested')).not.toBeVisible();
+
+    await userEvent.click(open);
+
+    expect(screen.getByText('Location Requested')).toBeVisible();
+    expect(screen.getByText('Organic spices, cold-pressed oils, honey')).toBeInTheDocument();
+    expect(screen.getByText('15 A Plug Points')).toBeInTheDocument();
+    expect(screen.getByText('Electrical')).toBeInTheDocument();
+  });
+
+  test('draws no such section for a payload that carries no answers', async () => {
+    // The API and the web deploy separately: a page served ahead of the API
+    // that fills this block must still show the status a requester came for.
+    signedIn(withPending([], { submitted: undefined }));
+    render();
+
+    await screen.findByText('Green Leaf Organics');
+    expect(screen.queryByText(/what you submitted/i)).not.toBeInTheDocument();
   });
 
   test('a request still under consideration is given no list of future chores', async () => {

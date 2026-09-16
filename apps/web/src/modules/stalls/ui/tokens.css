@@ -368,6 +368,23 @@
   .stalls .stalls-lift:hover{box-shadow:var(--sh-2);transform:translateY(-1px)}
 }
 
+/* ── A disclosure summary ──
+ *
+ * `<details>` is the element for a block a reader opens — the requester's own
+ * page reads their whole application back out of one — and two browser defaults
+ * have to go before it can wear this module's look: WebKit draws its own
+ * triangle through a pseudo-element that `list-style:none` does not reach, and
+ * the summary is focusable but shows nothing for it.
+ *
+ * The chevron is a real element the component renders (an `Icon`, so it is the
+ * same glyph the rest of the module uses) and this only turns it over when the
+ * block is open. The reduced-motion block at the foot of the file flattens the
+ * transition, so there is no second opinion about motion here either. */
+.stalls summary::-webkit-details-marker{display:none}
+.stalls summary:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+.stalls .stalls-chev{transition:transform .18s ease}
+.stalls details[open] > summary .stalls-chev{transform:rotate(180deg)}
+
 /* ── The row action's tinted well ──
  *
  * The hover fill is derived from the button's OWN ink with `color-mix`, so one

@@ -6,6 +6,8 @@ import {
   type PublicStaffCoupon,
   type PublicStatusResponse,
   type RequestCouponInput,
+  type SubmittedRequest,
+  submittedSections,
   type SelfServeStepValue,
   isSelfServe,
   virtualAccountFor,
@@ -56,6 +58,22 @@ type PortalRequest = RequestWithFacts & {
     virtualAccountRentPrefix: string | null;
     virtualAccountDepositPrefix: string | null;
   };
+  ashramDetail: AshramDetail | null;
+  appliances: Array<{ name: string; watts: number }>;
+  customValues: Array<{ value: string; field: { label: string } }>;
+};
+
+type AshramDetail = {
+  department: string;
+  departmentHead: string;
+  departmentHeadContact: string;
+  requestedBy: string;
+  requesterContact: string;
+  usage: string;
+  usageOther: string | null;
+  creditCardNeeded: boolean;
+  wantsThembu: boolean;
+  fssaiExpected: boolean | null;
 };
 
 /** Mints a status link and mails it, if the contact matches an account.
@@ -143,6 +161,13 @@ export async function statusView(db: Db, account: StallAccount): Promise<PublicS
       edition: {
         select: { virtualAccountRentPrefix: true, virtualAccountDepositPrefix: true },
       },
+      // The requester's own ANSWERS, so their page can read back what they
+      // filled in. Local to this query for the same reason the edition is:
+      // `factsInclude` is shared by six screens and the other five have the
+      // application in hand already.
+      ashramDetail: true,
+      appliances: { orderBy: { sortOrder: 'asc' } },
+      customValues: { include: { field: { select: { label: true } } } },
     },
   });
 
@@ -213,8 +238,48 @@ export async function statusView(db: Db, account: StallAccount): Promise<PublicS
         // rejection they never see returns them to the mailbox this replaced.
         paymentClaims: r.status === 'SELECTED' ? await claimsFor(db, r.id) : [],
         staff: r.status === 'SELECTED' ? staffView(r) : null,
+        // 🔴 Whatever the status. The answers are the requester's own from the
+        // moment they pressed Submit, and a request still under review is
+        // exactly the one whose answers they come back to check — which they
+        // could not do before this, because the only copy was the form they no
+        // longer had.
+        submitted: submittedSections(answers(r)),
       })),
     ),
+  };
+}
+
+/** The row, in the shape `submittedSections` reads.
+ *
+ *  ⚠️ A mapper and nothing else: which answers are shown, what they are called
+ *  and which of them are dropped for being unanswered are decided in
+ *  `@stalls/core`, where the requester's page and this route read one copy of
+ *  them. See `submitted.ts`. */
+function answers(r: PortalRequest): SubmittedRequest {
+  return {
+    requestType: r.requestType,
+    stallName: r.stallName,
+    requesterName: r.requesterName,
+    email: r.email,
+    contactNumber: r.contactNumber,
+    address: r.address,
+    stallType: r.stallType,
+    preferredZoneCode: r.preferredZoneCode,
+    itemsSelling: r.itemsSelling,
+    numStallsRequested: r.numStallsRequested,
+    remarks: r.remarks,
+    plugs5a: r.plugs5a,
+    plugs15a: r.plugs15a,
+    gasStoves: r.gasStoves,
+    appliances: r.appliances.map((a) => ({ name: a.name, watts: a.watts })),
+    tablesNeeded: r.tablesNeeded,
+    chairsNeeded: r.chairsNeeded,
+    passes2w: r.passes2w,
+    passes4w: r.passes4w,
+    passesStaff: r.passesStaff,
+    depositAcknowledged: r.depositAcknowledgedAt !== null,
+    ashram: r.ashramDetail,
+    custom: r.customValues.map((v) => ({ label: v.field.label, value: v.value })),
   };
 }
 

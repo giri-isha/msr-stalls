@@ -4,6 +4,7 @@ import type { BuilderForm, BuiltForm } from './form-builder';
 import { AUTHORABLE_FIELD_TYPES } from './form-builder';
 import { SELF_SERVE_STEPS } from './access';
 import type { PendingStep } from './onboarding';
+import type { SubmittedSection } from './submitted';
 import { CATEGORY_KEY_PATTERN, ZONE_CODE_PATTERN } from './zones';
 import { RATE_SCOPES } from './rates';
 import { MAX_STAFF_COUPON_CAPACITY } from './coupons';
@@ -295,6 +296,18 @@ export interface PublicRequestStatus {
    *
    *  Null for a request that was never selected. */
   staff: PublicStaffCoupon | null;
+  /**
+   * What the requester themselves filled in, grouped as the form asked it.
+   *
+   * 🔴 Present whatever the status is, and that is the point: a request still
+   * under review is exactly the one whose answers the requester wants to check.
+   * `pending`, `payment` and `staff` are all empty or null until SELECTED
+   * because they are the team's decisions; this block is the requester's own
+   * words and was theirs from the moment they pressed Submit.
+   *
+   * ⚠️ Nothing the team has since decided is in here — see `submittedSections`.
+   */
+  submitted: SubmittedSection[];
 }
 
 export interface PublicPaymentDue {

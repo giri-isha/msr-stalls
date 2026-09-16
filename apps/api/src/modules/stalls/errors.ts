@@ -332,6 +332,31 @@ export class RequestTypeForbiddenError extends Error {
   }
 }
 
+/**
+ * A request of a type the account is not registered for. Mapped to 403.
+ *
+ * 🔴 A REFUSAL, not a relabelling. The type decides which questions the form
+ * asks and which rate scope prices the stall, so quietly filing a vendor's post
+ * as the local welfare request it claimed to be would put a trader on the
+ * concessionary rate card — and doing the reverse would quote a village
+ * shopkeeper a trader's rent. Whoever is wrong here has to be told.
+ *
+ * ⚠️ The apply page offers the account only its own form, so a requester never
+ * meets this. What it stops is a post that did not come from that page.
+ */
+export class WrongRequesterTypeError extends Error {
+  constructor(
+    readonly registered: string,
+    readonly asked: string,
+  ) {
+    super(
+      `this account is registered for ${registered} requests; ` +
+        `please use that form rather than the ${asked} one`,
+    );
+    this.name = 'WrongRequesterTypeError';
+  }
+}
+
 /** The signature provider refused, or is not configured. Mapped to 502. */
 export class SignatureProviderError extends Error {
   constructor(readonly detail: string) {
