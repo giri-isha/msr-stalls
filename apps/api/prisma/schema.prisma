@@ -482,6 +482,12 @@ model StallDeclaration {
   edition  StallEdition              @relation(fields: [editionId], references: [id], onDelete: Cascade)
   consents StallDeclarationConsent[]
 
+  /// Version numbers do not repeat within a variant. Declared here (not only
+  /// in SQL) because Prisma sees plain unique indexes and would otherwise
+  /// generate a DROP for it as drift. Its three partial companions —
+  /// `stall_declaration_one_current`, `_one_current_default` and
+  /// `_version_default` — Prisma cannot express, so it leaves them alone.
+  @@unique([editionId, key, requestType, version], map: "stall_declaration_version")
   @@index([editionId, key])
   @@map("stall_declaration")
   @@schema("stalls")
