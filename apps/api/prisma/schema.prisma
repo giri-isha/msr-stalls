@@ -165,6 +165,7 @@ enum StallFormType {
   VENDOR
   BANK
   FSSAI
+  STAFF
 
   @@schema("stalls")
 }
@@ -456,7 +457,13 @@ model StallDeclaration {
   /// Which form this wording is for, or NULL for "any form without one of its
   /// own". The same fallback the sport variants use in the module this was
   /// modelled on: the specific one wins, the default catches the rest.
-  requestType StallRequestType? @map("request_type")
+  ///
+  /// ⚠️ A FORM type, not a request type. The bank details form, the FSSAI
+  /// upload and staff registration all ask somebody to agree to something, and
+  /// none of them is an application. The four shared names are deliberately the
+  /// same strings, which is what let the widening migration leave every row
+  /// where it was.
+  formType StallFormType? @map("form_type")
 
   /// 1, then 2, then 3 — per (edition, key, requestType), not globally.
   version Int
@@ -491,7 +498,7 @@ model StallDeclaration {
   /// generate a DROP for it as drift. Its three partial companions —
   /// `stall_declaration_one_current`, `_one_current_default` and
   /// `_version_default` — Prisma cannot express, so it leaves them alone.
-  @@unique([editionId, key, requestType, version], map: "stall_declaration_version")
+  @@unique([editionId, key, formType, version], map: "stall_declaration_version")
   @@index([editionId, key])
   @@map("stall_declaration")
   @@schema("stalls")
@@ -508,11 +515,36 @@ model StallDeclarationConsent {
   declarationId String   @map("declaration_id") @db.Uuid
   agreedAt      DateTime @default(now()) @map("agreed_at") @db.Timestamptz
 
-  request     StallRequest     @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  declaration StallDeclaration @relation(fields: [declarationId], references: [id])
+  /// WHICH form the tick was on.
+  ///
+  /// 🔴 The same key can be ticked on the request form and again on the bank
+  /// form, months apart, against wording that may have been re-versioned in
+  /// between. Those are two consents. Without this column the second is
+  /// silently discarded by `skipDuplicates` — the vendor saw a tick and the log
+  /// has nothing.
+  formType StallFormType @map("form_type")
 
-  @@unique([requestId, declarationId])
+  /// Set when the consent is one STAFF MEMBER'S rather than the requester's.
+  ///
+  /// ⚠️ Eight people register against one coupon and share a request id. The
+  /// consent is the individual's — they are the one carrying the photo ID
+  /// through the gate — so without this, seven of the eight collapse into the
+  /// first person's row.
+  staffId String? @map("staff_id") @db.Uuid
+
+  request     StallRequest      @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  declaration StallDeclaration  @relation(fields: [declarationId], references: [id])
+  staff       StallVendorStaff? @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  /// ⚠️ The two real constraints are PARTIAL unique indexes Prisma cannot
+  /// express — `stall_declaration_consent_by_form` (the requester's own, where
+  /// staff_id IS NULL) and `_by_staff` (one person's own). They live in the
+  /// migration, exactly as `StallDeclaration`'s four already do. A plain
+  /// `@@unique` here would be a different, wrong constraint, and Prisma would
+  /// generate a DROP for the real ones as drift.
+  @@index([requestId, formType])
   @@index([declarationId])
+  @@index([staffId])
   @@map("stall_declaration_consent")
   @@schema("stalls")
 }
@@ -1371,8 +1403,9 @@ model StallVendorStaff {
   /// predate a stall being able to hold more than one.
   couponId     String?     @map("coupon_id") @db.Uuid
 
-  request StallRequest      @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  coupon  StallStaffCoupon? @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  request  StallRequest              @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  coupon   StallStaffCoupon?         @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  consents StallDeclarationConsent[]
 
   /// One phone number, one registration per stall. Re-submitting the same
   /// person — the common case when a form is refreshed — must not inflate the
