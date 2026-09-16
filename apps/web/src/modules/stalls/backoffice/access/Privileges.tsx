@@ -45,7 +45,7 @@ export function Privileges({ catalogue }: { catalogue: readonly PrivilegeCatalog
         <Select
           aria-label='Category'
           value={category}
-          onChange={(e) => setCategory(e.target.value)}
+          onChange={(v) => setCategory(v)}
           style={{ width: 'auto', minWidth: 190 }}
         >
           <option value=''>All Categories</option>

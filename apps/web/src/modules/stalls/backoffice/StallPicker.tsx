@@ -50,7 +50,7 @@ export function StallPicker({
         <Select
           aria-label='Zone'
           value={zone}
-          onChange={(e) => onZone(e.target.value)}
+          onChange={(v) => onZone(v)}
           style={{ width: 'auto', minWidth: 150 }}
         >
           <option value=''>All Zones</option>

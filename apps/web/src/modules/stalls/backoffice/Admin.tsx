@@ -17,6 +17,7 @@ import {
   Icon,
   Input,
   Loading,
+  RowActions,
   Select,
   TBody,
   TD,
@@ -117,7 +118,7 @@ export function Admin() {
           <Select
             id='admin-edition'
             value={viewing || (editions.data?.find((e) => e.isActive)?.id ?? '')}
-            onChange={(e) => setViewing(e.target.value)}
+            onChange={(v) => setViewing(v)}
             style={{ width: 'auto', minWidth: 190 }}
           >
             {editions.data?.map((e) => (
@@ -300,22 +301,24 @@ function Editions({ writable, run }: { writable: boolean; run: PanelProps['run']
                     : 'Not issued yet'}
                 </TD>
                 <TD>{e.isActive && <Tag tone='ok'>Active</Tag>}</TD>
-                <TD align='right' style={{ whiteSpace: 'nowrap' }}>
-                  {!e.isActive && (
-                    <Btn
-                      disabled={!writable}
-                      onClick={() =>
-                        run(`${e.year} activated`, async () => {
-                          await api.activateEdition(e.id);
-                          eds.reload();
-                        })
-                      }
-                    >
-                      <Icon name='circle-check' size={14} />
-                      Activate
-                    </Btn>
-                  )}
-                  <EditBtn what={e.name} writable={writable} onClick={() => setEditing(e)} />
+                <TD align='right'>
+                  <RowActions>
+                    {!e.isActive && (
+                      <Btn
+                        disabled={!writable}
+                        onClick={() =>
+                          run(`${e.year} activated`, async () => {
+                            await api.activateEdition(e.id);
+                            eds.reload();
+                          })
+                        }
+                      >
+                        <Icon name='circle-check' size={14} />
+                        Activate
+                      </Btn>
+                    )}
+                    <EditBtn what={e.name} writable={writable} onClick={() => setEditing(e)} />
+                  </RowActions>
                 </TD>
               </TR>
             ))}

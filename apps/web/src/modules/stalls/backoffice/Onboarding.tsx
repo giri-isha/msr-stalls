@@ -133,7 +133,7 @@ export function Onboarding() {
         <Select
           aria-label='Outstanding'
           value={outstanding}
-          onChange={(e) => setOutstanding(e.target.value)}
+          onChange={(v) => setOutstanding(v)}
           style={{ width: 'auto', minWidth: 170 }}
         >
           <option value=''>Anything Outstanding</option>
@@ -146,7 +146,7 @@ export function Onboarding() {
         <Select
           aria-label='Type'
           value={requestType}
-          onChange={(e) => setRequestType(e.target.value)}
+          onChange={(v) => setRequestType(v)}
           style={{ width: 'auto', minWidth: 150 }}
         >
           <option value=''>All Types</option>

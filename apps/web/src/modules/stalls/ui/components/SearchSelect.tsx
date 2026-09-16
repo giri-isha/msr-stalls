@@ -1,6 +1,7 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Icon } from '../icons';
 import { Avatar, pillStyle } from '../ui';
+import { panelStyle, useAnchoredPanel } from './anchor';
 import { inputStyle } from './Dialog';
 
 export interface PickOption {
@@ -15,8 +16,6 @@ export interface PickOption {
   avatar?: boolean;
   tint?: string;
 }
-
-const PANEL_MAX = 320;
 
 /**
  * A select that can be searched, showing more per row than an <option> can.
@@ -54,17 +53,13 @@ export function SearchSelect({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
-  const [box, setBox] = useState<{
-    top: number;
-    left: number;
-    width: number;
-    flip: boolean;
-  } | null>(null);
 
   const listId = useId();
-  const trigger = useRef<HTMLButtonElement>(null);
-  const panel = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
+  // ⚠️ The measurement, the flip and the outside-press all live in the hook —
+  // this component, `MultiSelect` and `Select` had three copies of them, and
+  // they had drifted over what a page scroll should do. See `anchor.ts`.
+  const { trigger, panel, box } = useAnchoredPanel({ open, onClose: () => setOpen(false) });
 
   const selected = options.find((o) => o.value === value);
   const searchable = !!onQuery || options.length >= searchThreshold;
@@ -74,45 +69,6 @@ export function SearchSelect({
     if (!q) return options;
     return options.filter((o) => `${o.label} ${o.hint ?? ''}`.toLowerCase().includes(q));
   }, [options, query]);
-
-  // Position against the viewport, NOT the offset parent: Dialog's modal box
-  // sets overflowY:auto, which would clip an absolutely-positioned panel.
-  useLayoutEffect(() => {
-    if (!open) return;
-    const place = () => {
-      const r = trigger.current?.getBoundingClientRect();
-      if (!r) return;
-      const below = window.innerHeight - r.bottom;
-      const flip = below < PANEL_MAX && r.top > below;
-      setBox({ top: flip ? r.top : r.bottom + 4, left: r.left, width: r.width, flip });
-    };
-    place();
-    window.addEventListener('resize', place);
-    return () => window.removeEventListener('resize', place);
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (!trigger.current?.contains(t) && !panel.current?.contains(t)) setOpen(false);
-    };
-    // Tracking scroll would mean re-measuring on every frame; closing is honest.
-    const scrolled = (e: Event) => {
-      // ...but only when it is the PAGE that moved. This listener captures, so
-      // it also receives scroll events from the panel's own option list, and
-      // closing on those meant the first wheel tick over the list dismissed
-      // the dropdown — the list could be opened but never scrolled.
-      if (panel.current?.contains(e.target as Node)) return;
-      setOpen(false);
-    };
-    document.addEventListener('mousedown', away);
-    window.addEventListener('scroll', scrolled, true);
-    return () => {
-      document.removeEventListener('mousedown', away);
-      window.removeEventListener('scroll', scrolled, true);
-    };
-  }, [open]);
 
   // ⚠️ Seeds the local editing state FROM the props when the panel opens, so
   // `open` is the whole dependency by design. Adding the value props would
@@ -253,18 +209,9 @@ export function SearchSelect({
       {open && box && (
         <div
           ref={panel}
-          style={{
-            position: 'fixed',
-            left: box.left,
-            width: box.width,
-            zIndex: 260,
-            ...(box.flip ? { bottom: window.innerHeight - box.top + 4 } : { top: box.top }),
-            background: 'var(--pop)',
-            border: '1px solid var(--bd)',
-            borderRadius: 'var(--r4)',
-            boxShadow: 'var(--sh)',
-            overflow: 'hidden',
-          }}
+          // ⚠️ The panel itself does not scroll — its option list does, below
+          // the search box that must stay put while the list moves under it.
+          style={{ ...panelStyle(box), maxHeight: 'none', overflow: 'hidden' }}
         >
           {searchable && (
             <div style={{ padding: 8, borderBottom: '1px solid var(--line)' }}>
@@ -280,11 +227,7 @@ export function SearchSelect({
               />
             </div>
           )}
-          <div
-            id={listId}
-            role='listbox'
-            style={{ maxHeight: PANEL_MAX, overflowY: 'auto', padding: 4 }}
-          >
+          <div id={listId} role='listbox' style={{ maxHeight: 320, overflowY: 'auto', padding: 4 }}>
             {shown.length === 0 ? (
               <div style={{ padding: '10px 8px', fontSize: 12, color: 'var(--mfg)' }}>
                 No Matches

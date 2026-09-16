@@ -147,7 +147,7 @@ export function SelectDialog({
           <Select
             id='agreed-bay'
             value={agreedZone}
-            onChange={(e) => setAgreedZone(e.target.value)}
+            onChange={(v) => setAgreedZone(v)}
             style={{ width: 'auto', minWidth: 220 }}
           >
             <option value=''>Not Agreed Yet</option>

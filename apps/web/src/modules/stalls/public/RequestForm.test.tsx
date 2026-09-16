@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { installFetch, publicConfigFor, renderAt } from '../test-utils';
+import { choose, installFetch, publicConfigFor, renderAt } from '../test-utils';
 import { REQUEST_FORM_ROUTES } from './request-forms';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -53,7 +53,7 @@ async function fillVendor(user: ReturnType<typeof userEvent.setup>) {
   await retype(user, screen.getByLabelText(/Vendor Name/), 'Priya Venkat');
   await user.type(screen.getByLabelText(/^Address/), '12 Mettupalayam Road');
   await retype(user, screen.getByLabelText(/Contact Number/), '+91 98400 12345');
-  await user.selectOptions(screen.getByLabelText(/Type of stall/), 'FOOD');
+  await choose(user, screen.getByLabelText(/Type of stall/), 'FOOD');
   await user.click(screen.getByLabelText(/Category C1/));
   await user.type(screen.getByLabelText(/What items are you selling/), 'Spices');
   await user.type(screen.getByLabelText(/Number of stalls required/), '1');
@@ -119,7 +119,7 @@ describe('RequestForm — vendor', () => {
     // no stall type chosen yet it quotes the non-food rate…
     expect(await within(c1).findByText(/₹12,000 \+ GST/)).toBeInTheDocument();
     // …and follows the stall type once one is picked.
-    await userEvent.setup().selectOptions(screen.getByLabelText(/Type of stall/), 'FOOD');
+    await choose(userEvent.setup(), screen.getByLabelText(/Type of stall/), 'FOOD');
     expect(await within(c1).findByText(/₹15,000 \+ GST/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/Category A3/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Category B2/)).not.toBeInTheDocument();
@@ -249,14 +249,14 @@ describe('RequestForm — ashram', () => {
     await user.type(screen.getByLabelText(/Stall Name/), 'Publications Stall');
     // 🔴 The question that replaced the second ashram form. It used to be
     // implied by which of two pages the department had opened.
-    await user.selectOptions(screen.getByLabelText(/Type of stall/), 'NON_FOOD');
-    await user.selectOptions(screen.getByLabelText(/Credit card/), 'NO');
+    await choose(user, screen.getByLabelText(/Type of stall/), 'NON_FOOD');
+    await choose(user, screen.getByLabelText(/Credit card/), 'NO');
     await user.click(screen.getByLabelText(/Used by Department for Sales/));
     await user.type(screen.getByLabelText(/displaying\/Selling/), 'Books');
     // Preferred location is the zone radio list on every form.
     await user.click(screen.getByLabelText(/Category A4/));
     await user.type(screen.getByLabelText(/Number of stalls required/), '1');
-    await user.selectOptions(screen.getByLabelText(/Tamil Thembu/), 'NO');
+    await choose(user, screen.getByLabelText(/Tamil Thembu/), 'NO');
     for (const f of [
       /^Number of 5 AMP/,
       /15 AMP/,
@@ -304,10 +304,10 @@ describe('RequestForm — ashram', () => {
     // above it reads as a form that grew.
     expect(screen.getByLabelText(/hold an FSSAI certificate/)).toBeInTheDocument();
 
-    await user.selectOptions(stallType, 'NON_FOOD');
+    await choose(user, stallType, 'NON_FOOD');
     expect(screen.queryByLabelText(/hold an FSSAI certificate/)).not.toBeInTheDocument();
 
-    await user.selectOptions(stallType, 'FOOD');
+    await choose(user, stallType, 'FOOD');
     expect(screen.getByLabelText(/hold an FSSAI certificate/)).toBeInTheDocument();
   });
 });

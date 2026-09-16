@@ -144,7 +144,7 @@ export function Planning() {
           <Select
             id='planning-edition'
             value={viewing || (editions.data?.find((e) => e.isActive)?.id ?? '')}
-            onChange={(e) => setViewing(e.target.value)}
+            onChange={(v) => setViewing(v)}
             style={{ width: 'auto', minWidth: 190 }}
           >
             {editions.data?.map((e) => (

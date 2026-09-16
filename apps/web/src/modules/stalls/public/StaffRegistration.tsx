@@ -221,7 +221,7 @@ export function StaffRegistration() {
                 <Select
                   id='staff-idtype'
                   value={idType}
-                  onChange={(e) => setIdType(e.target.value as RegisterStaffInput['idType'])}
+                  onChange={(v) => setIdType(v as RegisterStaffInput['idType'])}
                 >
                   {ID_TYPES.map(([value, label]) => (
                     <option key={value} value={value}>

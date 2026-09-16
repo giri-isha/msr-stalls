@@ -13,6 +13,7 @@ import {
   IconBtn,
   Input,
   Loading,
+  RowActions,
   TBody,
   TD,
   TH,
@@ -358,12 +359,14 @@ export function Plan() {
                   </TD>
                   <TD align='right'>{live.stallsAllocated}</TD>
                   <TD align='right'>
-                    <IconBtn
-                      label={`Edit ${r.zoneCode}`}
-                      glyph='pencil'
-                      disabled={!writable}
-                      onClick={() => setEditing(i)}
-                    />
+                    <RowActions>
+                      <IconBtn
+                        label={`Edit ${r.zoneCode}`}
+                        glyph='pencil'
+                        disabled={!writable}
+                        onClick={() => setEditing(i)}
+                      />
+                    </RowActions>
                   </TD>
                 </TR>
               );

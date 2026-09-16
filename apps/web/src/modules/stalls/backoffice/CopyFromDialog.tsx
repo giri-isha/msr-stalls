@@ -97,7 +97,7 @@ export function CopyFromDialog({
         ) : (
           <>
             <FormField id='copy-from' label='Copy From'>
-              <Select id='copy-from' value={chosen} onChange={(e) => setFrom(e.target.value)}>
+              <Select id='copy-from' value={chosen} onChange={(v) => setFrom(v)}>
                 {sources.map((e) => (
                   <option key={e.id} value={e.id}>
                     {e.name}

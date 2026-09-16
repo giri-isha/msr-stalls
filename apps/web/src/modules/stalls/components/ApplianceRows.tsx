@@ -1,4 +1,4 @@
-import { Btn, Icon, IconBtn, Input, useIsMobile } from '../ui';
+import { Btn, Icon, IconBtn, Input, RowActions, useIsMobile } from '../ui';
 
 export interface ApplianceRow {
   name: string;
@@ -69,14 +69,14 @@ export function ApplianceRows({
             value={row.watts}
             onChange={(e) => update(i, { watts: e.target.value })}
           />
-          <div style={{ display: 'flex', alignItems: 'center' }}>
+          <RowActions align='left'>
             <IconBtn
               label={`Remove appliance ${i + 1}`}
               glyph='trash'
               tone='var(--des)'
               onClick={() => remove(i)}
             />
-          </div>
+          </RowActions>
         </div>
       ))}
       <div>

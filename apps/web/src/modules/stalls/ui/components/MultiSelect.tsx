@@ -1,6 +1,7 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { Icon } from '../icons';
 import { useIsMobile } from '../useBreakpoint';
+import { panelStyle, useAnchoredPanel } from './anchor';
 import { OptionRow } from './Popover';
 import { SearchList, matchLabel } from './SearchList';
 import { inputStyle } from './Dialog';
@@ -10,9 +11,6 @@ export interface MultiOption {
   label: string;
   group?: string;
 }
-
-/** Matches SearchSelect's panel height, so the two flip at the same point. */
-const PANEL_MAX = 320;
 
 /**
  * A searchable multi-select shaped like a form field.
@@ -52,46 +50,11 @@ export function MultiSelect({
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const listId = useId();
-  const box = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const [panel, setPanel] = useState<{
-    top: number;
-    left: number;
-    width: number;
-    flip: boolean;
-  } | null>(null);
   const mobile = useIsMobile();
-
-  // Position against the viewport, NOT the offset parent. This picker's only
-  // caller mounts it inside Dialog, whose body sets overflowY:auto — which
-  // clips an absolutely-positioned panel. SearchSelect solves the same problem
-  // the same way; the two must not disagree about where a dropdown goes.
-  useLayoutEffect(() => {
-    if (!open) return;
-    const place = () => {
-      const r = trigger.current?.getBoundingClientRect();
-      if (!r) return;
-      const below = window.innerHeight - r.bottom;
-      const flip = below < PANEL_MAX && r.top > below;
-      setPanel({ top: flip ? r.top : r.bottom + 4, left: r.left, width: r.width, flip });
-    };
-    place();
-    window.addEventListener('resize', place);
-    window.addEventListener('scroll', place, true);
-    return () => {
-      window.removeEventListener('resize', place);
-      window.removeEventListener('scroll', place, true);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: MouseEvent) => {
-      if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', away);
-    return () => document.removeEventListener('mousedown', away);
-  }, [open]);
+  // The measurement, the flip and the outside-press are the hook's — shared
+  // with `SearchSelect` and `Select`, so three dropdowns cannot disagree about
+  // where a panel goes or when it closes. See `anchor.ts`.
+  const { trigger, panel, box } = useAnchoredPanel({ open, onClose: () => setOpen(false) });
 
   /** Options in the order they render, so arrow keys walk what the eye sees. */
   const flat = useMemo(() => options.map((o) => o.value), [options]);
@@ -115,7 +78,7 @@ export function MultiSelect({
   }, [options]);
 
   return (
-    <div ref={box} style={{ position: 'relative' }}>
+    <div style={{ position: 'relative' }}>
       <button
         ref={trigger}
         type='button'
@@ -192,22 +155,10 @@ export function MultiSelect({
         <Icon name='chevron-down' size={14} color='var(--mfg)' />
       </button>
 
-      {open && panel && (
+      {open && box && (
         <div
-          style={{
-            position: 'fixed',
-            left: panel.left,
-            width: panel.width,
-            zIndex: 260,
-            ...(panel.flip ? { bottom: window.innerHeight - panel.top + 4 } : { top: panel.top }),
-            background: 'var(--pop)',
-            border: '1px solid var(--bd)',
-            borderRadius: 'var(--r4)',
-            boxShadow: 'var(--sh)',
-            padding: 10,
-            maxHeight: mobile ? 260 : PANEL_MAX,
-            overflowY: 'auto',
-          }}
+          ref={panel}
+          style={{ ...panelStyle(box, { max: mobile ? 260 : 320 }), padding: 10 }}
           id={listId}
           role='listbox'
           aria-multiselectable='true'

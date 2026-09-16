@@ -10,6 +10,7 @@ import {
   DialogButtons,
   EditBtn,
   Icon,
+  RowActions,
   TBody,
   TD,
   TH,
@@ -139,11 +140,13 @@ export function Rates({ c, writable, run, reload }: PanelProps) {
                 );
               })}
               <TD align='right'>
-                <EditBtn
-                  what={`${z.code} ${isFood ? 'food' : 'non-food'} rates`}
-                  writable={writable}
-                  onClick={() => setEditing(z)}
-                />
+                <RowActions>
+                  <EditBtn
+                    what={`${z.code} ${isFood ? 'food' : 'non-food'} rates`}
+                    writable={writable}
+                    onClick={() => setEditing(z)}
+                  />
+                </RowActions>
               </TD>
             </TR>
           ))}

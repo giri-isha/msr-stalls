@@ -24,6 +24,7 @@ import {
   EditBtn,
   Empty,
   ColumnsButton,
+  RowActions,
   useColumns,
   type ColumnDef,
   Toolbar,
@@ -183,7 +184,7 @@ function DuePanel() {
         <Select
           aria-label='Outstanding'
           value={outstanding}
-          onChange={(e) => setOutstanding(e.target.value)}
+          onChange={(v) => setOutstanding(v)}
           style={{ width: 'auto', minWidth: 200 }}
         >
           <option value=''>Everyone Who Owes</option>
@@ -593,10 +594,12 @@ function ConfirmPanel() {
                     )}
                   </TD>
                   <TD align='right'>
-                    <Btn onClick={() => setOpen(r)}>
-                      <Icon name='rupee' size={14} />
-                      {canWrite ? 'Record Credit' : 'View'}
-                    </Btn>
+                    <RowActions>
+                      <Btn onClick={() => setOpen(r)}>
+                        <Icon name='rupee' size={14} />
+                        {canWrite ? 'Record Credit' : 'View'}
+                      </Btn>
+                    </RowActions>
                   </TD>
                 </TR>
               ))}
@@ -915,7 +918,7 @@ function ConfirmDialog({
               <Select
                 id='credit-purpose'
                 value={purpose}
-                onChange={(e) => setPurpose(e.target.value as 'RENT' | 'DEPOSIT')}
+                onChange={(v) => setPurpose(v as 'RENT' | 'DEPOSIT')}
               >
                 <option value='RENT'>Rent (Fee Incl. GST)</option>
                 <option value='DEPOSIT'>Refundable Deposit</option>
@@ -961,11 +964,7 @@ function ConfirmDialog({
               />
             </FormField>
             <FormField id='credit-mode' label='Mode'>
-              <Select
-                id='credit-mode'
-                value={mode}
-                onChange={(e) => setMode(e.target.value as typeof mode)}
-              >
+              <Select id='credit-mode' value={mode} onChange={(v) => setMode(v as typeof mode)}>
                 {['NEFT', 'CASH', 'CHEQUE', 'UPI', 'OTHER'].map((m) => (
                   <option key={m} value={m}>
                     {m}
@@ -1064,10 +1063,12 @@ function RefundPanel() {
                     )}
                   </TD>
                   <TD align='right'>
-                    <Btn onClick={() => setOpen(r)}>
-                      <Icon name='scroll' size={14} />
-                      {r.submittedAt ? 'Voucher' : 'Prepare'}
-                    </Btn>
+                    <RowActions>
+                      <Btn onClick={() => setOpen(r)}>
+                        <Icon name='scroll' size={14} />
+                        {r.submittedAt ? 'Voucher' : 'Prepare'}
+                      </Btn>
+                    </RowActions>
                   </TD>
                 </TR>
               ))}

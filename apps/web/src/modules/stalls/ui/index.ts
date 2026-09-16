@@ -62,7 +62,6 @@ export {
   FormField,
   Input,
   Radio,
-  Select,
   Textarea,
 } from './components/Form';
 export { IconBtn } from './components/IconBtn';
@@ -79,9 +78,11 @@ export {
 export { pageSlice, Pager } from './components/Pager';
 export { ColumnsButton } from './components/ColumnsButton';
 export { OptionRow, PopHeader, Popover } from './components/Popover';
+export { RowActions } from './components/RowActions';
 export { RowCard, RowCardAction } from './components/RowCard';
 export { SearchList, matchLabel } from './components/SearchList';
 export { SearchSelect } from './components/SearchSelect';
+export { Select, type SelectOption } from './components/Select';
 export { MultiSelect } from './components/MultiSelect';
 export { DateField } from './components/DatePicker';
 export { StatTiles } from './components/StatTiles';

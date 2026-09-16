@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { ME_ADMIN, installFetch, renderAt } from '../../test-utils';
+import { choose, installFetch, ME_ADMIN, renderAt } from '../../test-utils';
 import { RolesPrivileges } from './RolesPrivileges';
 
 beforeEach(() => vi.unstubAllGlobals());
@@ -253,7 +253,7 @@ describe('the privilege catalogue', () => {
     const user = await open();
     await screen.findByText('Confirm payments');
 
-    await user.selectOptions(screen.getByLabelText(/category/i), 'requests');
+    await choose(user, screen.getByLabelText(/category/i), 'requests');
 
     expect(screen.getByText('View requests')).toBeInTheDocument();
     expect(screen.queryByText('Confirm payments')).not.toBeInTheDocument();
@@ -283,7 +283,7 @@ describe('editing a role', () => {
 
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByLabelText(/level/i)).toHaveValue(1);
-    expect(within(dialog).getByLabelText(/sits under/i)).toHaveValue('stalls_admin');
+    expect(within(dialog).getByLabelText(/sits under/i)).toHaveTextContent('Admin');
   });
 
   test('a retyped level is what saving sends', async () => {

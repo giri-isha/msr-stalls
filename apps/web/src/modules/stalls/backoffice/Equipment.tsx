@@ -17,6 +17,7 @@ import {
   IconBtn,
   Input,
   Loading,
+  RowActions,
   Search,
   Tag,
   TBody,
@@ -529,7 +530,7 @@ function Actions({
     onRun(() => equipmentAction(row.requestId, action), message);
 
   return (
-    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+    <RowActions wrap>
       {canWrite && <IconBtn label={`Edit ${row.stallName}`} glyph='pencil' onClick={onEdit} />}
       {canWrite &&
         (row.distributedAt ? (
@@ -575,7 +576,7 @@ function Actions({
         <Icon name='printer' size={14} />
         Challan
       </Btn>
-    </div>
+    </RowActions>
   );
 }
 

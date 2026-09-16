@@ -1,7 +1,15 @@
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { ME_LEAD, detail, installFetch, onboarding, renderAt, summary } from '../test-utils';
+import {
+  choose,
+  detail,
+  installFetch,
+  ME_LEAD,
+  onboarding,
+  renderAt,
+  summary,
+} from '../test-utils';
 import { RequestDetail } from './RequestDetail';
 import { Requests } from './Requests';
 
@@ -74,7 +82,7 @@ describe('Requests', () => {
     const fx = installFetch(base());
     const { router } = renderAt('/m/stalls/requests', routes, { me: true });
     await screen.findByText('VEN-2026-0001');
-    await userEvent.setup().selectOptions(screen.getByLabelText('Status'), 'SHORTLISTED');
+    await choose(userEvent.setup(), screen.getByLabelText('Status'), 'SHORTLISTED');
     await waitFor(() => expect(screen.queryByText('VEN-2026-0001')).not.toBeInTheDocument());
     expect(screen.getByText('LWS-2026-0001')).toBeInTheDocument();
     expect(router.state.location.search).toContain('status=SHORTLISTED');
@@ -278,7 +286,7 @@ describe('Requests', () => {
     const fx = installFetch(base());
     const { router } = renderAt('/m/stalls/requests', routes, { me: true });
     await screen.findByText('VEN-2026-0001');
-    await userEvent.setup().selectOptions(screen.getByLabelText('Stage'), 'BANK_FORM_SENT');
+    await choose(userEvent.setup(), screen.getByLabelText('Stage'), 'BANK_FORM_SENT');
     await waitFor(() => expect(screen.queryByText('VEN-2026-0001')).not.toBeInTheDocument());
     expect(screen.getByText('VEN-2026-0002')).toBeInTheDocument();
     expect(router.state.location.search).toContain('stage=BANK_FORM_SENT');

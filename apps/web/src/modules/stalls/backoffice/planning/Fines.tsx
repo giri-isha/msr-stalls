@@ -12,6 +12,7 @@ import {
   Empty,
   FormField,
   Input,
+  RowActions,
   TBody,
   TD,
   TH,
@@ -65,7 +66,9 @@ export function Fines({ c, writable, run, reload }: PanelProps) {
                   )}
                 </TD>
                 <TD align='right'>
-                  <EditBtn what={ft.reason} writable={writable} onClick={() => setEditing(ft)} />
+                  <RowActions>
+                    <EditBtn what={ft.reason} writable={writable} onClick={() => setEditing(ft)} />
+                  </RowActions>
                 </TD>
               </TR>
             ))}

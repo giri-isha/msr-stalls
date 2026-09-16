@@ -11,6 +11,7 @@ import {
   FormField,
   IconBtn,
   Input,
+  RowActions,
   TBody,
   TD,
   TH,
@@ -109,22 +110,24 @@ function ZoneRow({
       <TD align='right' muted>
         {z.stallCount}
       </TD>
-      <TD align='right' style={{ whiteSpace: 'nowrap' }}>
-        <EditBtn what={z.code} writable={writable} onClick={() => onEdit(z)} />
-        {/* ⚠️ Disabled, with the reason, rather than offered and refused. A bay
-            is emptied before it leaves a layout, so this is the normal order of
-            work — and the alternative to refusing is a cascade that would take
-            the stalls and the record of who stood in them. */}
-        <IconBtn
-          label={
-            z.stallCount > 0
-              ? `${z.code} has ${z.stallCount} stalls and cannot be removed`
-              : `Remove ${z.code}`
-          }
-          glyph='trash'
-          disabled={!writable || z.stallCount > 0}
-          onClick={() => run(`${z.code} removed`, () => api.deleteZone(z.code))}
-        />
+      <TD align='right'>
+        <RowActions>
+          <EditBtn what={z.code} writable={writable} onClick={() => onEdit(z)} />
+          {/* ⚠️ Disabled, with the reason, rather than offered and refused. A
+              bay is emptied before it leaves a layout, so this is the normal
+              order of work — and the alternative to refusing is a cascade that
+              would take the stalls and the record of who stood in them. */}
+          <IconBtn
+            label={
+              z.stallCount > 0
+                ? `${z.code} has ${z.stallCount} stalls and cannot be removed`
+                : `Remove ${z.code}`
+            }
+            glyph='trash'
+            disabled={!writable || z.stallCount > 0}
+            onClick={() => run(`${z.code} removed`, () => api.deleteZone(z.code))}
+          />
+        </RowActions>
       </TD>
     </TR>
   );

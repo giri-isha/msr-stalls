@@ -117,7 +117,7 @@ export function PaymentClaim({
             <Select
               id='claim-purpose'
               value={purpose}
-              onChange={(e) => setPurpose(e.target.value as 'RENT' | 'DEPOSIT')}
+              onChange={(v) => setPurpose(v as 'RENT' | 'DEPOSIT')}
             >
               <option value='RENT'>Rent</option>
               <option value='DEPOSIT'>Refundable deposit</option>

@@ -203,7 +203,7 @@ function SendPanel() {
         <Select
           aria-label='Letter'
           value={templateKey}
-          onChange={(e) => setTemplateKey(e.target.value as TemplateKeyValue)}
+          onChange={(v) => setTemplateKey(v as TemplateKeyValue)}
           style={{ width: 'auto', minWidth: 240 }}
         >
           {Object.entries(TEMPLATE_LABEL).map(([k, v]) => (
@@ -216,7 +216,7 @@ function SendPanel() {
         <Select
           aria-label='Sent'
           value={sentFilter}
-          onChange={(e) => setSentFilter(e.target.value as typeof sentFilter)}
+          onChange={(v) => setSentFilter(v as typeof sentFilter)}
           style={{ width: 'auto', minWidth: 150 }}
         >
           <option value='all'>All Vendors</option>

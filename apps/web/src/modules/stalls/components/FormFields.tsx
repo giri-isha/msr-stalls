@@ -240,7 +240,7 @@ export function FieldControl({
           ))}
         </div>
       ) : f.type === 'select' && f.options ? (
-        <Select {...common} value={str(value)} onChange={(e) => onChange(e.target.value)}>
+        <Select {...common} value={str(value)} onChange={(v) => onChange(v)}>
           <option value=''>Choose…</option>
           {f.options.map((o) => (
             <option key={o.value} value={o.value}>

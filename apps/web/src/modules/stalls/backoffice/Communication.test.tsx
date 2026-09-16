@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_TEMPLATES, TEMPLATE_PLACEHOLDERS } from '@stalls/core';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { ME_ADMIN, installFetch, recipient, renderAt } from '../test-utils';
+import { choose, installFetch, ME_ADMIN, recipient, renderAt } from '../test-utils';
 import { Communication } from './Communication';
 
 const routes = [{ path: '/m/stalls/communication', element: <Communication /> }];
@@ -129,7 +129,7 @@ describe('sending the selection letter', () => {
     await user.click(await screen.findByLabelText('Select Green Leaf Organics'));
     expect(screen.getByRole('button', { name: 'Send 1 selected' })).toBeEnabled();
 
-    await user.selectOptions(screen.getByLabelText('Letter'), 'PAYMENT_DETAILS');
+    await choose(user, screen.getByLabelText('Letter'), 'PAYMENT_DETAILS');
     expect(screen.getByRole('button', { name: 'Send selected' })).toBeDisabled();
   });
 });

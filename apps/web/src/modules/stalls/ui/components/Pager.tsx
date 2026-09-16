@@ -1,5 +1,6 @@
 import { DEFAULT_PAGE_SIZE, PAGE_SIZES, rangeLabel } from '../paging';
 import { Icon } from '../icons';
+import { Select } from './Select';
 
 /**
  * Page footer shared by every table.
@@ -31,7 +32,7 @@ export function Pager({
   noun?: string;
   onPage: (p: number) => void;
   /**
-   * Omit on a table whose size it cannot honour — the select is then absent
+   * Omit on a table whose size it cannot honour — the picker is then absent
    * rather than present and dead. A screen that decides its own page size on
    * the server has no business offering the choice.
    */
@@ -51,36 +52,29 @@ export function Pager({
       }}
     >
       {onSize && (
-        <label
-          style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}
-          htmlFor='stalls-rows-per-page'
-        >
-          Rows
-          <select
+        /* ⚠️ The label sits BESIDE the picker rather than around it. A `<label>`
+           forwards a click on any non-interactive descendant to the control it
+           names — and the drawn list's option rows are `div`s, so choosing a
+           size inside a wrapping label re-opened the list it had just closed. */
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}>
+          <label htmlFor='stalls-rows-per-page'>Rows</label>
+          <Select
             id='stalls-rows-per-page'
             aria-label='Rows per Page'
-            value={size}
-            onChange={(e) => {
-              onSize(Number(e.target.value));
+            value={String(size)}
+            onChange={(n) => {
+              onSize(Number(n));
               onPage(0);
             }}
-            style={{
-              padding: '4px 8px',
-              borderRadius: 'var(--r2)',
-              border: '1px solid var(--bd)',
-              background: 'var(--card)',
-              color: 'var(--fg)',
-              fontSize: 12,
-              outline: 'none',
-            }}
+            style={{ width: 'auto', padding: '4px 8px', fontSize: 12 }}
           >
             {PAGE_SIZES.map((n) => (
               <option key={n} value={n}>
                 {n}
               </option>
             ))}
-          </select>
-        </label>
+          </Select>
+        </div>
       )}
       <div style={{ flex: 1 }}>{rangeLabel({ page, size, total, noun })}</div>
       {pages > 1 && (

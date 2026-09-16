@@ -686,7 +686,7 @@ function FieldDialog({
           <Select
             id='fb-section'
             value={v.sectionId ?? ''}
-            onChange={(e) => setV({ ...v, sectionId: e.target.value || null })}
+            onChange={(sectionId) => setV({ ...v, sectionId: sectionId || null })}
           >
             <option value=''>No Heading</option>
             {sections.map((s) => (

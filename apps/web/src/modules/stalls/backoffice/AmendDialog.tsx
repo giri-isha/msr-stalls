@@ -198,7 +198,7 @@ export function AmendDialog({
             <Select
               id='am-pref'
               value={form.preferredZoneCode}
-              onChange={(e) => set('preferredZoneCode')(e.target.value)}
+              onChange={(v) => set('preferredZoneCode')(v)}
             >
               {bays.map((z) => (
                 <option key={z.code} value={z.code}>
@@ -215,7 +215,7 @@ export function AmendDialog({
             <Select
               id='am-agreed'
               value={form.agreedZoneCode}
-              onChange={(e) => set('agreedZoneCode')(e.target.value)}
+              onChange={(v) => set('agreedZoneCode')(v)}
             >
               <option value=''>Not Agreed Yet</option>
               {bays.map((z) => (
@@ -226,11 +226,7 @@ export function AmendDialog({
             </Select>
           </FormField>
           <FormField id='am-type' label='Stall Type'>
-            <Select
-              id='am-type'
-              value={form.stallType}
-              onChange={(e) => set('stallType')(e.target.value)}
-            >
+            <Select id='am-type' value={form.stallType} onChange={(v) => set('stallType')(v)}>
               <option value='FOOD'>Food</option>
               <option value='NON_FOOD'>Non-Food</option>
             </Select>

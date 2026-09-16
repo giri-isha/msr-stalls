@@ -266,7 +266,7 @@ export function RoleDialog({
             <Select
               id='role-parent'
               value={form.parentKey ?? ''}
-              onChange={(e) => set('parentKey', e.target.value || null)}
+              onChange={(v) => set('parentKey', v || null)}
             >
               <option value=''>Nobody — a Role at the Top</option>
               {roles

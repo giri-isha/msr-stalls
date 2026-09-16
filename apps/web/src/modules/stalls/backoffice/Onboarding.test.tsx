@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { ME_ADMIN, installFetch, renderAt } from '../test-utils';
+import { choose, installFetch, ME_ADMIN, renderAt } from '../test-utils';
 import { Onboarding } from './Onboarding';
 
 const routes = [{ path: '/m/stalls/onboarding', element: <Onboarding /> }];
@@ -133,7 +133,7 @@ describe('the onboarding filters', () => {
     const user = userEvent.setup();
     await screen.findByText('Green Leaf Organics');
 
-    await user.selectOptions(screen.getByLabelText('Outstanding'), 'PAYMENT');
+    await choose(user, screen.getByLabelText('Outstanding'), 'PAYMENT');
     expect(screen.queryByText('Green Leaf Organics')).not.toBeInTheDocument();
     expect(screen.getByText('Seva Health Camp')).toBeInTheDocument();
   });
@@ -149,7 +149,7 @@ describe('the onboarding filters', () => {
 
     // Both rows show `payment: 'PENDING'` in their column; only one of them is
     // actually WAITING on payment, and the filter follows the latter.
-    await user.selectOptions(screen.getByLabelText('Outstanding'), 'BANK_FORM');
+    await choose(user, screen.getByLabelText('Outstanding'), 'BANK_FORM');
     expect(screen.getByText('Green Leaf Organics')).toBeInTheDocument();
     expect(screen.queryByText('Seva Health Camp')).not.toBeInTheDocument();
   });
@@ -160,7 +160,7 @@ describe('the onboarding filters', () => {
     const user = userEvent.setup();
     await screen.findByText('Green Leaf Organics');
 
-    await user.selectOptions(screen.getByLabelText('Type'), 'LOCAL_WELFARE');
+    await choose(user, screen.getByLabelText('Type'), 'LOCAL_WELFARE');
     expect(screen.queryByText('Green Leaf Organics')).not.toBeInTheDocument();
     expect(screen.getByText('Seva Health Camp')).toBeInTheDocument();
   });
@@ -173,7 +173,8 @@ describe('the onboarding filters', () => {
     render();
     await screen.findByText('Green Leaf Organics');
 
-    const options = within(screen.getByLabelText('Outstanding')).getAllByRole('option');
+    await userEvent.setup().click(screen.getByLabelText('Outstanding'));
+    const options = within(await screen.findByRole('listbox')).getAllByRole('option');
     expect(options.map((o) => o.textContent)).toEqual([
       'Anything Outstanding',
       'Waiting on Bank Details',
