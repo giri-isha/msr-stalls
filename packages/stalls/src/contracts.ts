@@ -124,8 +124,14 @@ export const AshramBlock = z.object({
  *
  *  Omitting it is not a way around the check. The check detects staleness;
  *  it does not authorise anything, and skipping it logs the live wording —
- *  the same thing the server would have recorded anyway. */
-const DeclarationIds = z.array(z.string().trim().min(1)).max(20).optional();
+ *  the same thing the server would have recorded anyway.
+ *
+ *  ⚠️ `uuid`, not any non-empty string. These ids are compared by set equality
+ *  against the live rows, whose ids are uuids — so a value that cannot be one
+ *  is a value that can only ever fail the comparison. Refusing it at the edge
+ *  names the problem; accepting it turns a malformed post into a mysterious
+ *  "the wording changed, please re-read it". */
+const DeclarationIds = z.array(z.uuid()).max(20).optional();
 
 /** `.strict()` is deliberately NOT used — unknown keys are stripped silently so
  *  a stale client does not 400, but nothing outside this schema is ever read.

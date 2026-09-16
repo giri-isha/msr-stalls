@@ -149,6 +149,11 @@ describe('bank identifiers normalise what a vendor actually types', () => {
 });
 
 describe('consent travels with every public form submission', () => {
+  // Real uuids: the ids are compared by set equality against live rows whose
+  // ids are uuids, so the contract refuses anything that cannot be one.
+  const D1 = '11111111-1111-4111-8111-111111111111';
+  const D2 = '22222222-2222-4222-8222-222222222222';
+
   const bank = {
     email: 'a@b.com',
     invoiceName: 'Green Leaf',
@@ -178,8 +183,8 @@ describe('consent travels with every public form submission', () => {
    *  in JSX. A tick that carries no version records THAT somebody agreed and
    *  never WHAT — the failure the declarations table exists to end. */
   test('the bank form posts declaration ids, not bare agreement flags', () => {
-    const parsed = SubmitBankDetailsInput.parse({ ...bank, declarationIds: ['d1', 'd2'] });
-    expect(parsed.declarationIds).toEqual(['d1', 'd2']);
+    const parsed = SubmitBankDetailsInput.parse({ ...bank, declarationIds: [D1, D2] });
+    expect(parsed.declarationIds).toEqual([D1, D2]);
     expect('agreeNeft' in parsed).toBe(false);
     expect('agreeTerms' in parsed).toBe(false);
   });
@@ -198,9 +203,9 @@ describe('consent travels with every public form submission', () => {
       mobile: '9876543210',
       idType: 'AADHAAR',
       idNumber: '1234',
-      declarationIds: ['d1'],
+      declarationIds: [D1],
     });
-    expect(staff.declarationIds).toEqual(['d1']);
+    expect(staff.declarationIds).toEqual([D1]);
 
     const fssai = SubmitFssaiInput.parse({
       stallName: 'Green Leaf',
