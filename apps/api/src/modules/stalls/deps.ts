@@ -25,10 +25,6 @@ export interface StallsDeps {
    *  these routes wherever it likes. */
   statusUrl(token: string): string;
   bankFormUrl(token: string): string;
-  /** Where a new registration is confirmed. Following it is what proves the
-   *  requester holds the contact they registered under — which is the only
-   *  reason the register route can answer identically to everyone. */
-  registerConfirmUrl(token: string): string;
   /** Where a password is reset. */
   passwordResetUrl(token: string): string;
   fssaiUrl(token: string): string;

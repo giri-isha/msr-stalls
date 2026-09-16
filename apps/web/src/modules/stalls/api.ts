@@ -423,13 +423,11 @@ export const updateAccount = (id: string, body: UpdateAccountInput) =>
 export const listUsers = (q: Partial<ListUsersQuery> = {}) =>
   apiFetch<ListUsersResponse>(`${BASE}/users${qs(q)}`);
 
-/** The three link-sending support actions. Each answers 204 and sends to the
- *  contact the account already holds — none of them returns a link to the
- *  caller. The fourth, below, is the one that does not follow that rule. */
+/** The two support actions. Each answers 204 and acts on the contact the
+ *  account already holds — neither returns a link to the caller. The third,
+ *  below, is the one that does not follow that rule. */
 export const unlockAccount = (accountId: string) =>
   apiFetch<void>(`${BASE}/users/${accountId}/unlock`, { method: 'POST' });
-export const resendConfirmation = (accountId: string) =>
-  apiFetch<void>(`${BASE}/users/${accountId}/resend-confirmation`, { method: 'POST' });
 export const sendAccessLinkTo = (accountId: string) =>
   apiFetch<void>(`${BASE}/users/${accountId}/access-link`, { method: 'POST' });
 
@@ -455,14 +453,11 @@ const P = `${BASE}/public`;
  *
  * ⚠️ TEMPORARY, until the host's Isha OIDC. `getRequesterSession` is the only
  * one of these the rest of the web module touches; when SSO lands the other
- * six go and that one stays.
+ * five go and that one stays.
  */
 
 export const registerRequester = (body: RegisterInput) =>
   apiFetch<{ ok: true }>(`${P}/register`, { method: 'POST', json: body });
-
-export const confirmRegistration = (token: string) =>
-  apiFetch<{ ok: true }>(`${P}/register/confirm`, { method: 'POST', json: { token } });
 
 export const loginRequester = (body: LoginInput) =>
   apiFetch<{ ok: true }>(`${P}/login`, { method: 'POST', json: body });

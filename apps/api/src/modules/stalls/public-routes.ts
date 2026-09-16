@@ -40,7 +40,6 @@ import {
   ContinueStepInput,
   PresignUploadInput,
   RATE_SCOPES,
-  ConfirmRegistrationInput,
   LoginInput,
   PasswordResetConfirmInput,
   PasswordResetInput,
@@ -62,12 +61,7 @@ import type { StallsDeps } from './deps';
 import { UnknownAccessLinkError } from './errors';
 import { registerStaff, resolveCoupon, submitFssai, toCouponView } from './onboarding';
 import { authenticate } from './credentials';
-import {
-  completePasswordReset,
-  confirmRegistration,
-  register,
-  requestPasswordReset,
-} from './registration';
+import { completePasswordReset, register, requestPasswordReset } from './registration';
 import {
   REQUESTER_COOKIE,
   clearSessionCookie,
@@ -104,10 +98,16 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
   /** Registration.
    *
    *  ⚠️ 202 `{ ok: true }` for a free contact, for one that already has an
-   *  account, and for a string that is not a contact at all. The three differ
-   *  only in which message goes out and to whom — see `registration.ts`. A
-   *  route that answered "that number is already registered" would be a way of
-   *  asking whether a particular shopkeeper had applied. */
+   *  account, and for a string that is not a contact at all. Only the second
+   *  sends anything, and it sends to the contact the ACCOUNT already held —
+   *  see `registration.ts`. A route that answered "that number is already
+   *  registered" would be a way of asking whether a particular shopkeeper had
+   *  applied.
+   *
+   *  ⚠️ The credential this creates works immediately, but the caller is NOT
+   *  signed in: a response that started a session would distinguish the free
+   *  contact from the taken one, which is the one thing this route may not do.
+   *  They log in on the next screen. */
   zod.post(
     '/register',
     {
@@ -117,22 +117,6 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
     async (req, reply) => {
       await register(prisma, deps, req.body);
       reply.status(202);
-      return { ok: true };
-    },
-  );
-
-  /** Following the link is what proves the requester holds the contact, so it
-   *  is also what starts their first session. Single use — a forwarded
-   *  confirmation email is not a spare key. */
-  zod.post(
-    '/register/confirm',
-    {
-      schema: { body: ConfirmRegistrationInput },
-      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
-    },
-    async (req, reply) => {
-      const { accountId } = await confirmRegistration(prisma, req.body.token);
-      setSessionCookie(reply, await startSession(prisma, accountId));
       return { ok: true };
     },
   );

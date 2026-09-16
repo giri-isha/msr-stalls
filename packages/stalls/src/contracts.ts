@@ -1042,7 +1042,7 @@ export type DirectoryKind = 'BACKOFFICE' | 'REQUESTER';
  * host's Isha OIDC replaces. When that goes, this narrows to the three that are
  * about a Foundation account, and the tiles that read the rest go with them.
  */
-export type SignInState = 'OK' | 'INVITED' | 'LINK_ONLY' | 'UNCONFIRMED' | 'LOCKED' | 'DISABLED';
+export type SignInState = 'OK' | 'INVITED' | 'LINK_ONLY' | 'LOCKED' | 'DISABLED';
 
 /** One role somebody holds, and how far it reaches.
  *
@@ -1104,16 +1104,9 @@ export const DirectoryView = z.enum(DIRECTORY_VIEWS);
 export type DirectoryView = z.infer<typeof DirectoryView>;
 
 /** The finer sign-in states, for the Filter popover. The tiles flatten
- *  `LINK_ONLY`, `UNCONFIRMED` and `DISABLED` into one coarse reading; this is
- *  how a caller asks for one of them on its own. */
-export const SignInStateValue = z.enum([
-  'OK',
-  'INVITED',
-  'LINK_ONLY',
-  'UNCONFIRMED',
-  'LOCKED',
-  'DISABLED',
-]);
+ *  `LINK_ONLY` and `DISABLED` into one coarse reading; this is how a caller
+ *  asks for one of them on its own. */
+export const SignInStateValue = z.enum(['OK', 'INVITED', 'LINK_ONLY', 'LOCKED', 'DISABLED']);
 
 export const ListUsersQuery = z.object({
   view: DirectoryView.default('All'),

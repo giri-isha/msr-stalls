@@ -138,16 +138,14 @@ async function requesterRows(db: Db, editionId: string): Promise<DirectoryUser[]
 /**
  * What a requester's credentials say about getting in.
  *
- * Order matters and is not alphabetical: a locked credential is reported as
- * locked even though it is also confirmed, because locked is the one a desk
- * can do something about. No credential at all is `LINK_ONLY` — the ordinary
- * case, and emphatically not a fault.
+ * No credential at all is `LINK_ONLY` — the ordinary case, and emphatically
+ * not a fault. Otherwise a registered requester can get in unless a lockout is
+ * live, which is the one thing here a desk can do something about.
  */
 export function requesterState(creds: StallCredential[], now: Date = new Date()): SignInState {
   if (creds.length === 0) return 'LINK_ONLY';
   if (creds.some((c) => c.lockedUntil && c.lockedUntil.getTime() > now.getTime())) return 'LOCKED';
-  if (creds.some((c) => c.confirmedAt)) return 'OK';
-  return 'UNCONFIRMED';
+  return 'OK';
 }
 
 function lockedUntilOf(creds: StallCredential[], now: Date = new Date()): Date | null {
@@ -175,7 +173,7 @@ function inView(u: DirectoryUser, view: DirectoryView): boolean {
     case 'Requesters':
       return u.kind === 'REQUESTER';
     case 'Cannot sign in':
-      return u.signInState === 'UNCONFIRMED' || u.signInState === 'DISABLED';
+      return u.signInState === 'DISABLED';
     case 'Locked out':
       return u.signInState === 'LOCKED';
   }

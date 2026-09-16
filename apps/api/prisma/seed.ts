@@ -373,7 +373,6 @@ function seedDeps(mail: LogMailer): StallsDeps {
     mail,
     statusUrl: (t) => `${origin}/stalls/status/${t}`,
     bankFormUrl: (t) => `${origin}/stalls/bank/${t}`,
-    registerConfirmUrl: (t) => `${origin}/stalls/confirm/${t}`,
     passwordResetUrl: (t) => `${origin}/stalls/reset/${t}`,
     fssaiUrl: (t) => `${origin}/stalls/fssai/${t}`,
     staffRegistrationUrl: (c) => `${origin}/stalls/staff/${c}`,
@@ -480,9 +479,6 @@ async function main() {
         loginValue: email,
         loginKind: 'EMAIL',
         passwordHash: await hashPassword(DEV_PASSWORD),
-        // Already confirmed: the confirmation link exists to prove somebody
-        // holds the contact, and a seed script is not somebody.
-        confirmedAt: new Date(),
       },
     });
     const r = await submitRequest(
@@ -495,35 +491,13 @@ async function main() {
   }
   console.log(`Requests: ${ids.length} (each requester logs in with ${DEV_PASSWORD})`);
 
-  // Two requesters who cannot get in, and one who never tried.
+  // A requester who cannot get in, and one who never tried.
   //
-  // ⚠️ Without these the Users directory's "Cannot sign in" and "Locked out"
-  // tiles read zero on every developer's machine, so the states — and the
-  // support actions that clear them — are first seen in production, on a call
-  // from a vendor. A seed that only shows the happy path hides exactly the
-  // screens built for the unhappy one.
-  const stuck = await prisma.stallAccount.upsert({
-    where: { email: 'unconfirmed.vendor@maildrop.cc' },
-    update: {},
-    create: {
-      email: 'unconfirmed.vendor@maildrop.cc',
-      phone: '9840099001',
-      displayName: 'Ramesh Iyer',
-    },
-  });
-  await prisma.stallCredential.upsert({
-    where: { loginValue: stuck.email },
-    update: {},
-    create: {
-      accountId: stuck.id,
-      loginValue: stuck.email,
-      loginKind: 'EMAIL',
-      passwordHash: await hashPassword(DEV_PASSWORD),
-      // Registered, never followed the link. Cannot sign in, and says so.
-      confirmedAt: null,
-    },
-  });
-
+  // ⚠️ Without these the Users directory's "Locked out" tile reads zero on
+  // every developer's machine, so the state — and the support action that
+  // clears it — is first seen in production, on a call from a vendor. A seed
+  // that only shows the happy path hides exactly the screens built for the
+  // unhappy one.
   const locked = await prisma.stallAccount.upsert({
     where: { email: 'locked.vendor@maildrop.cc' },
     update: {},
@@ -541,7 +515,6 @@ async function main() {
       loginValue: locked.email,
       loginKind: 'EMAIL',
       passwordHash: await hashPassword(DEV_PASSWORD),
-      confirmedAt: new Date(),
       failedCount: 10,
       lockedUntil: new Date(Date.now() + 15 * 60_000),
     },
@@ -559,7 +532,7 @@ async function main() {
       displayName: 'Anand Prakash',
     },
   });
-  console.log('Users: 1 unconfirmed, 1 locked out, 1 link-only (for the Users directory)');
+  console.log('Users: 1 locked out, 1 link-only (for the Users directory)');
 
   // A realistic pipeline state
   await shortlist(prisma, ids[1], lead); // Coastal Spice

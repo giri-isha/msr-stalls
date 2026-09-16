@@ -80,9 +80,6 @@ export const LoginInput = z.object({
 });
 export type LoginInput = z.infer<typeof LoginInput>;
 
-export const ConfirmRegistrationInput = z.object({ token: z.string().min(16).max(128) });
-export type ConfirmRegistrationInput = z.infer<typeof ConfirmRegistrationInput>;
-
 export const PasswordResetInput = z.object({ contact: z.string().min(1).max(254) });
 export type PasswordResetInput = z.infer<typeof PasswordResetInput>;
 

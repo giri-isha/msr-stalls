@@ -6,7 +6,6 @@ import type { StallPrivilege } from '@msr/stalls';
 import { Navigate, type RouteObject, useLocation, useParams } from 'react-router';
 import { AccessLink } from './public/AccessLink';
 import { BankForm } from './public/BankForm';
-import { ConfirmRegistration } from './public/ConfirmRegistration';
 import { FormPicker } from './public/FormPicker';
 import { FssaiForm } from './public/FssaiForm';
 import { Login } from './public/Login';
@@ -43,12 +42,11 @@ export const stallsPublicRoutes: RouteObject[] = [
   // when SSO lands — the OIDC callback mints the same session the password
   // login mints today, and this page never knew which it was.
   { path: 'requests', element: <MyRequests /> },
-  // The temporary password login. ⚠️ These five paths go when the host's Isha
-  // OIDC lands; `confirm/:token` and `reset/:token` must keep matching
-  // `registerConfirmUrl` and `passwordResetUrl` in the API's deps until then.
+  // The temporary password login. ⚠️ These four paths go when the host's Isha
+  // OIDC lands; `reset/:token` must keep matching `passwordResetUrl` in the
+  // API's deps until then.
   { path: 'login', element: <Login /> },
   { path: 'register', element: <Register /> },
-  { path: 'confirm/:token', element: <ConfirmRegistration /> },
   { path: 'forgot', element: <ResetPassword /> },
   { path: 'reset/:token', element: <ResetPassword /> },
   // No token: the "I lost my link" page. With one: the vendor's own portal.

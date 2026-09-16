@@ -16,22 +16,21 @@ import {
   UnknownAccountError,
 } from './errors';
 import { type AccessLinkDeps, deliverAccessLink } from './portal';
-import { type SendDeps, sendConfirmation } from './registration';
 import { MODULE_KEY } from './roles';
 import { endAllSessions } from './session';
 
 /**
  * What a desk can do to a requester's account on their behalf.
  *
- * Three of these unstick a vendor who cannot get in; each already existed for
+ * Two of these unstick a vendor who cannot get in; each already existed for
  * the requester to do themselves, and what is new is a backoffice member doing
  * it from the Users screen for the vendor on the phone who cannot follow the
- * instructions being read to them. The fourth corrects the details the account
+ * instructions being read to them. The third corrects the details the account
  * carries — the same call, from the same screen, for the vendor whose address
- * was typed wrong on the form and who therefore receives none of the other
- * three.
+ * was typed wrong on the form and who therefore receives neither of the other
+ * two.
  *
- * ⚠️ Two rules hold across the first four.
+ * ⚠️ Two rules hold across the first three.
  *
  * **Nothing is ever shown to the caller.** A link is minted and sent to the
  * address or number the ACCOUNT already holds — never to anything typed into
@@ -43,15 +42,14 @@ import { endAllSessions } from './session';
  * **Every one is written to the activity trail**, with the actor. These act on
  * accounts a vendor owns; who unlocked whom has to be answerable afterwards.
  *
- * 🔴 `setRequesterPassword` is the FIFTH, and it breaks the first rule on
+ * 🔴 `setRequesterPassword` is the FOURTH, and it breaks the first rule on
  * purpose — which is exactly why it is gated by its own `passwords.write` and
  * not by `users:write` with the rest. See it below.
  *
- * ⚠️ TEMPORARY, with `credentials.ts`: unlock, resend-confirmation and
- * set-password exist only because this module carries its own requester
- * passwords. When the host's Isha OIDC takes that over, all three go, and only
- * the access link — which predates passwords and never depended on them —
- * stays.
+ * ⚠️ TEMPORARY, with `credentials.ts`: unlock and set-password exist only
+ * because this module carries its own requester passwords. When the host's
+ * Isha OIDC takes that over, both go, and only the access link — which
+ * predates passwords and never depended on them — stays.
  */
 
 async function accountOr404(db: Db, accountId: string) {
@@ -140,38 +138,6 @@ export async function unlockAccount(
     action: 'stall_account.unlocked',
     subjectRef: account.id,
     detail: { credentials: cleared },
-  });
-}
-
-/** Sends the confirmation link again, to the contact the credential was
- *  registered under. */
-export async function resendConfirmation(
-  db: PrismaClient,
-  deps: SendDeps,
-  accountId: string,
-  by: string,
-): Promise<void> {
-  const account = await accountOr404(db, accountId);
-  const unconfirmed = account.credentials.find((c) => !c.confirmedAt);
-  if (!unconfirmed) {
-    throw new NothingToSendError(
-      account.credentials.length === 0
-        ? 'this requester has never registered a password — send them their access link instead'
-        : 'this login is already confirmed',
-    );
-  }
-  // The stored `loginValue` is already normalised, so this re-parse only
-  // recovers which KIND it is — which is what picks email or WhatsApp.
-  const contact = parseContact(unconfirmed.loginValue);
-  if (!contact) throw new NothingToSendError('this login has no contact to send to');
-
-  await sendConfirmation(db, deps, account.id, contact);
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
-    action: 'stall_account.confirmation_resent',
-    subjectRef: account.id,
-    detail: { loginKind: unconfirmed.loginKind },
   });
 }
 

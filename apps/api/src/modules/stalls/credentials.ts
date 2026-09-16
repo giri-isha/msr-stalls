@@ -59,17 +59,6 @@ export async function createCredential(
   });
 }
 
-export async function confirmCredential(
-  db: Db,
-  credentialId: string,
-  now: Date = new Date(),
-): Promise<void> {
-  await db.stallCredential.update({
-    where: { id: credentialId },
-    data: { confirmedAt: now, failedCount: 0, lockedUntil: null },
-  });
-}
-
 export async function setPassword(db: Db, credentialId: string, password: string): Promise<void> {
   await db.stallCredential.update({
     where: { id: credentialId },
@@ -77,9 +66,6 @@ export async function setPassword(db: Db, credentialId: string, password: string
       passwordHash: await hashPassword(password),
       failedCount: 0,
       lockedUntil: null,
-      // A reset also confirms. Following the link proved the contact, which is
-      // the same thing the confirmation link proves.
-      confirmedAt: new Date(),
     },
   });
 }
@@ -94,10 +80,7 @@ export async function setPassword(db: Db, credentialId: string, password: string
  * opening the account on the password the vendor has lost.
  *
  * A requester who never registered holds none, and gets one minted on
- * `fallback` — which is the whole point of the action. It is confirmed on
- * creation: confirmation exists to prove somebody holds the contact, and a
- * desk that has just spoken to them has proved it by a better route than a
- * link the vendor could not follow in the first place.
+ * `fallback` — which is the whole point of the action.
  *
  * Reports whether it created one, so the caller can say which happened. A
  * `loginValue` another account already holds surfaces as a unique-constraint
@@ -114,10 +97,10 @@ export async function setAccountPassword(
   const passwordHash = await hashPassword(password);
   const { count } = await db.stallCredential.updateMany({
     where: { accountId },
-    // Confirmed, unlocked and with the failure count cleared: the desk has
-    // just handed over a password that works, and leaving a live lockout on
-    // the row would refuse it for the next fifteen minutes.
-    data: { passwordHash, failedCount: 0, lockedUntil: null, confirmedAt: new Date() },
+    // Unlocked and with the failure count cleared: the desk has just handed
+    // over a password that works, and leaving a live lockout on the row would
+    // refuse it for the next fifteen minutes.
+    data: { passwordHash, failedCount: 0, lockedUntil: null },
   });
   if (count > 0) return { created: false };
 
@@ -127,7 +110,6 @@ export async function setAccountPassword(
       loginValue: fallback.value,
       loginKind: fallback.kind,
       passwordHash,
-      confirmedAt: new Date(),
     },
   });
   return { created: true };
@@ -135,9 +117,9 @@ export async function setAccountPassword(
 
 /** The credential behind a contact and a password, or `InvalidCredentialsError`.
  *
- *  ⚠️ EVERY failure raises that one error — no contact, no credential, not yet
- *  confirmed, locked out, wrong password. A reader looking for the branch that
- *  reports "no such account" will not find one, and must not add it. */
+ *  ⚠️ EVERY failure raises that one error — no contact, no credential, locked
+ *  out, wrong password. A reader looking for the branch that reports "no such
+ *  account" will not find one, and must not add it. */
 export async function authenticate(
   db: Db,
   input: { contact: string; password: string },
@@ -148,7 +130,6 @@ export async function authenticate(
 
   const cred = await db.stallCredential.findUnique({ where: { loginValue: contact.value } });
   if (!cred) throw new InvalidCredentialsError();
-  if (!cred.confirmedAt) throw new InvalidCredentialsError();
   if (cred.lockedUntil && cred.lockedUntil.getTime() > now.getTime()) {
     throw new InvalidCredentialsError();
   }

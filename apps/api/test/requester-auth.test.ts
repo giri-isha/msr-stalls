@@ -48,18 +48,13 @@ async function account(email = 'priya@greenleaf.example', phone = '9840012345') 
   });
 }
 
-async function confirmedCredential(contact: { kind: 'EMAIL' | 'MOBILE'; value: string }) {
+async function credentialFor(contact: { kind: 'EMAIL' | 'MOBILE'; value: string }) {
   const acct = await account();
-  const cred = await createCredential(prisma, {
+  return createCredential(prisma, {
     accountId: acct.id,
     contact,
     password: 'hunter2hunter2',
   });
-  await prisma.stallCredential.update({
-    where: { id: cred.id },
-    data: { confirmedAt: new Date() },
-  });
-  return cred;
 }
 
 describe('password hashing', () => {
@@ -82,8 +77,8 @@ describe('password hashing', () => {
 });
 
 describe('authenticate', () => {
-  test('returns the credential for the right password on a confirmed login', async () => {
-    const cred = await confirmedCredential({ kind: 'EMAIL', value: 'priya@greenleaf.example' });
+  test('returns the credential for the right password', async () => {
+    const cred = await credentialFor({ kind: 'EMAIL', value: 'priya@greenleaf.example' });
 
     const got = await authenticate(prisma, {
       contact: 'Priya@GreenLeaf.Example',
@@ -95,25 +90,39 @@ describe('authenticate', () => {
   // 🔴 The three ways to fail must be ONE error. Anything else turns login into
   // a way of asking whether a given number has applied — the question decision
   // 17 exists to refuse.
-  test('unknown contact, wrong password and unconfirmed are one error', async () => {
+  test('unknown contact, wrong password and locked out are one error', async () => {
     const acct = await account();
-    await createCredential(prisma, {
+    const cred = await createCredential(prisma, {
       accountId: acct.id,
       contact: { kind: 'MOBILE', value: '9840012345' },
       password: 'hunter2hunter2',
     });
+    const locked = await createCredential(prisma, {
+      accountId: acct.id,
+      contact: { kind: 'EMAIL', value: 'priya@greenleaf.example' },
+      password: 'hunter2hunter2',
+    });
+    await prisma.stallCredential.update({
+      where: { id: locked.id },
+      data: { lockedUntil: new Date(Date.now() + 60_000) },
+    });
+    expect(cred.id).not.toBe(locked.id);
 
+    // ⚠️ Thunks, not promises. Three rejections built up front reject before
+    // anything is awaiting them, which vitest reports as an unhandled error
+    // even though every one is caught a line later.
     const attempts = [
-      authenticate(prisma, { contact: '9000000000', password: 'hunter2hunter2' }),
-      authenticate(prisma, { contact: '9840012345', password: 'nope' }),
-      authenticate(prisma, { contact: '9840012345', password: 'hunter2hunter2' }),
+      () => authenticate(prisma, { contact: '9000000000', password: 'hunter2hunter2' }),
+      () => authenticate(prisma, { contact: '9840012345', password: 'nope' }),
+      () =>
+        authenticate(prisma, { contact: 'priya@greenleaf.example', password: 'hunter2hunter2' }),
     ];
 
     const messages: string[] = [];
     for (const attempt of attempts) {
-      await expect(attempt).rejects.toBeInstanceOf(InvalidCredentialsError);
+      await expect(attempt()).rejects.toBeInstanceOf(InvalidCredentialsError);
       messages.push(
-        await attempt.then(
+        await attempt().then(
           () => 'resolved',
           (e: Error) => e.message,
         ),
@@ -129,7 +138,7 @@ describe('authenticate', () => {
   });
 
   test('locks out after repeated failures, with that same error', async () => {
-    await confirmedCredential({ kind: 'EMAIL', value: 'priya@greenleaf.example' });
+    await credentialFor({ kind: 'EMAIL', value: 'priya@greenleaf.example' });
 
     for (let i = 0; i < 10; i++) {
       await expect(
@@ -143,7 +152,7 @@ describe('authenticate', () => {
   });
 
   test('a good login clears the failure count', async () => {
-    const cred = await confirmedCredential({ kind: 'EMAIL', value: 'priya@greenleaf.example' });
+    const cred = await credentialFor({ kind: 'EMAIL', value: 'priya@greenleaf.example' });
 
     await expect(
       authenticate(prisma, { contact: 'priya@greenleaf.example', password: 'wrong' }),
@@ -233,7 +242,10 @@ describe('POST /public/register', () => {
     whatsapp.sent.length = 0;
   });
 
-  test('a free email creates an account and an UNCONFIRMED credential', async () => {
+  // A free contact sends NOTHING. There is no confirmation step, and the
+  // silence is also what keeps the three register outcomes indistinguishable
+  // from outside — only the taken one puts a message anywhere.
+  test('a free email creates an account and a credential, and sends nothing', async () => {
     const res = await postRegister({
       contact: 'new@vendor.example',
       password: 'hunter2hunter2',
@@ -245,21 +257,19 @@ describe('POST /public/register', () => {
     const cred = await prisma.stallCredential.findUniqueOrThrow({
       where: { loginValue: 'new@vendor.example' },
     });
-    expect(cred.confirmedAt).toBeNull();
     expect(cred.loginKind).toBe('EMAIL');
-    expect(mail.sent).toHaveLength(1);
-    expect(mail.sent[0].to).toBe('new@vendor.example');
+    expect(mail.sent).toHaveLength(0);
+    expect(whatsapp.sent).toHaveLength(0);
   });
 
-  test('a free mobile is confirmed over WhatsApp, not email', async () => {
+  test('a free mobile registers under a placeholder address', async () => {
     const res = await postRegister({
       contact: '98400 12399',
       password: 'hunter2hunter2',
       displayName: 'Trader',
     });
     expect(res.statusCode).toBe(202);
-    expect(whatsapp.sent).toHaveLength(1);
-    expect(whatsapp.sent[0].to).toBe('9840012399');
+    expect(whatsapp.sent).toHaveLength(0);
     expect(mail.sent).toHaveLength(0);
 
     // The address column is non-null and unique, so a mobile registration gets
@@ -267,6 +277,9 @@ describe('POST /public/register', () => {
     const acct = await prisma.stallAccount.findFirstOrThrow();
     expect(acct.email).toBe('mobile+9840012399@stalls.invalid');
     expect(acct.phone).toBe('9840012399');
+    expect(
+      await prisma.stallCredential.findUniqueOrThrow({ where: { loginValue: '9840012399' } }),
+    ).toMatchObject({ loginKind: 'MOBILE' });
   });
 
   // 🔴 THE test for this feature. A taken contact, a free one and a string that
@@ -370,12 +383,12 @@ describe('POST /public/register', () => {
   });
 });
 
-/** The confirmation token, taken from the message that carried it — the way a
- *  vendor gets it. Only the hash is stored, so there is no reading it back out
- *  of the table, and that is the point of storing it that way. */
+/** The reset token, taken from the message that carried it — the way a vendor
+ *  gets it. Only the hash is stored, so there is no reading it back out of the
+ *  table, and that is the point of storing it that way. */
 function tokenFromLastMessage(): string {
   const text = mail.sent.at(-1)?.text ?? whatsapp.sent.at(-1)?.text ?? '';
-  const found = text.match(/https?:\/\/\S+\/(?:confirm|reset)\/([A-Za-z0-9_-]+)/);
+  const found = text.match(/https?:\/\/\S+\/reset\/([A-Za-z0-9_-]+)/);
   if (!found) throw new Error(`no link in: ${text}`);
   return found[1];
 }
@@ -384,31 +397,31 @@ async function registered(contact = 'new@vendor.example', password = 'hunter2hun
   mail.sent.length = 0;
   whatsapp.sent.length = 0;
   await postRegister({ contact, password, displayName: 'New Vendor' });
-  return tokenFromLastMessage();
 }
 
 async function loggedIn(contact = 'new@vendor.example', password = 'hunter2hunter2') {
-  const token = await registered(contact, password);
+  await registered(contact, password);
   const res = await app.inject({
     method: 'POST',
-    url: url('register/confirm'),
-    payload: { token },
+    url: url('login'),
+    payload: { contact, password },
   });
   return res.cookies.find((c) => c.name === 'msr_stall_requester')?.value ?? '';
 }
 
-describe('confirm, login, logout', () => {
+describe('login and logout', () => {
   beforeEach(() => {
     mail.sent.length = 0;
     whatsapp.sent.length = 0;
   });
 
-  test('confirming the link logs them straight in', async () => {
-    const token = await registered();
+  // There is no confirmation step: what was registered a moment ago logs in.
+  test('a fresh registration can log in straight away', async () => {
+    await registered();
     const res = await app.inject({
       method: 'POST',
-      url: url('register/confirm'),
-      payload: { token },
+      url: url('login'),
+      payload: { contact: 'new@vendor.example', password: 'hunter2hunter2' },
     });
     expect(res.statusCode).toBe(200);
 
@@ -416,33 +429,18 @@ describe('confirm, login, logout', () => {
     expect(cookie).toBeDefined();
     expect(cookie?.httpOnly).toBe(true);
     expect(cookie?.sameSite?.toLowerCase()).toBe('lax');
-
-    const cred = await prisma.stallCredential.findUniqueOrThrow({
-      where: { loginValue: 'new@vendor.example' },
-    });
-    expect(cred.confirmedAt).not.toBeNull();
   });
 
-  // A forwarded confirmation email is not a spare key.
-  test('a confirmation link works once', async () => {
-    const token = await registered();
-    await app.inject({ method: 'POST', url: url('register/confirm'), payload: { token } });
-    const again = await app.inject({
-      method: 'POST',
-      url: url('register/confirm'),
-      payload: { token },
+  // ⚠️ Registering must not sign anyone in. A session on this response would
+  // distinguish the free contact from the taken one, which is the one thing
+  // the register route may not do.
+  test('registering does not hand back a session', async () => {
+    const res = await postRegister({
+      contact: 'new@vendor.example',
+      password: 'hunter2hunter2',
+      displayName: 'New Vendor',
     });
-    expect(again.statusCode).toBe(404);
-  });
-
-  test('an unconfirmed credential cannot log in', async () => {
-    await registered();
-    const res = await app.inject({
-      method: 'POST',
-      url: url('login'),
-      payload: { contact: 'new@vendor.example', password: 'hunter2hunter2' },
-    });
-    expect(res.statusCode).toBe(401);
+    expect(res.cookies.find((c) => c.name === 'msr_stall_requester')).toBeUndefined();
   });
 
   test('login sets the session cookie and the session route answers', async () => {
@@ -604,28 +602,6 @@ describe('password reset', () => {
       payload: { token, password: 'thirdpasswordhere' },
     });
     expect(again.statusCode).toBe(404);
-  });
-
-  // Following the link proves the contact, which is the same thing the
-  // confirmation link proves — so a vendor who never confirmed is not stranded.
-  test('a reset also confirms a registration that was never confirmed', async () => {
-    await registered('never@vendor.example');
-    mail.sent.length = 0;
-
-    await ask('never@vendor.example');
-    const token = tokenFromLastMessage();
-    await app.inject({
-      method: 'POST',
-      url: url('password-reset/confirm'),
-      payload: { token, password: 'brandnewpassword' },
-    });
-
-    const res = await app.inject({
-      method: 'POST',
-      url: url('login'),
-      payload: { contact: 'never@vendor.example', password: 'brandnewpassword' },
-    });
-    expect(res.statusCode).toBe(200);
   });
 });
 

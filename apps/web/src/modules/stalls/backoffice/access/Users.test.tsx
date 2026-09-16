@@ -156,7 +156,6 @@ describe('the directory', () => {
     render();
 
     expect(within(await rowFor('Priya Venkat')).getByText('Link only')).toBeInTheDocument();
-    expect(screen.queryByText('Unconfirmed')).not.toBeInTheDocument();
   });
 });
 
@@ -270,15 +269,6 @@ describe('support actions', () => {
 
     await screen.findByText('Priya Venkat');
     expect(screen.queryByLabelText('Unlock Priya Venkat')).not.toBeInTheDocument();
-  });
-
-  test('Resend confirmation is offered only where there is one to confirm', async () => {
-    base(page([requester({ signInState: 'UNCONFIRMED' }), backoffice()]));
-    render();
-
-    await screen.findByText('Priya Venkat');
-    expect(screen.getByLabelText('Resend confirmation to Priya Venkat')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Resend confirmation to Vikram Sethu')).not.toBeInTheDocument();
   });
 
   /** ⚠️ The dialog names the contact the letter will REACH. An account

@@ -36,7 +36,7 @@ async function requester(
     email?: string;
     phone?: string;
     name?: string;
-    credential?: 'confirmed' | 'unconfirmed' | 'locked';
+    credential?: 'registered' | 'locked';
     mobileLogin?: boolean;
   } = {},
 ) {
@@ -54,20 +54,10 @@ async function requester(
       contact,
       password: 'hunter2hunter2',
     });
-    if (opts.credential === 'confirmed') {
-      await prisma.stallCredential.update({
-        where: { id: cred.id },
-        data: { confirmedAt: new Date() },
-      });
-    }
     if (opts.credential === 'locked') {
       await prisma.stallCredential.update({
         where: { id: cred.id },
-        data: {
-          confirmedAt: new Date(),
-          failedCount: 10,
-          lockedUntil: new Date(Date.now() + 15 * 60_000),
-        },
+        data: { failedCount: 10, lockedUntil: new Date(Date.now() + 15 * 60_000) },
       });
     }
   }
@@ -225,14 +215,14 @@ describe('sign-in state', () => {
     expect(count(body, 'Cannot sign in')).toBe(0);
   });
 
-  test('registered-but-never-confirmed is UNCONFIRMED, and counts as cannot sign in', async () => {
+  test('a registered requester reads OK, and counts as nothing to fix', async () => {
     const admin = await seedBackoffice(['stalls_admin']);
-    await requester({ credential: 'unconfirmed' });
+    await requester({ credential: 'registered' });
 
     const { body } = await list(admin.headers);
 
-    expect(body.users.find((u) => u.kind === 'REQUESTER')?.signInState).toBe('UNCONFIRMED');
-    expect(count(body, 'Cannot sign in')).toBe(1);
+    expect(body.users.find((u) => u.kind === 'REQUESTER')?.signInState).toBe('OK');
+    expect(count(body, 'Cannot sign in')).toBe(0);
   });
 
   test('a locked credential reads LOCKED with the time it frees up', async () => {
@@ -245,7 +235,7 @@ describe('sign-in state', () => {
     expect(row?.signInState).toBe('LOCKED');
     expect(row?.lockedUntil).toBeTruthy();
     expect(count(body, 'Locked out')).toBe(1);
-    // Locked wins over confirmed: it is the one a desk can act on.
+    // Locked wins over registered: it is the one a desk can act on.
     expect(count(body, 'Cannot sign in')).toBe(0);
   });
 
@@ -390,7 +380,7 @@ describe('support actions', () => {
 
   test('an unlock that did nothing writes nothing to the activity trail', async () => {
     const admin = await seedBackoffice(['stalls_admin']);
-    const account = await requester({ credential: 'confirmed' });
+    const account = await requester({ credential: 'registered' });
 
     await post(`${account.id}/unlock`, admin.headers);
 
@@ -398,53 +388,6 @@ describe('support actions', () => {
       where: { subjectRef: account.id, action: 'stall_account.unlocked' },
     });
     expect(trail).toBe(0);
-  });
-
-  test('resend-confirmation mails a fresh link to the registered address', async () => {
-    const admin = await seedBackoffice(['stalls_admin']);
-    const account = await requester({ credential: 'unconfirmed' });
-
-    expect((await post(`${account.id}/resend-confirmation`, admin.headers)).statusCode).toBe(204);
-
-    const sent = mail.sent.at(-1);
-    expect(sent?.to).toBe('priya@greenleaf.example');
-    expect(sent?.subject).toMatch(/confirm/i);
-    const links = await prisma.stallAccessLink.count({
-      where: { accountId: account.id, purpose: 'REGISTER_CONFIRM' },
-    });
-    expect(links).toBe(1);
-  });
-
-  test('an account registered on a number is confirmed over WhatsApp, not to its placeholder address', async () => {
-    const admin = await seedBackoffice(['stalls_admin']);
-    const account = await requester({
-      email: 'mobile+9840012345@stalls.invalid',
-      credential: 'unconfirmed',
-      mobileLogin: true,
-    });
-
-    await post(`${account.id}/resend-confirmation`, admin.headers);
-
-    expect(whatsapp.sent.at(-1)?.to).toBe('9840012345');
-    expect(mail.sent.some((m) => m.to.endsWith('@stalls.invalid'))).toBe(false);
-  });
-
-  test('resending to somebody already confirmed is a 409', async () => {
-    const admin = await seedBackoffice(['stalls_admin']);
-    const account = await requester({ credential: 'confirmed' });
-
-    const res = await post(`${account.id}/resend-confirmation`, admin.headers);
-    expect(res.statusCode).toBe(409);
-    expect(res.json().error).toMatch(/already confirmed/);
-  });
-
-  test('resending to somebody who never registered points at the access link instead', async () => {
-    const admin = await seedBackoffice(['stalls_admin']);
-    const account = await requester();
-
-    const res = await post(`${account.id}/resend-confirmation`, admin.headers);
-    expect(res.statusCode).toBe(409);
-    expect(res.json().error).toMatch(/access link/);
   });
 
   test('access-link mints a STATUS link and mails it to the account', async () => {
@@ -552,7 +495,7 @@ describe("setting a requester's password", () => {
 
   test('replaces the password on a login the requester already had', async () => {
     const admin = await seedBackoffice(['stalls_admin']);
-    const account = await requester({ credential: 'confirmed' });
+    const account = await requester({ credential: 'registered' });
 
     expect((await setPassword(account.id, admin.headers, 'monsoon-fig-84')).statusCode).toBe(204);
 
@@ -580,9 +523,6 @@ describe("setting a requester's password", () => {
       password: 'monsoon-fig-84',
     });
     expect(cred.accountId).toBe(account.id);
-    // Confirmed on creation: the desk spoke to them, and there is no
-    // confirmation link for a vendor in this position to follow.
-    expect(cred.confirmedAt).not.toBeNull();
   });
 
   /** An account registered on a number carries a placeholder address nothing
@@ -631,7 +571,7 @@ describe("setting a requester's password", () => {
 
   test('the trail records who set it, and never what it was', async () => {
     const admin = await seedBackoffice(['stalls_admin']);
-    const account = await requester({ credential: 'confirmed' });
+    const account = await requester({ credential: 'registered' });
 
     await setPassword(account.id, admin.headers, 'monsoon-fig-84');
 
@@ -646,7 +586,7 @@ describe("setting a requester's password", () => {
    *  own link must not thereby be able to walk into the vendor's account. */
   test('users:write alone cannot set a password', async () => {
     const desk = await backofficeHolding('test_support_desk', ['config.read', 'users.write']);
-    const account = await requester({ credential: 'confirmed' });
+    const account = await requester({ credential: 'registered' });
 
     expect((await setPassword(account.id, desk.headers, 'monsoon-fig-84')).statusCode).toBe(403);
     // Proof it was the privilege and not the role: the same caller may still
@@ -661,7 +601,7 @@ describe("setting a requester's password", () => {
 
   test('passwords:write alone is enough, and grants nothing else', async () => {
     const desk = await backofficeHolding('test_password_desk', ['config.read', 'passwords.write']);
-    const account = await requester({ credential: 'confirmed' });
+    const account = await requester({ credential: 'registered' });
 
     expect((await setPassword(account.id, desk.headers, 'monsoon-fig-84')).statusCode).toBe(204);
 
@@ -675,7 +615,7 @@ describe("setting a requester's password", () => {
 
   test('a password under the floor is refused before anything is written', async () => {
     const admin = await seedBackoffice(['stalls_admin']);
-    const account = await requester({ credential: 'confirmed' });
+    const account = await requester({ credential: 'registered' });
 
     expect((await setPassword(account.id, admin.headers, 'short')).statusCode).toBe(400);
     expect(await prisma.activityTrail.count({ where: { subjectRef: account.id } })).toBe(0);
@@ -685,7 +625,7 @@ describe("setting a requester's password", () => {
    *  them and needs to be told which one is the login. */
   test('a contact another account already signs in with is a 409, not a 500', async () => {
     const admin = await seedBackoffice(['stalls_admin']);
-    const other = await requester({ credential: 'confirmed' });
+    const other = await requester({ credential: 'registered' });
     const account = await prisma.stallAccount.create({
       data: { email: 'priya.v@greenleaf.example', phone: '', displayName: 'Priya V' },
     });
@@ -821,7 +761,7 @@ describe('editing a requester', () => {
    *  telling the truth about it. */
   test('moving the address leaves the password login where it was', async () => {
     const admin = await seedBackoffice(['stalls_admin']);
-    const account = await requester({ credential: 'confirmed' });
+    const account = await requester({ credential: 'registered' });
 
     await patch(account.id, admin.headers, {
       displayName: 'Priya Venkat',

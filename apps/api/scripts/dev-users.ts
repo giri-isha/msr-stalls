@@ -143,8 +143,7 @@ async function listRequesters(): Promise<void> {
     console.log(`  ${a.displayName}`);
     console.log(`    contact  ${placeholder ? `${a.phone} (mobile only, no address)` : a.email}`);
     if (cred) {
-      const unconfirmed = cred.confirmedAt ? '' : '  [UNCONFIRMED — cannot log in]';
-      console.log(`    login    ${cred.loginValue} (${cred.loginKind})${unconfirmed}`);
+      console.log(`    login    ${cred.loginValue} (${cred.loginKind})`);
     } else {
       console.log('    login    none — set one below to log in as them');
     }
@@ -182,9 +181,9 @@ async function setPassword(rawContact: string, password: string): Promise<void> 
   if (existing) {
     await prisma.stallCredential.update({
       where: { id: existing.id },
-      // Confirmed and unlocked: the point of this script is to hand you a login
-      // that works right now, not to reproduce the confirmation flow.
-      data: { passwordHash, confirmedAt: new Date(), failedCount: 0, lockedUntil: null },
+      // Unlocked too: the point of this script is to hand you a login that
+      // works right now, and a live lockout would refuse it for fifteen minutes.
+      data: { passwordHash, failedCount: 0, lockedUntil: null },
     });
   } else {
     await prisma.stallCredential.create({
@@ -193,7 +192,6 @@ async function setPassword(rawContact: string, password: string): Promise<void> 
         loginValue: contact.value,
         loginKind: contact.kind,
         passwordHash,
-        confirmedAt: new Date(),
       },
     });
   }

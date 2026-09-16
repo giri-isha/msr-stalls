@@ -140,18 +140,14 @@ export function vendorBody(overrides: Record<string, unknown> = {}) {
 
 export { LogMailer, prisma };
 
-/** A confirmed, logged-in requester, with the cookie jar `app.inject` wants.
+/** A registered, logged-in requester, with the cookie jar `app.inject` wants.
  *
  *  The stall request form sits behind a session now, so every test that submits
  *  needs one of these.
  *
- *  ⚠️ It flips `confirmedAt` directly rather than following the confirmation
- *  link. The raw token exists only in the message the app's own mailer was
- *  handed, which this helper cannot reach from another test file — and the
- *  confirm route is covered end to end, link and all, in
- *  `requester-auth.test.ts`. What this helper must exercise is the part its
- *  callers depend on: that a real session cookie comes back from the login
- *  route. */
+ *  ⚠️ It registers and logs in through the real routes rather than writing the
+ *  rows itself, because the part its callers depend on is that a real session
+ *  cookie comes back from the login route. */
 export async function seedRequester(
   app: FastifyInstance,
   contact = 'priya@greenleaf.example',
@@ -163,12 +159,6 @@ export async function seedRequester(
     url: '/api/m/stalls/public/register',
     payload: { contact, password, displayName },
   });
-  const cred = await prisma.stallCredential.findUniqueOrThrow({ where: { loginValue: contact } });
-  await prisma.stallCredential.update({
-    where: { id: cred.id },
-    data: { confirmedAt: new Date() },
-  });
-
   const login = await app.inject({
     method: 'POST',
     url: '/api/m/stalls/public/login',
@@ -177,6 +167,7 @@ export async function seedRequester(
   const value = login.cookies.find((c) => c.name === 'msr_stall_requester')?.value;
   if (!value) throw new Error(`seedRequester could not log in: ${login.statusCode} ${login.body}`);
 
+  const cred = await prisma.stallCredential.findUniqueOrThrow({ where: { loginValue: contact } });
   return { accountId: cred.accountId, cookies: { msr_stall_requester: value } };
 }
 

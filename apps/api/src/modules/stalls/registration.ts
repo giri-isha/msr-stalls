@@ -7,13 +7,13 @@ import {
   parseContact,
 } from '@msr/stalls';
 import { findAccountByContact, mintAccessLink, resolveAccessLink } from './accounts';
-import { confirmCredential, createCredential, setPassword } from './credentials';
+import { createCredential, setPassword } from './credentials';
 import type { StallsDeps } from './deps';
 import type { Db } from './editions';
 import { UnknownAccessLinkError } from './errors';
 import { endAllSessions } from './session';
 
-/** Registering, confirming, and resetting a forgotten password.
+/** Registering, and resetting a forgotten password.
  *
  *  ── The one rule this file exists to hold ──────────────────────────────────
  *  Nothing here tells the caller anything. `register` returns for every input
@@ -21,17 +21,20 @@ import { endAllSessions } from './session';
  *  contact at all, a send that fails — and the route answers 202 to all of
  *  them. Where the cases differ is which message goes out, and every message
  *  goes to a contact the module ALREADY held, never to the one just typed.
+ *  That is decision 17 of the Phase 2/3 spec.
  *
- *  That is decision 17 of the Phase 2/3 spec, and it is the reason a
- *  registration has to be confirmed rather than logging someone straight in:
- *  if no response may distinguish the cases, a session can only start once the
- *  holder of the contact has proved they hold it.
+ *  ⚠️ A new credential is live immediately — there is no confirmation link,
+ *  and nothing proves the registrant holds the contact they typed. That is a
+ *  deliberate trade for local testing, made while no mail service is wired up
+ *  at all, and it is why `register` can no longer hand out a session of its
+ *  own: the 202 must still read the same for a free contact as for one that
+ *  is already taken. The proof-of-contact step comes back with the host's
+ *  Isha OIDC, which replaces this file wholesale.
  */
 
-const CONFIRM_TTL_DAYS = 2;
 const RESET_TTL_DAYS = 1;
 
-type SendDeps = Pick<StallsDeps, 'mail' | 'whatsapp' | 'registerConfirmUrl' | 'passwordResetUrl'>;
+type SendDeps = Pick<StallsDeps, 'mail' | 'whatsapp' | 'passwordResetUrl'>;
 
 /** Nothing sends to a placeholder address: delivery is chosen by the
  *  credential's `loginKind`, not by this column. The domain itself lives in
@@ -54,9 +57,9 @@ export async function register(db: Db, deps: SendDeps, input: RegisterInput): Pr
     return;
   }
 
-  // No account, but a credential already on this contact: a second attempt
-  // before the first was confirmed. Same silence, and the first link stays the
-  // live one rather than being quietly replaced by a stranger's.
+  // No account, but a credential already on this contact: someone registered
+  // here already. Same silence, and their password stays the live one rather
+  // than being quietly overwritten by a stranger's.
   const taken = await db.stallCredential.findUnique({ where: { loginValue: contact.value } });
   if (taken) return;
 
@@ -71,33 +74,6 @@ export async function register(db: Db, deps: SendDeps, input: RegisterInput): Pr
     accountId: account.id,
     contact,
     password: input.password,
-  });
-  await sendConfirmation(db, deps, account.id, contact);
-}
-
-/**
- * Mints a confirmation link and sends it over the channel the credential was
- * registered on.
- *
- * Shared by `register` and the backoffice-side resend. The channel comes from the
- * CONTACT, never from the account row: an account registered on a mobile
- * carries a placeholder email that nothing can deliver to.
- */
-export async function sendConfirmation(
-  db: Db,
-  deps: SendDeps,
-  accountId: string,
-  contact: Contact,
-): Promise<void> {
-  const { token } = await mintAccessLink(db, {
-    accountId,
-    purpose: 'REGISTER_CONFIRM',
-    ttlDays: CONFIRM_TTL_DAYS,
-  });
-
-  await deliver(deps, contact, {
-    subject: 'Confirm your stall account',
-    body: `Confirm your stall account and you are signed in: ${deps.registerConfirmUrl(token)}`,
   });
 }
 
@@ -141,19 +117,6 @@ async function deliver(
   } catch {
     // As above.
   }
-}
-
-export async function confirmRegistration(db: Db, token: string): Promise<{ accountId: string }> {
-  const link = await resolveAccessLink(db, token, 'REGISTER_CONFIRM');
-  const cred = await db.stallCredential.findFirst({ where: { accountId: link.accountId } });
-  if (!cred) throw new UnknownAccessLinkError();
-  await confirmCredential(db, cred.id);
-  // Single use. A confirmation link in a forwarded email is not a spare key.
-  await db.stallAccessLink.update({
-    where: { id: link.id },
-    data: { usedAt: new Date(), revokedAt: new Date() },
-  });
-  return { accountId: link.accountId };
 }
 
 export async function requestPasswordReset(

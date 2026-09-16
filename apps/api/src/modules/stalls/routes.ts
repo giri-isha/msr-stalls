@@ -114,7 +114,6 @@ import {
   updatePersonDetails,
 } from './backoffice';
 import {
-  resendConfirmation,
   sendAccountAccessLink,
   setRequesterPassword,
   unlockAccount,
@@ -779,17 +778,6 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     await unlockAccount(prisma, req.params.id, caller.personId);
     reply.status(204);
   });
-
-  zod.post(
-    '/users/:id/resend-confirmation',
-    { schema: { params: IdParams } },
-    async (req, reply) => {
-      const caller = await requireBackoffice(req, prisma);
-      requirePrivilege(caller, 'users.write');
-      await resendConfirmation(prisma, deps, req.params.id, caller.personId);
-      reply.status(204);
-    },
-  );
 
   zod.post('/users/:id/access-link', { schema: { params: IdParams } }, async (req, reply) => {
     const caller = await requireBackoffice(req, prisma);

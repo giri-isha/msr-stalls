@@ -83,9 +83,10 @@ describe('Register', () => {
     await userEvent.type(screen.getByLabelText(/password/i), 'hunter2hunter2');
     await userEvent.click(screen.getByRole('button', { name: /create my account/i }));
 
-    expect(await screen.findByText(/check your email or whatsapp/i)).toBeInTheDocument();
+    expect(await screen.findByText(/it is ready now/i)).toBeInTheDocument();
     // It must not claim an account was made — that would be false for a contact
-    // that already had one, and informatively false.
+    // that already had one, and informatively false. The panel hedges on "if we
+    // could set up an account", which is why the bare claim must not appear.
     expect(screen.queryByText(/account (has been |was )?created/i)).not.toBeInTheDocument();
     // And it must cover the reader who would otherwise wait on a message that
     // is never coming.

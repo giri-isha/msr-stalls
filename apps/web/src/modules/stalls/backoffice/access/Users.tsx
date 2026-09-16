@@ -483,13 +483,13 @@ interface Ask {
  *
  * ⚠️ `IconBtn` rather than an overflow menu, and deliberately: it already
  * carries the 44px touch target and the `stopPropagation` a row action needs,
- * and at most four of these are ever shown at once — Unlock appears only on a
- * locked row, Resend only on an unconfirmed one, and the key only for a caller
- * holding `passwords.write`. A menu would be a click in front of every one of
- * them to hide a crowd that does not form.
+ * and at most three of these are ever shown at once — Unlock appears only on a
+ * locked row, and the key only for a caller holding `passwords.write`. A menu
+ * would be a click in front of every one of them to hide a crowd that does not
+ * form.
  *
- * ⚠️ Both mail actions ask first. They put a letter in a vendor's inbox, and a
- * mis-click on a dense row should not be able to do that.
+ * ⚠️ The access-link action asks first. It puts a letter in a vendor's inbox,
+ * and a mis-click on a dense row should not be able to do that.
  *
  * ⚠️ **Edit means a different thing per population, and that is not a
  * shortcut.** A requester's name, address and number are this module's own
@@ -553,22 +553,6 @@ function Actions({
               confirm: 'Unlock',
               done: 'Unlocked',
               run: () => api.unlockAccount(user.id),
-            })
-          }
-        />
-      )}
-      {writable && user.signInState === 'UNCONFIRMED' && (
-        <IconBtn
-          label={`Resend confirmation to ${user.displayName}`}
-          glyph='refresh'
-          onClick={() =>
-            onAsk({
-              title: 'Resend the confirmation?',
-              note: `Goes to ${where}`,
-              body: `${user.displayName} registered but never followed the confirmation link, so they cannot sign in yet. This sends a fresh one to the contact they registered under — not to anything typed here.`,
-              confirm: 'Resend',
-              done: 'Confirmation sent',
-              run: () => api.resendConfirmation(user.id),
             })
           }
         />
@@ -660,14 +644,7 @@ function cell(key: ColKey, u: DirectoryUser, roles: RoleSummary[]): React.ReactN
   }
 }
 
-const SIGN_IN_STATES: SignInState[] = [
-  'OK',
-  'INVITED',
-  'LINK_ONLY',
-  'UNCONFIRMED',
-  'LOCKED',
-  'DISABLED',
-];
+const SIGN_IN_STATES: SignInState[] = ['OK', 'INVITED', 'LINK_ONLY', 'LOCKED', 'DISABLED'];
 
 /** ⚠️ "Link only" and "Not signed in" read as plain facts, not warnings, and
  *  wear the neutral tone — a requester who never set a password has lost
@@ -677,7 +654,6 @@ const STATE_LABEL: Record<SignInState, string> = {
   OK: 'Registered',
   INVITED: 'Not signed in',
   LINK_ONLY: 'Link only',
-  UNCONFIRMED: 'Unconfirmed',
   LOCKED: 'Locked',
   DISABLED: 'Disabled',
 };
@@ -686,7 +662,6 @@ const STATE_TONE: Record<SignInState, Tone> = {
   OK: 'ok',
   INVITED: 'neutral',
   LINK_ONLY: 'neutral',
-  UNCONFIRMED: 'warn',
   LOCKED: 'des',
   DISABLED: 'neutral',
 };

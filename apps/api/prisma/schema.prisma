@@ -178,6 +178,10 @@ enum StallAccessPurpose {
   /// callback when SSO lands, which is the whole point of putting it here
   /// rather than building a session table beside it.
   SESSION
+  /// ⚠️ DEAD. Registration is no longer confirmed — a credential works the
+  /// moment it is created — so nothing mints one of these any more. The value
+  /// stays because Postgres cannot drop an enum value without recreating the
+  /// type, and recreating it would rewrite every access link to buy nothing.
   REGISTER_CONFIRM
   PASSWORD_RESET
 
@@ -668,9 +672,6 @@ model StallCredential {
   loginValue   String         @unique @map("login_value")
   loginKind    StallLoginKind @map("login_kind")
   passwordHash String         @map("password_hash")
-  /// Null until the confirmation link is followed. An unconfirmed credential
-  /// cannot log in, and says so with the same error as a wrong password.
-  confirmedAt  DateTime?      @map("confirmed_at") @db.Timestamptz
   failedCount  Int            @default(0) @map("failed_count")
   lockedUntil  DateTime?      @map("locked_until") @db.Timestamptz
   createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz

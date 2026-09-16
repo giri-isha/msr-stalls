@@ -17,9 +17,13 @@ import { Btn, Card, FormField, H1, Icon, Input } from '../ui';
  * false in a way that answers the question the whole public surface refuses:
  * whether a particular person has applied.
  *
- * So the copy carries BOTH outcomes. A returning vendor is not left staring at
- * an inbox that will never have anything in it; they are told, in the same
- * breath as everyone else, that the stall team sets their login up.
+ * So the copy carries BOTH outcomes, hedged on the "if". A returning vendor is
+ * not sent to a login that will refuse them; they are told, in the same breath
+ * as everyone else, that the stall team sets their login up.
+ *
+ * ⚠️ There is no confirmation step any more, so the panel sends people to log
+ * in rather than to their inbox — but it still cannot sign them in itself, for
+ * the reason above. See `registration.ts` for why confirmation went.
  */
 export function Register() {
   const [name, setName] = useState('');
@@ -59,19 +63,17 @@ export function Register() {
     return (
       <div style={{ display: 'grid', gap: 16, maxWidth: 460, margin: '0 auto' }}>
         <Card pad={22} style={{ display: 'grid', gap: 10 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, textAlign: 'center' }}>
-            Check your email or WhatsApp
-          </div>
+          <div style={{ fontSize: 15, fontWeight: 700, textAlign: 'center' }}>Almost there</div>
           <p style={{ margin: 0, fontSize: 13.5, color: 'var(--mfg)', lineHeight: 1.6 }}>
-            If we can set up an account for that email address or mobile number, a confirmation link
-            is on its way to it. Open the link and you are signed in.
+            If we could set up an account for that email address or mobile number, it is ready now —
+            log in with the password you just chose.
           </p>
           <p style={{ margin: 0, fontSize: 13.5, color: 'var(--mfg)', lineHeight: 1.6 }}>
             If you have applied for a stall before, your details are already with us and the stall
             team will set your login up for you — please call them.
           </p>
           <p style={{ margin: 0, fontSize: 12.5, color: 'var(--mfg)', textAlign: 'center' }}>
-            <Link to='/stalls/login'>Back to log in</Link>
+            <Link to='/stalls/login'>Go to log in</Link>
           </p>
         </Card>
       </div>
@@ -101,7 +103,7 @@ export function Register() {
             label={
               <BilingualLabel en='Email address or mobile number' ta='மின்னஞ்சல் அல்லது கைபேசி எண்' />
             }
-            help='We will send your confirmation here, and every letter about your stall.'
+            help='This is your login, and where every letter about your stall goes.'
           >
             <Input
               id='reg-contact'
