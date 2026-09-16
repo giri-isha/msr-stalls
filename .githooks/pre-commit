@@ -1,0 +1,28 @@
+#!/bin/sh
+# An applied migration is frozen. Prisma stores a sha256 of each migration.sql
+# in _prisma_migrations.checksum and re-checks it on every `migrate dev`; one
+# changed byte — a renamed package inside a comment is enough — makes every
+# later run demand a full database reset, and there is no repair command.
+#
+# Migrations are added, never edited, so only modifications, deletions and
+# renames are refused. See apps/api/prisma/migrations/README.md.
+
+frozen=$(git diff --cached --name-status --diff-filter=MDR -- \
+  'apps/api/prisma/migrations/*/migration.sql' | cut -f2-)
+
+[ -z "$frozen" ] && exit 0
+
+echo "pre-commit: refusing to change a migration that has already been applied."
+echo
+echo "$frozen" | sed 's/^/    /'
+echo
+echo "  Editing one of these forces 'npm run db:migrate' to reset the dev"
+echo "  database on every run, for you and for everyone else. Restore it:"
+echo
+echo "    git checkout HEAD -- <file>"
+echo
+echo "  If this migration has genuinely never been applied anywhere:"
+echo
+echo "    git commit --no-verify"
+echo
+exit 1

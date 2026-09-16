@@ -52,3 +52,36 @@ Anything plain must be declared in the model too:
 
 After writing a migration by hand, run `migrate dev` once more. `Already in
 sync` means the schema and the SQL agree. A new folder means they do not.
+
+## An applied migration is frozen — comments included
+
+Prisma stores a **sha256 of the whole `migration.sql` file** in
+`_prisma_migrations.checksum` and re-checks it on every `migrate dev`. Change
+one byte of a migration that has already been applied and you get:
+
+```
+The migration `20260915220000_form_builder` was modified after it was applied.
+We need to reset the following schemas: "foundation, stalls"
+```
+
+There is no repair command. The only two ways out are to drop the development
+database or to restore the file to the exact bytes that were applied — so
+restore the file:
+
+```bash
+git log -- apps/api/prisma/migrations/<folder>/     # find the commit that touched it
+git show <commit>^:apps/api/prisma/migrations/<folder>/migration.sql \
+  > apps/api/prisma/migrations/<folder>/migration.sql
+```
+
+`20260915220000_form_builder` hit this when the repo-wide `@msr/stalls` →
+`@stalls/core` rename rewrote a **comment** in it. The SQL was untouched and the
+database was already correct; the checksum alone forced a reset prompt on every
+`migrate dev` afterwards.
+
+So: **a rename sweep stops at this directory.** Give `sed -i`, a
+find-and-replace and any codemod an exclusion for
+`apps/api/prisma/migrations/`, and check `git status` there before committing
+one. A stale name inside an applied migration is not a bug — the file records
+what was run on that date, and on that date the package really was called
+`@msr/stalls`.
