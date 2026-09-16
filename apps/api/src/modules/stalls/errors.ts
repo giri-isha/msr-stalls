@@ -646,6 +646,58 @@ export class BuiltInFieldLockedError extends Error {
   }
 }
 
+/** A built-in retyped to something its column cannot hold. Mapped to 400.
+ *
+ *  🔴 NOT "a built-in cannot be retyped", which is what this used to be. A
+ *  built-in's answer lands in a typed column on `stall_request`, and the column
+ *  cares what ARRIVES rather than which control produced it: "Items Selling"
+ *  may become a paragraph box, a dropdown or a radio list, all of which post a
+ *  string into a text column. What it may not become is a number, a file or a
+ *  display block, none of which post one — see `canRetypeBuiltInTo`. */
+export class FieldShapeChangeError extends Error {
+  constructor(
+    readonly label: string,
+    readonly from: string,
+    readonly to: string,
+  ) {
+    super(
+      `"${label}" answers into a column of its own, so it cannot change from ` +
+        `${from} to ${to} — those are different kinds of answer. Types that ` +
+        'post the same kind of answer can be swapped freely.',
+    );
+    this.name = 'FieldShapeChangeError';
+  }
+}
+
+/** A limit that cannot be met, or one that means nothing on this type. Mapped
+ *  to 400.
+ *
+ *  ⚠️ Refused where the BUILDER saves, not where a requester submits. A maximum
+ *  below its minimum is a question nobody can answer, and the place to find
+ *  that out is the screen that set it — not a vendor's third attempt at a form
+ *  that refuses every value. `checkRuleShape` is the one function both sides
+ *  read. */
+export class BadFieldRuleError extends Error {
+  constructor(readonly reason: string) {
+    super(reason);
+    this.name = 'BadFieldRuleError';
+  }
+}
+
+/** Decimal places asked of a built-in. Mapped to 400.
+ *
+ *  ⚠️ Every numeric column on `stall_request` is an integer — plug points,
+ *  chairs, passes — so a built-in that accepted 2.5 would be rounded on its way
+ *  in or refused by the contract with a message about the body. An appended
+ *  number question stores its answer as text and may have as many places as it
+ *  likes. */
+export class BuiltInDecimalsError extends Error {
+  constructor(readonly label: string) {
+    super(`"${label}" answers into a whole-number column, so it cannot take decimals.`);
+    this.name = 'BuiltInDecimalsError';
+  }
+}
+
 /** A field type the builder cannot author. Mapped to 400.
  *
  *  ⚠️ `appliances` and `zone` are STRUCTURAL: one is a repeating row editor
@@ -656,6 +708,25 @@ export class UnauthorableFieldTypeError extends Error {
   constructor(readonly fieldType: string) {
     super(`"${fieldType}" is not a field type a form can be given`);
     this.name = 'UnauthorableFieldTypeError';
+  }
+}
+
+/** A picture offered to a field that cannot draw one, or a key the builder did
+ *  not mint. Mapped to 400.
+ *
+ *  🔴 Two refusals in one, and both matter. Only a `display` block carries a
+ *  picture — a `file` question's picture is the READER's answer and lives on
+ *  their record — and the key must be one `presignUpload` minted for
+ *  `FORM_NOTE`, because `/public/form-image` will serve whatever a field row
+ *  points at and that folder is the whole of what it is allowed to reach. */
+export class BadFieldMediaError extends Error {
+  constructor(reason: 'type' | 'key') {
+    super(
+      reason === 'type'
+        ? 'Only a display block can carry a picture.'
+        : 'That picture was not uploaded for a display block.',
+    );
+    this.name = 'BadFieldMediaError';
   }
 }
 

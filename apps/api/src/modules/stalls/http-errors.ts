@@ -25,6 +25,10 @@ import {
   MissingRejectReasonError,
   StructuralFieldLockedError,
   UnauthorableFieldTypeError,
+  BadFieldMediaError,
+  BadFieldRuleError,
+  BuiltInDecimalsError,
+  FieldShapeChangeError,
   RoleInUseError,
   RoleKeyTakenError,
   UnknownDeclarationError,
@@ -144,6 +148,13 @@ function statusFor(err: unknown): number | null {
   // there is nothing on the server it collides with.
   if (err instanceof BadDeclarationKeyError) return 400;
   if (err instanceof UnauthorableFieldTypeError) return 400;
+  if (err instanceof BadFieldMediaError) return 400;
+  // A limit that cannot be met, or a retype the field's column cannot hold.
+  // Malformed rather than conflicting: nothing on the server stands on it, the
+  // rule simply does not describe a question anybody could answer.
+  if (err instanceof BadFieldRuleError) return 400;
+  if (err instanceof BuiltInDecimalsError) return 400;
+  if (err instanceof FieldShapeChangeError) return 400;
   if (
     err instanceof TooManyStallsError ||
     err instanceof TooManyStallsRequestedError ||

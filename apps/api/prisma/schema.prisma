@@ -651,9 +651,40 @@ model StallFormField {
 
   /// `[{ value, label, labelTa }]` for a select or radio. Null for the rest.
   options Json?
-  /// Bounds for a number field.
-  min     Int?
-  max     Int?
+
+  /// What the question accepts, beyond its type.
+  ///
+  /// 🔴 `min`/`max` are read THREE ways, decided by `field_type`: the VALUE for
+  /// a number, the DIGIT count for a telephone number, and HOW MANY for a file
+  /// or appliance list. One pair of columns, because they were one pair before
+  /// the rest of this landed and the type already says which reading applies —
+  /// `ruleKindOf` in `@msr/stalls` is what every reader goes through.
+  min         Int?
+  max         Int?
+  /// text — the shortest and longest the answer may be.
+  minLen      Int?    @map("min_len")
+  maxLen      Int?    @map("max_len")
+  /// number — digits allowed after the point. Null or 0 is a whole number.
+  ///
+  /// ⚠️ Never set on a BUILT-IN: every numeric column on `stall_request` is an
+  /// integer, so a built-in that accepted 2.5 plug points would be rounded on
+  /// its way in or refused by the contract. The API refuses the write.
+  decimals    Int?
+  /// text — an expression the answer must match, and what it is asking for in
+  /// words. The message quotes the words, never the expression.
+  pattern     String?
+  patternHint String? @map("pattern_hint")
+  /// date — the days the question accepts, as a `DateWindow`: pinned days, or a
+  /// window that rolls with today.
+  dateWindow  Json?   @map("date_window")
+
+  /// The picture a `display` block draws, as a media-store key.
+  ///
+  /// 🔴 The ADMIN's picture, not a reader's answer. A `file` question's answer
+  /// is the reader's and lands on their record; this is part of the QUESTION —
+  /// the venue layout above "where would you like to stand" — so it belongs on
+  /// the field row and travels with it when a form is copied to a new edition.
+  mediaKey String? @map("media_key")
 
   edition    StallEdition            @relation(fields: [editionId], references: [id], onDelete: Cascade)
   definition StallFormDefinition?    @relation(fields: [definitionId], references: [id], onDelete: Cascade)

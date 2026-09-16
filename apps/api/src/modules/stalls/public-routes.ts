@@ -39,6 +39,7 @@ import {
   type RequestAccessLinkResponse,
   type RequestCouponResponse,
   ContinueStepInput,
+  MediaKeyValue,
   PresignUploadInput,
   RATE_SCOPES,
   LoginInput,
@@ -87,6 +88,8 @@ const PublicConfigQuery = z.object({
   scope: z.enum(RATE_SCOPES).default('VENDOR'),
 });
 
+const FormImageQuery = z.object({ key: MediaKeyValue });
+
 export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDeps): void {
   const zod = app.withTypeProvider<ZodTypeProvider>();
 
@@ -100,6 +103,39 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
    *  they are most likely to want were unavailable. */
   zod.get('/config', { schema: { querystring: PublicConfigQuery } }, async (req) =>
     getPublicConfig(prisma, req.query.scope),
+  );
+
+  /**
+   * The picture inside a display block, for anybody who opens the form.
+   *
+   * 🔴 Served by KEY, and only keys in the display-block folder. The folder
+   * holds nothing an admin did not upload for exactly this — every other
+   * purpose (a cancelled cheque, a PAN card, an FSSAI certificate) writes to a
+   * folder of its own — so `isOurKey` is the whole of the authorization here,
+   * and there is no lookup to skip. A route that presigned any key under the
+   * namespace would be a way to read a vendor's documents by guessing.
+   *
+   * ⚠️ A REDIRECT to a short-lived presigned URL rather than bytes through the
+   * API. The image is drawn on every public form the block sits on, and proxying
+   * it would put a phone-sized photograph through the process on every render.
+   * The signature outlives the page load and nothing more.
+   */
+  zod.get(
+    '/form-image',
+    {
+      schema: { querystring: FormImageQuery },
+      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
+    },
+    async (req, reply) => {
+      if (!isOurKey(req.query.key, 'FORM_NOTE')) throw new UnknownAccessLinkError();
+      const url = await deps.files.presignView(req.query.key, 600);
+      // The browser re-requests the image on every form load otherwise, and
+      // each one costs a signature. Five minutes is well inside the signed
+      // URL's own life, so a cached redirect can never outlive what it points
+      // at.
+      reply.header('cache-control', 'private, max-age=300');
+      return reply.redirect(url, 302);
+    },
   );
 
   /** Registration.
@@ -381,7 +417,14 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
     },
     async (req) => {
       const purpose = req.body.purpose;
-      if (purpose === 'TEMPLATE_ATTACHMENT') throw new UnknownAccessLinkError();
+      // ⚠️ Neither of these is an answer to a question. `TEMPLATE_ATTACHMENT`
+      // is what goes out with an email, and `FORM_NOTE` is an admin's picture
+      // in a display block — served unauthenticated by `/form-image`, so a link
+      // holder who could mint one would have somewhere to host anything they
+      // liked.
+      if (purpose === 'TEMPLATE_ATTACHMENT' || purpose === 'FORM_NOTE') {
+        throw new UnknownAccessLinkError();
+      }
       const linkPurpose = purpose === 'FSSAI' ? 'FSSAI_UPLOAD' : 'BANK_FORM';
       await resolveAccessLink(prisma, req.params.token, linkPurpose);
       return presignUpload(deps.files, req.body);

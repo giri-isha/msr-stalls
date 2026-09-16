@@ -879,7 +879,12 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
   // The vendor-facing one is in `public-routes.ts` and is gated by a link.
   zod.post('/uploads', { schema: { body: PresignUploadInput } }, async (req) => {
     const caller = await requireBackoffice(req, prisma);
-    requirePrivilege(caller, 'comms.write');
+    // ⚠️ The privilege follows the PURPOSE. A display block's picture is part of
+    // a form, authored on the Form Builder by somebody who configures the
+    // edition; the template attachment is part of an email. Asking for
+    // `comms.write` before a form image would mean nobody could put the venue
+    // layout on a form without also being able to send mail to every vendor.
+    requirePrivilege(caller, req.body.purpose === 'FORM_NOTE' ? 'config.write' : 'comms.write');
     return presignUpload(deps.files, req.body);
   });
 

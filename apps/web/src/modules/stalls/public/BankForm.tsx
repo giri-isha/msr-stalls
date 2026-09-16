@@ -1,10 +1,5 @@
-import type {
-  BuiltFormField,
-  FormField as FieldDef,
-  PresignUploadInput,
-  SubmitBankDetailsInput,
-} from '@msr/stalls';
-import { formFields, uploadPurposeFor } from '@msr/stalls';
+import type { BuiltFormField, PresignUploadInput, SubmitBankDetailsInput } from '@msr/stalls';
+import { asFormField, formFields, uploadPurposeFor } from '@msr/stalls';
 import { useState } from 'react';
 import { useParams } from 'react-router';
 import { fieldErrorsFrom } from '../api-client';
@@ -90,22 +85,6 @@ const _COUNTS: Array<{
 ];
 
 type Values = Record<string, string>;
-
-/** A row as `FieldControl` wants it. The control speaks `FormField`, the
- *  definition speaks `BuiltFormField`; the two differ only in the bookkeeping
- *  the control has no use for. */
-const asFormField = (f: BuiltFormField): FieldDef => ({
-  name: f.name ?? f.id,
-  label: f.label,
-  labelTa: f.labelTa,
-  help: f.help ?? undefined,
-  helpTa: f.helpTa ?? undefined,
-  type: f.type,
-  required: f.required,
-  options: f.options ?? undefined,
-  min: f.min ?? undefined,
-  max: f.max ?? undefined,
-});
 
 export function BankForm() {
   const { token = '' } = useParams();

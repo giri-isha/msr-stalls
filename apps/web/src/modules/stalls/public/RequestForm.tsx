@@ -1,15 +1,19 @@
 import {
+  asFormField,
   type BuiltFormField,
   declarationsFor,
+  type FieldRuleValues,
   fieldIsAsked,
   FORM_DEFINITIONS,
   type FormField,
+  NO_RULES,
   renderForm,
   type RenderedGroup,
   type RateScope,
   type RequesterSession,
   type StallRequestType,
   SubmitRequestInput,
+  validateAgainstForm,
 } from '@msr/stalls';
 import { useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router';
@@ -130,6 +134,43 @@ function buildInput(
   return base;
 }
 
+/**
+ * The page's own state, as `validateAgainstForm` addresses the BUILT-IN half.
+ *
+ * ⚠️ It is the same object. The validator reads a built-in by the form field's
+ * `name`, and that is precisely the key this page stores the answer under —
+ * `fieldKey` returns it — so there is nothing to translate. The function exists
+ * to say so, because `buildInput` right above it does translate, and the two
+ * key spaces being different there and identical here is the sort of thing that
+ * gets "fixed" into a bug.
+ *
+ * 🔴 `values` holds what the CONTROLS produced: `'5'` for a number, `'YES'` for
+ * a yes/no picker, `true` for a tick. The checker reads a number out of a
+ * string on purpose, for exactly this reason — the alternative is checking the
+ * wire shape, which is built after validation and drops anything blank.
+ */
+function builtInAnswers(_type: StallRequestType, values: Values): Record<string, unknown> {
+  return values;
+}
+
+/** The appended half, keyed by field id — the space `customFields.<id>` names.
+ *
+ *  ⚠️ A list answer is passed as a LIST. A `files` question's limit is how many
+ *  were uploaded, and joining the keys into one string would make that a rule
+ *  about commas. */
+function customAnswers(fields: BuiltFormField[], values: Values): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const f of fields) {
+    if (f.isBuiltIn) continue;
+    // ⚠️ A tick answers `true`, and the wire carries the word. An unticked box
+    // stays blank, which is what makes a required one report as missing rather
+    // than as the word "false".
+    const v = values[`cf:${f.id}`];
+    out[f.id] = typeof v === 'boolean' ? (v ? 'yes' : '') : v;
+  }
+  return out;
+}
+
 /** The inverse of the renames above, for putting a server or Zod error back on
  *  the input that caused it. */
 function fieldNameFor(path: string, type: StallRequestType): string {
@@ -155,25 +196,6 @@ function fieldKey(f: BuiltFormField): string {
   return f.isBuiltIn && f.name !== null ? f.name : `cf:${f.id}`;
 }
 
-/** A built field in the shape `FieldControl` draws. That component predates the
- *  builder and still speaks `FormField`; the adapter is here rather than
- *  rewriting it, because what it knows about `zone` and `appliances` is real
- *  and would have to be rebuilt to no purpose. */
-function asFormField(f: BuiltFormField): FormField {
-  return {
-    name: fieldKey(f),
-    label: f.label,
-    labelTa: f.labelTa,
-    help: f.help ?? undefined,
-    helpTa: f.helpTa,
-    type: f.type,
-    required: f.required,
-    options: f.options ?? undefined,
-    min: f.min ?? undefined,
-    max: f.max ?? undefined,
-  };
-}
-
 /** The constant's fields, as built ones — the fallback path only. */
 function fromConstant(f: FormField, i: number): BuiltFormField {
   return {
@@ -190,8 +212,22 @@ function fromConstant(f: FormField, i: number): BuiltFormField {
     sectionId: null,
     sortOrder: i,
     options: f.options ?? null,
+    ...ruleValuesFrom(f),
+    mediaKey: f.mediaKey ?? null,
+  };
+}
+
+/** The limits off a constant's field. `undefined` there, `null` on a row. */
+function ruleValuesFrom(f: FormField): FieldRuleValues {
+  return {
     min: f.min ?? null,
     max: f.max ?? null,
+    minLen: f.minLen ?? null,
+    maxLen: f.maxLen ?? null,
+    decimals: f.decimals ?? null,
+    pattern: f.pattern ?? null,
+    patternHint: f.patternHint ?? null,
+    window: f.window ?? null,
   };
 }
 
@@ -216,8 +252,8 @@ function appended(
     sectionId: null,
     sortOrder: 0,
     options: null,
-    min: null,
-    max: null,
+    ...NO_RULES,
+    mediaKey: null,
   };
 }
 
@@ -385,15 +421,44 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setTopError(null);
-    // Required-ness comes from the form definition; shape from the contract.
+    /**
+     * What the EDITION'S OWN FORM insists on — required-ness and every limit —
+     * checked before the round-trip.
+     *
+     * 🔴 `validateAgainstForm` is the function `submit.ts` refuses with, not a
+     * second opinion written for the browser. This page used to run its own
+     * loop over `f.required`, which was fine while required-ness was the only
+     * rule a row carried; now that a row also says how long an answer may be,
+     * how many digits a number has and which days a date question admits, two
+     * implementations would be two answers — and the one a vendor meets first
+     * would be the one that let the form through.
+     *
+     * ⚠️ Keyed the way the FORM is keyed, not the way the wire is: the
+     * validator reports `customFields.<id>` and the state calls it `cf:<id>`,
+     * which is exactly what `fieldNameFor` already translates for server
+     * errors.
+     */
     const missing: Record<string, string> = {};
-    for (const f of allFields) {
-      const key = fieldKey(f);
-      if (f.required && isEmpty(values[key])) {
-        missing[key] = f.type === 'checkbox' ? 'Please tick to continue' : 'Required';
+    if (built) {
+      for (const v of validateAgainstForm(
+        built,
+        { builtIn: builtInAnswers(type, values), custom: customAnswers(allFields, values) },
+        answers,
+      )) {
+        missing[fieldNameFor(v.fieldKey, type)] = v.message;
+      }
+    } else {
+      // The fallback path: an edition seeded before forms became data has no
+      // rows to validate against, so required-ness is all there is to check —
+      // which is exactly what this page did before any of it.
+      for (const f of allFields) {
+        const key = fieldKey(f);
+        if (f.required && isEmpty(values[key])) {
+          missing[key] = f.type === 'checkbox' ? 'Please tick to continue' : 'Required';
+        }
       }
     }
-    const built = buildInput(
+    const input = buildInput(
       type,
       values,
       // ⚠️ The APPENDED fields of the form as drawn, not `config.customFields`.
@@ -403,7 +468,7 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
       shown.map((d) => d.id),
       consented,
     );
-    const parsed = SubmitRequestInput.safeParse(built);
+    const parsed = SubmitRequestInput.safeParse(input);
     if (!parsed.success) {
       for (const issue of parsed.error.issues) {
         const name = fieldNameFor(issue.path.join('.'), type);
@@ -501,7 +566,7 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
                   return (
                     <FieldControl
                       key={f.id}
-                      field={asFormField(f)}
+                      field={asFormField(f, key)}
                       value={values[key]}
                       error={errors[key]}
                       onChange={(v) => set(key, v ?? '')}

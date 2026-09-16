@@ -28,6 +28,11 @@ const FOLDER: Record<PresignUploadInput['purpose'], string> = {
   // field id goes in the path, so a key minted for the PAN upload can never be
   // presented as the answer to the GST one — see `isOurKey`.
   FORM_FIELD: 'form-field',
+  // 🔴 The ADMIN's own picture — the venue layout inside a display block — and
+  // the only folder here whose contents are meant to be looked at by anybody
+  // who opens the form. `/public/form-image` serves this folder and no other,
+  // which is why a note image is never filed beside a vendor's PAN card.
+  FORM_NOTE: 'form-note',
 };
 
 /** Images and PDFs. A cancelled cheque is photographed on a phone and a
@@ -77,6 +82,12 @@ export async function presignUpload(
     input.purpose === 'FORM_FIELD'
       ? `${FOLDER.FORM_FIELD}/${input.fieldId}`
       : FOLDER[input.purpose];
+  // ⚠️ A display block draws its picture in an `<img>`, so a PDF there is a
+  // broken image on every public form the block sits on. Refused at the
+  // presign rather than discovered by a requester.
+  if (input.purpose === 'FORM_NOTE' && ext === 'pdf') {
+    throw new UnsupportedFileTypeError(input.contentType);
+  }
   const key = `${NAMESPACE}${folder}/${randomUUID()}.${ext}`;
   const { url, headers } = await files.presignUpload({
     key,

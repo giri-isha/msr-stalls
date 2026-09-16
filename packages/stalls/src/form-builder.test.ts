@@ -1,9 +1,12 @@
 import { describe, expect, test } from 'vitest';
 import {
+  AUTHORABLE_FIELD_TYPES,
   type BuiltForm,
   type BuiltFormField,
+  canCarryMedia,
   canDeleteField,
-  canEditFieldType,
+  canRetypeBuiltInTo,
+  fieldTypeChoices,
   formFields,
   isAuthorableFieldType,
   needsOptions,
@@ -27,6 +30,13 @@ const field = (over: Partial<BuiltFormField> = {}): BuiltFormField => ({
   options: null,
   min: null,
   max: null,
+  minLen: null,
+  maxLen: null,
+  decimals: null,
+  pattern: null,
+  patternHint: null,
+  window: null,
+  mediaKey: null,
   ...over,
 });
 
@@ -88,11 +98,48 @@ describe('rendering a form', () => {
 });
 
 describe('what a built-in field may not change', () => {
-  /** 🔴 Not a policy choice. A built-in's answer lands in a typed column on
-   *  `stall_request`, so retyping one posts a string into an integer. */
-  test('its type is locked; an appended field is not', () => {
-    expect(canEditFieldType(field({ isBuiltIn: true }))).toBe(false);
-    expect(canEditFieldType(field({ isBuiltIn: false }))).toBe(true);
+  /** 🔴 The rule is the value SHAPE, not the type. A built-in's answer lands in
+   *  a typed column on `stall_request`, and the column cares what ARRIVES
+   *  rather than which control produced it — so any type that posts a string
+   *  may replace any other on a field whose column holds one. */
+  test('it may be retyped within the kind of answer its column holds', () => {
+    expect(canRetypeBuiltInTo('text', 'textarea')).toBe(true);
+    expect(canRetypeBuiltInTo('text', 'select')).toBe(true);
+    expect(canRetypeBuiltInTo('text', 'date')).toBe(true);
+    expect(canRetypeBuiltInTo('select', 'radio')).toBe(true);
+  });
+
+  /** ⚠️ The refusals, and each one is a different column. A number is an
+   *  integer column, a file is a media-store key `isOurKey` then checks, a
+   *  display block posts nothing at all, and a `zone` resolves its choices from
+   *  the edition's bays at render time. */
+  test('and never into a different kind of answer', () => {
+    expect(canRetypeBuiltInTo('text', 'number')).toBe(false);
+    expect(canRetypeBuiltInTo('number', 'text')).toBe(false);
+    expect(canRetypeBuiltInTo('text', 'file')).toBe(false);
+    expect(canRetypeBuiltInTo('text', 'display')).toBe(false);
+    expect(canRetypeBuiltInTo('checkbox', 'text')).toBe(false);
+    expect(canRetypeBuiltInTo('zone', 'select')).toBe(false);
+  });
+
+  /** ⚠️ The picker is filled from the same rule the API refuses on, so a
+   *  coordinator is never offered a change that would come back as an error —
+   *  and an appended field, which has no column, is offered everything. */
+  test('the picker offers exactly what would be accepted', () => {
+    const builtIn = fieldTypeChoices(field({ isBuiltIn: true, type: 'text' }));
+    expect(builtIn).toContain('textarea');
+    expect(builtIn).not.toContain('number');
+    expect(builtIn).not.toContain('display');
+
+    const appended = fieldTypeChoices(field({ isBuiltIn: false, type: 'text' }));
+    expect(appended).toEqual([...AUTHORABLE_FIELD_TYPES]);
+  });
+
+  /** 🔴 `zone` and `appliances` cannot be authored, so a field that IS one
+   *  would otherwise get an empty picker — and a picker showing nothing selects
+   *  the wrong type the moment it is touched. */
+  test('a structural field is offered itself and nothing else', () => {
+    expect(fieldTypeChoices(field({ isBuiltIn: true, type: 'zone' }))).toEqual(['zone']);
   });
 
   /** ⚠️ The submit path reads its column whether or not the form asked, so a
@@ -189,5 +236,139 @@ describe('validating against the definition', () => {
     expect(validateAgainstForm(f, { builtIn: {}, custom: {} })[0]?.message).toContain(
       'Instagram handle',
     );
+  });
+
+  /* ── The limits, as opposed to presence ───────────────────────────────── */
+
+  /** 🔴 The half this function grew. Required-ness was all a row could say;
+   *  it now also says what the answer may BE, and one function applies both —
+   *  on the reader's page before the round-trip and here as the enforcement. */
+  test('an answer that breaks the question\u2019s own limit is a violation', () => {
+    const f = form([
+      field({
+        id: 'f1',
+        name: 'plugs5a',
+        isBuiltIn: true,
+        type: 'number',
+        label: 'Plug points',
+        max: 50,
+      }),
+    ]);
+    expect(validateAgainstForm(f, { builtIn: { plugs5a: 60 }, custom: {} })).toEqual([
+      { fieldKey: 'plugs5a', message: 'Plug points must be at most 50.' },
+    ]);
+    expect(validateAgainstForm(f, { builtIn: { plugs5a: 12 }, custom: {} })).toEqual([]);
+  });
+
+  test('an appended answer is checked by the same rules, keyed by id', () => {
+    const f = form([field({ id: 'f1', label: 'GST Number', maxLen: 15 })]);
+    const out = validateAgainstForm(f, { builtIn: {}, custom: { f1: 'x'.repeat(20) } });
+    expect(out[0]?.fieldKey).toBe('customFields.f1');
+    expect(out[0]?.message).toContain('15 characters or fewer');
+  });
+
+  /** ⚠️ Once, as missing. "Pincode is required" and "Pincode must be 6
+   *  characters" on the same empty box is the form telling somebody off twice
+   *  for one omission. */
+  test('a blank required answer reports as missing and not also as too short', () => {
+    const f = form([required({ id: 'f1', label: 'Pincode', minLen: 6 })]);
+    const out = validateAgainstForm(f, { builtIn: {}, custom: {} });
+    expect(out).toHaveLength(1);
+    expect(out[0]?.message).toBe('Pincode is required');
+  });
+
+  /** ⚠️ An optional question left blank passes; the same question answered
+   *  badly does not. A limit is about the answer, not about whether there is
+   *  one. */
+  test('an optional question is still checked once it has been answered', () => {
+    const f = form([field({ id: 'f1', label: 'Contact', type: 'tel', min: 10, max: 10 })]);
+    expect(validateAgainstForm(f, { builtIn: {}, custom: {} })).toEqual([]);
+    expect(validateAgainstForm(f, { builtIn: {}, custom: { f1: '12345' } })).toHaveLength(1);
+  });
+
+  /** ⚠️ The same skip the required check makes — a limit must not report on a
+   *  question the reader was never shown. */
+  test('a limit on a question this submission was not asked is not applied', () => {
+    const f = form([
+      field({ id: 'f1', name: 'fssaiExpected', isBuiltIn: true, type: 'select', required: true }),
+    ]);
+    expect(validateAgainstForm(f, { builtIn: {}, custom: {} }, { isFood: false })).toEqual([]);
+  });
+
+  /** ⚠️ Injected rather than read, so the check is testable and a page and the
+   *  API straddling midnight can be told to agree on the day. */
+  test('a rolling date window is resolved against the day it is given', () => {
+    const f = form([
+      field({
+        id: 'f1',
+        label: 'Arrival',
+        type: 'date',
+        window: { mode: 'rolling', minDays: 0, maxDays: 30 },
+      }),
+    ]);
+    const ctx = { today: '2026-03-10' };
+    expect(validateAgainstForm(f, { builtIn: {}, custom: { f1: '2026-03-20' } }, ctx)).toEqual([]);
+    expect(validateAgainstForm(f, { builtIn: {}, custom: { f1: '2026-05-20' } }, ctx)).toHaveLength(
+      1,
+    );
+  });
+});
+
+/**
+ * A field that says something rather than asking it.
+ *
+ * 🔴 The whole of what makes a display block safe is that every path dealing in
+ * ANSWERS skips it. These are the two that would take a form down: a required
+ * block refusing a submission nobody can fix, and a picture accepted onto a
+ * question that draws none.
+ */
+describe('a display block', () => {
+  test('is a type the builder may author', () => {
+    expect(isAuthorableFieldType('display')).toBe(true);
+  });
+
+  /** ⚠️ Even when the row says required. The row can say it — an older edition,
+   *  a write that got past the guard — and the refusal would point at a
+   *  paragraph of text with nothing to click. */
+  test('is never asked for, however the row is stored', () => {
+    const f = form([
+      field({ id: 'd1', type: 'display', required: true, label: 'The venue layout' }),
+    ]);
+    expect(validateAgainstForm(f, { builtIn: {}, custom: {} })).toEqual([]);
+  });
+
+  test('does not stop the questions around it from being checked', () => {
+    const f = form([
+      field({ id: 'd1', type: 'display', required: true, sortOrder: 0 }),
+      field({ id: 'f1', label: 'Items selling', required: true, sortOrder: 1 }),
+    ]);
+    const out = validateAgainstForm(f, { builtIn: {}, custom: {} });
+    expect(out).toHaveLength(1);
+    expect(out[0]?.fieldKey).toBe('customFields.f1');
+  });
+
+  /** 🔴 Only a display block carries a picture. A `file` question's picture is
+   *  the READER's answer and lives on their record — the API refuses the write
+   *  on this same rule. */
+  test('is the only field that may carry a picture', () => {
+    expect(canCarryMedia('display')).toBe(true);
+    expect(canCarryMedia('file')).toBe(false);
+    expect(canCarryMedia('text')).toBe(false);
+  });
+
+  test('is drawn in its place, like any other field', () => {
+    const f = form([
+      field({ id: 'f1', sortOrder: 0 }),
+      field({ id: 'd1', type: 'display', sortOrder: 1 }),
+      field({ id: 'f2', sortOrder: 2 }),
+    ]);
+    expect(formFields(f).map((x) => x.id)).toEqual(['f1', 'd1', 'f2']);
+  });
+
+  /** A block switched off is a block the edition no longer shows — the same
+   *  switch every question has. */
+  test('is dropped when it is switched off', () => {
+    const f = form([field({ id: 'd1', type: 'display', isActive: false })]);
+    expect(formFields(f)).toEqual([]);
   });
 });

@@ -1,10 +1,5 @@
-import type {
-  BuiltFormField,
-  CouponView,
-  FormField as FieldDef,
-  RegisterStaffInput,
-} from '@msr/stalls';
-import { formFields } from '@msr/stalls';
+import type { CouponView, RegisterStaffInput } from '@msr/stalls';
+import { asFormField, formFields } from '@msr/stalls';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { fieldErrorsFrom } from '../api-client';
@@ -331,17 +326,3 @@ export function StaffRegistration() {
     </div>
   );
 }
-
-/** A row as `FieldControl` wants it. */
-const asFormField = (f: BuiltFormField): FieldDef => ({
-  name: f.name ?? f.id,
-  label: f.label,
-  labelTa: f.labelTa,
-  help: f.help ?? undefined,
-  helpTa: f.helpTa ?? undefined,
-  type: f.type,
-  required: f.required,
-  options: f.options ?? undefined,
-  min: f.min ?? undefined,
-  max: f.max ?? undefined,
-});

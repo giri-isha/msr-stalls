@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { StallEdition } from '@prisma/client';
+import { NO_RULES } from '@msr/stalls';
 import { LogMailer } from '../../src/email';
 import { createEdition } from '../../src/modules/stalls/config';
 import { addFormField } from '../../src/modules/stalls/form-builder';
@@ -111,8 +112,7 @@ export async function appendField(
     isRequired: false,
     sectionId: null,
     options: null,
-    min: null,
-    max: null,
+    ...NO_RULES,
   });
 }
 

@@ -15,14 +15,18 @@ import type { PrismaClient, StallEdition, StallFormType } from '@prisma/client';
 import {
   COPY_SECTION_LABELS,
   type ChargesInput,
+  clearedRulesFor,
   type CopyChange,
   type CopyPlan,
   type CopyResult,
   type CopyRow,
   type CopySection,
   type CopySkip,
+  type DateWindow,
+  type FieldType,
   formatInr,
   needsNewVersion,
+  sameValueShape,
 } from '@msr/stalls';
 import { recordActivity } from '../../activity';
 import type { Db } from './editions';
@@ -60,6 +64,10 @@ const excerpt = (v: unknown): string => {
   const one = String(v).replace(/\s+/g, ' ').trim();
   return one.length > 140 ? `${one.slice(0, 139)}…` : one;
 };
+
+/** A display block's picture. The KEY is meaningless to read — what the list
+ *  has to say is whether one is there. */
+const picture = (v: unknown): string => (v ? 'A picture' : '—');
 
 const options = (v: unknown): string => {
   if (!Array.isArray(v) || v.length === 0) return '—';
@@ -421,6 +429,13 @@ const FORM_SELECT = {
       options: true,
       min: true,
       max: true,
+      minLen: true,
+      maxLen: true,
+      decimals: true,
+      pattern: true,
+      patternHint: true,
+      dateWindow: true,
+      mediaKey: true,
     },
   },
 } as const;
@@ -442,6 +457,13 @@ type FormFieldRow = {
   options: Prisma.JsonValue;
   min: number | null;
   max: number | null;
+  minLen: number | null;
+  maxLen: number | null;
+  decimals: number | null;
+  pattern: string | null;
+  patternHint: string | null;
+  dateWindow: Prisma.JsonValue;
+  mediaKey: string | null;
   /** Denormalised at read time: sections are matched across editions by their
    *  heading, because a section id means nothing in another edition. */
   sectionHeading: string | null;
@@ -467,11 +489,18 @@ const DEFINITION_FIELDS: Field<{ title: string; titleTa: string | null }>[] = [
 ];
 
 /**
- * ⚠️ `name` and `fieldType` are NOT here, and a copy never writes them.
- * A built-in's answers land in a typed column on `stall_request`: renaming one
- * posts an answer the submit path has nowhere to put, and retyping one posts a
- * string into an integer column. What the Form Builder itself can change is
+ * ⚠️ `name` is NOT here, and a copy never writes it. A built-in's answers land
+ * in a typed column on `stall_request`, and renaming one posts an answer the
+ * submit path has nowhere to put. What the Form Builder itself can change is
  * what a copy carries.
+ *
+ * 🔴 `fieldType` IS here now, and it is the one entry with a condition on it: a
+ * copy carries it only where the two types post the same KIND of answer — the
+ * same rule `canRetypeBuiltInTo` enforces, for the same reason. Last year's
+ * "Items Selling" rewritten as a paragraph box should arrive as one; last
+ * year's text question matched by label to this year's number question should
+ * not quietly become text and take a column's worth of answers with it. See
+ * `typeToCopy`.
  */
 const FORM_FIELD_FIELDS: Field<FormFieldRow>[] = [
   f('Label', (r) => r.label),
@@ -483,9 +512,76 @@ const FORM_FIELD_FIELDS: Field<FormFieldRow>[] = [
   f('Order', (r) => r.sortOrder),
   f('Section', (r) => r.sectionHeading),
   f('Choices', (r) => r.options, options),
+  f('Answer type', (r) => r.fieldType),
+  // The limits, in the order the builder draws them. `Minimum`/`Maximum` read
+  // three ways — value, digit count, file count — decided by the type beside
+  // them; see `FieldRuleValues`.
   f('Minimum', (r) => r.min),
   f('Maximum', (r) => r.max),
+  f('Shortest', (r) => r.minLen),
+  f('Longest', (r) => r.maxLen),
+  f('Decimal places', (r) => r.decimals),
+  f('Pattern', (r) => r.pattern),
+  f('Pattern in words', (r) => r.patternHint),
+  f('Accepted dates', (r) => r.dateWindow, options),
+  // ⚠️ The picture travels, unlike `name` and `field_type`. It is part of what
+  // a display block SAYS — the venue layout above the location question — and a
+  // copy that left it behind would carry the wording into the new edition with
+  // a hole where the map was. The key points at an object in the same store,
+  // which both editions read.
+  f('Picture', (r) => r.mediaKey, picture),
 ];
+
+/**
+ * The type a copy gives the target field.
+ *
+ * 🔴 The source's, where the two post the same KIND of answer — a question
+ * reworded into a paragraph box last year should arrive as one — and the
+ * TARGET'S otherwise. An appended field is matched across editions by its
+ * label, so "Arrival" as a date in one edition and as text in the other is a
+ * real possibility, and overwriting the type there would leave the target's own
+ * answers under a control that cannot read them.
+ *
+ * ⚠️ The same rule the Form Builder's picker offers and the API refuses on.
+ * Three spellings of "which retypes are safe" is how one of them ends up
+ * letting through what the other two stop.
+ */
+function typeToCopy(source: string, target: string | null): string {
+  if (target === null) return source;
+  return sameValueShape(source as FieldType, target as FieldType) ? source : target;
+}
+
+/**
+ * The source's limits, kept where the type they are landing on still gives them
+ * a meaning.
+ *
+ * ⚠️ `clearedRulesFor` rather than a straight copy, and the reason is the same
+ * one it exists for: `max` is a value on a number, a digit count on a telephone
+ * number and a file count on a `files`. Carrying 50 from one to another is not
+ * carrying a limit, it is inventing a different one.
+ */
+function ruleColumnsFor(fl: FormFieldRow, nextType: string) {
+  const kept = clearedRulesFor(fl.fieldType as FieldType, nextType as FieldType, {
+    min: fl.min,
+    max: fl.max,
+    minLen: fl.minLen,
+    maxLen: fl.maxLen,
+    decimals: fl.decimals,
+    pattern: fl.pattern,
+    patternHint: fl.patternHint,
+    window: (fl.dateWindow as DateWindow | null) ?? null,
+  });
+  return {
+    min: kept.min,
+    max: kept.max,
+    minLen: kept.minLen,
+    maxLen: kept.maxLen,
+    decimals: kept.decimals,
+    pattern: kept.pattern,
+    patternHint: kept.patternHint,
+    dateWindow: kept.window === null ? Prisma.DbNull : (kept.window as Prisma.InputJsonValue),
+  };
+}
 
 /** A field's identity ACROSS editions. A built-in is its `name`, which is the
  *  contract's own and cannot be edited. An appended field has no name — its id
@@ -611,6 +707,9 @@ async function planForms(db: Db, from: string, to: string): Promise<SectionPlan>
         label: `${formLabel} · ${fl.label}`,
         changes: changesBetween(FORM_FIELD_FIELDS, theirs, fl),
       };
+      // The type this field will HAVE in the target, and the limits that still
+      // mean something under it — see `typeToCopy`.
+      const nextType = typeToCopy(fl.fieldType, theirs?.fieldType ?? null);
       const shared = {
         label: fl.label,
         labelTa: fl.labelTa,
@@ -620,8 +719,8 @@ async function planForms(db: Db, from: string, to: string): Promise<SectionPlan>
         isActive: fl.isActive,
         sortOrder: fl.sortOrder,
         options: jsonIn(fl.options),
-        min: fl.min,
-        max: fl.max,
+        ...ruleColumnsFor(fl, nextType),
+        mediaKey: fl.mediaKey,
       };
       const heading = fl.sectionHeading;
       if (!theirs) {
@@ -641,7 +740,7 @@ async function planForms(db: Db, from: string, to: string): Promise<SectionPlan>
               // Only ever set at CREATE, never on an overwrite — see the note
               // on `FORM_FIELD_FIELDS`.
               name: fl.name,
-              fieldType: fl.fieldType,
+              fieldType: nextType,
               isBuiltIn: fl.isBuiltIn,
               ...shared,
             },
@@ -654,7 +753,7 @@ async function planForms(db: Db, from: string, to: string): Promise<SectionPlan>
           const sectionId = definitionId ? await sectionIdFor(tx, definitionId, heading) : null;
           return tx.stallFormField.update({
             where: { id: theirs.id },
-            data: { ...shared, sectionId },
+            data: { ...shared, fieldType: nextType, sectionId },
           });
         });
       } else {

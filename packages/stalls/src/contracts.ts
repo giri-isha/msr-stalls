@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Declaration } from './declarations';
 import type { BuilderForm, BuiltForm } from './form-builder';
+import { AUTHORABLE_FIELD_TYPES } from './form-builder';
 import { SELF_SERVE_STEPS } from './access';
 import type { PendingStep } from './onboarding';
 import { CATEGORY_KEY_PATTERN, ZONE_CODE_PATTERN } from './zones';
@@ -851,22 +852,85 @@ export const FieldOptionInput = z.object({
 /** ⚠️ No `name` and no `isBuiltIn`. Both are the API's to decide: an appended
  *  field is never built in, and it has no name because its answer is keyed by
  *  id. A body that could set either would be a body that could claim a column. */
+/** A media-store key as it crosses the wire.
+ *
+ *  ⚠️ The SHAPE only. What makes a key acceptable is `isOurKey`, which checks
+ *  the folder the purpose writes to — a key this passes is still refused if it
+ *  was not minted for a display block. */
+export const MediaKeyValue = z.string().trim().min(1).max(400);
+
+/**
+ * The days a `date` question accepts, on the wire.
+ *
+ * ⚠️ A discriminated union, so a body cannot send `minDate` beside `minDays`
+ * and leave the API to guess which one it meant. There is no `edition` mode —
+ * `StallEdition` has no dates to follow; see the note in `field-rules.ts`.
+ */
+export const DateWindowInput = z.discriminatedUnion('mode', [
+  z.object({
+    mode: z.literal('fixed'),
+    min: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+    max: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+  }),
+  z.object({
+    mode: z.literal('rolling'),
+    minDays: z.number().int().min(-3650).max(3650).optional(),
+    maxDays: z.number().int().min(-3650).max(3650).optional(),
+  }),
+]);
+
+/**
+ * What a question accepts, as the builder sends it.
+ *
+ * 🔴 Shape only, exactly as everywhere else in this file. Whether a maximum
+ * sits below its minimum, or a pattern is an expression that compiles, is
+ * `checkRuleShape` in `@msr/stalls` — one function, read by the screen before
+ * it saves and by the API before it writes. A Zod refinement here would be a
+ * second opinion the two sides could drift apart on.
+ */
+const RuleFields = {
+  /** Read three ways, decided by `fieldType`: the VALUE for a number, the DIGIT
+   *  count for a telephone number, HOW MANY for a file list. */
+  min: z.number().int().min(-1_000_000).max(1_000_000).nullable().default(null),
+  max: z.number().int().min(-1_000_000).max(1_000_000).nullable().default(null),
+  minLen: z.number().int().min(0).max(10_000).nullable().default(null),
+  maxLen: z.number().int().min(1).max(10_000).nullable().default(null),
+  decimals: z.number().int().min(0).max(6).nullable().default(null),
+  pattern: z.string().trim().max(400).nullable().default(null),
+  patternHint: z.string().trim().max(200).nullable().default(null),
+  window: DateWindowInput.nullable().default(null),
+};
+
 export const AddFormFieldInput = z.object({
   label: z.string().trim().min(1).max(200),
   labelTa: z.string().trim().max(200).nullable().default(null),
   help: z.string().trim().max(600).nullable().default(null),
-  fieldType: z.enum(['text', 'textarea', 'email', 'tel', 'number', 'select', 'radio', 'checkbox']),
+  /** ⚠️ Read from `AUTHORABLE_FIELD_TYPES` rather than spelled again. The list
+   *  was retyped here and had already drifted: the picker offered `file` and
+   *  `files`, and this enum refused them, so adding a file question failed at
+   *  the API with a message about the shape of the body. */
+  fieldType: z.enum(AUTHORABLE_FIELD_TYPES),
   isRequired: z.boolean().default(false),
   sectionId: z.uuid().nullable().default(null),
   options: z.array(FieldOptionInput).max(60).nullable().default(null),
-  min: z.number().int().nullable().default(null),
-  max: z.number().int().nullable().default(null),
+  ...RuleFields,
+  /** The picture a `display` block draws. Refused on every other type — see
+   *  `canCarryMedia`. */
+  mediaKey: MediaKeyValue.nullable().default(null),
 });
 export type AddFormFieldInput = z.infer<typeof AddFormFieldInput>;
 
-/** ⚠️ `fieldType` is accepted and then REFUSED on a built-in, rather than left
- *  out of the shape. Leaving it out would make an impossible edit look like a
- *  field the client forgot to send; refusing it says which field and why. */
+/** ⚠️ `fieldType` is accepted and then checked against the field's VALUE SHAPE
+ *  on a built-in, rather than left out of the shape. A built-in may be retyped
+ *  to anything that posts the same thing its column holds — see
+ *  `canRetypeBuiltInTo` — and leaving the key out would make a legal edit look
+ *  like a field the client forgot to send. */
 export const FormFieldPatch = z.object({
   label: z.string().trim().min(1).max(200).optional(),
   labelTa: z.string().trim().max(200).nullable().optional(),
@@ -877,8 +941,16 @@ export const FormFieldPatch = z.object({
   isActive: z.boolean().optional(),
   sectionId: z.uuid().nullable().optional(),
   options: z.array(FieldOptionInput).max(60).nullable().optional(),
-  min: z.number().int().nullable().optional(),
-  max: z.number().int().nullable().optional(),
+  min: RuleFields.min.unwrap().optional(),
+  max: RuleFields.max.unwrap().optional(),
+  minLen: RuleFields.minLen.unwrap().optional(),
+  maxLen: RuleFields.maxLen.unwrap().optional(),
+  decimals: RuleFields.decimals.unwrap().optional(),
+  pattern: RuleFields.pattern.unwrap().optional(),
+  patternHint: RuleFields.patternHint.unwrap().optional(),
+  window: RuleFields.window.unwrap().optional(),
+  /** `null` clears the picture and leaves the wording. */
+  mediaKey: MediaKeyValue.nullable().optional(),
 });
 export type FormFieldPatch = z.infer<typeof FormFieldPatch>;
 
@@ -1897,6 +1969,11 @@ export const PresignUploadInput = z.object({
     'FSSAI',
     'TEMPLATE_ATTACHMENT',
     'FORM_FIELD',
+    // 🔴 The ADMIN's own picture, not a reader's answer — the venue layout
+    // drawn inside a display block. It needs no `fieldId`: the folder holds
+    // nothing but form-note images, every one of them authored in the builder,
+    // so the folder alone is what `/public/form-image` will serve.
+    'FORM_NOTE',
   ]),
   /** Which question this upload answers. Required for `FORM_FIELD` and ignored
    *  otherwise — it becomes part of the key's PATH, which is what makes a key

@@ -563,6 +563,16 @@ export const presignPublicUpload = (token: string) => (input: PresignUploadInput
 export const presignBackofficeUpload = (input: PresignUploadInput) =>
   apiFetch<PresignUploadResponse>(`${BASE}/uploads`, { method: 'POST', json: input });
 
+/** Where a display block's picture is drawn from.
+ *
+ *  ⚠️ A URL, not a fetch. The browser asks for it as an `<img src>` and the API
+ *  redirects to a short-lived signed URL — pulling the bytes through `apiFetch`
+ *  would put a phone-sized photograph in memory on every form render, and the
+ *  key is not secret: the route serves the display-block folder and nothing
+ *  else. */
+export const formImageUrl = (mediaKey: string) =>
+  `${P}/form-image?key=${encodeURIComponent(mediaKey)}`;
+
 // ── Backoffice: communication ────────────────────────────────────────────────────
 
 export interface TemplatesResponse {

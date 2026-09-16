@@ -10,25 +10,39 @@ import {
   type BuilderForm,
   type BuiltForm,
   type BuiltFormField,
+  type DateWindow,
   type FieldOption,
+  type FieldRuleValues,
   type FieldType,
   type FormField,
   FORM_DEFINITIONS,
   PUBLIC_FORM_DEFINITIONS,
   PUBLIC_FORM_TYPES,
   type PublicFormType,
+  canCarryMedia,
+  canRetypeBuiltInTo,
+  checkRuleShape,
   isAuthorableFieldType,
+  isDisplayField,
   isLockedRequired,
+  NO_RULES,
+  rulesAfterRetype,
+  ruleKnobsFor,
   seedFieldFrom,
 } from '@msr/stalls';
 import {
+  BadFieldMediaError,
+  BadFieldRuleError,
+  BuiltInDecimalsError,
   BuiltInFieldLockedError,
   CustomFieldInUseError,
+  FieldShapeChangeError,
   StructuralFieldLockedError,
   UnknownFormFieldError,
   UnknownFormError,
   UnauthorableFieldTypeError,
 } from './errors';
+import { isOurKey } from './uploads';
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -154,6 +168,13 @@ function toRow(f: Omit<BuiltFormField, 'id' | 'sectionId'>) {
     options: f.options === null ? Prisma.DbNull : (f.options as unknown as Prisma.InputJsonValue),
     min: f.min,
     max: f.max,
+    minLen: f.minLen,
+    maxLen: f.maxLen,
+    decimals: f.decimals,
+    pattern: f.pattern,
+    patternHint: f.patternHint,
+    dateWindow: f.window === null ? Prisma.DbNull : (f.window as unknown as Prisma.InputJsonValue),
+    mediaKey: f.mediaKey,
   };
 }
 
@@ -175,7 +196,43 @@ const FIELD_SELECT = {
   options: true,
   min: true,
   max: true,
+  minLen: true,
+  maxLen: true,
+  decimals: true,
+  pattern: true,
+  patternHint: true,
+  dateWindow: true,
+  mediaKey: true,
 } as const;
+
+/** The limit columns on their own, for a write that has to read what is there
+ *  before it can settle what a PATCH means. */
+const RULE_SELECT = {
+  min: true,
+  max: true,
+  minLen: true,
+  maxLen: true,
+  decimals: true,
+  pattern: true,
+  patternHint: true,
+  dateWindow: true,
+} as const;
+
+type RuleRow = {
+  min: number | null;
+  max: number | null;
+  minLen: number | null;
+  maxLen: number | null;
+  decimals: number | null;
+  pattern: string | null;
+  patternHint: string | null;
+  dateWindow: Prisma.JsonValue;
+};
+
+function rowRules(row: RuleRow): FieldRuleValues {
+  const { dateWindow, ...rest } = row;
+  return { ...rest, window: (dateWindow as DateWindow | null) ?? null };
+}
 
 /** One form. Returns `null` for an edition seeded before forms were data — the
  *  caller then falls back to the constant, which is what every form did until
@@ -273,6 +330,13 @@ type DefinitionRow = {
     options: Prisma.JsonValue;
     min: number | null;
     max: number | null;
+    minLen: number | null;
+    maxLen: number | null;
+    decimals: number | null;
+    pattern: string | null;
+    patternHint: string | null;
+    dateWindow: Prisma.JsonValue;
+    mediaKey: string | null;
   }>;
 };
 
@@ -298,6 +362,13 @@ function toBuiltForm(row: DefinitionRow): BuiltForm {
       options: (f.options as FieldOption[] | null) ?? null,
       min: f.min,
       max: f.max,
+      minLen: f.minLen,
+      maxLen: f.maxLen,
+      decimals: f.decimals,
+      pattern: f.pattern,
+      patternHint: f.patternHint,
+      window: (f.dateWindow as DateWindow | null) ?? null,
+      mediaKey: f.mediaKey,
     })),
   };
 }
@@ -316,6 +387,108 @@ export interface FieldPatch {
   options?: FieldOption[] | null;
   min?: number | null;
   max?: number | null;
+  minLen?: number | null;
+  maxLen?: number | null;
+  decimals?: number | null;
+  pattern?: string | null;
+  patternHint?: string | null;
+  window?: DateWindow | null;
+  mediaKey?: string | null;
+}
+
+/**
+ * Whether this field may carry this picture.
+ *
+ * 🔴 Both halves are load-bearing. Only a display block carries one — a `file`
+ * question's picture is the READER's answer and belongs on their record, not on
+ * the question — and the key must be one `presignUpload` minted for
+ * `FORM_NOTE`, because `/public/form-image` serves whatever a field row points
+ * at, unauthenticated. Without the second check a key naming somebody's
+ * cancelled cheque could be written here and then served to the world.
+ */
+function checkMedia(fieldType: string, mediaKey: string | null | undefined): void {
+  if (mediaKey === undefined || mediaKey === null) return;
+  if (!canCarryMedia(fieldType)) throw new BadFieldMediaError('type');
+  if (!isOurKey(mediaKey, 'FORM_NOTE')) throw new BadFieldMediaError('key');
+}
+
+/**
+ * The limits one write is asking for, over whatever the row already carries.
+ *
+ * ⚠️ A PATCH sends what it changed. Reading the omitted knobs off the row is
+ * what makes "set a maximum" a separate save from "set a minimum" — without it
+ * the second save would clear the first, and the builder would look like it was
+ * losing work.
+ */
+function rulesFrom(patch: FieldPatch, row: FieldRuleValues): FieldRuleValues {
+  return {
+    min: patch.min === undefined ? row.min : patch.min,
+    max: patch.max === undefined ? row.max : patch.max,
+    minLen: patch.minLen === undefined ? row.minLen : patch.minLen,
+    maxLen: patch.maxLen === undefined ? row.maxLen : patch.maxLen,
+    decimals: patch.decimals === undefined ? row.decimals : patch.decimals,
+    pattern: patch.pattern === undefined ? row.pattern : patch.pattern,
+    patternHint: patch.patternHint === undefined ? row.patternHint : patch.patternHint,
+    window: patch.window === undefined ? row.window : patch.window,
+  };
+}
+
+/**
+ * The limits as they will be STORED, refused if they describe nothing anybody
+ * could answer.
+ *
+ * 🔴 Three refusals, and they are different refusals. A limit the type has no
+ * meaning for is dropped rather than refused — retyping a capped number
+ * question to text is a normal thing to do and losing the cap is the point, so
+ * `rulesAfterRetype` clears it silently. A limit that CONTRADICTS itself is
+ * refused, because somebody just typed it. Decimals on a built-in are refused
+ * separately, because the reason is the column rather than the rule.
+ */
+function settledRules(
+  label: string,
+  was: FieldType,
+  now: FieldType,
+  wanted: FieldRuleValues,
+  isBuiltIn: boolean,
+): FieldRuleValues {
+  const rules = was === now ? wanted : rulesAfterRetype(was, now, wanted);
+  // ⚠️ Cleared rather than refused for a knob this type never had — a body that
+  // sends `maxLen` alongside `fieldType: 'number'` is the builder submitting a
+  // whole dialog, not somebody asking for a length limit on a number.
+  const knobs = ruleKnobsFor(now);
+  const on = (...wantedKnobs: string[]) => wantedKnobs.some((k) => knobs.includes(k as never));
+  const kept: FieldRuleValues = {
+    ...NO_RULES,
+    min: on('bounds', 'digits', 'count') ? rules.min : null,
+    max: on('bounds', 'digits', 'count') ? rules.max : null,
+    minLen: on('length') ? rules.minLen : null,
+    maxLen: on('length') ? rules.maxLen : null,
+    decimals: on('decimals') ? rules.decimals : null,
+    pattern: on('pattern') ? rules.pattern : null,
+    patternHint: on('pattern') ? rules.patternHint : null,
+    window: on('window') ? rules.window : null,
+  };
+  if (isBuiltIn && kept.decimals !== null && kept.decimals > 0) {
+    throw new BuiltInDecimalsError(label);
+  }
+  const wrong = checkRuleShape(now, kept);
+  if (wrong) throw new BadFieldRuleError(wrong);
+  return kept;
+}
+
+/** The limits as columns. */
+function ruleColumns(rules: FieldRuleValues) {
+  return {
+    min: rules.min,
+    max: rules.max,
+    minLen: rules.minLen,
+    maxLen: rules.maxLen,
+    decimals: rules.decimals,
+    pattern: rules.pattern,
+    patternHint: rules.patternHint,
+    dateWindow:
+      rules.window === null ? Prisma.DbNull : (rules.window as unknown as Prisma.InputJsonValue),
+  };
 }
 
 /**
@@ -323,13 +496,14 @@ export interface FieldPatch {
  *
  * 🔴 The built-in lock is enforced HERE, not only on the screen. A screen that
  * disables an input is a suggestion; this is what makes it a rule — and the two
- * agree because both read `LOCKED_ON_BUILT_IN` from `@msr/stalls`.
+ * agree because both read the same functions from `@msr/stalls`.
  *
- * The lock is exactly `fieldType`, and it is not a policy choice: a built-in
- * field's answer goes into a typed column on `stall_request`, so retyping one
- * would post a string into an integer. Everything else — the wording, the
- * Tamil, the help, the order, the section, required, active — is editable on a
- * built-in exactly as it is on an appended field.
+ * ⚠️ What is locked on a built-in is its `name` and the SHAPE of its answer,
+ * not its type. Its answer goes into a typed column on `stall_request`, and the
+ * column cares what arrives rather than which control produced it: "Items
+ * Selling" may become a paragraph box, a dropdown or a radio list — all of
+ * which post a string into a text column — and may not become a number, a file
+ * or a display block. See `canRetypeBuiltInTo`.
  */
 export async function updateFormField(
   db: PrismaClient,
@@ -339,16 +513,51 @@ export async function updateFormField(
 ): Promise<void> {
   const field = await db.stallFormField.findFirst({
     where: { id, editionId },
-    select: { id: true, isBuiltIn: true, label: true, fieldType: true, formType: true, name: true },
+    select: {
+      id: true,
+      isBuiltIn: true,
+      label: true,
+      fieldType: true,
+      formType: true,
+      name: true,
+      ...RULE_SELECT,
+    },
   });
   if (!field) throw new UnknownFormFieldError(id);
 
+  // The type this field will HAVE, which is what the picture and the display
+  // shape are judged against — a field being turned into a display block in the
+  // same save may carry one, and a block being turned back into a question may
+  // not keep the one it had.
+  const fieldType = patch.fieldType ?? field.fieldType;
+  /** Whether the field SAYS something rather than asking it, once saved. */
+  const says = isDisplayField(fieldType);
+  checkMedia(fieldType, patch.mediaKey);
+
   if (patch.fieldType !== undefined && patch.fieldType !== field.fieldType) {
-    if (field.isBuiltIn) throw new BuiltInFieldLockedError(field.label, 'type');
     if (!isAuthorableFieldType(patch.fieldType)) {
       throw new UnauthorableFieldTypeError(patch.fieldType);
     }
+    // ⚠️ Not "a built-in cannot be retyped". A built-in may take any type that
+    // posts the same KIND of answer its column holds; what it may not do is
+    // change that kind. `canRetypeBuiltInTo` is the one spelling of the rule,
+    // read by the builder's picker too, so the screen offers exactly the types
+    // this would accept.
+    if (field.isBuiltIn && !canRetypeBuiltInTo(field.fieldType as FieldType, patch.fieldType)) {
+      throw new FieldShapeChangeError(field.label, field.fieldType, patch.fieldType);
+    }
   }
+
+  // The limits, settled against the type the field will HAVE — a knob the new
+  // type has no meaning for is dropped, and one that contradicts itself is
+  // refused. See `settledRules`.
+  const rules = settledRules(
+    field.label,
+    field.fieldType as FieldType,
+    fieldType as FieldType,
+    rulesFrom(patch, rowRules(field)),
+    field.isBuiltIn,
+  );
 
   // 🔴 The staff form's mobile number cannot be made optional or switched off.
   // It is half of the unique index behind "one person, one registration per
@@ -372,17 +581,29 @@ export async function updateFormField(
       help: patch.help,
       helpTa: patch.helpTa,
       fieldType: patch.fieldType,
-      isRequired: patch.isRequired,
       isActive: patch.isActive,
       sectionId: patch.sectionId,
-      min: patch.min,
-      max: patch.max,
-      options:
-        patch.options === undefined
+      // ⚠️ A display block is forced back to "not required, no choices, no
+      // limits" rather than trusted to arrive that way. Stored as REQUIRED it
+      // is a form nobody can submit: the validator skips it, so the refusal
+      // would come from nothing the reader can see or fix.
+      isRequired: says ? false : patch.isRequired,
+      // `settledRules` has already cleared every knob a display block cannot
+      // carry — `ruleKnobsFor('display')` is empty — so this is the same NULLs
+      // said once rather than a second opinion about them.
+      ...ruleColumns(rules),
+      options: says
+        ? Prisma.DbNull
+        : patch.options === undefined
           ? undefined
           : patch.options === null
             ? Prisma.DbNull
             : (patch.options as unknown as Prisma.InputJsonValue),
+      // ⚠️ Cleared when the field stops being a display block, whatever the
+      // patch said. A picture left on a text question is a row pointing at an
+      // image nothing draws, and it would come back the moment somebody
+      // retyped the field to `display` again.
+      mediaKey: says ? patch.mediaKey : null,
     },
   });
 }
@@ -438,13 +659,13 @@ export async function addFormField(
     isRequired: boolean;
     sectionId: string | null;
     options: FieldOption[] | null;
-    min: number | null;
-    max: number | null;
-  },
+    mediaKey?: string | null;
+  } & FieldRuleValues,
 ): Promise<{ id: string }> {
   if (!isAuthorableFieldType(input.fieldType)) {
     throw new UnauthorableFieldTypeError(input.fieldType);
   }
+  checkMedia(input.fieldType, input.mediaKey);
   const definition = await db.stallFormDefinition.findFirst({
     where: { id: definitionId, editionId },
     select: { formType: true },
@@ -455,6 +676,15 @@ export async function addFormField(
     where: { definitionId },
     _max: { sortOrder: true },
   });
+
+  const says = isDisplayField(input.fieldType);
+  const rules = settledRules(
+    input.label,
+    input.fieldType as FieldType,
+    input.fieldType as FieldType,
+    input,
+    false,
+  );
 
   return db.stallFormField.create({
     data: {
@@ -468,16 +698,21 @@ export async function addFormField(
       labelTa: input.labelTa,
       help: input.help,
       fieldType: input.fieldType,
-      isRequired: input.isRequired,
+      // ⚠️ As in `updateFormField`: a display block asks nothing, so it is
+      // never required and carries no choices or bounds.
+      isRequired: says ? false : input.isRequired,
       isBuiltIn: false,
       sectionId: input.sectionId,
       sortOrder: (last._max.sortOrder ?? -1) + 1,
       options:
-        input.options === null
+        says || input.options === null
           ? Prisma.DbNull
           : (input.options as unknown as Prisma.InputJsonValue),
-      min: input.min,
-      max: input.max,
+      // ⚠️ Settled against the type being asked for, exactly as an edit is —
+      // one function, so a limit the builder can save on an existing question
+      // is a limit it can save on a new one.
+      ...ruleColumns(rules),
+      mediaKey: input.mediaKey ?? null,
     },
     select: { id: true },
   });

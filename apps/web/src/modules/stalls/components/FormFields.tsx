@@ -1,5 +1,6 @@
-import type { FormField, PublicConfig, StallRequestType } from '@msr/stalls';
-import { zoneOptions } from '@msr/stalls';
+import type { FieldRuleValues, FormField, PublicConfig, StallRequestType } from '@msr/stalls';
+import { resolveWindow, ruleHintFor, ruleKindOf, todayISO, zoneOptions } from '@msr/stalls';
+import { formImageUrl } from '../api';
 import { useState } from 'react';
 import { type ApplianceRow, ApplianceRows } from './ApplianceRows';
 import { BilingualLabel } from './BilingualLabel';
@@ -7,6 +8,7 @@ import { ZoneSelect } from './ZoneSelect';
 import {
   Checkbox,
   ChoicePlate,
+  DateField,
   FieldError,
   FormField as Labelled,
   Icon,
@@ -33,6 +35,25 @@ export type FieldValue = string | boolean | ApplianceRow[] | string[] | undefine
 
 const str = (v: FieldValue): string => (typeof v === 'string' ? v : '');
 
+/**
+ * The field's limits, as the checker spells them.
+ *
+ * ⚠️ `FormField` says `undefined` for "no limit" and `FieldRuleValues` says
+ * `null`, because one is a constant somebody types by hand and the other is a
+ * column. One conversion, here, rather than eight `?? null`s scattered through
+ * the branches below.
+ */
+const ruleValues = (f: FormField): FieldRuleValues => ({
+  min: f.min ?? null,
+  max: f.max ?? null,
+  minLen: f.minLen ?? null,
+  maxLen: f.maxLen ?? null,
+  decimals: f.decimals ?? null,
+  pattern: f.pattern ?? null,
+  patternHint: f.patternHint ?? null,
+  window: f.window ?? null,
+});
+
 /** ⚠️ Both `appliances` and `files` answer with an array, so `Array.isArray`
  *  alone cannot tell them apart — and handing a list of upload keys to the
  *  appliance editor would render a row per key with no name and no wattage. */
@@ -49,6 +70,7 @@ export function FieldControl({
   isFood,
   onPickFile,
   fieldId,
+  today = todayISO(),
 }: {
   field: FormField;
   value: FieldValue;
@@ -63,10 +85,25 @@ export function FieldControl({
   /** The field's row id, for an admin-added file question — it scopes the
    *  upload key so the answer belongs to this question alone. */
   fieldId?: string;
+  /** Today, as a calendar day, for a date question whose window rolls with it.
+   *  Defaults to the browser's own day; passed in only by tests. */
+  today?: string;
 }) {
   const id = f.name;
   const label = <BilingualLabel en={f.label} ta={f.labelTa} />;
-  const help = f.help ? (
+  /**
+   * What the question accepts, said before it is typed into rather than after.
+   *
+   * 🔴 The same row the API enforces against — `ruleHintFor` reads the field's
+   * own limits, so a question capped at 6 characters says so, and a form
+   * refused for a limit the page never mentioned stops happening. It sits under
+   * the help text; a field with neither shows neither.
+   */
+  const limit = ruleHintFor(
+    { label: f.label, type: f.type, required: f.required, ...ruleValues(f) },
+    today,
+  );
+  const written = f.help ? (
     <>
       {f.help}
       {f.helpTa && (
@@ -79,6 +116,21 @@ export function FieldControl({
       )}
     </>
   ) : undefined;
+  const help =
+    written || limit ? (
+      <>
+        {written}
+        {written && limit && <br />}
+        {limit && <span style={{ color: 'var(--mfg)' }}>{limit}</span>}
+      </>
+    ) : undefined;
+  // 🔴 Not a question, and it leaves before anything that deals in answers. A
+  // display block has no control, no value and no error — it is the venue
+  // layout above the location question, or the note about what counts as a
+  // food stall — so wrapping it in `Labelled` would draw a label, a required
+  // star and an empty control well for something nobody types into.
+  if (f.type === 'display') return <DisplayBlock field={f} />;
+
   const invalid = error ? true : undefined;
   const common = {
     id,
@@ -197,8 +249,25 @@ export function FieldControl({
             </option>
           ))}
         </Select>
+      ) : f.type === 'date' ? (
+        // ⚠️ The app's own picker, bounded by the question's OWN window, so a
+        // day the form would refuse cannot be picked in the first place. The
+        // window is resolved here because a rolling one — "up to 30 days from
+        // today" — is a pair of real dates only once today is known.
+        <DateField
+          value={str(value)}
+          title={f.label}
+          onChange={(v) => onChange(v)}
+          minDate={dateBounds(f, today).min ?? null}
+          maxDate={dateBounds(f, today).max ?? null}
+        />
       ) : f.type === 'textarea' ? (
-        <Textarea {...common} value={str(value)} onChange={(e) => onChange(e.target.value)} />
+        <Textarea
+          {...common}
+          {...lengthAttrs(f)}
+          value={str(value)}
+          onChange={(e) => onChange(e.target.value)}
+        />
       ) : f.type === 'number' ? (
         <Input
           {...common}
@@ -212,6 +281,7 @@ export function FieldControl({
       ) : (
         <Input
           {...common}
+          {...lengthAttrs(f)}
           type={f.type === 'email' ? 'email' : f.type === 'tel' ? 'tel' : 'text'}
           inputMode={f.type === 'tel' ? 'tel' : undefined}
           autoComplete={f.type === 'email' ? 'email' : f.type === 'tel' ? 'tel' : undefined}
@@ -221,6 +291,89 @@ export function FieldControl({
       )}
     </Labelled>
   );
+}
+
+/**
+ * What a form SAYS, as opposed to what it asks.
+ *
+ * 🔴 The picture is the case this exists for: the venue layout, drawn where
+ * the reader is about to be asked which bay they want. It used to be a link in
+ * an email, or a paragraph nobody could change without a redeploy.
+ *
+ * ⚠️ The heading doubles as the picture's `alt`. A form that draws a layout
+ * with no description is a form a screen reader reads as "image", and the
+ * builder asks for a heading on every block for exactly this reason.
+ *
+ * ⚠️ The image LINKS to itself. A venue map legible on a laptop is unreadable
+ * at 360px, and opening it full size is the only zoom a plain `<img>` has.
+ */
+function DisplayBlock({ field: f }: { field: FormField }) {
+  const src = f.mediaKey ? formImageUrl(f.mediaKey) : null;
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gap: 9,
+        padding: '13px 14px',
+        background: 'var(--rail)',
+        border: '1px solid var(--line)',
+        borderRadius: 'var(--r2)',
+      }}
+    >
+      <div style={{ fontSize: 13, fontWeight: 700 }}>
+        <BilingualLabel en={f.label} ta={f.labelTa} />
+      </div>
+      {f.help && (
+        <div style={{ fontSize: 12.5, color: 'var(--mfg)', lineHeight: 1.6 }}>
+          {f.help}
+          {f.helpTa && (
+            <>
+              {' / '}
+              <span className='msrs-tamil' lang='ta'>
+                {f.helpTa}
+              </span>
+            </>
+          )}
+        </div>
+      )}
+      {src && (
+        <a href={src} target='_blank' rel='noreferrer' style={{ display: 'block' }}>
+          <img
+            src={src}
+            alt={f.label}
+            style={{
+              display: 'block',
+              width: '100%',
+              height: 'auto',
+              borderRadius: 'var(--r2)',
+              border: '1px solid var(--line)',
+              background: 'var(--bg)',
+            }}
+          />
+        </a>
+      )}
+    </div>
+  );
+}
+
+/** The days a date question admits, with a rolling window resolved against the
+ *  day it is being filled in on. */
+function dateBounds(f: FormField, today: string): { min?: string; max?: string } {
+  return f.window ? resolveWindow(f.window, today) : {};
+}
+
+/**
+ * The browser's own length cap, and only well past the limit.
+ *
+ * ⚠️ `maxLen * 2` rather than `maxLen`, which is what the volunteering module
+ * settled on for the same reason: a hard cap at the limit stops typing mid-word
+ * with no explanation, while the counted message — "must be 200 characters or
+ * fewer (currently 214)" — tells somebody by how much they are over. The double
+ * is there to stop a pasted document, not a sentence.
+ */
+function lengthAttrs(f: FormField): { maxLength?: number } {
+  if (ruleKindOf(f.type) !== 'text' && ruleKindOf(f.type) !== 'email') return {};
+  return f.maxLen === undefined ? {} : { maxLength: f.maxLen * 2 };
 }
 
 /**

@@ -1,3 +1,4 @@
+import type { DateWindow } from './field-rules';
 import type { StallRequestType } from './reference';
 import { ZONE_BLURB_2025 } from './zones';
 import type { PublicZone } from './contracts';
@@ -49,6 +50,11 @@ export type FieldType =
   | 'select'
   | 'radio'
   | 'checkbox'
+  /** One calendar day, as an ISO `YYYY-MM-DD` string. The 2025 forms asked for
+   *  no dates, which is why this type did not exist; an edition that wants to
+   *  ask when a vendor will arrive has a control and a window rather than a
+   *  text box and a hope — see `DateWindow`. */
+  | 'date'
   | 'appliances'
   /** The preferred-location radio list. Its choices are the edition's zones,
    *  resolved at render time rather than stored here. */
@@ -58,7 +64,15 @@ export type FieldType =
   | 'file'
   /** Several files, up to `max`. The FSSAI certificate is photographed a page
    *  at a time, which is the case this exists for. */
-  | 'files';
+  | 'files'
+  /** 🔴 NOT A QUESTION. Wording, and optionally a picture, drawn where it sits
+   *  in the form — the venue layout above the location question, a note about
+   *  what counts as a food stall above the food ones.
+   *
+   *  ⚠️ It has no answer, and every path that deals in answers has to know it:
+   *  it is never required, `validateAgainstForm` asks nothing of it, and it
+   *  posts nothing. See `isDisplayField`, which is the one spelling of that. */
+  | 'display';
 
 export interface FieldOption {
   value: string;
@@ -77,8 +91,21 @@ export interface FormField {
   type: FieldType;
   required: boolean;
   options?: FieldOption[];
+  /** Read three ways, decided by `type`: the VALUE for a number, the DIGIT
+   *  count for a telephone number, and HOW MANY for a file or appliance list.
+   *  See `FieldRuleValues`, which is where the rest of the limits live. */
   min?: number;
   max?: number;
+  minLen?: number;
+  maxLen?: number;
+  decimals?: number;
+  pattern?: string;
+  patternHint?: string;
+  /** The days a `date` question accepts. */
+  window?: DateWindow;
+  /** The picture a `display` block draws, as a media-store key. Null or absent
+   *  on every other type, and on a display block that is words only. */
+  mediaKey?: string | null;
 }
 
 export interface FormDefinition {

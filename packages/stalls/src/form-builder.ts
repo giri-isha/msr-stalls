@@ -1,3 +1,12 @@
+import {
+  checkFieldValue,
+  clearedRulesFor,
+  type FieldRuleValues,
+  isBlankAnswer,
+  type RuledField,
+  sameValueShape,
+  todayISO,
+} from './field-rules';
 import { type FieldOption, type FieldType, type FormField, isFoodOnlyField } from './forms';
 import type { StallFormType } from './reference';
 
@@ -26,7 +35,7 @@ import type { StallFormType } from './reference';
  * field.
  */
 
-export interface BuiltFormField {
+export interface BuiltFormField extends FieldRuleValues {
   id: string;
   /** The contract key for a built-in; `null` on an appended field, whose id is
    *  its key. */
@@ -44,8 +53,9 @@ export interface BuiltFormField {
   sectionId: string | null;
   sortOrder: number;
   options: FieldOption[] | null;
-  min: number | null;
-  max: number | null;
+  /** The picture a `display` block draws, as a media-store key. `null` on every
+   *  other type, and on a display block that is words only. */
+  mediaKey: string | null;
 }
 
 export interface BuiltFormSection {
@@ -132,6 +142,10 @@ export function formFields(form: BuiltForm): BuiltFormField[] {
  */
 export interface FormAnswerContext {
   isFood?: boolean;
+  /** Today, as a calendar day, for a date question whose window rolls with it.
+   *  Injected rather than read so the check is testable, and so a page and the
+   *  API straddling midnight can be told to agree on the day. */
+  today?: string;
 }
 
 /**
@@ -150,16 +164,57 @@ export function fieldIsAsked(
 }
 
 /**
- * What a built-in field may have changed.
+ * What a built-in field may NOT have changed.
  *
  * ⚠️ Used by BOTH the screen (to disable the inputs) and the API (to refuse the
  * write). A screen that merely hides a control is a suggestion; the refusal is
  * what makes it a rule, and they have to agree about which fields it covers.
+ *
+ * 🔴 `type` used to be on this list and is not any more. See
+ * `canRetypeBuiltInTo`: the column under a built-in cares what ARRIVES, not
+ * which control produced it, so the rule is now the value shape rather than a
+ * flat refusal.
  */
-export const LOCKED_ON_BUILT_IN = ['name', 'type'] as const;
+export const LOCKED_ON_BUILT_IN = ['name'] as const;
 
-export function canEditFieldType(field: Pick<BuiltFormField, 'isBuiltIn'>): boolean {
-  return !field.isBuiltIn;
+/**
+ * Whether a built-in may be given this type.
+ *
+ * 🔴 `canEditFieldType` is gone, and its absence is the change. It answered
+ * "may this field's Answer Type be edited at all?" with `!isBuiltIn`, and the
+ * answer is now yes for every field — so a boolean that is always true is a
+ * question nobody should be asking. What a built-in cannot do is change the
+ * SHAPE of what it posts, because its answer lands in a typed column on
+ * `stall_request`: "Items Selling" may become a paragraph box, a dropdown or a
+ * radio list, all of which post a string into a text column, and may not become
+ * a number, a file or a display block, none of which post one.
+ *
+ * ⚠️ An appended field is not asked. It has no column and may become anything
+ * authorable — its answers are strings in `StallCustomFieldValue` whatever the
+ * control is — which is why `fieldTypeChoices` consults this only for a
+ * built-in.
+ */
+export function canRetypeBuiltInTo(from: FieldType, to: FieldType): boolean {
+  return sameValueShape(from, to);
+}
+
+/**
+ * The types the builder offers for this field, in the order it draws them.
+ *
+ * ⚠️ The field's CURRENT type is always in the list, even when nothing can be
+ * authored in its place — `zone` and `appliances` are structural, so a field
+ * that is one has a picker of exactly one entry rather than a picker showing
+ * the wrong answer.
+ */
+export function fieldTypeChoices(
+  field: Pick<BuiltFormField, 'isBuiltIn' | 'type'> | null,
+): FieldType[] {
+  const authorable: FieldType[] = [...AUTHORABLE_FIELD_TYPES];
+  if (field === null) return authorable;
+  const allowed = field.isBuiltIn
+    ? authorable.filter((t) => canRetypeBuiltInTo(field.type, t))
+    : authorable;
+  return allowed.includes(field.type) ? allowed : [field.type, ...allowed];
 }
 
 /** Whether a field may be removed outright, as opposed to switched off.
@@ -199,6 +254,13 @@ export function seedFieldFrom(
     options: field.options ?? null,
     min: field.min ?? null,
     max: field.max ?? null,
+    minLen: field.minLen ?? null,
+    maxLen: field.maxLen ?? null,
+    decimals: field.decimals ?? null,
+    pattern: field.pattern ?? null,
+    patternHint: field.patternHint ?? null,
+    window: field.window ?? null,
+    mediaKey: field.mediaKey ?? null,
   };
 }
 
@@ -217,11 +279,20 @@ export const AUTHORABLE_FIELD_TYPES = [
   'select',
   'radio',
   'checkbox',
+  // ⚠️ Authorable and new. The 2025 forms asked for no dates, so nothing seeds
+  // as one; an edition that wants to ask when a vendor will arrive gets a
+  // picker and an accepted window rather than a text box — see `DateWindow`.
+  'date',
   // ⚠️ Authorable, unlike `appliances` and `zone`, because a file field needs
   // nothing resolved at render time — its upload purpose is `FORM_FIELD` and
   // its own id scopes the key. See `isOurKey`.
   'file',
   'files',
+  // ⚠️ Authorable, and the only entry here that is not a question. A display
+  // block is wording and an optional picture drawn in place; see the type's
+  // note in `forms.ts` and `isDisplayField` for what every answer path has to
+  // know about it.
+  'display',
 ] as const satisfies readonly FieldType[];
 
 export type AuthorableFieldType = (typeof AUTHORABLE_FIELD_TYPES)[number];
@@ -241,6 +312,30 @@ export function needsOptions(type: string): boolean {
 /** Whether an answer to this question is a media-store key rather than text. */
 export function isFileType(type: string): type is 'file' | 'files' {
   return type === 'file' || type === 'files';
+}
+
+/**
+ * Whether the field asks nothing at all.
+ *
+ * 🔴 Read by everything that deals in ANSWERS: the validator (which asks
+ * nothing of one), the builder (which offers it no Required tick and no
+ * choices), and the API writes (which refuse a required display block rather
+ * than storing a form nobody can submit — a required question with no control
+ * to answer it is a page that fails validation with nothing to click).
+ *
+ * ⚠️ One spelling, in the package both sides read, for the same reason
+ * `LOCKED_ON_BUILT_IN` is: a screen that hides the tick and an API that stores
+ * it anyway is a form that cannot be submitted and cannot be fixed.
+ */
+export function isDisplayField(type: string): type is 'display' {
+  return type === 'display';
+}
+
+/** Whether this field may carry a picture. Only a display block may — a
+ *  `file` question's picture is the READER's answer and lives on their record,
+ *  not on the question. */
+export function canCarryMedia(type: string): boolean {
+  return isDisplayField(type);
 }
 
 /* ── Validation ─────────────────────────────────────────────────────────────*/
@@ -273,14 +368,25 @@ export function validateAgainstForm(
   form: BuiltForm,
   values: {
     builtIn: Record<string, unknown>;
-    /** Appended answers, keyed by field id. */
-    custom: Record<string, string>;
+    /**
+     * Appended answers, keyed by field id.
+     *
+     * ⚠️ `unknown`, not `string`, although the wire carries strings. A `files`
+     * question answers with a LIST of upload keys, and its limit is how many —
+     * flattening the list to a string on the way in would make "at most five
+     * photographs" a rule about commas.
+     */
+    custom: Record<string, unknown>;
   },
   ctx: FormAnswerContext = {},
 ): FormViolation[] {
   const out: FormViolation[] = [];
+  const today = ctx.today ?? todayISO();
   for (const field of formFields(form)) {
-    if (!field.required) continue;
+    // ⚠️ Before `required`, not after. A display block stored as required —
+    // by an older row, or by a write that got past the guard — would fail
+    // every submission with an error pointing at a paragraph of text.
+    if (isDisplayField(field.type)) continue;
     // A question this submission was never asked — see `fieldIsAsked`.
     if (!fieldIsAsked(field, ctx)) continue;
     // ⚠️ A built-in reads by NAME and an appended field by ID — they are
@@ -291,38 +397,103 @@ export function validateAgainstForm(
         ? undefined
         : values.builtIn[field.name]
       : values.custom[field.id];
-    if (isBlank(given, field.type)) {
-      out.push({
-        fieldKey: field.isBuiltIn ? (field.name ?? field.id) : `customFields.${field.id}`,
-        message:
-          field.type === 'checkbox' ? 'Please tick to continue' : `${field.label} is required`,
-      });
+    const key = field.isBuiltIn ? (field.name ?? field.id) : `customFields.${field.id}`;
+
+    if (isBlankAnswer(given, field.type)) {
+      // ⚠️ A blank answer is reported ONCE, as missing, and never also as
+      // failing a limit. "Pincode is required" and "Pincode must be 6
+      // characters" on the same empty box is the form telling somebody off
+      // twice for one omission.
+      if (field.required) {
+        out.push({
+          fieldKey: key,
+          message:
+            field.type === 'checkbox' ? 'Please tick to continue' : `${field.label} is required`,
+        });
+      }
+      continue;
     }
+
+    // 🔴 The second half, and the reason this function is not just a required
+    // check any more. What a question ACCEPTS is a property of its row —
+    // `minLen`, a digit count, an accepted date window — and one function
+    // applies it on the page before a round-trip and here as the thing that
+    // actually enforces. See `checkFieldValue`.
+    const wrong = checkFieldValue(asRuled(field), given, today);
+    if (wrong) out.push({ fieldKey: key, message: wrong });
   }
   return out;
 }
 
 /**
- * Whether a required question went unanswered.
+ * A built field in the shape `FieldControl` draws.
  *
- * 🔴 `false` is blank ONLY on a checkbox. An unticked box is an unanswered
- * question — that is the whole of the consent gate on all four forms — but a
- * `select` can perfectly well be answered "No", and `wantsThembu` on the ashram
- * forms is exactly that: a YES/NO picker whose No arrives as `false`. Treating
- * every `false` as blank made answering No indistinguishable from not
- * answering, so an ashram department that did not want a thembu could not
- * submit at all.
+ * 🔴 ONE adapter, where there were four. `FieldControl` predates the builder
+ * and speaks `FormField`; all four public pages had their own copy of this
+ * function, and they had already drifted — the request form keyed a field by
+ * `cf:<id>` and the other three by its bare id, which is fine, but three of
+ * them also forgot `helpTa` at one point or another. Adding a limit to a
+ * question would have been four more chances to forget one, and a limit the
+ * page does not pass is a limit nobody sees until the API refuses.
  *
- * `0` is never blank. "How many stalls" answered zero is a wrong answer for the
- * contract to catch, not a missing one — and the local welfare form's plug and
- * pass counts are required fields whose honest answer is usually 0.
+ * ⚠️ `key` is the name the ANSWER travels under in that page's own state, not
+ * the field's name. The request form prefixes an appended field so its two key
+ * spaces cannot collide; the others have one space and use the id.
  */
-function isBlank(v: unknown, type: FieldType): boolean {
-  if (v === undefined || v === null) return true;
-  // A `file` answer is a key; the empty string is "nothing uploaded", not a
-  // file named "". `files` falls through to the array case below.
-  if (typeof v === 'boolean') return type === 'checkbox' ? v === false : false;
-  if (typeof v === 'string') return v.trim() === '';
-  if (Array.isArray(v)) return v.length === 0;
-  return false;
+export function asFormField(f: BuiltFormField, key: string = f.name ?? f.id): FormField {
+  return {
+    name: key,
+    label: f.label,
+    labelTa: f.labelTa,
+    help: f.help ?? undefined,
+    helpTa: f.helpTa ?? undefined,
+    type: f.type,
+    required: f.required,
+    options: f.options ?? undefined,
+    min: f.min ?? undefined,
+    max: f.max ?? undefined,
+    minLen: f.minLen ?? undefined,
+    maxLen: f.maxLen ?? undefined,
+    decimals: f.decimals ?? undefined,
+    pattern: f.pattern ?? undefined,
+    patternHint: f.patternHint ?? undefined,
+    window: f.window ?? undefined,
+    // What a `display` block draws. Null on every question — see `FieldControl`.
+    mediaKey: f.mediaKey,
+  };
 }
+
+/** A built field, as the checker addresses it. */
+export function asRuled(field: BuiltFormField): RuledField {
+  return { label: field.label, type: field.type, required: field.required, ...ruleValuesOf(field) };
+}
+
+/** Just the limits off a field, for a caller writing them somewhere else. */
+export function ruleValuesOf(field: FieldRuleValues): FieldRuleValues {
+  return {
+    min: field.min,
+    max: field.max,
+    minLen: field.minLen,
+    maxLen: field.maxLen,
+    decimals: field.decimals,
+    pattern: field.pattern,
+    patternHint: field.patternHint,
+    window: field.window,
+  };
+}
+
+/** The limits a field keeps when its Answer Type changes — see
+ *  `clearedRulesFor`, which is where the reasoning is. */
+export function rulesAfterRetype(
+  was: FieldType,
+  now: FieldType,
+  rules: FieldRuleValues,
+): FieldRuleValues {
+  return clearedRulesFor(was, now, rules);
+}
+
+/* 🔴 `isBlank` moved to `field-rules.ts` as `isBlankAnswer`. It decided what
+ * counts as an unanswered question, and the limit checker needs exactly the
+ * same answer: a limit applied to a blank field reports a second time on a
+ * question somebody simply has not reached. Two spellings of "blank" is how a
+ * form ends up required here and optional there. */
