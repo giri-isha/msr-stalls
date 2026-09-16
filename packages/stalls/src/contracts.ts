@@ -43,6 +43,7 @@ export const FormType = z.enum([
   'VENDOR',
   'BANK',
   'FSSAI',
+  'STAFF',
 ]);
 export const RateScopeValue = z.enum(RATE_SCOPES);
 export const AshramUsage = z.enum([
@@ -104,6 +105,28 @@ export const AshramBlock = z.object({
   fssaiExpected: z.boolean().optional(),
 });
 
+/** The exact declaration VERSIONS the page displayed.
+ *
+ *  🔴 Posted back, and checked against what is live — see `submitRequest`.
+ *  Not because the client is trusted with them (it is not; a posted id is
+ *  never what gets logged) but because a MISMATCH is the only way to notice
+ *  that the wording changed while the form sat open. Without it, a page
+ *  opened this morning submits against wording published this afternoon and
+ *  the consent log records agreement to a paragraph nobody ever saw.
+ *
+ *  ⚠️ `optional`, NOT `.default([])`, and the difference is the whole
+ *  design. Defaulted, "I displayed no declarations" and "I have never heard
+ *  of declarations" arrive as the same value, so the check cannot tell a
+ *  form that showed nothing from a caller that does not participate — and
+ *  it would have to refuse both or neither. Absent means the second: log
+ *  what is live, which is what every caller did before this existed. An
+ *  ARRAY is a claim about what was on screen, and a claim is checked.
+ *
+ *  Omitting it is not a way around the check. The check detects staleness;
+ *  it does not authorise anything, and skipping it logs the live wording —
+ *  the same thing the server would have recorded anyway. */
+const DeclarationIds = z.array(z.string().trim().min(1)).max(20).optional();
+
 /** `.strict()` is deliberately NOT used — unknown keys are stripped silently so
  *  a stale client does not 400, but nothing outside this schema is ever read.
  *  There is no key here that maps to status, stage, a stall number, or money. */
@@ -121,27 +144,7 @@ export const SubmitRequestInput = z
     numStallsRequested: z.number().int().min(1).max(10),
     remarks: z.string().trim().max(2000).optional(),
     agreed: z.literal(true),
-    /** The exact declaration VERSIONS this page displayed.
-     *
-     *  🔴 Posted back, and checked against what is live — see `submitRequest`.
-     *  Not because the client is trusted with them (it is not; a posted id is
-     *  never what gets logged) but because a MISMATCH is the only way to notice
-     *  that the wording changed while the form sat open. Without it, a page
-     *  opened this morning submits against wording published this afternoon and
-     *  the consent log records agreement to a paragraph nobody ever saw.
-     *
-     *  ⚠️ `optional`, NOT `.default([])`, and the difference is the whole
-     *  design. Defaulted, "I displayed no declarations" and "I have never heard
-     *  of declarations" arrive as the same value, so the check cannot tell a
-     *  form that showed nothing from a caller that does not participate — and
-     *  it would have to refuse both or neither. Absent means the second: log
-     *  what is live, which is what every caller did before this existed. An
-     *  ARRAY is a claim about what was on screen, and a claim is checked.
-     *
-     *  Omitting it is not a way around the check. The check detects staleness;
-     *  it does not authorise anything, and skipping it logs the live wording —
-     *  the same thing the server would have recorded anyway. */
-    declarationIds: z.array(z.uuid()).max(20).optional(),
+    declarationIds: DeclarationIds,
     depositAcknowledged: z.boolean().optional(),
     plugs5a: Count(50).optional(),
     plugs15a: Count(50).optional(),
@@ -915,7 +918,7 @@ export const DeclarationKeyValue = z
 export const DeclarationInput = z.object({
   key: DeclarationKeyValue,
   /** `null` is the default, shown by any form with no variant of its own. */
-  requestType: RequestType.nullable().default(null),
+  formType: FormType.nullable().default(null),
   title: z.string().trim().min(1).max(200),
   /** 🔴 Generous, and deliberately so: this is a legal paragraph somebody
    *  pastes in, not a label. It is stored as written — see
@@ -927,18 +930,18 @@ export const DeclarationInput = z.object({
 });
 export type DeclarationInput = z.infer<typeof DeclarationInput>;
 
-/** ⚠️ No `key` and no `requestType`. Both are the row's IDENTITY — the key is
+/** ⚠️ No `key` and no `formType`. Both are the row's IDENTITY — the key is
  *  what consents are filed under and the variant is which form it belongs to —
  *  and changing either would silently move a consent somebody already gave to a
  *  different question. A wording that belongs to another form is a new row. */
-export const DeclarationPatch = DeclarationInput.omit({ key: true, requestType: true });
+export const DeclarationPatch = DeclarationInput.omit({ key: true, formType: true });
 export type DeclarationPatch = z.infer<typeof DeclarationPatch>;
 
 /** One version, as the backoffice screen lists it. */
 export interface DeclarationRow {
   id: string;
   key: string;
-  requestType: string | null;
+  formType: string | null;
   version: number;
   title: string;
   body: string;
@@ -1483,8 +1486,7 @@ export const SubmitBankDetailsInput = z.object({
   chequeKey: UploadKey,
   panKey: UploadKey,
   gstKey: UploadKey.optional().or(z.literal('')),
-  agreeNeft: z.literal(true),
-  agreeTerms: z.literal(true),
+  declarationIds: DeclarationIds,
   // The form is also where the vendor FINALISES what they need — the 2025 form
   // asks again, because a request made in November is stale by February.
   plugs5a: z.number().int().min(0).max(50),
@@ -1682,6 +1684,7 @@ export const RegisterStaffInput = z.object({
    *  at the gate, not enough to be a copy of it. Longer ids are stored whole. */
   idNumber: z.string().trim().min(4).max(40),
   role: z.string().trim().max(100).optional(),
+  declarationIds: DeclarationIds,
 });
 export type RegisterStaffInput = z.infer<typeof RegisterStaffInput>;
 
@@ -1725,6 +1728,7 @@ export const SubmitFssaiInput = z.object({
     .array(z.object({ key: z.string().trim().min(1).max(400), name: z.string().trim().max(300) }))
     .min(1)
     .max(5),
+  declarationIds: DeclarationIds,
 });
 export type SubmitFssaiInput = z.infer<typeof SubmitFssaiInput>;
 
