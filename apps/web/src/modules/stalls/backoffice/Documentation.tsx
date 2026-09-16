@@ -229,8 +229,9 @@ interface ScreenDoc {
   label: string;
   to: string;
   glyph: string;
-  /** The action the nav item is gated on, where it has one. */
-  requires?: StallPrivilege;
+  /** The action the nav item is gated on, where it has one — or, given several,
+   *  ANY of them. See `navAllows` in the module's route list. */
+  requires?: StallPrivilege | StallPrivilege[];
   purpose: string;
   steps: string[];
   notes?: string[];
@@ -272,17 +273,26 @@ const SCREENS: ScreenDoc[] = [
     label: 'Planning & Zones',
     to: '/m/stalls/planning',
     glyph: 'layers',
-    requires: 'planning.read',
-    purpose: 'How many stalls each bay should carry, and the numbers themselves.',
+    requires: ['planning.read', 'config.read'],
+    purpose: 'What an edition’s stalls are: how many, where, and at what price.',
     steps: [
-      'Enter the expected crowd for a zone and the people-per-stall divisor. The suggestion is crowd ÷ divisor, rounded up.',
-      'Adjust the count per category in the grid — vendor food, ashram food, LW food, the non-food categories, help desk, backup.',
-      'Save the plan, then generate the stall numbers (A4-17 and so on) for the zones you have settled.',
-      'Zones closed to vendors stay closed: 2025 ran with A3 and B2 shut.',
+      'Plan: enter the expected crowd for a bay and the people-per-stall divisor. The suggestion is crowd ÷ divisor, rounded up.',
+      'Adjust the count per column in the grid — vendor food, ashram food, LW food, the non-food columns, help desk, backup.',
+      'Save the plan, then generate the stall numbers (A4-17 and so on) for the bays you have settled.',
+      'Bays: the physical areas stalls are planned into, their expected crowd, and whether they are closed to vendors. The layout is redrawn each year, so bays are added and removed here.',
+      'Planning Columns: what can occupy a stall position. These are the grid’s own columns, in this order.',
+      'Rates: the rent and advance per bay, food type and who is standing there — vendor, ashram or local welfare.',
+      'Charges: deposits, chair and table rates, plug rates, GST percent and the number of equipment days.',
+      'Fines: penalty reasons and their default amounts, offered when a refund is prepared.',
+      'Copy From…, on any of those five, brings a past edition’s settings into this one — after showing you every row it would change.',
     ],
     notes: [
+      'The last five used to be tabs on Admin. Working out how many stalls a bay carries and adding the bay itself were two screens a nav group apart, so adding one mid-planning meant leaving the grid and coming back to a page that had to be reloaded.',
+      'The tabs are gated separately. Planning the stalls is planning.read; the bays, the columns and the money are config.read — so a coordinator who plans does not thereby read the rate card.',
+      'The Showing selector browses a past edition’s configuration. It is read only, and it never appears over the Plan grid, which is always the active edition.',
       'The suggestion is a starting point, not the answer — the coordinator still has to reconcile it with what the bay physically fits.',
       'Regenerating never removes a stall that is already allocated. Numbers grow; they do not renumber under a vendor who has been told where to stand.',
+      'Bays closed to vendors stay closed: 2025 ran with A3 and B2 shut. A bay holding stalls cannot be removed at all.',
     ],
   },
   {
@@ -392,12 +402,9 @@ const SCREENS: ScreenDoc[] = [
     to: '/m/stalls/admin',
     glyph: 'settings',
     requires: 'config.read',
-    purpose: 'Everything the edition is configured with.',
+    purpose: 'The paperwork an edition asks for, and the years themselves.',
     steps: [
-      'Zones: the bays, their expected crowd, and whether they are closed to vendors.',
-      'Rates: the rent per zone group and food type.',
-      'Charges: deposits, chair and table rates, plug rates, GST percent and the number of equipment days.',
-      'Fines: penalty reasons and their default amounts, offered when a refund is prepared.',
+      'Bays, Planning Columns, Rates, Charges and Fines are not here any more — they are tabs on Planning & Zones, beside the grid that counts the stalls they describe.',
       'Form builder: what each of the four request forms asks, and in what order. Reword a question, add a heading, mark something required, or switch a question off. A question whose answer has a record of its own is marked Built in — it can be reworded, moved and switched off, but not retyped or removed.',
       'Declarations: the wording a requester ticks when they apply. Each form shows its own variant if it has one, otherwise the default. Changing the text creates a new version and archives the old one.',
       'Flow: three switches for the whole edition — bank step, payment step, FSSAI step.',
@@ -1461,7 +1468,13 @@ function ScreensPanel() {
       </Panel>
 
       {SCREENS.map((s) => (
-        <ScreenBlock key={s.to} doc={s} allowed={!s.requires || can(s.requires)} />
+        <ScreenBlock
+          key={s.to}
+          doc={s}
+          allowed={
+            !s.requires || (Array.isArray(s.requires) ? s.requires.some(can) : can(s.requires))
+          }
+        />
       ))}
     </div>
   );
@@ -1481,7 +1494,9 @@ function ScreenBlock({ doc, allowed }: { doc: ScreenDoc; allowed: boolean }) {
         </div>
         {doc.requires && (
           <Tag size='sm' tone={allowed ? 'ok' : 'neutral'} title='The action this screen needs'>
-            {doc.requires}
+            {/* Joined with "or", because that is what several of them mean: one
+                is enough, and the screen shows each holder the part they hold. */}
+            {Array.isArray(doc.requires) ? doc.requires.join(' or ') : doc.requires}
           </Tag>
         )}
         {/* Open it, rather than describe where it lives. A manual that makes you

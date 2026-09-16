@@ -451,3 +451,117 @@ export function paymentRow(over: Record<string, unknown> = {}) {
     ...over,
   };
 }
+
+/* ── The backoffice configuration, as two screens see it ──────────────────
+ *
+ * ⚠️ Here rather than in one screen's test file. The bays, the planning
+ * columns, the rate card, the charges and the fines moved from Admin to
+ * Planning & Zones, and the edition settings stayed — so both suites stub
+ * the same `GET /config`. Two copies of this payload would drift, and the
+ * screen that kept the stale one would keep passing.
+ */
+/** What the backoffice config endpoint answers. Every list here is the edition's own
+ *  configuration — bays and planning columns are rows, not constants — so the
+ *  screen has to draw itself from this payload and nothing else. */
+export const BACKOFFICE_CONFIG = {
+  edition: {
+    id: 'e1',
+    year: 2026,
+    name: 'MSR 2026',
+    isActive: true,
+    virtualAccountRentPrefix: null,
+    virtualAccountDepositPrefix: null,
+    maxStallsPerRequest: 3,
+  },
+  zones: [
+    {
+      id: 'z-c1',
+      code: 'C1',
+      name: 'C1 — Moon side',
+      expectedCrowd: 25000,
+      isClosedToVendors: false,
+      sortOrder: 0,
+      stallCount: 0,
+    },
+    {
+      id: 'z-a3',
+      code: 'A3',
+      name: 'A3 — Behind Adiyogi',
+      expectedCrowd: 4200,
+      isClosedToVendors: true,
+      sortOrder: 1,
+      stallCount: 6,
+    },
+  ],
+  planCategories: [
+    { key: 'VENDOR_FOOD', name: 'Vendor food', isFood: true, sortOrder: 0, inUse: true },
+    { key: 'BACKUP', name: 'Backup', isFood: false, sortOrder: 1, inUse: false },
+  ],
+  rateCard: [
+    {
+      zoneCode: 'C1',
+      isFood: true,
+      scope: 'VENDOR' as const,
+      amountPaise: 1_500_000,
+      depositPaise: 400_000,
+    },
+    {
+      zoneCode: 'A3',
+      isFood: true,
+      scope: 'LOCAL_WELFARE' as const,
+      amountPaise: 1_200_000,
+      depositPaise: 400_000,
+    },
+  ],
+  charges: {
+    id: 'ch1',
+    editionId: 'e1',
+    chairRatePaise: 5000,
+    tableRatePaise: 15000,
+    lwChairRatePaise: 10000,
+    lwTableRatePaise: 30000,
+    vendorChairRatePaise: 10000,
+    vendorTableRatePaise: 40000,
+    plug5aRatePaise: 50000,
+    plug15aRatePaise: 100000,
+    gstPercent: 18,
+    crowdPerStall: 1000,
+    chairTableDepositPaise: 400000,
+    equipmentDays: 1,
+    chairReplacementPaise: 40000,
+    tableReplacementPaise: 90000,
+    damagePenaltyPaise: 25000,
+  },
+  flow: { bankStepEnabled: true, paymentStepEnabled: true, fssaiStepEnabled: true },
+  fineTypes: [],
+  customFields: [],
+};
+
+/** Two of them, so the edition selector has something to choose between — and
+ *  so the tests below can point the screen at a year that is not the one every
+ *  write goes to. */
+const EDITION_SETTINGS = {
+  virtualAccountRentPrefix: null,
+  virtualAccountDepositPrefix: null,
+  maxStallsPerRequest: 3,
+  termsUrl: null,
+};
+export const EDITIONS = [
+  { id: 'e1', year: 2026, name: 'MSR 2026', isActive: true, ...EDITION_SETTINGS },
+  { id: 'e0', year: 2025, name: 'MSR 2025', isActive: false, ...EDITION_SETTINGS },
+];
+
+/** Last year's configuration, which is what `/config?editionId=e0` answers. */
+export const PAST_CONFIG = {
+  ...BACKOFFICE_CONFIG,
+  edition: {
+    ...BACKOFFICE_CONFIG.edition,
+    id: 'e0',
+    year: 2025,
+    name: 'MSR 2025',
+    isActive: false,
+  },
+  zones: BACKOFFICE_CONFIG.zones.map((z) =>
+    z.code === 'C1' ? { ...z, name: 'C1 — Moon side (2025)' } : z,
+  ),
+};

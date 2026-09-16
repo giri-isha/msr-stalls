@@ -1,8 +1,8 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { ME_LEAD, installFetch, renderAt } from '../test-utils';
-import { Planning } from './Planning';
+import { ME_LEAD, installFetch, renderAt } from '../../test-utils';
+import { Plan } from './Plan';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -62,9 +62,13 @@ const plan = {
   },
 };
 
-const routes = [{ path: '/m/stalls/planning', element: <Planning /> }];
+/** ⚠️ The GRID, not the screen. Planning & Zones is a tab strip now — the plan
+ *  beside the bays, the columns and the money — and the strip itself, its gates
+ *  and its edition selector are `index.test.tsx`. These tests are about what the
+ *  grid does with a crowd figure, which is unchanged by where it is mounted. */
+const routes = [{ path: '/m/stalls/planning', element: <Plan /> }];
 
-describe('Planning', () => {
+describe('Plan', () => {
   test('shows a row per zone with the crowd-based suggestion and the grand total', async () => {
     installFetch([
       ['GET', /\/me$/, () => ME_LEAD],

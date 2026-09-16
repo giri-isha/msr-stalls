@@ -1,14 +1,14 @@
 import { type ZoneCode, type ZonePlanView, suggestStallCount } from '@msr/stalls';
 import { useEffect, useState } from 'react';
-import { applyPlan, getPlan, putPlan } from '../api';
-import { useLoad } from '../hooks';
-import { useMe } from '../me';
+import { applyPlan, getPlan, putPlan } from '../../api';
+import { Panel } from '../../components/Panel';
+import { useLoad } from '../../hooks';
+import { useMe } from '../../me';
 import {
   Btn,
   Card,
   Dialog,
   ErrorBox,
-  H1,
   Icon,
   IconBtn,
   Input,
@@ -20,7 +20,7 @@ import {
   TR,
   Table,
   useToast,
-} from '../ui';
+} from '../../ui';
 
 /** The grid's columns, in the order the edition put them.
  *
@@ -175,10 +175,10 @@ function Line({ label, value, tone }: { label: string; value: string; tone?: str
   );
 }
 
-/** The prototype's planning grid: a row per zone, a column per category, an
+/** The plan grid: a row per bay, a column per category, an
  *  expected crowd and a people-per-stall divisor that drive a suggestion, and
  *  live totals. Save writes the plan; Apply turns it into stalls. */
-export function Planning() {
+export function Plan() {
   const { can } = useMe();
   const toast = useToast();
   const { data, error, loading, reload } = useLoad(getPlan);
@@ -256,9 +256,9 @@ export function Planning() {
 
   return (
     <div>
-      <H1
-        icon={<Icon name='layers' size={18} />}
-        sub='Stall count per zone is suggested from the expected crowd ÷ people per stall, then set by hand per category. Apply generates the stall numbers.'
+      <Panel
+        title='Plan'
+        note='Stall count per bay is suggested from the expected crowd ÷ people per stall, then set by hand per column. Apply generates the stall numbers.'
         actions={
           <>
             <label
@@ -297,10 +297,6 @@ export function Planning() {
           </>
         }
       >
-        Planning &amp; Zones
-      </H1>
-
-      <Card pad={0} style={{ overflow: 'hidden' }}>
         <Table>
           <THead>
             <TR>
@@ -394,7 +390,7 @@ export function Planning() {
             </TR>
           </TBody>
         </Table>
-      </Card>
+      </Panel>
 
       {editing !== null && draft.rows[editing] && (
         <ZonePlanDialog

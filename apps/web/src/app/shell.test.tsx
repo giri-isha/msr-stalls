@@ -71,19 +71,35 @@ describe('the backoffice shell', () => {
   });
 
   test('hides the nav items the caller has no action for', async () => {
-    // `ME_LEAD` holds both `planning.read` and `config.read`, so one is stripped
-    // here — the point is that the filter reads the PRIVILEGES list rather than
-    // hard-coding which labels a role sees.
+    // ⚠️ THREE actions stripped to hide ONE item, and that is the point: the
+    // filter reads the privileges list rather than hard-coding which labels a
+    // role sees. Planning & Zones is reached by `planning.read` OR `config.read`
+    // — the bays, the columns and the rate card are tabs on it now — and a write
+    // implies its read, so a lead who kept `planning.write` is still entitled.
     const noPlanning = {
       ...ME_LEAD,
-      privileges: ME_LEAD.privileges.filter((a) => a !== 'planning.read'),
+      privileges: ME_LEAD.privileges.filter(
+        (a) => a !== 'planning.read' && a !== 'planning.write' && a !== 'config.read',
+      ),
     };
     installFetch([['GET', /\/m\/stalls\/me$/, () => noPlanning], DASH]);
     renderBackoffice();
 
     const nav = await screen.findByRole('navigation', { name: 'Main Navigation' });
     expect(within(nav).queryByTitle('Planning & Zones')).not.toBeInTheDocument();
-    expect(within(nav).getByTitle('Admin')).toBeInTheDocument();
+    expect(within(nav).getByTitle('All Requests')).toBeInTheDocument();
+  });
+
+  test('an item gated on either action shows for someone holding just one', async () => {
+    // An admin who never plans a stall still sets the bays, the planning columns
+    // and the rate card — and those are tabs on Planning & Zones rather than on
+    // Admin. One entry, gated on either action, is what that screen now is.
+    const configOnly = { ...ME_LEAD, privileges: ['requests.read', 'config.read'] };
+    installFetch([['GET', /\/m\/stalls\/me$/, () => configOnly], DASH]);
+    renderBackoffice();
+
+    const nav = await screen.findByRole('navigation', { name: 'Main Navigation' });
+    expect(within(nav).getByTitle('Planning & Zones')).toBeInTheDocument();
   });
 
   test('the rail control collapses the sidebar and remembers the choice', async () => {

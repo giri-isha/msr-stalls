@@ -29,7 +29,7 @@ import { Electrical } from './backoffice/Electrical';
 import { Equipment } from './backoffice/Equipment';
 import { Finance } from './backoffice/Finance';
 import { Onboarding } from './backoffice/Onboarding';
-import { Planning } from './backoffice/Planning';
+import { Planning } from './backoffice/planning';
 import { RequestDetail } from './backoffice/RequestDetail';
 import { Requests } from './backoffice/Requests';
 
@@ -108,7 +108,7 @@ function Landing() {
   const { can } = useMe();
   if (can('requests.read')) return <Dashboard />;
 
-  const first = STALLS_NAV.find((n) => !n.end && (!n.requires || can(n.requires)));
+  const first = STALLS_NAV.find((n) => !n.end && navAllows(n, can));
   // ⚠️ Not an error page when there is nothing. A person with a stalls grant
   // that reaches no screen is somebody whose access was set up wrong, and the
   // sentence has to say that rather than blaming them for arriving.
@@ -154,9 +154,29 @@ export interface StallsNavItem {
   glyph: string;
   group?: string;
   end?: boolean;
-  /** Hidden unless the caller holds this action. */
-  requires?: StallPrivilege;
+  /**
+   * Hidden unless the caller holds this action — or, given several, ANY of
+   * them.
+   *
+   * ⚠️ A list, because Planning & Zones is reached by two different people for
+   * two different reasons: a coordinator planning stalls holds `planning.read`,
+   * and an admin setting the bays and the rate card holds `config.read`. The
+   * screen shows each of them only the tabs they hold, so one entry gated on
+   * either action is the honest description of it.
+   */
+  requires?: StallPrivilege | StallPrivilege[];
 }
+
+/**
+ * Whether a nav item is reachable by someone.
+ *
+ * 🔴 Takes `can` rather than a privilege LIST, and both readers of the nav go
+ * through it. A write implies its read (`IMPLIED_READ` in `@msr/stalls`), so a
+ * plain `privileges.includes(...)` hides a screen from the one person it is
+ * for — the sidebar did exactly that until this was shared.
+ */
+export const navAllows = (n: StallsNavItem, can: (a: StallPrivilege) => boolean) =>
+  !n.requires || (Array.isArray(n.requires) ? n.requires.some(can) : can(n.requires));
 
 /** The whole of the prototype's nav, grouped by where in the event timeline a
  *  screen is used: requests and selection before the event, onboarding and
@@ -183,7 +203,11 @@ export const STALLS_NAV: StallsNavItem[] = [
     to: '/m/stalls/planning',
     glyph: 'layers',
     group: 'Requests & Selection',
-    requires: 'planning.read',
+    // ⚠️ Either action. The bays, the grid's columns, the rates, the charges
+    // and the fines are tabs on this screen now rather than on Admin, and they
+    // are `config.read` — so an admin who holds no planning action still has a
+    // reason to be here, and the screen gates each tab on its own.
+    requires: ['planning.read', 'config.read'],
   },
   {
     label: 'Communication',

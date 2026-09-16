@@ -19,7 +19,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import { apiFetch } from '@/modules/stalls/api-client';
 import { useTheme } from '@/modules/stalls/use-theme';
-import { MeProvider, STALLS_NAV, type StallsNavItem, useMe } from '@/modules/stalls';
+import { MeProvider, STALLS_NAV, type StallsNavItem, navAllows, useMe } from '@/modules/stalls';
 import { InstallPrompt } from './UpdateToast';
 import {
   Frame,
@@ -53,10 +53,9 @@ function Sidebar({
   onToggleRail: () => void;
   onNavigate: () => void;
 }) {
-  const { me } = useMe();
+  const { can } = useMe();
   const groups = [...new Set(STALLS_NAV.map((n) => n.group))];
-  const visible = (n: StallsNavItem) =>
-    !n.requires || (me?.privileges.includes(n.requires) ?? false);
+  const visible = (n: StallsNavItem) => navAllows(n, can);
 
   return (
     // ⚠️ A `<nav>`, where the module this chrome was copied from uses `<aside>`.
