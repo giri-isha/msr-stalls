@@ -10,6 +10,8 @@ import {
   CopyEditionInput,
   CheckInInput,
   ConfirmPaymentInput,
+  type PaymentClaimsResponse,
+  ReviewPaymentClaimInput,
   CreateEditionInput,
   CreateZoneInput,
   AddFormFieldInput,
@@ -76,6 +78,7 @@ import type { StallsDeps } from './deps';
 import { electricalSheet } from './electrical';
 import * as equipment from './equipment';
 import * as finance from './finance';
+import * as paymentClaims from './payment-claims';
 import * as onboarding from './onboarding';
 import { applyPlan, listAvailableStalls, readPlan, writePlan } from './planning';
 import { presignUpload } from './uploads';
@@ -135,7 +138,7 @@ const TemplateParams = z.object({ key: TemplateKeyValue });
 function declarationRow(d: {
   id: string;
   key: string;
-  requestType: string | null;
+  formType: string | null;
   version: number;
   title: string;
   body: string;
@@ -1139,6 +1142,40 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     const edition = await activeEditionFor(prisma, caller);
     return finance.listPayments(prisma, edition.id, scopeOf(caller));
   });
+
+  /** The claims queue: what requesters say they have paid and finance has not
+   *  yet settled.
+   *
+   *  ⚠️ `finance.read`, the same privilege as the payments list. A claim names
+   *  a bank reference and an amount, which is the same class of information. */
+  zod.get('/finance/claims', async (req): Promise<PaymentClaimsResponse> => {
+    const caller = await requireBackoffice(req, prisma);
+    requirePrivilege(caller, 'finance.read');
+    const edition = await activeEditionFor(prisma, caller);
+    return { claims: await paymentClaims.pendingClaims(prisma, edition.id) };
+  });
+
+  /** Settling one.
+   *
+   *  🔴 `finance.write`: verifying writes a `StallPaymentRecord`, which is the
+   *  row that makes the money real and advances the stage. */
+  zod.post(
+    '/finance/claims/:id',
+    { schema: { params: IdParams, body: ReviewPaymentClaimInput } },
+    async (req, reply) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'finance.write');
+      const edition = await activeEditionFor(prisma, caller);
+      await paymentClaims.reviewPaymentClaim(
+        prisma,
+        edition.id,
+        req.params.id,
+        req.body,
+        caller.personId,
+      );
+      reply.status(204);
+    },
+  );
 
   zod.post(
     '/finance/payments/:id',

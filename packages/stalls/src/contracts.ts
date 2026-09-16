@@ -43,6 +43,7 @@ export const FormType = z.enum([
   'VENDOR',
   'BANK',
   'FSSAI',
+  'STAFF',
 ]);
 export const RateScopeValue = z.enum(RATE_SCOPES);
 export const AshramUsage = z.enum([
@@ -104,6 +105,34 @@ export const AshramBlock = z.object({
   fssaiExpected: z.boolean().optional(),
 });
 
+/** The exact declaration VERSIONS the page displayed.
+ *
+ *  🔴 Posted back, and checked against what is live — see `submitRequest`.
+ *  Not because the client is trusted with them (it is not; a posted id is
+ *  never what gets logged) but because a MISMATCH is the only way to notice
+ *  that the wording changed while the form sat open. Without it, a page
+ *  opened this morning submits against wording published this afternoon and
+ *  the consent log records agreement to a paragraph nobody ever saw.
+ *
+ *  ⚠️ `optional`, NOT `.default([])`, and the difference is the whole
+ *  design. Defaulted, "I displayed no declarations" and "I have never heard
+ *  of declarations" arrive as the same value, so the check cannot tell a
+ *  form that showed nothing from a caller that does not participate — and
+ *  it would have to refuse both or neither. Absent means the second: log
+ *  what is live, which is what every caller did before this existed. An
+ *  ARRAY is a claim about what was on screen, and a claim is checked.
+ *
+ *  Omitting it is not a way around the check. The check detects staleness;
+ *  it does not authorise anything, and skipping it logs the live wording —
+ *  the same thing the server would have recorded anyway.
+ *
+ *  ⚠️ `uuid`, not any non-empty string. These ids are compared by set equality
+ *  against the live rows, whose ids are uuids — so a value that cannot be one
+ *  is a value that can only ever fail the comparison. Refusing it at the edge
+ *  names the problem; accepting it turns a malformed post into a mysterious
+ *  "the wording changed, please re-read it". */
+const DeclarationIds = z.array(z.uuid()).max(20).optional();
+
 /** `.strict()` is deliberately NOT used — unknown keys are stripped silently so
  *  a stale client does not 400, but nothing outside this schema is ever read.
  *  There is no key here that maps to status, stage, a stall number, or money. */
@@ -121,27 +150,7 @@ export const SubmitRequestInput = z
     numStallsRequested: z.number().int().min(1).max(10),
     remarks: z.string().trim().max(2000).optional(),
     agreed: z.literal(true),
-    /** The exact declaration VERSIONS this page displayed.
-     *
-     *  🔴 Posted back, and checked against what is live — see `submitRequest`.
-     *  Not because the client is trusted with them (it is not; a posted id is
-     *  never what gets logged) but because a MISMATCH is the only way to notice
-     *  that the wording changed while the form sat open. Without it, a page
-     *  opened this morning submits against wording published this afternoon and
-     *  the consent log records agreement to a paragraph nobody ever saw.
-     *
-     *  ⚠️ `optional`, NOT `.default([])`, and the difference is the whole
-     *  design. Defaulted, "I displayed no declarations" and "I have never heard
-     *  of declarations" arrive as the same value, so the check cannot tell a
-     *  form that showed nothing from a caller that does not participate — and
-     *  it would have to refuse both or neither. Absent means the second: log
-     *  what is live, which is what every caller did before this existed. An
-     *  ARRAY is a claim about what was on screen, and a claim is checked.
-     *
-     *  Omitting it is not a way around the check. The check detects staleness;
-     *  it does not authorise anything, and skipping it logs the live wording —
-     *  the same thing the server would have recorded anyway. */
-    declarationIds: z.array(z.uuid()).max(20).optional(),
+    declarationIds: DeclarationIds,
     depositAcknowledged: z.boolean().optional(),
     plugs5a: Count(50).optional(),
     plugs15a: Count(50).optional(),
@@ -277,6 +286,12 @@ export interface PublicRequestStatus {
    *  The gap between the two is the concession and that is the team's to see;
    *  showing a trader the figure they were talked down from serves nobody. */
   payment: PublicPaymentDue | null;
+  /** What this requester has told us they transferred, newest first.
+   *
+   *  🔴 Includes REJECTED claims with their reason. That reason is the only
+   *  thing that tells them what to correct, and a rejection they never see
+   *  returns them to the mailbox this step replaced. */
+  paymentClaims: PaymentClaimView[];
   /** The staff coupon and how far the vendor's own team has got.
    *
    *  ⚠️ An EMPTY `coupons` means none has been ISSUED, which is not the same as
@@ -915,7 +930,7 @@ export const DeclarationKeyValue = z
 export const DeclarationInput = z.object({
   key: DeclarationKeyValue,
   /** `null` is the default, shown by any form with no variant of its own. */
-  requestType: RequestType.nullable().default(null),
+  formType: FormType.nullable().default(null),
   title: z.string().trim().min(1).max(200),
   /** 🔴 Generous, and deliberately so: this is a legal paragraph somebody
    *  pastes in, not a label. It is stored as written — see
@@ -927,18 +942,18 @@ export const DeclarationInput = z.object({
 });
 export type DeclarationInput = z.infer<typeof DeclarationInput>;
 
-/** ⚠️ No `key` and no `requestType`. Both are the row's IDENTITY — the key is
+/** ⚠️ No `key` and no `formType`. Both are the row's IDENTITY — the key is
  *  what consents are filed under and the variant is which form it belongs to —
  *  and changing either would silently move a consent somebody already gave to a
  *  different question. A wording that belongs to another form is a new row. */
-export const DeclarationPatch = DeclarationInput.omit({ key: true, requestType: true });
+export const DeclarationPatch = DeclarationInput.omit({ key: true, formType: true });
 export type DeclarationPatch = z.infer<typeof DeclarationPatch>;
 
 /** One version, as the backoffice screen lists it. */
 export interface DeclarationRow {
   id: string;
   key: string;
-  requestType: string | null;
+  formType: string | null;
   version: number;
   title: string;
   body: string;
@@ -1483,8 +1498,11 @@ export const SubmitBankDetailsInput = z.object({
   chequeKey: UploadKey,
   panKey: UploadKey,
   gstKey: UploadKey.optional().or(z.literal('')),
-  agreeNeft: z.literal(true),
-  agreeTerms: z.literal(true),
+  declarationIds: DeclarationIds,
+  /** Answers to questions an ADMIN appended, keyed by field id. The built-ins
+   *  above land in typed columns; these have no column and are filed by id, the
+   *  same split `SubmitRequestInput` already uses. */
+  customFields: z.record(z.uuid(), z.string().trim().max(2000)).optional(),
   // The form is also where the vendor FINALISES what they need — the 2025 form
   // asks again, because a request made in November is stale by February.
   plugs5a: z.number().int().min(0).max(50),
@@ -1527,6 +1545,12 @@ export interface BankFormView {
   /** Non-null once submitted: the form becomes a read-back rather than a
    *  second chance to change bank details after Finance has acted on them. */
   submittedAt: string | null;
+  /** 🔴 The edition's own definition of this form. What it asks, in what order,
+   *  with what wording — including any question an admin appended. The page
+   *  draws from this rather than from a constant, which is the whole point of
+   *  the bank form becoming rows. */
+  form: BuiltForm | null;
+  declarations: Declaration[];
 }
 
 // ── Payment and finance ─────────────────────────────────────────────────────
@@ -1589,6 +1613,90 @@ export const ConfirmPaymentInput = z.object({
   note: z.string().trim().max(500).optional(),
 });
 export type ConfirmPaymentInput = z.infer<typeof ConfirmPaymentInput>;
+
+// ── Payment claims (public: a vendor says what they transferred) ────────────
+
+export const PaymentClaimStatus = z.enum(['PENDING', 'VERIFIED', 'REJECTED']);
+export type PaymentClaimStatus = z.infer<typeof PaymentClaimStatus>;
+
+/**
+ * What a requester submits after they have paid.
+ *
+ * 🔴 A CLAIM, not a receipt. `StallPaymentRecord` is finance-entered and every
+ * row in it is money the Foundation has seen on its statement; this is what
+ * somebody says they sent. The 2025 letter filled the gap with "please send
+ * transfer details on E-mail IDs finance.support@… once you make the payment" —
+ * a mailbox, matched by hand.
+ *
+ * ⚠️ The receipt upload is OPTIONAL. A vendor who transferred at a branch
+ * counter may have only a stamped slip they cannot photograph well, and
+ * refusing the claim over that sends them back to email — which is the thing
+ * this replaces. The reference number is what finance actually matches.
+ */
+export const SubmitPaymentClaimInput = z.object({
+  /** Which of the account's requests this is about. ⚠️ The SESSION is the
+   *  credential; this only picks which request, so a reference belonging to
+   *  somebody else 404s exactly as one that never existed does. */
+  reference: z.string().trim().min(1).max(40),
+  /** Rent and deposit are paid SEPARATELY, into different virtual accounts, so
+   *  a claim is always about one of them. */
+  purpose: PaymentPurpose,
+  referenceNo: z.string().trim().min(4).max(80),
+  amountPaise: z.number().int().positive().max(100_000_000),
+  /** A banking date — the day it shows on the statement. */
+  paidOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected a date as YYYY-MM-DD'),
+  remitterName: z.string().trim().max(200).optional(),
+  receiptKey: z.string().trim().max(400).optional(),
+  note: z.string().trim().max(1000).optional(),
+});
+export type SubmitPaymentClaimInput = z.infer<typeof SubmitPaymentClaimInput>;
+
+/** Finance settling one. */
+export const ReviewPaymentClaimInput = z.object({
+  verdict: z.enum(['VERIFY', 'REJECT']),
+  /** ⚠️ Required on REJECT and shown to the requester. A rejection with no
+   *  reason is one they cannot act on. The database enforces it too. */
+  rejectReason: z.string().trim().max(500).optional(),
+  /** The virtual-account code the credit landed on, where finance can see one.
+   *  Carried onto the payment record. */
+  eCollectCode: z.string().trim().max(60).optional(),
+  /** Overrides what the requester typed, where finance reads a different figure
+   *  off the statement — the claim keeps what was claimed. */
+  amountPaise: z.number().int().positive().max(100_000_000).optional(),
+});
+export type ReviewPaymentClaimInput = z.infer<typeof ReviewPaymentClaimInput>;
+
+export interface PaymentClaimView {
+  id: string;
+  purpose: PaymentPurpose;
+  status: PaymentClaimStatus;
+  referenceNo: string;
+  amountPaise: number;
+  paidOn: string;
+  remitterName: string | null;
+  note: string | null;
+  submittedAt: string;
+  reviewedAt: string | null;
+  /** ⚠️ Shown to the REQUESTER on a rejected claim: it is the only thing that
+   *  tells them what to correct. */
+  rejectReason: string | null;
+  hasReceipt: boolean;
+}
+
+/** One row on the finance queue, with enough of the request to act on. */
+export interface PaymentClaimRow extends PaymentClaimView {
+  requestId: string;
+  reference: string;
+  stallName: string;
+  requesterName: string;
+  /** What the plan says is owed for this purpose, so finance can see at a
+   *  glance whether the claimed figure matches. */
+  expectedPaise: number | null;
+}
+
+export interface PaymentClaimsResponse {
+  claims: PaymentClaimRow[];
+}
 
 export interface PaymentRecordView {
   id: string;
@@ -1675,6 +1783,10 @@ export const CouponCode = z.string().trim().min(6).max(40);
 
 export const RegisterStaffInput = z.object({
   couponCode: CouponCode,
+  /** ⚠️ Filed against the STAFF MEMBER, not the stall — eight people share one
+   *  request, so a request-keyed answer would collapse seven of them. See the
+   *  partial indexes on `stall_custom_field_value`. */
+  customFields: z.record(z.uuid(), z.string().trim().max(2000)).optional(),
   name: z.string().trim().min(1).max(200),
   mobile: IndianMobile,
   idType: z.enum(['AADHAAR', 'VOTER_ID', 'DRIVING_LICENCE', 'PASSPORT', 'OTHER']),
@@ -1682,12 +1794,17 @@ export const RegisterStaffInput = z.object({
    *  at the gate, not enough to be a copy of it. Longer ids are stored whole. */
   idNumber: z.string().trim().min(4).max(40),
   role: z.string().trim().max(100).optional(),
+  declarationIds: DeclarationIds,
 });
 export type RegisterStaffInput = z.infer<typeof RegisterStaffInput>;
 
 export interface CouponView {
   stallName: string;
   reference: string;
+  /** The edition's own definition of the staff form, and the consents it asks
+   *  for. Empty declarations means the team has authored none yet. */
+  form: BuiltForm | null;
+  declarations: Declaration[];
   /** ⚠️ Empty until the stall checks in — the same rule the vendor's own status
    *  page follows, and for the same reason. The coupon page is read by the
    *  vendor's whole team, which is the last place a number should leak early. */
@@ -1696,7 +1813,7 @@ export interface CouponView {
   /** The coupon's capacity: eight by default, raised case by case by the stall
    *  team. Always a real cap — never zero-meaning-unlimited. */
   maxStaff: number;
-  staff: Array<{ name: string; mobile: string; registeredAt: string }>;
+  staff: Array<{ name: string | null; mobile: string; registeredAt: string }>;
 }
 
 /** Raising (or lowering) what one coupon may register. */
@@ -1707,10 +1824,13 @@ export type SetCouponCapacityInput = z.infer<typeof SetCouponCapacityInput>;
 
 export interface VendorStaffView {
   id: string;
-  name: string;
+  name: string | null;
+  /** ⚠️ Never null. It is half of the unique index behind "one person, one
+   *  registration per stall", so this is the one question on these forms that
+   *  cannot be switched off. */
   mobile: string;
-  idType: string;
-  idNumber: string;
+  idType: string | null;
+  idNumber: string | null;
   role: string | null;
   registeredAt: string;
 }
@@ -1719,12 +1839,14 @@ export interface VendorStaffView {
 
 export const SubmitFssaiInput = z.object({
   stallName: z.string().trim().min(1).max(200),
+  customFields: z.record(z.uuid(), z.string().trim().max(2000)).optional(),
   ownerName: z.string().trim().max(200).optional(),
   mobile: IndianMobile.optional(),
   files: z
     .array(z.object({ key: z.string().trim().min(1).max(400), name: z.string().trim().max(300) }))
     .min(1)
     .max(5),
+  declarationIds: DeclarationIds,
 });
 export type SubmitFssaiInput = z.infer<typeof SubmitFssaiInput>;
 
@@ -1735,6 +1857,11 @@ export interface FssaiFormView {
   uploadedAt: string | null;
   verifiedAt: string | null;
   files: Array<{ name: string; uploadedAt: string }>;
+  /** The edition's own definition of this form, and the consents it asks for.
+   *  Both may be empty: this form seeds no declaration, so it gates on nothing
+   *  until the team authors one. */
+  form: BuiltForm | null;
+  declarations: Declaration[];
 }
 
 // ── Contract signature ──────────────────────────────────────────────────────
@@ -1767,7 +1894,22 @@ export interface SendSignatureResult {
 // ── Uploads ─────────────────────────────────────────────────────────────────
 
 export const PresignUploadInput = z.object({
-  purpose: z.enum(['BANK_CHEQUE', 'BANK_PAN', 'BANK_GST', 'FSSAI', 'TEMPLATE_ATTACHMENT']),
+  /** ⚠️ `FORM_FIELD` is the only purpose that needs a `fieldId`, and it is the
+   *  purpose for a question an ADMIN added. The other five back typed columns
+   *  and keep their own folders, so every key already in the store stays
+   *  valid. */
+  purpose: z.enum([
+    'BANK_CHEQUE',
+    'BANK_PAN',
+    'BANK_GST',
+    'FSSAI',
+    'TEMPLATE_ATTACHMENT',
+    'FORM_FIELD',
+  ]),
+  /** Which question this upload answers. Required for `FORM_FIELD` and ignored
+   *  otherwise — it becomes part of the key's PATH, which is what makes a key
+   *  valid for exactly one question. */
+  fieldId: z.uuid().optional(),
   fileName: z.string().trim().min(1).max(300),
   contentType: z.string().trim().min(1).max(200),
   bytes: z.number().int().min(1).max(20_000_000),
@@ -1817,19 +1959,23 @@ export interface OnboardingRow {
 }
 
 export interface OnboardingDetail extends OnboardingRow {
+  /** ⚠️ Every answer is nullable. A question the edition stopped asking has no
+   *  answer on records submitted after it was switched off, and a screen that
+   *  assumed otherwise would print "undefined" beside a label. Which questions
+   *  are actually asked is `is_required` on the form's field rows. */
   bank: {
-    invoiceName: string;
-    accountHolder: string;
-    bankName: string;
-    branch: string;
-    accountNumber: string;
-    ifsc: string;
+    invoiceName: string | null;
+    accountHolder: string | null;
+    bankName: string | null;
+    branch: string | null;
+    accountNumber: string | null;
+    ifsc: string | null;
     micr: string | null;
-    panNumber: string;
-    gstNumber: string;
-    address: string;
-    pincode: string;
-    mobile: string;
+    panNumber: string | null;
+    gstNumber: string | null;
+    address: string | null;
+    pincode: string | null;
+    mobile: string | null;
     submittedAt: string;
     files: Array<{ label: string; name: string; url: string | null }>;
   } | null;

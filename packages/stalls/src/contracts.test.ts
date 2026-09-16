@@ -1,10 +1,14 @@
 import { describe, expect, test } from 'vitest';
 import {
+  DeclarationInput,
   Gstin,
   Ifsc,
   IndianMobile,
   Pan,
+  RegisterStaffInput,
   SelectRequestInput,
+  SubmitBankDetailsInput,
+  SubmitFssaiInput,
   SubmitRequestInput,
 } from './contracts';
 
@@ -141,5 +145,83 @@ describe('bank identifiers normalise what a vendor actually types', () => {
     const r = Ifsc.safeParse('HDFC1234');
     expect(r.success).toBe(false);
     if (!r.success) expect(r.error.issues[0].message).toContain('11-character IFSC');
+  });
+});
+
+describe('consent travels with every public form submission', () => {
+  // Real uuids: the ids are compared by set equality against live rows whose
+  // ids are uuids, so the contract refuses anything that cannot be one.
+  const D1 = '11111111-1111-4111-8111-111111111111';
+  const D2 = '22222222-2222-4222-8222-222222222222';
+
+  const bank = {
+    email: 'a@b.com',
+    invoiceName: 'Green Leaf',
+    accountHolder: 'Green Leaf',
+    mobile: '9876543210',
+    address: '1 Main Street',
+    pincode: '641114',
+    bankName: 'HDFC',
+    branch: 'Kanjurmarg',
+    accountNumber: '12345678',
+    ifsc: 'HDFC0004989',
+    panNumber: 'ABCDE1234F',
+    gstNumber: 'NONE',
+    chequeKey: 'k/cheque.pdf',
+    panKey: 'k/pan.pdf',
+    plugs5a: 1,
+    plugs15a: 0,
+    gasStoves: 0,
+    tablesNeeded: 0,
+    chairsNeeded: 0,
+    passes2w: 0,
+    passes4w: 0,
+    passesStaff: 0,
+  };
+
+  /** 🔴 The bank form's two consents were `z.literal(true)` with their wording
+   *  in JSX. A tick that carries no version records THAT somebody agreed and
+   *  never WHAT — the failure the declarations table exists to end. */
+  test('the bank form posts declaration ids, not bare agreement flags', () => {
+    const parsed = SubmitBankDetailsInput.parse({ ...bank, declarationIds: [D1, D2] });
+    expect(parsed.declarationIds).toEqual([D1, D2]);
+    expect('agreeNeft' in parsed).toBe(false);
+    expect('agreeTerms' in parsed).toBe(false);
+  });
+
+  /** ⚠️ Undefined is not a claim and must pass — a server-side caller has not
+   *  said what it displayed. See `sameDeclarations`. */
+  test('omitting the list is allowed; an empty list is a claim', () => {
+    expect(SubmitBankDetailsInput.parse(bank).declarationIds).toBeUndefined();
+    expect(SubmitBankDetailsInput.parse({ ...bank, declarationIds: [] }).declarationIds).toEqual(
+      [],
+    );
+  });
+
+  test('staff registration and the FSSAI upload carry consent too', () => {
+    const staff = RegisterStaffInput.parse({
+      couponCode: 'ABCD1234',
+      name: 'R Kumar',
+      mobile: '9876543210',
+      idType: 'AADHAAR',
+      idNumber: '1234',
+      declarationIds: [D1],
+    });
+    expect(staff.declarationIds).toEqual([D1]);
+
+    const fssai = SubmitFssaiInput.parse({
+      stallName: 'Green Leaf',
+      files: [{ key: 'k/cert.pdf', name: 'cert.pdf' }],
+      declarationIds: [],
+    });
+    expect(fssai.declarationIds).toEqual([]);
+  });
+
+  test('a declaration is authored against any form, including the bank form', () => {
+    expect(
+      DeclarationInput.parse({ key: 'neft_transfer', formType: 'BANK', title: 'NEFT', body: 'x' })
+        .formType,
+    ).toBe('BANK');
+    expect(DeclarationInput.parse({ key: 'terms', title: 'T', body: 'x' }).formType).toBeNull();
   });
 });

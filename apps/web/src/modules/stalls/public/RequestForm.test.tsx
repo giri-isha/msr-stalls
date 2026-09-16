@@ -55,6 +55,15 @@ async function fillVendor(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText(/Number of stalls required/), '1');
 }
 
+/** The consent tick, found by its own wording — which is the label now, rather
+ *  than a bare "I Agree" beside a plate at the top of the page.
+ *
+ *  ⚠️ `findBy`, not `getBy`. The declarations arrive with the public config,
+ *  while the Submit button renders immediately — so a synchronous query here
+ *  races the load and finds nothing. */
+const tickDeclaration = () =>
+  screen.findByRole('checkbox', { name: /does not guarantee stall allocation/i });
+
 describe('RequestForm — vendor', () => {
   test('renders the Tamil label beside the English one', async () => {
     installFetch([config(), session()]);
@@ -63,13 +72,35 @@ describe('RequestForm — vendor', () => {
     expect(screen.getByText('Stall Name')).toBeInTheDocument();
   });
 
-  test('submit stays disabled until the disclaimer is ticked', async () => {
+  /** 🔴 The wording IS the tick's label now. It used to be an information plate
+   *  at the top of the form with a bare "I Agree" box thirty questions below —
+   *  by the time the box was in reach the words had been off screen for
+   *  minutes, and nothing on the page connected them. */
+  test('submit stays disabled until the declaration is ticked, beside its own wording', async () => {
     installFetch([config(), session()]);
     renderAt('/stalls/apply/vendor', routes, { requester: true });
     const btn = await screen.findByRole('button', { name: /submit request/i });
+    const tick = await tickDeclaration();
+    // ⚠️ Asserted AFTER the config has landed, so this proves the tick gates
+    // submission — not merely that the button starts out disabled while the
+    // page is still loading.
     expect(btn).toBeDisabled();
-    await userEvent.setup().click(screen.getByLabelText(/I Agree/));
+
+    const wording = screen.getByText(/does not guarantee stall allocation/i);
+    // The wording sits inside the tick's own label, not merely near it.
+    expect(tick.closest('label')?.contains(wording)).toBe(true);
+
+    await userEvent.setup().click(tick);
     expect(btn).toBeEnabled();
+  });
+
+  /** The bare "I Agree" field is retired: its wording is a declaration row and
+   *  asking it here too would be the same consent asked twice. */
+  test('there is no bare "I Agree" question left on the form', async () => {
+    installFetch([config(), session()]);
+    renderAt('/stalls/apply/vendor', routes, { requester: true });
+    await screen.findByRole('button', { name: /submit request/i });
+    expect(screen.queryByLabelText(/^I Agree$/)).not.toBeInTheDocument();
   });
 
   test('quotes the rent per open zone and does not offer closed zones to vendors', async () => {
@@ -111,7 +142,7 @@ describe('RequestForm — vendor', () => {
     await screen.findByText('ஸ்டால் பெயர்');
     await fillVendor(user);
     await user.type(screen.getByLabelText(/Instagram handle/), '@greenleaf');
-    await user.click(screen.getByLabelText(/I Agree/));
+    await user.click(await tickDeclaration());
     await user.click(screen.getByRole('button', { name: /submit request/i }));
 
     expect(await screen.findByText('submitted-page')).toBeInTheDocument();
@@ -133,7 +164,7 @@ describe('RequestForm — vendor', () => {
     renderAt('/stalls/apply/vendor', routes, { requester: true });
     const user = userEvent.setup();
     await screen.findByText('ஸ்டால் பெயர்');
-    await user.click(screen.getByLabelText(/I Agree/));
+    await user.click(await tickDeclaration());
     await user.click(screen.getByRole('button', { name: /submit request/i }));
     expect((await screen.findAllByRole('alert')).length).toBeGreaterThan(1);
     expect(fx.calls.some((c) => c.method === 'POST')).toBe(false);
@@ -153,7 +184,7 @@ describe('RequestForm — vendor', () => {
     const user = userEvent.setup();
     await screen.findByText('ஸ்டால் பெயர்');
     await fillVendor(user);
-    await user.click(screen.getByLabelText(/I Agree/));
+    await user.click(await tickDeclaration());
     await user.click(screen.getByRole('button', { name: /submit request/i }));
     await waitFor(() =>
       expect(screen.getByLabelText(/Contact Number/)).toHaveAttribute('aria-invalid', 'true'),
@@ -171,7 +202,7 @@ describe('RequestForm — vendor', () => {
     const user = userEvent.setup();
     await screen.findByText('ஸ்டால் பெயர்');
     await fillVendor(user);
-    await user.click(screen.getByLabelText(/I Agree/));
+    await user.click(await tickDeclaration());
     await user.click(screen.getByRole('button', { name: /submit request/i }));
     expect(await screen.findByText(/not open right now/)).toBeInTheDocument();
   });
@@ -231,7 +262,7 @@ describe('RequestForm — ashram', () => {
     ]) {
       await user.type(screen.getByLabelText(f), '0');
     }
-    await user.click(screen.getByLabelText(/I Agree/));
+    await user.click(await tickDeclaration());
     await user.click(screen.getByRole('button', { name: /submit request/i }));
 
     expect(await screen.findByText('submitted-page')).toBeInTheDocument();

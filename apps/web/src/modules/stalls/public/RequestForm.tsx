@@ -5,40 +5,27 @@ import {
   type FormField,
   renderForm,
   type RenderedGroup,
-  type PublicConfig,
   type RateScope,
   type RequesterSession,
   type StallRequestType,
   SubmitRequestInput,
-  zoneOptions,
 } from '@msr/stalls';
 import { useMemo, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router';
 import { ApiError, fieldErrorsFrom } from '../api-client';
 import { getPublicConfig, submitRequest } from '../api';
-import { type ApplianceRow, ApplianceRows } from '../components/ApplianceRows';
-import { BilingualLabel } from '../components/BilingualLabel';
-import { DeclarationText } from '../components/DeclarationText';
-import { ZoneSelect } from '../components/ZoneSelect';
+import type { ApplianceRow } from '../components/ApplianceRows';
+import { DeclarationConsent, allTicked } from '../components/DeclarationConsent';
+import { FieldControl } from '../components/FormFields';
 import { useLoad } from '../hooks';
 import { useRequester } from '../requester';
-import {
-  Card,
-  Checkbox,
-  ChoicePlate,
-  FieldError,
-  FieldStack,
-  FormField as Labelled,
-  Icon,
-  Input,
-  Loading,
-  Radio,
-  Select,
-  Textarea,
-} from '../ui';
+import { Card, FieldStack, Icon, Loading } from '../ui';
 import { SLUG_TYPE } from './FormPicker';
 
-type Values = Record<string, string | boolean | ApplianceRow[]>;
+/** ⚠️ Includes `string[]`, for a `file`/`files` answer — a list of media-store
+ *  keys. A request form has no built-in file question, but an admin can append
+ *  one, and the value type has to admit what the control produces. */
+type Values = Record<string, string | boolean | ApplianceRow[] | string[]>;
 
 const ASHRAM_TYPES = new Set<StallRequestType>(['ASHRAM', 'ASHRAM_FOOD']);
 const NUMERIC = new Set([
@@ -66,9 +53,18 @@ function buildInput(
   values: Values,
   customFieldIds: string[],
   declarationIds: string[],
+  consented: boolean,
 ): Record<string, unknown> {
   const ashram = ASHRAM_TYPES.has(type);
-  const appliances = (Array.isArray(values.appliances) ? values.appliances : [])
+  // ⚠️ `isApplianceRows`, not `Array.isArray`. A `files` answer is also an
+  // array — of upload keys — and treating one as an appliance list would read
+  // `.name` off a string.
+  const rows = values.appliances;
+  const appliances = (
+    Array.isArray(rows) && rows.every((r) => typeof r === 'object' && r !== null)
+      ? (rows as ApplianceRow[])
+      : []
+  )
     .filter((a) => a.name.trim() !== '')
     .map((a) => ({ name: a.name.trim(), watts: num(a.watts) ?? 0 }));
   const customFields: Record<string, string> = {};
@@ -89,7 +85,11 @@ function buildInput(
     itemsSelling: str(values.itemsSelling),
     numStallsRequested: num(values.numStallsRequested),
     remarks: str(values.remarks) || undefined,
-    agreed: values.agreed === true,
+    // 🔴 Derived from the ticks, not from a field. `agreed` is no longer a
+    // question on the form — its wording is a declaration row and its tick is
+    // drawn beside that wording above Submit. The column still records THAT
+    // somebody agreed; `declarationIds` below is what records to what.
+    agreed: consented,
     // The exact versions this page drew. The API checks them against what is
     // live and refuses the submission if the wording moved while the form was
     // open — see `DeclarationsChangedError`.
@@ -266,6 +266,20 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
   // server's, so a disagreement would show up as a refused submission nobody
   // could explain.
   const shown = declarationsFor(config.data?.declarations ?? [], type);
+  const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
+  const toggleDeclaration = (id: string, on: boolean) =>
+    setTicked((was) => {
+      const next = new Set(was);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  // 🔴 `config.data` must have ARRIVED, not merely "shown is empty". Until the
+  // config loads, `shown` is [] and `allTicked` is vacuously true — which would
+  // enable Submit on a form that does not yet know what it has to ask consent
+  // for, and post it with an empty `declarationIds` the API reads as the claim
+  // "I displayed none". A slow connection would silently skip the consent.
+  const consented = config.data !== null && allTicked(shown, ticked);
   const customFields = useMemo(
     () => (config.data?.customFields ?? []).filter((f) => f.formType === type),
     [config.data, type],
@@ -346,6 +360,7 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
       // switched off, and the one the reader actually filled in is this one.
       allFields.filter((f) => !f.isBuiltIn).map((f) => f.id),
       shown.map((d) => d.id),
+      consented,
     );
     const parsed = SubmitRequestInput.safeParse(built);
     if (!parsed.success) {
@@ -412,52 +427,6 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
         )}
       </div>
 
-      {/* The terms, on the primary tint rather than a warning one. This is the
-          thing a reader agrees to, not a thing that has gone wrong. */}
-      <div
-        style={{
-          padding: '13px 15px',
-          borderRadius: 'var(--r3)',
-          background: 'var(--pri-t)',
-          border: '1px solid var(--pri-t2)',
-          marginBottom: 16,
-        }}
-      >
-        <div style={{ display: 'flex', gap: 10 }}>
-          <span style={{ flex: 'none', color: 'var(--pri)', marginTop: 1 }}>
-            <Icon name='info' size={16} />
-          </span>
-          <div style={{ minWidth: 0, fontSize: 12.5, lineHeight: 1.65 }}>
-            {/* 🔴 The edition's own declarations, not the constant in
-                `forms.ts`. Falls back to that constant when an edition has
-                none — a form with no disclaimer at all is worse than one
-                showing last year's, and an edition seeded before this feature
-                existed has nothing in the table. */}
-            {shown.length > 0 ? (
-              shown.map((d, i) => (
-                <div key={d.id} style={{ marginTop: i === 0 ? 0 : 10 }}>
-                  <DeclarationText body={d.body} />
-                  {d.bodyTa && (
-                    <div className='msrs-tamil' lang='ta' style={{ marginTop: 7 }}>
-                      <DeclarationText body={d.bodyTa} />
-                    </div>
-                  )}
-                </div>
-              ))
-            ) : (
-              <>
-                <p style={{ margin: 0 }}>{def.disclaimer}</p>
-                {def.disclaimerTa && (
-                  <p className='msrs-tamil' lang='ta' style={{ margin: '7px 0 0' }}>
-                    {def.disclaimerTa}
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
       {topError && (
         <div
           role='alert'
@@ -494,7 +463,7 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
                       field={asFormField(f)}
                       value={values[key]}
                       error={errors[key]}
-                      onChange={(v) => set(key, v)}
+                      onChange={(v) => set(key, v ?? '')}
                       config={config.data}
                       type={type}
                       isFood={isFood}
@@ -504,6 +473,20 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
               </div>
             ))}
           </FieldStack>
+        </div>
+
+        {/* 🔴 The consents, immediately above Submit and labelled by their own
+            wording. They used to be an information plate at the TOP of this
+            form with a bare "I Agree" tick thirty questions below it — by the
+            time the tick was in reach the words had been off screen for
+            minutes. */}
+        <div style={{ padding: '0 18px' }}>
+          <DeclarationConsent
+            declarations={shown}
+            ticked={ticked}
+            onToggle={toggleDeclaration}
+            error={errors.declarationIds}
+          />
         </div>
 
         {/* ⚠️ The submit sits INSIDE the card, on its own rail, rather than
@@ -522,8 +505,8 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
         >
           <button
             type='submit'
-            disabled={submitting || values.agreed !== true}
-            className={submitting || values.agreed !== true ? undefined : 'msrs-lift'}
+            disabled={submitting || !consented}
+            className={submitting || !consented ? undefined : 'msrs-lift'}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -537,8 +520,8 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
               boxShadow: 'var(--sh-pri)',
               fontSize: 13.5,
               fontWeight: 700,
-              cursor: submitting || values.agreed !== true ? 'not-allowed' : 'pointer',
-              opacity: submitting || values.agreed !== true ? 0.5 : 1,
+              cursor: submitting || !consented ? 'not-allowed' : 'pointer',
+              opacity: submitting || !consented ? 0.5 : 1,
             }}
           >
             {submitting ? 'Submitting…' : 'Submit request'}
@@ -547,164 +530,5 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
         </div>
       </Card>
     </form>
-  );
-}
-
-function FieldControl({
-  field: f,
-  value,
-  error,
-  onChange,
-  config,
-  type,
-  isFood,
-}: {
-  field: FormField;
-  value: Values[string] | undefined;
-  error?: string;
-  onChange: (v: Values[string]) => void;
-  config: PublicConfig | null;
-  type: StallRequestType;
-  isFood: boolean;
-}) {
-  const id = f.name;
-  const label = <BilingualLabel en={f.label} ta={f.labelTa} />;
-  const help = f.help ? (
-    <>
-      {f.help}
-      {f.helpTa && (
-        <>
-          {' / '}
-          <span className='msrs-tamil' lang='ta'>
-            {f.helpTa}
-          </span>
-        </>
-      )}
-    </>
-  ) : undefined;
-  const invalid = error ? true : undefined;
-  const common = {
-    id,
-    invalid,
-    'aria-invalid': invalid,
-    'aria-describedby': error ? `${id}-error` : f.help ? `${id}-help` : undefined,
-  };
-
-  if (f.type === 'checkbox') {
-    // ⚠️ The consent question is a PLATE, not a bare tick and a line of text.
-    // It is the control that gates submission, and on a phone a 16px box beside
-    // a two-line paragraph is the smallest target on the longest screen.
-    const on = value === true;
-    return (
-      <div>
-        {f.help && (
-          <div
-            id={`${id}-help`}
-            style={{ fontSize: 12.5, color: 'var(--mfg)', marginBottom: 8, lineHeight: 1.6 }}
-          >
-            {help}
-          </div>
-        )}
-        <ChoicePlate htmlFor={id} selected={on}>
-          <Checkbox
-            {...common}
-            checked={on}
-            onChange={(e) => onChange(e.target.checked)}
-            style={{ marginTop: 1 }}
-          />
-          <span style={{ flex: 1, minWidth: 0 }}>
-            {label}
-            {f.required && (
-              <span aria-hidden style={{ marginLeft: 3, color: 'var(--des-fg)' }}>
-                *
-              </span>
-            )}
-          </span>
-        </ChoicePlate>
-        <FieldError of={error} id={`${id}-error`} />
-      </div>
-    );
-  }
-
-  return (
-    <Labelled id={id} label={label} help={help} error={error} required={f.required}>
-      {f.type === 'appliances' ? (
-        <ApplianceRows
-          id={id}
-          value={Array.isArray(value) ? value : []}
-          onChange={onChange}
-          max={f.max}
-        />
-      ) : f.type === 'zone' ? (
-        // ⚠️ The choices are the edition's own bays, resolved here rather than
-        // baked into the field, so a bay added for a redrawn layout appears on
-        // the form without a code change. The vendor form drops the bays closed
-        // to trade; the local welfare form keeps them, because those are the
-        // ones a village trader is most likely to want.
-        //
-        // Local welfare is quoted a rent too — a lower one for the same ground,
-        // not no rent at all. Only the ashram forms, which are billed
-        // internally and never quoted, hide the figures.
-        <ZoneSelect
-          name={id}
-          value={str(value)}
-          onChange={onChange}
-          options={zoneOptions(config?.zones ?? [], type === 'VENDOR')}
-          zones={config?.zones ?? null}
-          showRent={type === 'VENDOR' || type === 'LOCAL_WELFARE'}
-          isFood={isFood}
-          invalid={invalid}
-        />
-      ) : f.type === 'radio' && f.options ? (
-        <div style={{ display: 'grid', gap: 8 }} role='radiogroup'>
-          {f.options.map((o) => (
-            <ChoicePlate key={o.value} htmlFor={`${id}-${o.value}`} selected={value === o.value}>
-              <Radio
-                id={`${id}-${o.value}`}
-                name={id}
-                value={o.value}
-                checked={value === o.value}
-                onChange={() => onChange(o.value)}
-                style={{ marginTop: 2 }}
-              />
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <BilingualLabel en={o.label} ta={o.labelTa} />
-              </span>
-            </ChoicePlate>
-          ))}
-        </div>
-      ) : f.type === 'select' && f.options ? (
-        <Select {...common} value={str(value)} onChange={(e) => onChange(e.target.value)}>
-          <option value=''>Choose…</option>
-          {f.options.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-              {o.labelTa ? ` / ${o.labelTa}` : ''}
-            </option>
-          ))}
-        </Select>
-      ) : f.type === 'textarea' ? (
-        <Textarea {...common} value={str(value)} onChange={(e) => onChange(e.target.value)} />
-      ) : f.type === 'number' ? (
-        <Input
-          {...common}
-          type='number'
-          inputMode='numeric'
-          min={f.min}
-          max={f.max}
-          value={str(value)}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      ) : (
-        <Input
-          {...common}
-          type={f.type === 'email' ? 'email' : f.type === 'tel' ? 'tel' : 'text'}
-          inputMode={f.type === 'tel' ? 'tel' : undefined}
-          autoComplete={f.type === 'email' ? 'email' : f.type === 'tel' ? 'tel' : undefined}
-          value={str(value)}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      )}
-    </Labelled>
   );
 }

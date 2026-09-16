@@ -6,7 +6,8 @@ import {
   validateAgainstForm,
 } from '@msr/stalls';
 import { mintAccessLink, normalizeEmail } from './accounts';
-import { declarationsForForm, recordConsent } from './declarations';
+import { allowedCustomValues } from './custom-values';
+import { declarationsForForm, recordConsent, sameDeclarations } from './declarations';
 import { formFor } from './form-builder';
 import { ValidationFailedError } from '../../errors';
 import { type Db, activeEdition } from './editions';
@@ -88,27 +89,6 @@ function formValues(input: SubmitRequestInput): Record<string, unknown> {
   };
 }
 
-/** Whether the page displayed exactly the declarations that are live now.
- *
- *  Set equality, not order: the page renders them in key order and so does
- *  `declarationsFor`, but nothing should depend on two sorts agreeing.
- *
- *  ⚠️ `undefined` is not a claim and passes. A caller that does not send the
- *  field has not said what it displayed — the seed, a script, anything
- *  server-side — and refusing those would be refusing them for not
- *  participating in a check that exists to catch a stale BROWSER. An empty
- *  array IS a claim: "I showed none", which is wrong the moment one is live.
- */
-function sameDeclarations(
-  live: readonly { id: string }[],
-  posted: readonly string[] | undefined,
-): boolean {
-  if (posted === undefined) return true;
-  if (live.length !== posted.length) return false;
-  const seen = new Set(posted);
-  return live.every((d) => seen.has(d.id));
-}
-
 export async function submitRequest(
   db: PrismaClient,
   input: SubmitRequestInput,
@@ -174,19 +154,12 @@ export async function submitRequest(
     // second, shadow copy of the stall name into `stall_custom_field_value`,
     // where the record page would then show it as an extra answer nobody asked
     // for.
-    const allowedFields = await tx.stallFormField.findMany({
-      where: {
-        editionId: edition.id,
-        formType: input.requestType,
-        isActive: true,
-        isBuiltIn: false,
-      },
-      select: { id: true },
-    });
-    const allowed = new Set(allowedFields.map((f: { id: string }) => f.id));
-    const customValues = Object.entries(input.customFields)
-      .filter(([id, v]) => allowed.has(id) && v.trim().length > 0)
-      .map(([customFieldId, value]) => ({ customFieldId, value }));
+    const customValues = await allowedCustomValues(
+      tx,
+      edition.id,
+      input.requestType,
+      input.customFields,
+    );
 
     const request = await tx.stallRequest.create({
       data: {
@@ -263,7 +236,7 @@ export async function submitRequest(
     // prevent. So it is refused and they re-read it.
     const live = await declarationsForForm(tx, edition.id, input.requestType);
     if (!sameDeclarations(live, input.declarationIds)) throw new DeclarationsChangedError();
-    await recordConsent(tx, request.id, live);
+    await recordConsent(tx, { requestId: request.id, formType: input.requestType }, live);
 
     const { token } = await mintAccessLink(tx, {
       accountId: account.id,

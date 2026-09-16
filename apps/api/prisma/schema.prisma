@@ -165,6 +165,7 @@ enum StallFormType {
   VENDOR
   BANK
   FSSAI
+  STAFF
 
   @@schema("stalls")
 }
@@ -456,7 +457,13 @@ model StallDeclaration {
   /// Which form this wording is for, or NULL for "any form without one of its
   /// own". The same fallback the sport variants use in the module this was
   /// modelled on: the specific one wins, the default catches the rest.
-  requestType StallRequestType? @map("request_type")
+  ///
+  /// ⚠️ A FORM type, not a request type. The bank details form, the FSSAI
+  /// upload and staff registration all ask somebody to agree to something, and
+  /// none of them is an application. The four shared names are deliberately the
+  /// same strings, which is what let the widening migration leave every row
+  /// where it was.
+  formType StallFormType? @map("form_type")
 
   /// 1, then 2, then 3 — per (edition, key, requestType), not globally.
   version Int
@@ -491,7 +498,7 @@ model StallDeclaration {
   /// generate a DROP for it as drift. Its three partial companions —
   /// `stall_declaration_one_current`, `_one_current_default` and
   /// `_version_default` — Prisma cannot express, so it leaves them alone.
-  @@unique([editionId, key, requestType, version], map: "stall_declaration_version")
+  @@unique([editionId, key, formType, version], map: "stall_declaration_version")
   @@index([editionId, key])
   @@map("stall_declaration")
   @@schema("stalls")
@@ -508,11 +515,36 @@ model StallDeclarationConsent {
   declarationId String   @map("declaration_id") @db.Uuid
   agreedAt      DateTime @default(now()) @map("agreed_at") @db.Timestamptz
 
-  request     StallRequest     @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  declaration StallDeclaration @relation(fields: [declarationId], references: [id])
+  /// WHICH form the tick was on.
+  ///
+  /// 🔴 The same key can be ticked on the request form and again on the bank
+  /// form, months apart, against wording that may have been re-versioned in
+  /// between. Those are two consents. Without this column the second is
+  /// silently discarded by `skipDuplicates` — the vendor saw a tick and the log
+  /// has nothing.
+  formType StallFormType @map("form_type")
 
-  @@unique([requestId, declarationId])
+  /// Set when the consent is one STAFF MEMBER'S rather than the requester's.
+  ///
+  /// ⚠️ Eight people register against one coupon and share a request id. The
+  /// consent is the individual's — they are the one carrying the photo ID
+  /// through the gate — so without this, seven of the eight collapse into the
+  /// first person's row.
+  staffId String? @map("staff_id") @db.Uuid
+
+  request     StallRequest      @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  declaration StallDeclaration  @relation(fields: [declarationId], references: [id])
+  staff       StallVendorStaff? @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  /// ⚠️ The two real constraints are PARTIAL unique indexes Prisma cannot
+  /// express — `stall_declaration_consent_by_form` (the requester's own, where
+  /// staff_id IS NULL) and `_by_staff` (one person's own). They live in the
+  /// migration, exactly as `StallDeclaration`'s four already do. A plain
+  /// `@@unique` here would be a different, wrong constraint, and Prisma would
+  /// generate a DROP for the real ones as drift.
+  @@index([requestId, formType])
   @@index([declarationId])
+  @@index([staffId])
   @@map("stall_declaration_consent")
   @@schema("stalls")
 }
@@ -943,9 +975,10 @@ model StallRequest {
   messages    StallMessageLog[]
   bankDetail  StallBankDetail?
   reminders   StallReminderCall[]
-  paymentPlan StallPaymentPlan?
-  payments    StallPaymentRecord[]
-  fines       StallFine[]
+  paymentPlan   StallPaymentPlan?
+  payments      StallPaymentRecord[]
+  paymentClaims StallPaymentClaim[]
+  fines         StallFine[]
   refund      StallRefund?
   coupons     StallStaffCoupon[]
   staff       StallVendorStaff[]
@@ -1003,10 +1036,22 @@ model StallCustomFieldValue {
   customFieldId String @map("custom_field_id") @db.Uuid
   value         String
 
-  request StallRequest   @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  field   StallFormField @relation(fields: [customFieldId], references: [id])
+  /// Set when the answer is one STAFF MEMBER'S rather than the stall's. Eight
+  /// people register against one coupon and share a request; without this,
+  /// seven of their answers collapse into the first person's row.
+  staffId String? @map("staff_id") @db.Uuid
 
-  @@unique([requestId, customFieldId])
+  request StallRequest      @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  field   StallFormField    @relation(fields: [customFieldId], references: [id])
+  staff   StallVendorStaff? @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  /// ⚠️ The two real constraints are PARTIAL unique indexes Prisma cannot
+  /// express — `_by_request` (staff_id IS NULL) and `_by_staff`. They live in
+  /// the migration, like the pairs on `stall_declaration` and its consent log.
+  /// No plain index on (request_id, custom_field_id) is declared: `_by_request`
+  /// already covers that lookup for every row a request owns, and a duplicate
+  /// would cost a write on each insert to buy nothing.
+  @@index([staffId])
   @@map("stall_custom_field_value")
   @@schema("stalls")
 }
@@ -1054,6 +1099,71 @@ enum StallPaymentPurpose {
   RENT
   DEPOSIT
 
+  @@schema("stalls")
+}
+
+enum StallPaymentClaimStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+
+  @@schema("stalls")
+}
+
+/// A vendor's own account of a transfer they have made.
+///
+/// 🔴 NOT a `StallPaymentRecord`. That table is finance-entered — `confirmedBy`
+/// is required — so every row in it is money the Foundation has seen on its
+/// statement. A claim is what somebody SAYS they paid, and the two must never be
+/// the same table: every query that reads a payment as settled would then need a
+/// `WHERE confirmed_by IS NOT NULL`, and the one that forgot would count
+/// unverified money silently.
+///
+/// The 2025 letter filled this gap with "please send transfer details on E-mail
+/// IDs finance.support@… once you make the payment" — a mailbox, matched by
+/// hand.
+model StallPaymentClaim {
+  id        String                   @id @default(uuid()) @db.Uuid
+  requestId String                   @map("request_id") @db.Uuid
+  purpose   StallPaymentPurpose
+  status    StallPaymentClaimStatus  @default(PENDING)
+
+  /// What the vendor typed off their bank statement.
+  referenceNo  String   @map("reference_no")
+  amountPaise  Int      @map("amount_paise")
+  /// A banking DATE, not an instant — the day the transfer shows on the
+  /// statement, which is what finance matches against.
+  paidOn       DateTime @map("paid_on") @db.Date
+  remitterName String?  @map("remitter_name")
+  /// A media-store key. Optional: a vendor who transferred at a branch counter
+  /// may have only a stamped slip they cannot photograph well, and refusing the
+  /// claim over that sends them back to email.
+  receiptKey   String?  @map("receipt_key")
+  note         String?
+
+  submittedAt DateTime @default(now()) @map("submitted_at") @db.Timestamptz
+
+  reviewedAt DateTime? @map("reviewed_at") @db.Timestamptz
+  reviewedBy String?   @map("reviewed_by")
+  /// ⚠️ Required on REJECTED, enforced by a CHECK rather than by application
+  /// code. A rejection with no reason is one the vendor cannot act on, and this
+  /// text is shown to them.
+  rejectReason String? @map("reject_reason")
+
+  /// The confirmed receipt this claim became, set on VERIFIED.
+  paymentRecordId String? @map("payment_record_id") @db.Uuid
+
+  request       StallRequest        @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  paymentRecord StallPaymentRecord? @relation(fields: [paymentRecordId], references: [id], onDelete: SetNull)
+
+  /// ⚠️ The real constraint is a PARTIAL unique index Prisma cannot express —
+  /// `stall_payment_claim_live_reference`, over (request, reference) where the
+  /// status is not REJECTED. A rejected claim keeps its reference so the vendor
+  /// can be shown what was wrong, and they must still be able to resubmit a
+  /// corrected claim carrying the same UTR.
+  @@index([requestId])
+  @@index([status, submittedAt])
+  @@map("stall_payment_claim")
   @@schema("stalls")
 }
 
@@ -1189,24 +1299,30 @@ model StallContractSignature {
 /// member opens one, so the objects are never public and never in a backup of
 /// this database.
 model StallBankDetail {
-  requestId     String  @id @map("request_id") @db.Uuid
-  email         String
-  invoiceName   String  @map("invoice_name")
-  accountHolder String  @map("account_holder")
-  mobile        String
-  address       String
-  pincode       String
-  bankName      String  @map("bank_name")
-  branch        String
-  accountNumber String  @map("account_number")
-  ifsc          String
-  micr          String?
-  panNumber     String  @map("pan_number")
-  /// Stored as typed, including the literal "NONE" the 2025 form asks for.
-  gstNumber     String  @map("gst_number")
+  requestId String @id @map("request_id") @db.Uuid
 
-  chequeKey String  @map("cheque_key")
-  panKey    String  @map("pan_key")
+  /// ⚠️ EVERY answer below is optional at the database level, and none of them
+  /// is optional on the form by default. What this form insists on is
+  /// `is_required` on its field rows — an admin may mark a question optional or
+  /// stop asking it, and a NOT NULL here would turn that configuration choice
+  /// into a 500 at submit time. Nullability is the floor, not the policy.
+  email         String?
+  invoiceName   String? @map("invoice_name")
+  accountHolder String? @map("account_holder")
+  mobile        String?
+  address       String?
+  pincode       String?
+  bankName      String? @map("bank_name")
+  branch        String?
+  accountNumber String? @map("account_number")
+  ifsc          String?
+  micr          String?
+  panNumber     String? @map("pan_number")
+  /// Stored as typed, including the literal "NONE" the 2025 form asks for.
+  gstNumber     String? @map("gst_number")
+
+  chequeKey String? @map("cheque_key")
+  panKey    String? @map("pan_key")
   gstKey    String? @map("gst_key")
 
   agreedNeftAt  DateTime @map("agreed_neft_at") @db.Timestamptz
@@ -1258,6 +1374,16 @@ model StallPaymentPlan {
   depositTotalPaise     Int      @map("deposit_total_paise")
   quotedAt              DateTime @default(now()) @map("quoted_at") @db.Timestamptz
 
+  /// The itemised charges as they stood when the letter went out — `QuoteLine[]`.
+  ///
+  /// 🔴 Frozen, not recomputed. The plan is what the vendor was TOLD, and a
+  /// vendor who revised their plug points after the letter would otherwise get
+  /// a reprint whose lines no longer add up to the total beside them.
+  ///
+  /// Null on plans frozen before this column existed; the letter then prints
+  /// the summed figures it always did.
+  lines                 Json?
+
   /// What was actually agreed, where the team agreed something other than the
   /// quote.
   ///
@@ -1305,7 +1431,8 @@ model StallPaymentRecord {
   confirmedAt  DateTime            @default(now()) @map("confirmed_at") @db.Timestamptz
   confirmedBy  String              @map("confirmed_by")
 
-  request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  request StallRequest        @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  claims  StallPaymentClaim[]
 
   /// One reference number is one credit. Entering it twice — the same NEFT
   /// pasted into two rows on a busy afternoon — would double-count what the
@@ -1356,14 +1483,26 @@ model StallStaffCoupon {
 /// one: they are a visitor for one event, recorded by the vendor, and the
 /// directory is for people the organisation has a relationship with.
 model StallVendorStaff {
-  id           String      @id @default(uuid()) @db.Uuid
-  requestId    String      @map("request_id") @db.Uuid
-  name         String
-  mobile       String
-  idType       StallIdType @map("id_type")
+  id        String @id @default(uuid()) @db.Uuid
+  requestId String @map("request_id") @db.Uuid
+
+  name String?
+
+  /// 🔴 The ONE question on these three forms that cannot be switched off or
+  /// made optional. It is half of the unique index behind "one person, one
+  /// registration per stall", which is what stops somebody handed two coupon
+  /// codes appearing twice and being counted twice at the gate. A nullable
+  /// mobile makes that index toothless, because NULLs compare as DISTINCT and
+  /// every registration without one would read as a new person.
+  ///
+  /// `LOCKED_REQUIRED` in `public-forms.ts` is where the Form Builder and the
+  /// API both read that. Structural, not a preference.
+  mobile String
+
+  idType       StallIdType? @map("id_type")
   /// For an Aadhaar this is the last four digits only — enough to match the
   /// card at the gate, not enough to be a copy of it.
-  idNumber     String      @map("id_number")
+  idNumber     String?     @map("id_number")
   role         String?
   registeredAt DateTime    @default(now()) @map("registered_at") @db.Timestamptz
   /// WHICH coupon this person came in on, so a stall holding two codes can be
@@ -1371,8 +1510,10 @@ model StallVendorStaff {
   /// predate a stall being able to hold more than one.
   couponId     String?     @map("coupon_id") @db.Uuid
 
-  request StallRequest      @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  coupon  StallStaffCoupon? @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  request  StallRequest              @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  coupon       StallStaffCoupon?         @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  consents     StallDeclarationConsent[]
+  customValues StallCustomFieldValue[]
 
   /// One phone number, one registration per stall. Re-submitting the same
   /// person — the common case when a form is refreshed — must not inflate the

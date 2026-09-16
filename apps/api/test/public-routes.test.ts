@@ -67,11 +67,11 @@ describe('GET /public/config', () => {
     expect(Object.keys(first).sort()).toEqual([
       'body',
       'bodyTa',
+      'formType',
       'id',
       'isActive',
       'isCurrent',
       'key',
-      'requestType',
       'title',
       'version',
     ]);
@@ -86,7 +86,7 @@ describe('GET /public/config', () => {
       data: {
         editionId: edition.id,
         key: 'request_submission',
-        requestType: null,
+        formType: null,
         version: 99,
         title: 'Superseded',
         body: 'An old paragraph nobody should be served.',

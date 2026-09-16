@@ -614,6 +614,25 @@ export class UnknownFormError extends Error {
  *
  *  ⚠️ A built-in that should stop being asked is switched OFF, not deleted or
  *  retyped — `isActive` is supported on every field for exactly this. */
+/**
+ * A question that identifies the person or record it belongs to.
+ *
+ * ⚠️ Distinct from `BuiltInFieldLockedError`, whose message says "switch it off
+ * instead" — which is precisely what this field cannot do. The staff form's
+ * mobile number is half of the unique index behind "one person, one
+ * registration per stall"; without it, somebody handed two coupon codes is
+ * counted twice at the gate.
+ */
+export class StructuralFieldLockedError extends Error {
+  constructor(readonly label: string) {
+    super(
+      `"${label}" identifies the person this form registers, so it cannot be ` +
+        'made optional or switched off. Every other question on this form can be.',
+    );
+    this.name = 'StructuralFieldLockedError';
+  }
+}
+
 export class BuiltInFieldLockedError extends Error {
   constructor(
     readonly label: string,
@@ -637,5 +656,27 @@ export class UnauthorableFieldTypeError extends Error {
   constructor(readonly fieldType: string) {
     super(`"${fieldType}" is not a field type a form can be given`);
     this.name = 'UnauthorableFieldTypeError';
+  }
+}
+
+/** A claim finance has already settled.
+ *
+ *  ⚠️ Re-verifying would write a SECOND payment record for one transfer, which
+ *  double-counts what the vendor paid and shrinks their refund — the same reason
+ *  `stall_payment_record` refuses a repeated reference number. */
+export class ClaimAlreadyReviewedError extends Error {
+  constructor(readonly id: string) {
+    super('This payment claim has already been settled.');
+    this.name = 'ClaimAlreadyReviewedError';
+  }
+}
+
+/** ⚠️ The reason is shown to the requester, and it is the only thing that tells
+ *  them what to correct. A rejection without one returns them to the mailbox
+ *  this whole step replaced. */
+export class MissingRejectReasonError extends Error {
+  constructor() {
+    super('Please say why the payment could not be verified — the requester is shown this.');
+    this.name = 'MissingRejectReasonError';
   }
 }

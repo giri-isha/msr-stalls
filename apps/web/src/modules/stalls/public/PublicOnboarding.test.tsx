@@ -19,6 +19,83 @@ beforeEach(() => {
   // the API, so it is stubbed at the network edge like everything else.
 });
 
+/** A seeded form definition, as each public view now carries one.
+ *
+ * ⚠️ Without it these pages draw nothing and gate on nothing — the definition
+ * is what says which questions exist, and the submit gates wait for it to
+ * arrive rather than treating "no questions yet" as "nothing required". */
+const field = (name: string, label: string, type: string, over: Record<string, unknown> = {}) => ({
+  id: `f-${name}`,
+  name,
+  label,
+  labelTa: null,
+  help: null,
+  helpTa: null,
+  type,
+  required: false,
+  isBuiltIn: true,
+  isActive: true,
+  sectionId: null,
+  sortOrder: 0,
+  options: null,
+  min: null,
+  max: null,
+  ...over,
+});
+
+const formOf = (formType: string, fields: ReturnType<typeof field>[]) => ({
+  formType,
+  title: formType,
+  titleTa: null,
+  sections: [],
+  fields: fields.map((f, i) => ({ ...f, sortOrder: i })),
+});
+
+const BANK_FORM_DEF = formOf('BANK', [
+  field('email', 'Email', 'email', { required: true }),
+  field('invoiceName', 'Name as Required on Invoice', 'text', {
+    required: true,
+    labelTa: 'விலைப்பட்டியலில் குறிப்பிடப்பட வேண்டிய பெயர்',
+  }),
+  field('mobile', 'Mobile Number', 'tel', { required: true, labelTa: 'கைபேசி எண்' }),
+  field('bankName', 'Bank Name', 'text', { required: true, labelTa: 'வங்கி பெயர்' }),
+  field('chequeKey', 'Cancelled Cheque or Bank Passbook Front Page', 'file', { required: true }),
+  field('panKey', 'PAN Card', 'file', { required: true }),
+  field('gstKey', 'GST Certificate', 'file'),
+  field('plugs5a', '5 Amp Plug Points Needed', 'number', { required: true }),
+  field('plugs15a', '15 Amp Plug Points Needed', 'number', { required: true }),
+  field('gasStoves', 'Number of Gas Stoves', 'number', { required: true }),
+  field('tablesNeeded', 'Tables Needed', 'number', { required: true }),
+  field('chairsNeeded', 'Chairs Needed', 'number', { required: true }),
+  field('passes2w', '2-Wheeler Passes', 'number', { required: true }),
+  field('passes4w', '4-Wheeler Passes', 'number', { required: true }),
+  field('passesStaff', 'Staff Passes', 'number', { required: true }),
+]);
+
+const decl = (id: string, body: string) => ({
+  id,
+  key: id,
+  formType: null,
+  version: 1,
+  title: id,
+  body,
+  bodyTa: null,
+  isActive: true,
+  isCurrent: true,
+});
+
+/** The two consents the bank form seeds, as declaration rows. */
+const BANK_DECLARATIONS = [
+  decl(
+    '33333333-3333-4333-8333-333333333333',
+    "I agree — Isha Foundation's bank account details will be sent to me by email or SMS.",
+  ),
+  decl(
+    '44444444-4444-4444-8444-444444444444',
+    'I agree that the deposit will be returned only to the bank account given above.',
+  ),
+];
+
 const BANK_VIEW = {
   reference: 'VEN-2026-0001',
   stallName: 'Green Leaf Organics',
@@ -40,6 +117,8 @@ const BANK_VIEW = {
     appliances: [{ name: 'Deep fryer', watts: 2500 }],
   },
   submittedAt: null as string | null,
+  form: BANK_FORM_DEF,
+  declarations: BANK_DECLARATIONS,
 };
 
 describe('the bank details form', () => {
@@ -78,12 +157,27 @@ describe('the bank details form', () => {
     expect(screen.getByRole('button', { name: 'Submit' })).toBeDisabled();
   });
 
-  test('links the terms it asks the vendor to accept', async () => {
-    // 🔴 This form records that the requester accepted the terms. The link is
-    // the document they accepted — without it the consent cannot be produced if
-    // a stall is ever in dispute.
+  /** 🔴 The link to the terms lives in the DECLARATION BODY now, as a
+   *  `[label](https://…)` marker, not spliced in from `termsUrl` at render
+   *  time. That is what makes it versioned along with the sentence it belongs
+   *  to: the document a vendor accepted in January is still the document the
+   *  log names in June, even after the team reissues it. A constant could not
+   *  carry the link, and a render-time splice was not part of the consent. */
+  test('links the terms it asks the vendor to accept, from the wording itself', async () => {
     installFetch([
-      ['GET', /\/public\/bank\//, () => ({ ...BANK_VIEW, termsUrl: 'https://isha.test/tc.pdf' })],
+      [
+        'GET',
+        /\/public\/bank\//,
+        () => ({
+          ...BANK_VIEW,
+          declarations: [
+            decl(
+              '55555555-5555-4555-8555-555555555555',
+              'I have read and accept the [terms and conditions for stalls](https://isha.test/tc.pdf).',
+            ),
+          ],
+        }),
+      ],
     ]);
     render();
 
@@ -93,14 +187,28 @@ describe('the bank details form', () => {
     expect(link).toHaveAttribute('target', '_blank');
   });
 
-  test('with no document issued the consent stands on its own wording', async () => {
-    installFetch([['GET', /\/public\/bank\//, () => BANK_VIEW]]);
+  /** ⚠️ `https` only, and an unmatched link stays visible AS ITS OWN TEXT
+   *  rather than vanishing — a broken link somebody can see gets fixed. */
+  test('a non-https link in the wording is left as text, never made clickable', async () => {
+    installFetch([
+      [
+        'GET',
+        /\/public\/bank\//,
+        () => ({
+          ...BANK_VIEW,
+          declarations: [
+            decl(
+              '66666666-6666-4666-8666-666666666666',
+              'I accept the [terms](javascript:alert(1)) for stalls.',
+            ),
+          ],
+        }),
+      ],
+    ]);
     render();
 
     await screen.findByText(/VEN-2026-0001/);
-    // A link that goes nowhere is worse than none: a requester will click it.
-    expect(screen.queryByRole('link', { name: /terms and conditions/ })).not.toBeInTheDocument();
-    expect(screen.getByLabelText(/deposit will be returned/)).toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 
   test('an already-submitted form reads back rather than offering a second go', async () => {
@@ -141,6 +249,8 @@ describe('the FSSAI upload', () => {
           uploadedAt: null,
           verifiedAt: null,
           files: [],
+          form: formOf('FSSAI', [field('files', 'FSSAI Certificate', 'files', { required: true })]),
+          declarations: [],
         }),
       ],
     ]);
@@ -161,6 +271,8 @@ describe('the FSSAI upload', () => {
           uploadedAt: '2026-01-20T10:00:00.000Z',
           verifiedAt: '2026-01-21T10:00:00.000Z',
           files: [{ name: 'cert.pdf', uploadedAt: '2026-01-20T10:00:00.000Z' }],
+          form: formOf('FSSAI', [field('files', 'FSSAI Certificate', 'files', { required: true })]),
+          declarations: [],
         }),
       ],
     ]);
@@ -179,6 +291,12 @@ describe('Staff Registration', () => {
     registered: 1,
     maxStaff: 3,
     staff: [{ name: 'Ravi Kumar', mobile: '98••••555', registeredAt: '2026-02-01T10:00:00.000Z' }],
+    form: formOf('STAFF', [
+      field('name', 'Full Name', 'text', { required: true }),
+      field('mobile', 'Mobile Number', 'tel', { required: true }),
+      field('idNumber', 'ID Number', 'text', { required: true }),
+    ]),
+    declarations: [],
   };
 
   const renderWithCode = (code: string) =>

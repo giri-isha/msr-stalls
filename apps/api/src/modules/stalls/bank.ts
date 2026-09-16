@@ -2,8 +2,16 @@ import type { PrismaClient } from '@prisma/client';
 import type { BankFormView, SubmitBankDetailsInput } from '@msr/stalls';
 import { recordActivity } from '../../activity';
 import { flowFor } from './config';
+import { declarationsForForm, recordConsent, sameDeclarations } from './declarations';
+import { allowedCustomValues, replaceCustomValues } from './custom-values';
+import { publicFormFor } from './form-builder';
 import type { Db } from './editions';
-import { BankDetailsLockedError, StepNotOpenError, UnknownRequestError } from './errors';
+import {
+  BankDetailsLockedError,
+  DeclarationsChangedError,
+  StepNotOpenError,
+  UnknownRequestError,
+} from './errors';
 import { allocatedNumbers, allocatedZone, factsInclude, refreshStage } from './facts';
 import { MODULE_KEY } from './roles';
 import { isOurKey } from './uploads';
@@ -23,7 +31,15 @@ export async function getBankForm(db: Db, requestId: string): Promise<BankFormVi
     include: { ...factsInclude, edition: true, appliances: { orderBy: { sortOrder: 'asc' } } },
   });
   if (!r) throw new UnknownRequestError(requestId);
+  // 🔴 The edition's own definition, so the page draws what THIS year asks —
+  // including a question an admin appended — rather than a constant.
+  const [form, declarations] = await Promise.all([
+    publicFormFor(db, r.editionId, 'BANK'),
+    declarationsForForm(db, r.editionId, 'BANK'),
+  ]);
   return {
+    form,
+    declarations,
     reference: r.reference,
     stallName: r.stallName,
     requesterName: r.requesterName,
@@ -80,6 +96,25 @@ export async function submitBankDetails(
 
   const now = new Date();
   await db.$transaction(async (tx) => {
+    // 🔴 The same check the request form makes, for the same reason: if the
+    // page displayed a different set from the one live now, the wording moved
+    // while the form sat open, and agreeing on the vendor's behalf to a
+    // paragraph they never saw is the outcome this whole feature prevents.
+    //
+    // ⚠️ The versions LOGGED are the live ones resolved here — a posted id is
+    // never trusted into the record. `agreedNeftAt`/`agreedTermsAt` below still
+    // record WHEN; these rows are what record WHAT.
+    const live = await declarationsForForm(tx, r.editionId, 'BANK');
+    if (!sameDeclarations(live, input.declarationIds)) throw new DeclarationsChangedError();
+    await recordConsent(tx, { requestId, formType: 'BANK' }, live);
+
+    // Answers to questions an admin appended to this form.
+    await replaceCustomValues(
+      tx,
+      { requestId },
+      await allowedCustomValues(tx, r.editionId, 'BANK', input.customFields),
+    );
+
     await tx.stallBankDetail.create({
       data: {
         requestId,

@@ -12,6 +12,7 @@ import {
 } from '@msr/stalls';
 import { findAccountByContact, mintAccessLink } from './accounts';
 import { flowFor } from './config';
+import { claimsFor } from './payment-claims';
 import type { StallsDeps } from './deps';
 import type { Db } from './editions';
 import { StepNotOpenError, UnknownAccessLinkError } from './errors';
@@ -207,6 +208,10 @@ export async function statusView(db: Db, account: StallAccount): Promise<PublicS
                   : toQuoteView(quoteFor(r, await quoteCtxOf(r.editionId))),
               )
             : null,
+        // 🔴 Their own claims, INCLUDING rejected ones with the reason. That
+        // reason is the only thing telling them what to correct, and a
+        // rejection they never see returns them to the mailbox this replaced.
+        paymentClaims: r.status === 'SELECTED' ? await claimsFor(db, r.id) : [],
         staff: r.status === 'SELECTED' ? staffView(r) : null,
       })),
     ),

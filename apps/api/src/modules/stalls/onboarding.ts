@@ -16,8 +16,16 @@ import {
 import { recordActivity } from '../../activity';
 import type { MediaStore } from '../../storage/media-namespace';
 import { flowFor } from './config';
+import { declarationsForForm, recordConsent, sameDeclarations } from './declarations';
+import { allowedCustomValues, replaceCustomValues } from './custom-values';
+import { publicFormFor } from './form-builder';
 import type { Db } from './editions';
-import { CouponFullError, UnknownCouponError, UnknownRequestError } from './errors';
+import {
+  CouponFullError,
+  DeclarationsChangedError,
+  UnknownCouponError,
+  UnknownRequestError,
+} from './errors';
 import { DEFAULT_STAFF_COUPON_CAPACITY } from '@msr/stalls';
 import {
   allocatedNumbers,
@@ -138,12 +146,25 @@ export async function resolveCoupon(
   return { request, coupon: rest };
 }
 
-export function toCouponView(r: RequestWithFacts, coupon: StallStaffCoupon): CouponView {
+/** ⚠️ Async now, because the view carries the edition's own definition of the
+ *  staff form. The page has to draw what THIS year asks — including a question
+ *  an admin appended — and that is a read. */
+export async function toCouponView(
+  db: Db,
+  r: RequestWithFacts,
+  coupon: StallStaffCoupon,
+): Promise<CouponView> {
+  const [form, declarations] = await Promise.all([
+    publicFormFor(db, r.editionId, 'STAFF'),
+    declarationsForForm(db, r.editionId, 'STAFF'),
+  ]);
   // ⚠️ Scoped to the coupon in the reader's hand. The page is seen by the
   // vendor's team and, where a stall holds two codes, by a caterer's team as
   // well — neither is owed the other's roster or the other's remaining room.
   const mine = r.staff.filter((st) => st.couponId === coupon.id);
   return {
+    form,
+    declarations,
     stallName: r.stallName,
     reference: r.reference,
     // ⚠️ Withheld until the stall checks in, like everywhere else the requester
@@ -230,26 +251,39 @@ export async function registerStaff(
     throw new CouponFullError(cap);
   }
 
-  await db.stallVendorStaff.upsert({
-    // ⚠️ Still keyed on the STALL and the mobile, not on the coupon. One person,
-    // one registration per stall — somebody handed both codes must not appear
-    // twice and be counted twice at the gate.
-    where: { requestId_mobile: { requestId: request.id, mobile: input.mobile } },
-    create: {
-      requestId: request.id,
-      couponId: coupon.id,
-      name: input.name,
-      mobile: input.mobile,
-      idType: input.idType,
-      idNumber: narrowId(input.idType, input.idNumber),
-      role: input.role ?? null,
-    },
-    update: {
-      name: input.name,
-      idType: input.idType,
-      idNumber: narrowId(input.idType, input.idNumber),
-      role: input.role ?? null,
-    },
+  // One transaction, so a person's row and their own consent are written
+  // together or not at all. A registration recorded without the consent it was
+  // given under is exactly the gap this work closes.
+  await db.$transaction(async (tx) => {
+    const row = await tx.stallVendorStaff.upsert({
+      // ⚠️ Still keyed on the STALL and the mobile, not on the coupon. One
+      // person, one registration per stall — somebody handed both codes must
+      // not appear twice and be counted twice at the gate.
+      where: { requestId_mobile: { requestId: request.id, mobile: input.mobile } },
+      create: {
+        requestId: request.id,
+        couponId: coupon.id,
+        name: input.name,
+        mobile: input.mobile,
+        idType: input.idType,
+        idNumber: narrowId(input.idType, input.idNumber),
+        role: input.role ?? null,
+      },
+      update: {
+        name: input.name,
+        idType: input.idType,
+        idNumber: narrowId(input.idType, input.idNumber),
+        role: input.role ?? null,
+      },
+    });
+
+    const live = await declarationsForForm(tx, request.editionId, 'STAFF');
+    if (!sameDeclarations(live, input.declarationIds)) throw new DeclarationsChangedError();
+    // 🔴 `staffId` is THIS person's. Eight people register against one coupon
+    // and share a request id, and the consent is the individual's — they are
+    // the one carrying the photo ID through the gate. Filed against the request
+    // alone, seven of the eight would collapse into the first person's row.
+    await recordConsent(tx, { requestId: request.id, formType: 'STAFF', staffId: row.id }, live);
   });
   await refreshStage(db, request.id);
 
@@ -257,7 +291,7 @@ export async function registerStaff(
     where: { id: request.id },
     include: factsInclude,
   });
-  return toCouponView(fresh, coupon);
+  return toCouponView(db, fresh, coupon);
 }
 
 export async function listStaffFor(db: Db, requestId: string): Promise<VendorStaffView[]> {
@@ -297,7 +331,25 @@ export async function submitFssai(
   requestId: string,
   input: SubmitFssaiInput,
 ): Promise<void> {
+  const r = await db.stallRequest.findUniqueOrThrow({
+    where: { id: requestId },
+    select: { editionId: true },
+  });
+
   await db.$transaction(async (tx) => {
+    // The same staleness refusal the request and bank forms make. The FSSAI
+    // upload seeds no wording of its own, so `live` is empty until the team
+    // authors some — at which point this starts gating without a code change.
+    const live = await declarationsForForm(tx, r.editionId, 'FSSAI');
+    if (!sameDeclarations(live, input.declarationIds)) throw new DeclarationsChangedError();
+    await recordConsent(tx, { requestId, formType: 'FSSAI' }, live);
+
+    await replaceCustomValues(
+      tx,
+      { requestId },
+      await allowedCustomValues(tx, r.editionId, 'FSSAI', input.customFields),
+    );
+
     await tx.stallFssaiCertificate.upsert({
       where: { requestId },
       create: {
@@ -358,7 +410,12 @@ function bankStatus(r: RequestWithFacts): Status3 {
 function gstStatus(r: RequestWithFacts): Status3 {
   if (!needsBankStep(r.requestType)) return 'NOT_APPLICABLE';
   if (!r.bankDetail) return 'PENDING';
-  return r.bankDetail.gstNumber.toUpperCase() === 'NONE' ? 'NOT_APPLICABLE' : 'RECEIVED';
+  // ⚠️ A GST number that was never ASKED FOR is not applicable either — the
+  // edition can switch that question off, and a missing answer then means the
+  // same thing the literal "NONE" means: there is no GST registration to chase.
+  const gst = r.bankDetail.gstNumber;
+  if (!gst) return 'NOT_APPLICABLE';
+  return gst.toUpperCase() === 'NONE' ? 'NOT_APPLICABLE' : 'RECEIVED';
 }
 
 function paymentStatus(r: RequestWithFacts): 'CONFIRMED' | 'PENDING' | 'NOT_APPLICABLE' {

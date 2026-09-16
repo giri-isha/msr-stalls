@@ -1,7 +1,15 @@
-import type { CouponView, RegisterStaffInput } from '@msr/stalls';
+import type {
+  BuiltFormField,
+  CouponView,
+  FormField as FieldDef,
+  RegisterStaffInput,
+} from '@msr/stalls';
+import { formFields } from '@msr/stalls';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { fieldErrorsFrom } from '../api-client';
+import { DeclarationConsent, allTicked } from '../components/DeclarationConsent';
+import { FieldControl } from '../components/FormFields';
 import { getCoupon, registerStaff } from '../api';
 import { formatDate } from '../hooks';
 import {
@@ -62,6 +70,15 @@ export function StaffRegistration() {
   const [role, setRole] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [extra, setExtra] = useState<Record<string, string>>({});
+  const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (id: string, on: boolean) =>
+    setTicked((was) => {
+      const next = new Set(was);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
 
   const lookup = async (value: string) => {
     if (!value.trim()) return;
@@ -86,6 +103,10 @@ export function StaffRegistration() {
 
   const full = coupon !== null && coupon.maxStaff > 0 && coupon.registered >= coupon.maxStaff;
 
+  // Questions this edition appended to the staff form. Answers are filed
+  // against the person, not the stall — see `replaceCustomValues`.
+  const appendedFields = (coupon?.form ? formFields(coupon.form) : []).filter((f) => !f.isBuiltIn);
+
   const submit = async () => {
     setErrors({});
     setBusy(true);
@@ -97,12 +118,21 @@ export function StaffRegistration() {
         idType,
         idNumber: idNumber.trim(),
         role: role.trim() || undefined,
+        declarationIds: (coupon?.declarations ?? []).map((d) => d.id),
+        // 🔴 Filed against THIS PERSON, not the stall. Eight people register
+        // against one coupon and share a request.
+        customFields: Object.fromEntries(Object.entries(extra).filter(([, v]) => v.trim() !== '')),
       });
       setCoupon(next);
       setName('');
       setMobile('');
       setIdNumber('');
       setRole('');
+      // ⚠️ Cleared for the NEXT person. The page is used by a queue of people
+      // in turn, and leaving one person's consent ticked would register the
+      // next one against a tick they never made.
+      setExtra({});
+      setTicked(new Set());
       toast.ok('Registered. The next person can use the same link.');
     } catch (e) {
       setErrors(fieldErrorsFrom(e));
@@ -227,11 +257,38 @@ export function StaffRegistration() {
                   onChange={(e) => setRole(e.target.value)}
                 />
               </FormField>
+              {appendedFields.length > 0 && (
+                <div style={{ display: 'grid', gap: 14 }}>
+                  {appendedFields.map((f) => (
+                    <FieldControl
+                      key={f.id}
+                      field={asFormField(f)}
+                      value={extra[f.id] ?? ''}
+                      onChange={(v) =>
+                        setExtra((was) => ({ ...was, [f.id]: typeof v === 'string' ? v : '' }))
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+
+              <DeclarationConsent
+                declarations={coupon.declarations}
+                ticked={ticked}
+                onToggle={toggle}
+              />
+
               <div>
                 <Btn
                   kind='primary'
                   onClick={submit}
-                  disabled={busy || !name.trim() || !mobile.trim() || !idNumber.trim()}
+                  disabled={
+                    busy ||
+                    !name.trim() ||
+                    !mobile.trim() ||
+                    !idNumber.trim() ||
+                    !allTicked(coupon.declarations, ticked)
+                  }
                 >
                   <Icon name='user-plus' size={14} />
                   {busy ? 'Registering…' : 'Register'}
@@ -274,3 +331,17 @@ export function StaffRegistration() {
     </div>
   );
 }
+
+/** A row as `FieldControl` wants it. */
+const asFormField = (f: BuiltFormField): FieldDef => ({
+  name: f.name ?? f.id,
+  label: f.label,
+  labelTa: f.labelTa,
+  help: f.help ?? undefined,
+  helpTa: f.helpTa ?? undefined,
+  type: f.type,
+  required: f.required,
+  options: f.options ?? undefined,
+  min: f.min ?? undefined,
+  max: f.max ?? undefined,
+});

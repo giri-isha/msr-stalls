@@ -1,26 +1,20 @@
-import type { SubmitBankDetailsInput } from '@msr/stalls';
+import type {
+  BuiltFormField,
+  FormField as FieldDef,
+  PresignUploadInput,
+  SubmitBankDetailsInput,
+} from '@msr/stalls';
+import { formFields, uploadPurposeFor } from '@msr/stalls';
 import { useState } from 'react';
 import { useParams } from 'react-router';
 import { fieldErrorsFrom } from '../api-client';
 import { getBankForm, presignPublicUpload, submitBankDetails, uploadFile } from '../api';
 import { type ApplianceRow, ApplianceRows } from '../components/ApplianceRows';
 import { BilingualLabel } from '../components/BilingualLabel';
+import { DeclarationConsent, allTicked } from '../components/DeclarationConsent';
+import { FieldControl } from '../components/FormFields';
 import { useLoad } from '../hooks';
-import {
-  Btn,
-  Card,
-  Checkbox,
-  ErrorBox,
-  FieldError,
-  FormField,
-  H1,
-  Icon,
-  Input,
-  Loading,
-  Tag,
-  Textarea,
-  useToast,
-} from '../ui';
+import { Btn, Card, ErrorBox, FormField, H1, Icon, Loading, Tag, Textarea, useToast } from '../ui';
 
 /**
  * "MSR Stalls Bank Details and Requirements" — the vendor's own Phase 2 form.
@@ -43,7 +37,7 @@ interface TextField {
   help?: string;
 }
 
-const FIELDS: TextField[] = [
+const _FIELDS: TextField[] = [
   { name: 'email', label: 'Email', labelTa: null, required: true, type: 'email' },
   {
     name: 'invoiceName',
@@ -80,19 +74,38 @@ const FIELDS: TextField[] = [
   },
 ];
 
-const COUNTS: Array<{ name: keyof SubmitBankDetailsInput; label: string; labelTa: string | null }> =
-  [
-    { name: 'plugs5a', label: '5 Amp Plug Points Needed', labelTa: null },
-    { name: 'plugs15a', label: '15 Amp Plug Points Needed', labelTa: null },
-    { name: 'gasStoves', label: 'Number of Gas Stoves', labelTa: null },
-    { name: 'tablesNeeded', label: 'Tables Needed', labelTa: null },
-    { name: 'chairsNeeded', label: 'Chairs Needed', labelTa: null },
-    { name: 'passes2w', label: '2-Wheeler Passes', labelTa: null },
-    { name: 'passes4w', label: '4-Wheeler Passes', labelTa: null },
-    { name: 'passesStaff', label: 'Staff Passes', labelTa: null },
-  ];
+const _COUNTS: Array<{
+  name: keyof SubmitBankDetailsInput;
+  label: string;
+  labelTa: string | null;
+}> = [
+  { name: 'plugs5a', label: '5 Amp Plug Points Needed', labelTa: null },
+  { name: 'plugs15a', label: '15 Amp Plug Points Needed', labelTa: null },
+  { name: 'gasStoves', label: 'Number of Gas Stoves', labelTa: null },
+  { name: 'tablesNeeded', label: 'Tables Needed', labelTa: null },
+  { name: 'chairsNeeded', label: 'Chairs Needed', labelTa: null },
+  { name: 'passes2w', label: '2-Wheeler Passes', labelTa: null },
+  { name: 'passes4w', label: '4-Wheeler Passes', labelTa: null },
+  { name: 'passesStaff', label: 'Staff Passes', labelTa: null },
+];
 
 type Values = Record<string, string>;
+
+/** A row as `FieldControl` wants it. The control speaks `FormField`, the
+ *  definition speaks `BuiltFormField`; the two differ only in the bookkeeping
+ *  the control has no use for. */
+const asFormField = (f: BuiltFormField): FieldDef => ({
+  name: f.name ?? f.id,
+  label: f.label,
+  labelTa: f.labelTa,
+  help: f.help ?? undefined,
+  helpTa: f.helpTa ?? undefined,
+  type: f.type,
+  required: f.required,
+  options: f.options ?? undefined,
+  min: f.min ?? undefined,
+  max: f.max ?? undefined,
+});
 
 export function BankForm() {
   const { token = '' } = useParams();
@@ -102,13 +115,41 @@ export function BankForm() {
   const [values, setValues] = useState<Values>({});
   const [appliances, setAppliances] = useState<ApplianceRow[]>([{ name: '', watts: '' }]);
   const [files, setFiles] = useState<Record<string, { key: string; name: string }>>({});
-  const [agreeNeft, setAgreeNeft] = useState(false);
-  const [agreeTerms, setAgreeTerms] = useState(false);
+  const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (id: string, on: boolean) =>
+    setTicked((was) => {
+      const next = new Set(was);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
 
   const presign = presignPublicUpload(token);
+
+  // 🔴 The edition's own definition, grouped the way this page lays it out.
+  // `formFields` drops the questions an admin switched off and orders the rest,
+  // once, so the three cards below and the validator agree about what is asked.
+  const rows = data?.form ? formFields(data.form) : [];
+  const builtIns = rows.filter((f) => f.isBuiltIn);
+  const textFields = builtIns.filter((f) => ['text', 'email', 'tel', 'textarea'].includes(f.type));
+  const fileFields = builtIns.filter((f) => f.type === 'file');
+  const countFields = builtIns.filter((f) => f.type === 'number');
+  // ⚠️ Questions an ADMIN appended. They have no column, so their answers are
+  // filed by field id — which is why they are keyed by `f.id` below and the
+  // built-ins by `f.name`.
+  const appendedFields = rows.filter((f) => !f.isBuiltIn);
+
+  /** Which upload folder a document belongs in. */
+  const purposeOf = (f: { name: string | null; isBuiltIn: boolean }) =>
+    uploadPurposeFor(f) as PresignUploadInput['purpose'];
+
+  /** Where this page keeps the uploaded key. A built-in's purpose is unique to
+   *  it; two appended file questions share `FORM_FIELD`, so they are separated
+   *  by field id. */
+  const slotOf = (f: BuiltFormField) => (f.isBuiltIn ? purposeOf(f) : `${purposeOf(f)}:${f.id}`);
 
   // Prefill the requirements block from what was asked for at request time. The
   // vendor is confirming or correcting November's answers, not retyping them.
@@ -167,10 +208,18 @@ export function BankForm() {
   const set = (name: string, v: string) => setValues((prev) => ({ ...prev, [name]: v }));
   const num = (name: string) => Number(values[name] ?? 0) || 0;
 
-  const pick = async (purpose: 'BANK_CHEQUE' | 'BANK_PAN' | 'BANK_GST', file: File) => {
+  /** ⚠️ Keyed by PURPOSE, which for a built-in document is its own folder and
+   *  for an admin-added one is `FORM_FIELD` plus the field id. Two appended file
+   *  questions would otherwise share a slot. */
+  const pick = async (
+    purpose: PresignUploadInput['purpose'],
+    file: File,
+    fieldId?: string,
+    slot = fieldId ? `${purpose}:${fieldId}` : purpose,
+  ) => {
     try {
-      const up = await uploadFile(presign, file, purpose);
-      setFiles((prev) => ({ ...prev, [purpose]: up }));
+      const up = await uploadFile(presign, file, purpose, fieldId);
+      setFiles((prev) => ({ ...prev, [slot]: up }));
       toast.ok(`${file.name} uploaded.`);
     } catch (e) {
       toast.fail(e);
@@ -198,8 +247,21 @@ export function BankForm() {
         chequeKey: files.BANK_CHEQUE?.key ?? '',
         panKey: files.BANK_PAN?.key ?? '',
         gstKey: files.BANK_GST?.key ?? '',
-        agreeNeft: true,
-        agreeTerms: true,
+        // The exact versions this page drew. The API checks them against what
+        // is live and refuses the submission if the wording moved while the
+        // form sat open — see `DeclarationsChangedError`.
+        declarationIds: data.declarations.map((d) => d.id),
+        // Answers to questions this edition appended, keyed by field id.
+        customFields: Object.fromEntries(
+          appendedFields
+            .map((f) => [
+              f.id,
+              f.type === 'file' || f.type === 'files'
+                ? (files[slotOf(f)]?.key ?? '')
+                : (values[f.id] ?? ''),
+            ])
+            .filter(([, v]) => v !== ''),
+        ),
         plugs5a: num('plugs5a'),
         plugs15a: num('plugs15a'),
         gasStoves: num('gasStoves'),
@@ -224,7 +286,13 @@ export function BankForm() {
     }
   };
 
-  const ready = agreeNeft && agreeTerms && files.BANK_CHEQUE && files.BANK_PAN;
+  // ⚠️ Gated on the form having ARRIVED. Until it does there is nothing to tick
+  // and no required document known, so every clause below is vacuously true —
+  // which would let a slow connection submit a form it had not drawn.
+  const requiredDocsIn = fileFields
+    .filter((f) => f.required)
+    .every((f) => files[slotOf(f)] !== undefined);
+  const ready = data.form !== null && allTicked(data.declarations, ticked) && requiredDocsIn;
 
   return (
     <div style={{ display: 'grid', gap: 16, maxWidth: 760 }}>
@@ -246,50 +314,37 @@ export function BankForm() {
       </Card>
 
       <Card pad={18} style={{ display: 'grid', gap: 14 }}>
-        {FIELDS.map((f) => {
-          const id = `bank-${String(f.name)}`;
-          return (
-            <FormField
-              key={String(f.name)}
-              id={id}
-              label={<BilingualLabel en={f.label} ta={f.labelTa} />}
-              help={f.help}
-              required={f.required}
-              error={errors[String(f.name)]}
-            >
-              <Input
-                id={id}
-                type={f.type ?? 'text'}
-                invalid={!!errors[String(f.name)]}
-                aria-describedby={errors[String(f.name)] ? `${id}-error` : undefined}
-                value={values[String(f.name)] ?? ''}
-                onChange={(e) => set(String(f.name), e.target.value)}
-              />
-            </FormField>
-          );
-        })}
+        {/* 🔴 From the edition's ROWS, not from a constant. The label, the
+            Tamil beside it, the help text, whether it is required and whether
+            it is asked at all are all the Form Builder's to change — which is
+            the whole reason this form stopped being JSX. `FIELDS` remains only
+            as the fallback for the window before an edition has rows. */}
+        {textFields.map((f) => (
+          <FieldControl
+            key={f.id}
+            field={asFormField(f)}
+            value={values[f.name ?? f.id] ?? ''}
+            error={errors[f.name ?? f.id]}
+            onChange={(v) => set(f.name ?? f.id, typeof v === 'string' ? v : '')}
+          />
+        ))}
       </Card>
 
       <Card pad={18} style={{ display: 'grid', gap: 14 }}>
         <div style={{ fontSize: 14, fontWeight: 700 }}>Documents</div>
-        <FileField
-          label='Cancelled Cheque or Bank Passbook Front Page *'
-          labelTa='ரத்து செய்யப்பட்ட காசோலை அல்லது வங்கி பாஸ்புக் முதல் பக்கம்'
-          chosen={files.BANK_CHEQUE?.name}
-          onPick={(file) => pick('BANK_CHEQUE', file)}
-        />
-        <FileField
-          label='PAN Card *'
-          labelTa='பான் கார்டு'
-          chosen={files.BANK_PAN?.name}
-          onPick={(file) => pick('BANK_PAN', file)}
-        />
-        <FileField
-          label='GST Certificate (If Applicable)'
-          labelTa={null}
-          chosen={files.BANK_GST?.name}
-          onPick={(file) => pick('BANK_GST', file)}
-        />
+        {/* ⚠️ Each keeps its OWN upload purpose — `BANK_CHEQUE`, `BANK_PAN`,
+            `BANK_GST`. Those folders already hold live data and the columns
+            behind them are typed, so retyping them to `FORM_FIELD` would orphan
+            every cheque already uploaded. */}
+        {fileFields.map((f) => (
+          <FileField
+            key={f.id}
+            label={`${f.label}${f.required ? ' *' : ''}`}
+            labelTa={f.labelTa}
+            chosen={files[slotOf(f)]?.name}
+            onPick={(file) => pick(purposeOf(f), file, f.isBuiltIn ? undefined : f.id, slotOf(f))}
+          />
+        ))}
       </Card>
 
       <Card pad={18} style={{ display: 'grid', gap: 14 }}>
@@ -305,26 +360,15 @@ export function BankForm() {
             gap: 12,
           }}
         >
-          {COUNTS.map((c) => {
-            const id = `bank-${String(c.name)}`;
-            return (
-              <FormField
-                key={String(c.name)}
-                id={id}
-                label={<BilingualLabel en={c.label} ta={c.labelTa} />}
-                error={errors[String(c.name)]}
-              >
-                <Input
-                  id={id}
-                  type='number'
-                  inputMode='numeric'
-                  min={0}
-                  value={values[String(c.name)] ?? '0'}
-                  onChange={(e) => set(String(c.name), e.target.value)}
-                />
-              </FormField>
-            );
-          })}
+          {countFields.map((f) => (
+            <FieldControl
+              key={f.id}
+              field={asFormField(f)}
+              value={values[f.name ?? f.id] ?? '0'}
+              error={errors[f.name ?? f.id]}
+              onChange={(v) => set(f.name ?? f.id, typeof v === 'string' ? v : '')}
+            />
+          ))}
         </div>
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
@@ -342,61 +386,43 @@ export function BankForm() {
         </FormField>
       </Card>
 
+      {/* Questions this edition ADDED to the form. They have no column, so
+          their answers are filed by field id — see `allowedCustomValues`. */}
+      {appendedFields.length > 0 && (
+        <Card pad={18} style={{ display: 'grid', gap: 14 }}>
+          {appendedFields.map((f) =>
+            f.type === 'file' || f.type === 'files' ? (
+              <FileField
+                key={f.id}
+                label={`${f.label}${f.required ? ' *' : ''}`}
+                labelTa={f.labelTa}
+                chosen={files[slotOf(f)]?.name}
+                onPick={(file) => pick(purposeOf(f), file, f.id, slotOf(f))}
+              />
+            ) : (
+              <FieldControl
+                key={f.id}
+                field={asFormField(f)}
+                value={values[f.id] ?? ''}
+                error={errors[f.id]}
+                onChange={(v) => set(f.id, typeof v === 'string' ? v : '')}
+              />
+            ),
+          )}
+        </Card>
+      )}
+
       <Card pad={18} style={{ display: 'grid', gap: 12 }}>
-        <label
-          htmlFor='agree-neft'
-          style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13 }}
-        >
-          <Checkbox
-            id='agree-neft'
-            checked={agreeNeft}
-            onChange={(e) => setAgreeNeft(e.target.checked)}
-          />
-          <span>
-            I agree — Isha Foundation's bank account details will be sent to me by email or SMS, and
-            I will transfer the amount online using NEFT. *
-          </span>
-        </label>
-        {/* 🔴 The 2025 form put a LINK beside this tick-box — "to view the terms
-            and conditions document, please click here" — and this is the
-            consent that has to be producible if a stall is ever in dispute.
-            Without the link a requester accepts terms they were never shown.
-            The edition's document is set in Admin → Editions; where the legal
-            team has not issued one, the consent stands on its own wording
-            rather than promising a document that is not there. */}
-        <label
-          htmlFor='agree-terms'
-          style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13 }}
-        >
-          <Checkbox
-            id='agree-terms'
-            checked={agreeTerms}
-            onChange={(e) => setAgreeTerms(e.target.checked)}
-          />
-          <span>
-            I agree that the deposit will be returned only to the bank account given above, and that
-            deductions may be made for unreturned or damaged chairs and tables or for an unclean
-            stall.{' '}
-            {data.termsUrl && (
-              <>
-                I have read and accept the{' '}
-                <a
-                  href={data.termsUrl}
-                  target='_blank'
-                  rel='noreferrer noopener'
-                  // ⚠️ Stops the label's own click from toggling the box: a
-                  // requester opening the terms must not silently tick them.
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  terms and conditions for stalls
-                </a>
-                .{' '}
-              </>
-            )}
-            *
-          </span>
-        </label>
-        <FieldError of={errors.agreeNeft ?? errors.agreeTerms} />
+        {/* 🔴 The consents are declaration ROWS now, versioned, with one tick
+            each. They were two `z.literal(true)` flags with their wording in
+            this file and their record two bare timestamps — which says THAT
+            somebody agreed and never WHAT. */}
+        <DeclarationConsent
+          declarations={data.declarations}
+          ticked={ticked}
+          onToggle={toggle}
+          error={errors.declarationIds}
+        />
         <div>
           <Btn kind='primary' onClick={submit} disabled={!ready || busy}>
             <Icon name='send' size={14} />

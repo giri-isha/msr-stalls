@@ -34,7 +34,7 @@ export function MyRequests() {
  *  sit behind the redirect above, and asking before then would spend a request
  *  to be told what `useRequester` already knows. */
 function Loaded() {
-  const { data, loading } = useLoad(() => getMyRequests(), []);
+  const { data, loading, reload } = useLoad(() => getMyRequests(), []);
 
   if (loading) return <Loading />;
 
@@ -69,6 +69,7 @@ function Loaded() {
             requests={requests}
             openStep={(reference, step) => continueMyStep({ reference, step })}
             getCoupon={(reference) => requestMyCoupon({ reference })}
+            reload={reload}
           />
           <p style={{ fontSize: 12.5, color: 'var(--mfg)', marginTop: 18, lineHeight: 1.6 }}>
             Need another stall? <Link to='/stalls/apply'>Send in Another Request</Link>.

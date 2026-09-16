@@ -516,7 +516,11 @@ function OnboardingDetailDialog({
                           {s.mobile}
                         </TD>
                         <TD muted style={{ fontSize: 11.5 }}>
-                          {titleCase(s.idType)} ···{s.idNumber}
+                          {/* ⚠️ An edition may stop asking for an ID at all, so
+                              both halves can be absent. A dash reads as "not
+                              asked"; `titleCase(null)` would print "Null" beside
+                              a real person's name at the check-in counter. */}
+                          {s.idType ? `${titleCase(s.idType)} ···${s.idNumber ?? ''}` : '—'}
                         </TD>
                         <TD muted style={{ fontSize: 11.5 }}>
                           {formatDate(s.registeredAt)}

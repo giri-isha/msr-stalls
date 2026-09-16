@@ -1,0 +1,14 @@
+-- Staff registration is a form.
+--
+-- It asks questions and it asks somebody to agree to something, which is all a
+-- form type has ever meant here — `BANK` and `FSSAI` were already in this enum
+-- for exactly the same reason, and neither of them is an application either.
+--
+-- ⚠️ ALONE in its own migration, and it has to stay that way. Postgres will not
+-- let a new enum value be USED in the transaction that added it, and Prisma
+-- wraps each migration in one. Nothing in the next migration writes the literal
+-- 'STAFF', so the two would probably run as one file — but "probably" is not
+-- what you want from the migration that runs against production, and the day
+-- somebody adds a `WHERE form_type = 'STAFF'` to it, it fails there and nowhere
+-- else.
+ALTER TYPE "stalls"."StallFormType" ADD VALUE IF NOT EXISTS 'STAFF';

@@ -1,5 +1,7 @@
 import {
   type DeclarationRow,
+  STALL_FORM_TYPES,
+  type StallFormType,
   declarationPreview,
   isDeclarationKey,
   needsNewVersion,
@@ -36,8 +38,16 @@ import {
   useToast,
 } from '../ui';
 
-const FORM_TYPES = ['VENDOR', 'LOCAL_WELFARE', 'ASHRAM', 'ASHRAM_FOOD'] as const;
-type FormType = (typeof FORM_TYPES)[number];
+/** 🔴 Every public form, not just the four request forms. The bank details
+ *  form, the FSSAI upload and staff registration all ask somebody to agree to
+ *  something, and until declarations were scoped by form the only wording they
+ *  could show was the shared default — which is how the bank form's consent
+ *  ended up typed into JSX with two bare timestamps for a record.
+ *
+ *  ⚠️ Imported rather than re-listed. A second copy of this list is a screen
+ *  that cannot author a variant the API would happily accept. */
+const FORM_TYPES = STALL_FORM_TYPES;
+type FormType = StallFormType;
 
 /** ⚠️ A narrowing, not a cast. The `<select>` hands back a plain string and
  *  the contract wants the union — writing `as FormType` there would let a
@@ -90,9 +100,9 @@ export function Declarations({
       .map(([key, all]) => {
         const byVariant = new Map<string | null, DeclarationRow[]>();
         for (const d of all) {
-          const list = byVariant.get(d.requestType) ?? [];
+          const list = byVariant.get(d.formType) ?? [];
           list.push(d);
-          byVariant.set(d.requestType, list);
+          byVariant.set(d.formType, list);
         }
         return {
           key,
@@ -100,8 +110,8 @@ export function Declarations({
             // The default first, then the form-specific ones by name — the
             // order somebody reads a fallback rule in.
             .sort(([a], [b]) => (a === null ? -1 : b === null ? 1 : a.localeCompare(b)))
-            .map(([requestType, versions]) => ({
-              requestType,
+            .map(([formType, versions]) => ({
+              formType,
               versions: [...versions].sort((x, y) => y.version - x.version),
             })),
           versionCount: all.length,
@@ -181,12 +191,10 @@ export function Declarations({
               </div>
 
               {g.variants.map((v) => (
-                <div key={v.requestType ?? 'default'}>
+                <div key={v.formType ?? 'default'}>
                   <div style={{ padding: '10px 14px 6px' }}>
-                    <Tag tone={v.requestType ? 'info' : 'neutral'} size='sm'>
-                      {v.requestType
-                        ? (TYPE_LABEL[v.requestType] ?? v.requestType)
-                        : 'Default — every form'}
+                    <Tag tone={v.formType ? 'info' : 'neutral'} size='sm'>
+                      {v.formType ? (TYPE_LABEL[v.formType] ?? v.formType) : 'Default — every form'}
                     </Tag>
                   </div>
                   <Table>
@@ -283,7 +291,7 @@ export function Declarations({
 
 interface DeclarationValues {
   key: string;
-  requestType: FormType | null;
+  formType: FormType | null;
   title: string;
   body: string;
   bodyTa: string | null;
@@ -314,7 +322,7 @@ function DeclarationDialog({
 }) {
   const [v, setV] = useState<DeclarationValues>({
     key: existing?.key ?? presetKey ?? '',
-    requestType: asFormType(existing?.requestType ?? ''),
+    formType: asFormType(existing?.formType ?? ''),
     title: existing?.title ?? '',
     body: existing?.body ?? '',
     bodyTa: existing?.bodyTa ?? '',
@@ -323,8 +331,7 @@ function DeclarationDialog({
   const [busy, setBusy] = useState(false);
 
   const keyOk = isDeclarationKey(v.key.trim());
-  const clash =
-    !existing && taken.some((d) => d.key === v.key.trim() && d.requestType === v.requestType);
+  const clash = !existing && taken.some((d) => d.key === v.key.trim() && d.formType === v.formType);
   const valid = keyOk && !clash && v.title.trim() !== '' && v.body.trim() !== '';
 
   const willVersion =
@@ -380,9 +387,9 @@ function DeclarationDialog({
         <FormField id='dec-form' label='Form'>
           <select
             id='dec-form'
-            value={v.requestType ?? ''}
+            value={v.formType ?? ''}
             disabled={existing !== undefined}
-            onChange={(e) => setV({ ...v, requestType: asFormType(e.target.value) })}
+            onChange={(e) => setV({ ...v, formType: asFormType(e.target.value) })}
             style={{
               width: '100%',
               padding: '9px 11px',

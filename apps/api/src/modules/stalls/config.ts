@@ -16,7 +16,7 @@ import {
   rupeesToPaise,
 } from '@msr/stalls';
 import { recordActivity } from '../../activity';
-import { seedDeclarations } from './declarations';
+import { seedBankDeclarations, seedDeclarations } from './declarations';
 import { publicFormsFor, seedFormDefinitions } from './form-builder';
 import { type Db, activeEdition } from './editions';
 import { CategoryInUseError, UnknownZoneError, ZoneExistsError, ZoneInUseError } from './errors';
@@ -130,6 +130,10 @@ export async function ensureEditionDefaults(db: Db, editionId: string): Promise<
   // from the 2025 defaults, and a year that opened with no declaration would
   // fall back to a constant nobody can edit.
   await seedDeclarations(db, editionId);
+  // The bank form's own two consents. Separate from the four request-form
+  // disclaimers above because they are scoped to a different form and seeded
+  // from a different source — see `seedBankDeclarations`.
+  await seedBankDeclarations(db, editionId);
 
   // The four request forms, from the same constants that used to BE them.
   await seedFormDefinitions(db, editionId);
@@ -262,7 +266,10 @@ export async function getPublicConfig(db: Db, scope: RateScope = 'VENDOR'): Prom
         editionId: edition.id,
         isActive: true,
         isBuiltIn: false,
-        formType: { in: ['ASHRAM', 'ASHRAM_FOOD', 'LOCAL_WELFARE', 'VENDOR'] },
+        // ⚠️ No form-type filter any more. It listed the four request forms
+        // because they were the only ones with definitions; the bank, FSSAI and
+        // staff forms have them now, and a filter here would mean a question an
+        // admin added to the bank form never reaching the page that asks it.
       },
       orderBy: [{ formType: 'asc' }, { sortOrder: 'asc' }],
     }),
@@ -275,7 +282,7 @@ export async function getPublicConfig(db: Db, scope: RateScope = 'VENDOR'): Prom
       select: {
         id: true,
         key: true,
-        requestType: true,
+        formType: true,
         version: true,
         title: true,
         body: true,

@@ -1,12 +1,16 @@
-import type { PrismaClient, StallMessageChannel, StallTemplateKey } from '@prisma/client';
+import type { Prisma, PrismaClient, StallMessageChannel, StallTemplateKey } from '@prisma/client';
 import {
   type CommRecipient,
   DEFAULT_TEMPLATES,
   type EmailTemplateView,
+  type Quote,
+  type QuoteLine,
   type ReminderKind,
   type ReminderRow,
   type SendEmailResult,
   type TemplateKeyValue,
+  chargeLines,
+  depositLines,
   formatInr,
   renderTemplate,
   virtualAccountFor,
@@ -255,14 +259,29 @@ async function templateVars(
 
   if (key === 'PAYMENT_DETAILS') {
     const plan = r.paymentPlan;
-    const view = plan
-      ? planToView(plan)
-      : toQuoteView(quoteFor(r, await quoteContext(db, r.editionId)));
+    const live = quoteFor(r, await quoteContext(db, r.editionId));
+    const view = plan ? planToView(plan) : toQuoteView(live);
     // What is actually owed, which is the quoted figure unless the team agreed
     // a concession — see `payableFeePaise`.
     vars.feeTotal = formatInr(view.payableFeePaise);
     vars.depositTotal = formatInr(view.depositTotalPaise);
     vars.grandTotal = formatInr(view.payableFeePaise + view.depositTotalPaise);
+    vars.gstAmount = formatInr(view.gstPaise);
+    vars.netAmount = formatInr(view.netPaise);
+    vars.stallDeposit = formatInr(view.stallDepositPaise);
+    vars.equipmentDeposit = formatInr(view.equipmentDepositPaise);
+
+    // 🔴 The FROZEN lines where there are any. The plan is what the vendor was
+    // told; a re-send that recomputed them would print a breakdown that no
+    // longer sums to the total beside it. Plans frozen before the column
+    // existed have none, and the letter then falls back to the summed figures
+    // it has always printed.
+    const frozen = (plan?.lines ?? null) as QuoteLine[] | null;
+    const forLetter: Quote | null = frozen
+      ? { ...view, lines: frozen, exempt: false }
+      : (live ?? null);
+    vars.charges = forLetter ? chargeLines(forLetter) : '';
+    vars.depositBreakdown = forLetter ? depositLines(forLetter) : '';
   }
 
   if (key === 'ONBOARDING_FSSAI_STAFF' || key === 'SELECTION_ASHRAM') {
@@ -479,6 +498,14 @@ export async function freezePaymentPlan(db: PrismaClient, requestId: string): Pr
       stallDepositPaise: q.stallDepositPaise,
       equipmentDepositPaise: q.equipmentDepositPaise,
       depositTotalPaise: q.depositTotalPaise,
+      // 🔴 The itemisation, frozen with the sums. The letter prints the
+      // arithmetic, and recomputing it on a re-send would produce lines that no
+      // longer add up to the total beside them the moment a vendor revises
+      // their plug points.
+      // ⚠️ Cast, because Prisma's JSON input type does not accept a typed
+      // interface array directly. The shape is `QuoteLine[]` and `quote.ts`
+      // owns it; this is the one place it crosses into a JSON column.
+      lines: q.lines as unknown as Prisma.InputJsonValue,
     },
     // Never re-quoted: the vendor was told a number and that is the number.
     update: {},

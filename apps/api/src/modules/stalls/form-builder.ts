@@ -12,13 +12,19 @@ import {
   type BuiltFormField,
   type FieldOption,
   type FieldType,
+  type FormField,
   FORM_DEFINITIONS,
+  PUBLIC_FORM_DEFINITIONS,
+  PUBLIC_FORM_TYPES,
+  type PublicFormType,
   isAuthorableFieldType,
+  isLockedRequired,
   seedFieldFrom,
 } from '@msr/stalls';
 import {
   BuiltInFieldLockedError,
   CustomFieldInUseError,
+  StructuralFieldLockedError,
   UnknownFormFieldError,
   UnknownFormError,
   UnauthorableFieldTypeError,
@@ -26,10 +32,14 @@ import {
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
-/** The four forms an edition serves. `BANK` and the rest of `StallFormType`
- *  are not request forms and have no definition. */
+/** The four APPLICATION forms. Kept separate from the three below because their
+ *  built-ins all write to `stall_request`, while the others write to three
+ *  different tables — see `PublicFormDefinition.target`. */
 const REQUEST_FORMS = ['VENDOR', 'LOCAL_WELFARE', 'ASHRAM', 'ASHRAM_FOOD'] as const;
 type RequestForm = (typeof REQUEST_FORMS)[number];
+
+/** Every form an edition serves, application or not. */
+const ALL_FORMS = [...REQUEST_FORMS, ...PUBLIC_FORM_TYPES] as const;
 
 /**
  * The 2025 forms, as rows.
@@ -44,9 +54,28 @@ type RequestForm = (typeof REQUEST_FORMS)[number];
  * entirely alone: re-running must not resurrect a field an admin deleted, nor
  * undo a reorder, which is exactly what upserting field-by-field would do.
  */
+/** The seed for one form, whichever kind it is.
+ *
+ *  ⚠️ Read by REFERENCE from the two constant files, never retyped. Every Tamil
+ *  label in both was transcribed character-for-character from the printed 2025
+ *  forms, and this is the one place that text crosses into the database. */
+function sourceFor(formType: (typeof ALL_FORMS)[number]): {
+  title: string;
+  titleTa: string | null;
+  fields: readonly FormField[];
+} {
+  return isPublicFormType(formType)
+    ? PUBLIC_FORM_DEFINITIONS[formType]
+    : FORM_DEFINITIONS[formType as RequestForm];
+}
+
+function isPublicFormType(t: string): t is PublicFormType {
+  return (PUBLIC_FORM_TYPES as readonly string[]).includes(t);
+}
+
 export async function seedFormDefinitions(db: Db, editionId: string): Promise<number> {
   let made = 0;
-  for (const formType of REQUEST_FORMS) {
+  for (const formType of ALL_FORMS) {
     const existing = await db.stallFormDefinition.findUnique({
       where: { editionId_formType: { editionId, formType } },
       select: { id: true },
@@ -62,7 +91,7 @@ export async function seedFormDefinitions(db: Db, editionId: string): Promise<nu
       continue;
     }
 
-    const source = FORM_DEFINITIONS[formType];
+    const source = sourceFor(formType);
     const definition = await db.stallFormDefinition.create({
       data: { editionId, formType, title: source.title, titleTa: source.titleTa },
     });
@@ -70,17 +99,26 @@ export async function seedFormDefinitions(db: Db, editionId: string): Promise<nu
     // ⚠️ The built-ins take sort orders 0..n and the fields an admin already
     // appended keep sitting after them — which is where they have always
     // rendered, so adopting them must not move them.
+    //
+    // 🔴 `agreed` is not a question any more. Its wording is a declaration row
+    // and its tick is drawn beside that wording directly above Submit — a field
+    // here too would be the same consent asked twice, once with real words and
+    // once as a bare "I Agree". Existing editions were switched off by the
+    // `declarations_per_form` migration; this is the same retirement for the
+    // editions that do not exist yet.
     await Promise.all(
-      source.fields.map((field, i) =>
-        db.stallFormField.create({
-          data: {
-            editionId,
-            definitionId: definition.id,
-            formType,
-            ...toRow(seedFieldFrom(field, i)),
-          },
-        }),
-      ),
+      source.fields
+        .filter((field) => field.name !== 'agreed')
+        .map((field, i) =>
+          db.stallFormField.create({
+            data: {
+              editionId,
+              definitionId: definition.id,
+              formType,
+              ...toRow(seedFieldFrom(field, i)),
+            },
+          }),
+        ),
     );
     const appended = await db.stallFormField.findMany({
       where: { editionId, formType, definitionId: null },
@@ -165,7 +203,11 @@ export async function formFor(
 /** Every request form on the edition, for the public config and the builder. */
 export async function formsFor(db: Db, editionId: string): Promise<BuilderForm[]> {
   const rows = await db.stallFormDefinition.findMany({
-    where: { editionId, formType: { in: [...REQUEST_FORMS] } },
+    // ⚠️ Every form the edition serves, not the four applications. The filter
+    // was here because `BANK` and `FSSAI` were enum members with no definition
+    // behind them; all seven have one now, and a filter would hide the three
+    // this work exists to make editable.
+    where: { editionId, formType: { in: [...ALL_FORMS] } },
     select: {
       id: true,
       formType: true,
@@ -185,6 +227,20 @@ export async function formsFor(db: Db, editionId: string): Promise<BuilderForm[]
  *  ⚠️ `definitionId` is dropped rather than simply not asked for: it is the
  *  handle every write takes, and the public payload has no business carrying
  *  the address of something it cannot call. */
+/** One form's definition, for the page that draws it.
+ *
+ *  ⚠️ Returns null rather than throwing when an edition has no definition yet —
+ *  the window between deploying and the API next starting. The page then falls
+ *  back to what it can, rather than showing an error for a form that exists. */
+export async function publicFormFor(
+  db: Db,
+  editionId: string,
+  formType: StallFormType,
+): Promise<BuiltForm | null> {
+  const forms = await publicFormsFor(db, editionId);
+  return forms.find((f) => f.formType === formType) ?? null;
+}
+
 export async function publicFormsFor(db: Db, editionId: string): Promise<BuiltForm[]> {
   const forms = await formsFor(db, editionId);
   return forms.map(({ definitionId: _drop, ...form }) => form);
@@ -283,7 +339,7 @@ export async function updateFormField(
 ): Promise<void> {
   const field = await db.stallFormField.findFirst({
     where: { id, editionId },
-    select: { id: true, isBuiltIn: true, label: true, fieldType: true },
+    select: { id: true, isBuiltIn: true, label: true, fieldType: true, formType: true, name: true },
   });
   if (!field) throw new UnknownFormFieldError(id);
 
@@ -291,6 +347,20 @@ export async function updateFormField(
     if (field.isBuiltIn) throw new BuiltInFieldLockedError(field.label, 'type');
     if (!isAuthorableFieldType(patch.fieldType)) {
       throw new UnauthorableFieldTypeError(patch.fieldType);
+    }
+  }
+
+  // 🔴 The staff form's mobile number cannot be made optional or switched off.
+  // It is half of the unique index behind "one person, one registration per
+  // stall", and a nullable mobile makes that index toothless — NULLs compare as
+  // DISTINCT, so every registration without one reads as a new person and
+  // somebody handed two coupon codes is counted twice at the gate.
+  //
+  // ⚠️ Refused HERE as well as disabled on the screen. A screen that merely
+  // hides a control is a suggestion; this is what makes it a rule.
+  if (isLockedRequired(field.formType, field.name)) {
+    if (patch.isRequired === false || patch.isActive === false) {
+      throw new StructuralFieldLockedError(field.label);
     }
   }
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { FORM_DEFINITIONS, fieldsFor } from './forms';
+import { FORM_DEFINITIONS, fieldsFor, formDefinition } from './forms';
 import { STALL_REQUEST_TYPES } from './reference';
 
 describe('FORM_DEFINITIONS', () => {
@@ -22,8 +22,12 @@ describe('fieldsFor VENDOR', () => {
     expect(byName.get('contactNumber')?.labelTa).toBe('தொடர்பு எண்');
   });
 
-  test('requires the allocation disclaimer', () => {
-    expect(byName.get('agreed')?.required).toBe(true);
+  /** 🔴 The disclaimer is no longer a FIELD. Its wording is a
+   *  `stall_declaration` row and its tick is drawn beside that wording directly
+   *  above Submit, so asking it here as well would be the same consent twice —
+   *  once with real words and once as a bare "I Agree". */
+  test('does not ask for the allocation disclaimer as a question', () => {
+    expect(byName.has('agreed')).toBe(false);
   });
 
   test('does not ask a vendor for electrical details — the 2025 form did not', () => {
@@ -113,10 +117,19 @@ describe('every form', () => {
     }
   });
 
-  test('every form requires the allocation disclaimer', () => {
+  /** ⚠️ On EVERY form, not just the vendor one. A single form left carrying the
+   *  old checkbox would ask its requester to agree twice. */
+  test('no form asks for the allocation disclaimer as a question', () => {
     for (const type of STALL_REQUEST_TYPES) {
-      const agreed = fieldsFor(type).find((f) => f.name === 'agreed');
-      expect(agreed?.required).toBe(true);
+      expect(fieldsFor(type).some((f) => f.name === 'agreed')).toBe(false);
+    }
+  });
+
+  /** The disclaimer text itself stays on the definition: it is what
+   *  `seedDeclarations` reads to write version 1 of each edition's wording. */
+  test('but every form still carries the disclaimer the declarations seed from', () => {
+    for (const type of STALL_REQUEST_TYPES) {
+      expect(formDefinition(type).disclaimer.trim()).not.toBe('');
     }
   });
 

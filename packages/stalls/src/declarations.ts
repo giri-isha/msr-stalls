@@ -1,4 +1,4 @@
-import type { StallRequestType } from './reference';
+import type { StallFormType } from './reference';
 
 /**
  * Consent declarations — the wording a requester ticks.
@@ -25,8 +25,9 @@ import type { StallRequestType } from './reference';
 export interface Declaration {
   id: string;
   key: string;
-  /** `null` is the default, shown by any form with no variant of its own. */
-  requestType: StallRequestType | null;
+  /** Which form this wording is for. `null` is the default, shown by any form
+   *  with no variant of its own. */
+  formType: StallFormType | null;
   version: number;
   title: string;
   body: string;
@@ -49,15 +50,15 @@ export interface Declaration {
  */
 export function declarationsFor(
   all: readonly Declaration[],
-  requestType: StallRequestType,
+  formType: StallFormType,
 ): Declaration[] {
   const live = all.filter((d) => d.isCurrent && d.isActive);
   const keys = [...new Set(live.map((d) => d.key))].sort();
   return keys
     .map(
       (key) =>
-        live.find((d) => d.key === key && d.requestType === requestType) ??
-        live.find((d) => d.key === key && d.requestType === null),
+        live.find((d) => d.key === key && d.formType === formType) ??
+        live.find((d) => d.key === key && d.formType === null),
     )
     .filter((d): d is Declaration => d !== undefined);
 }

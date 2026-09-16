@@ -296,12 +296,12 @@ describe('forms', () => {
 describe('declarations', () => {
   const currentRow = (editionId: string) =>
     prisma.stallDeclaration.findFirstOrThrow({
-      where: { editionId, requestType: 'VENDOR', isCurrent: true },
+      where: { editionId, formType: 'VENDOR', isCurrent: true },
     });
 
   test('different wording writes a NEW version and archives the old one', async () => {
     await prisma.stallDeclaration.updateMany({
-      where: { editionId: past.id, requestType: 'VENDOR', isCurrent: true },
+      where: { editionId: past.id, formType: 'VENDOR', isCurrent: true },
       data: { body: 'The 2025 wording, as it actually stood.' },
     });
     const before = await currentRow(current.id);
@@ -320,20 +320,20 @@ describe('declarations', () => {
 
   test('a second copy adds no third version', async () => {
     await prisma.stallDeclaration.updateMany({
-      where: { editionId: past.id, requestType: 'VENDOR', isCurrent: true },
+      where: { editionId: past.id, formType: 'VENDOR', isCurrent: true },
       data: { body: 'The 2025 wording.' },
     });
     await applied('declarations');
     await applied('declarations');
     const all = await prisma.stallDeclaration.findMany({
-      where: { editionId: current.id, requestType: 'VENDOR' },
+      where: { editionId: current.id, formType: 'VENDOR' },
     });
     expect(all).toHaveLength(2);
   });
 
   test('a title-only difference edits the row rather than versioning it', async () => {
     await prisma.stallDeclaration.updateMany({
-      where: { editionId: past.id, requestType: 'VENDOR', isCurrent: true },
+      where: { editionId: past.id, formType: 'VENDOR', isCurrent: true },
       data: { title: 'Stall request — 2025' },
     });
     const before = await currentRow(current.id);
