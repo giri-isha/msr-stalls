@@ -1,5 +1,5 @@
-import type { ChallanView, EquipmentAction, EquipmentRow } from '@msr/stalls';
-import { formatInr } from '@msr/stalls';
+import type { ChallanView, EquipmentAction, EquipmentRow } from '@stalls/core';
+import { formatInr } from '@stalls/core';
 import { useMemo, useState } from 'react';
 import { equipmentAction, getChallan, listEquipment, patchEquipment } from '../api';
 import { useLoad } from '../hooks';
@@ -17,6 +17,7 @@ import {
   IconBtn,
   Input,
   Loading,
+  RowActions,
   Search,
   Tag,
   TBody,
@@ -529,7 +530,7 @@ function Actions({
     onRun(() => equipmentAction(row.requestId, action), message);
 
   return (
-    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+    <RowActions wrap>
       {canWrite && <IconBtn label={`Edit ${row.stallName}`} glyph='pencil' onClick={onEdit} />}
       {canWrite &&
         (row.distributedAt ? (
@@ -575,7 +576,7 @@ function Actions({
         <Icon name='printer' size={14} />
         Challan
       </Btn>
-    </div>
+    </RowActions>
   );
 }
 
@@ -655,7 +656,7 @@ function ChallanDialog({ data, onClose }: { data: ChallanView; onClose: () => vo
       }
     >
       <style>{CHALLAN_CSS}</style>
-      <div className='msrs-challan' style={{ display: 'grid', gap: 14 }}>
+      <div className='stalls-challan' style={{ display: 'grid', gap: 14 }}>
         {(['Vendor copy', 'Office copy'] as const).map((copy) => (
           <div
             key={copy}
@@ -706,13 +707,15 @@ function ChallanDialog({ data, onClose }: { data: ChallanView; onClose: () => vo
                 </tr>
               </thead>
               <tbody>
-                {['Paid in cash on MSR day — rent', 'Advance', 'Total', 'Returned'].map((label) => (
-                  <tr key={label}>
-                    <td style={cell}>{label}</td>
-                    <td style={cell}>&nbsp;</td>
-                    <td style={cell}>&nbsp;</td>
-                  </tr>
-                ))}
+                {['Paid in cash on event day — rent', 'Advance', 'Total', 'Returned'].map(
+                  (label) => (
+                    <tr key={label}>
+                      <td style={cell}>{label}</td>
+                      <td style={cell}>&nbsp;</td>
+                      <td style={cell}>&nbsp;</td>
+                    </tr>
+                  ),
+                )}
               </tbody>
             </table>
             <div style={{ marginTop: 10, color: 'var(--mfg)' }}>
@@ -735,8 +738,8 @@ const CHALLAN_CSS = `
 @media print {
   @page { size: A4 portrait; margin: 12mm; }
   body * { visibility: hidden; }
-  .msrs-challan, .msrs-challan * { visibility: visible; }
-  .msrs-challan { position: absolute; inset: 0; color: #000; }
-  .msrs-challan td, .msrs-challan th { border: 1px solid #000 !important; }
+  .stalls-challan, .stalls-challan * { visibility: visible; }
+  .stalls-challan { position: absolute; inset: 0; color: #000; }
+  .stalls-challan td, .stalls-challan th { border: 1px solid #000 !important; }
 }
 `;

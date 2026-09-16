@@ -1,4 +1,4 @@
-# MSR Stalls — Phase 1 (Intake & Selection) Design
+# Stall Management — Phase 1 (Intake & Selection) Design
 
 Date: 2026-09-12
 Status: Approved (Section 1 approved in conversation; user directed implementation to begin)
@@ -12,7 +12,7 @@ standalone, but every line of it is written to be moved into
 
 Sources this design is drawn from:
 
-- `MSR 2026 Stalls Requirements.xlsx - Requirements.pdf` — 13 functional areas.
+- `Stalls 2026 Stalls Requirements.xlsx - Requirements.pdf` — 13 functional areas.
 - `MSR Vendor Stall App - Standalone.html` — a working UX prototype with 11 staff
   screens, a public portal, and realistic seed data (7 zones, ~145 stalls).
 - `stalls_forms/` — the 2025 Google Forms as PDFs, plus the 2025 planning,
@@ -71,7 +71,7 @@ stalls/
 ├── apps/web/src/
 │   ├── app/ components/ui/ lib/      ← SHELL (discarded, except components+lib)
 │   └── modules/stalls/              ← MOVES VERBATIM
-├── packages/stalls/                 ← MOVES as @msr/stalls
+├── packages/stalls/                 ← MOVES as @stalls/core
 └── .dependency-cruiser.cjs biome.json tsconfig.base.json   ← copied verbatim
 ```
 
@@ -118,7 +118,7 @@ reviewable file.
 
 **The boundary is machine-checked.** `.dependency-cruiser.cjs` carries the host's
 two rules plus two migration guards: `modules/stalls/` may import only itself,
-`@msr/stalls`, node_modules, and the Foundation files listed above. A stalls file
+`@stalls/core`, node_modules, and the Foundation files listed above. A stalls file
 that reaches into the standalone shell fails the build here, not at migration.
 
 ### Known gap

@@ -17,6 +17,7 @@ import {
   Icon,
   Input,
   Loading,
+  RowActions,
   Select,
   TBody,
   TD,
@@ -24,8 +25,8 @@ import {
   THead,
   TR,
   Table,
+  Tabs,
   Tag,
-  toolBtnStyle,
   useToast,
 } from '../ui';
 import { Declarations } from './Declarations';
@@ -117,7 +118,7 @@ export function Admin() {
           <Select
             id='admin-edition'
             value={viewing || (editions.data?.find((e) => e.isActive)?.id ?? '')}
-            onChange={(e) => setViewing(e.target.value)}
+            onChange={(v) => setViewing(v)}
             style={{ width: 'auto', minWidth: 190 }}
           >
             {editions.data?.map((e) => (
@@ -136,30 +137,15 @@ export function Admin() {
         </div>
       )}
 
-      {/* ⚠️ Tabs as toolbar buttons on the shared control skin, not an
-          underlined rail. `toolBtnStyle` is the one look a chosen control wears
-          across the product — the reference module's own note on it is about
-          three near-copies of exactly this drifting apart. A tab strip here
-          would be a fourth. */}
-      <div
-        style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}
-        role='tablist'
-        aria-label='Configuration Sections'
-      >
-        {TABS.map((t) => (
-          <button
-            key={t.label}
-            type='button'
-            role='tab'
-            aria-selected={tab === t.label}
-            onClick={() => setTab(t.label)}
-            style={toolBtnStyle(tab === t.label)}
-          >
-            <Icon name={t.glyph} size={14} />
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {/* The shared underlined rail. This screen used to draw its own row of
+          `toolBtnStyle` pills, as four other screens each did — see
+          `ui/components/Tabs.tsx` for why page sections are not pills. */}
+      <Tabs
+        label='Configuration Sections'
+        tabs={TABS.map((t) => ({ key: t.label, label: t.label, glyph: t.glyph }))}
+        active={tab}
+        onPick={(k) => setTab(k as Tab)}
+      />
 
       {/* ⚠️ Reads its own data rather than taking `c`. `c.customFields` is the
           appended questions only, and this screen is about the whole form.
@@ -280,7 +266,7 @@ function Editions({ writable, run }: { writable: boolean; run: PanelProps['run']
   return (
     <Panel
       title='Editions'
-      note='One per MSR. Exactly one is active; the public forms and every backoffice screen read it. Creating a new one seeds zones, rates and charges from the 2025 defaults — to carry last year’s own settings across instead, use “Copy from…” on the panel you want.'
+      note='One per edition. Exactly one is active; the public forms and every backoffice screen read it. Creating a new one seeds zones, rates and charges from the 2025 defaults — to carry last year’s own settings across instead, use “Copy from…” on the panel you want.'
       actions={<AddBtn what='edition' writable={writable} onClick={() => setAdding(true)} />}
     >
       {eds.data === null ? (
@@ -315,22 +301,24 @@ function Editions({ writable, run }: { writable: boolean; run: PanelProps['run']
                     : 'Not issued yet'}
                 </TD>
                 <TD>{e.isActive && <Tag tone='ok'>Active</Tag>}</TD>
-                <TD align='right' style={{ whiteSpace: 'nowrap' }}>
-                  {!e.isActive && (
-                    <Btn
-                      disabled={!writable}
-                      onClick={() =>
-                        run(`${e.year} activated`, async () => {
-                          await api.activateEdition(e.id);
-                          eds.reload();
-                        })
-                      }
-                    >
-                      <Icon name='circle-check' size={14} />
-                      Activate
-                    </Btn>
-                  )}
-                  <EditBtn what={e.name} writable={writable} onClick={() => setEditing(e)} />
+                <TD align='right'>
+                  <RowActions>
+                    {!e.isActive && (
+                      <Btn
+                        disabled={!writable}
+                        onClick={() =>
+                          run(`${e.year} activated`, async () => {
+                            await api.activateEdition(e.id);
+                            eds.reload();
+                          })
+                        }
+                      >
+                        <Icon name='circle-check' size={14} />
+                        Activate
+                      </Btn>
+                    )}
+                    <EditBtn what={e.name} writable={writable} onClick={() => setEditing(e)} />
+                  </RowActions>
                 </TD>
               </TR>
             ))}
@@ -513,7 +501,7 @@ function EditionAddDialog({
     const ok = await run('Edition created', () =>
       api.createEdition({
         year: Number(year),
-        name: name.trim() || `MSR ${year}`,
+        name: name.trim() || `Stalls ${year}`,
         activate: true,
       }),
     );
@@ -542,7 +530,7 @@ function EditionAddDialog({
         <FormField id='en' label='Name'>
           <Input
             id='en'
-            placeholder={`MSR ${year}`}
+            placeholder={`Stalls ${year}`}
             value={name}
             onChange={(e) => setName(e.target.value)}
           />

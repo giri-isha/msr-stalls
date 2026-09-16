@@ -59,7 +59,7 @@ export function Card({
       // The hover lift and the focus ring live in `tokens.css`. Not a
       // preference: this module styles with inline objects and an inline style
       // cannot express `:hover` or `:focus-visible` at all.
-      className='msrs-lift'
+      className='stalls-lift'
       style={{ ...base, cursor: 'pointer' }}
       onClick={onAct}
       onKeyDown={(e) => {
@@ -256,7 +256,7 @@ export function Chip({
       aria-pressed={!!active}
       // Hover lives in the stylesheet for the same reason it does on Card: an
       // inline style cannot express it.
-      className='msrs-lift'
+      className='stalls-lift'
       style={{
         padding: '6px 12px',
         borderRadius: 999,
@@ -506,7 +506,7 @@ export function Btn({
       // ⚠️ Conditional, not part of the base style. A disabled control that
       // still answers the pointer reads as clickable and invites the click it
       // will then swallow.
-      className={disabled ? undefined : 'msrs-lift'}
+      className={disabled ? undefined : 'stalls-lift'}
       style={{
         ...skin,
         // ⚠️ Added for this module, and it is the one change to this file. In
@@ -525,6 +525,19 @@ export function Btn({
         // module had it both ways — 15 buttons spaced, 10 not — and the two
         // are indistinguishable in review and obvious side by side on screen.
         gap: 6,
+        // 🔴 A label is one line and is never squeezed. Without these three a
+        // button is a flex ITEM like any other: it shrinks to its longest word
+        // when the row runs out of room, so "Flag for Follow-Up" breaks across
+        // two lines inside a pill sized for one and the second line is cut off
+        // by the padding. It showed on the request rail, which is eight
+        // buttons wide, and in the allocation row, where the button sits beside
+        // a `flex:1` description that takes the space first. `Tag` and
+        // `toolBtnStyle` have said `nowrap` all along — this was the outlier.
+        // A rail that cannot fit its buttons wraps them, which is what its
+        // `flexWrap` is for.
+        whiteSpace: 'nowrap',
+        flexShrink: 0,
+        lineHeight: 1.35,
         padding: '8px 14px',
         // 🔴 Was `calc(var(--r4) - 6px)` — reasonable when the sheet had only
         // two steps and a control had nothing between them to name, but it tied
@@ -585,7 +598,7 @@ export function Loading() {
       {/* Three bars of unequal width read as content arriving rather than as a
           progress bar stuck at a third. */}
       {['62%', '86%', '44%'].map((w) => (
-        <div key={w} className='msrs-shimmer' style={{ width: w, height: 13 }} />
+        <div key={w} className='stalls-shimmer' style={{ width: w, height: 13 }} />
       ))}
     </div>
   );

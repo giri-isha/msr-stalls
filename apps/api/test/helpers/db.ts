@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { StallEdition } from '@prisma/client';
+import { NO_RULES } from '@stalls/core';
 import { LogMailer } from '../../src/email';
 import { createEdition } from '../../src/modules/stalls/config';
 import { addFormField } from '../../src/modules/stalls/form-builder';
@@ -80,7 +81,7 @@ export const SYSTEM = '00000000-0000-0000-0000-000000000000';
 
 /** A 2026 edition with all defaults — zones, rates, charges, sequences. */
 export async function seedEdition(year = 2026): Promise<StallEdition> {
-  return createEdition(prisma, { year, name: `MSR ${year}`, activate: true }, SYSTEM);
+  return createEdition(prisma, { year, name: `Stalls ${year}`, activate: true }, SYSTEM);
 }
 
 /**
@@ -111,8 +112,7 @@ export async function appendField(
     isRequired: false,
     sectionId: null,
     options: null,
-    min: null,
-    max: null,
+    ...NO_RULES,
   });
 }
 
@@ -137,7 +137,7 @@ export async function seedBackoffice(roleKeys: string[], email?: string): Promis
   return {
     personId: person.personId,
     email: person.email,
-    headers: { cookie: `msr_session=${person.personId}` },
+    headers: { cookie: `stalls_session=${person.personId}` },
   };
 }
 
@@ -198,11 +198,11 @@ export async function seedRequester(
     url: '/api/m/stalls/public/login',
     payload: { contact, password },
   });
-  const value = login.cookies.find((c) => c.name === 'msr_stall_requester')?.value;
+  const value = login.cookies.find((c) => c.name === 'stall_requester')?.value;
   if (!value) throw new Error(`seedRequester could not log in: ${login.statusCode} ${login.body}`);
 
   const cred = await prisma.stallCredential.findUniqueOrThrow({ where: { loginValue: contact } });
-  return { accountId: cred.accountId, cookies: { msr_stall_requester: value } };
+  return { accountId: cred.accountId, cookies: { stall_requester: value } };
 }
 
 /** The account a test submits against when it calls `submitRequest` directly

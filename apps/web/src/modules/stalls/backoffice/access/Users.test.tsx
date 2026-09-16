@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { ME_ADMIN, ME_LEAD, installFetch, renderAt } from '../../test-utils';
+import { choose, installFetch, ME_ADMIN, ME_LEAD, renderAt } from '../../test-utils';
 import { Users } from './Users';
 
 beforeEach(() => vi.unstubAllGlobals());
@@ -97,8 +97,8 @@ const ZONES = [
   { id: 'z-b2', code: 'B2', name: 'Bay B2' },
 ];
 const EDITIONS = [
-  { id: 'e-2026', year: 2026, name: 'MSR 2026', isActive: true },
-  { id: 'e-2025', year: 2025, name: 'MSR 2025', isActive: false },
+  { id: 'e-2026', year: 2026, name: 'Stalls 2026', isActive: true },
+  { id: 'e-2025', year: 2025, name: 'Stalls 2025', isActive: false },
 ];
 
 /** ⚠️ Extras FIRST. `installFetch` takes the first route that matches, so a
@@ -420,7 +420,7 @@ describe('granting a role', () => {
 
     expect(screen.getByRole('button', { name: 'Assign' })).toBeDisabled();
     await user.click(await screen.findByLabelText('Kavya Nair'));
-    await user.selectOptions(screen.getByLabelText('Role'), 'stalls_volunteer');
+    await choose(user, screen.getByLabelText('Role'), 'stalls_volunteer');
     expect(screen.getByRole('button', { name: 'Assign' })).toBeEnabled();
   });
 
@@ -447,7 +447,7 @@ describe('granting a role', () => {
     // the assignable list is the caller's MOST privileged role and defaulting
     // to it would grant Admin to anyone who never touched the dropdown.
     await user.click(await screen.findByLabelText('Kavya Nair'));
-    await user.selectOptions(screen.getByLabelText('Role'), 'stalls_lead');
+    await choose(user, screen.getByLabelText('Role'), 'stalls_lead');
     await user.click(screen.getByRole('button', { name: 'Assign' }));
 
     await waitFor(() => {
@@ -712,7 +712,7 @@ describe('what a grant reaches', () => {
     await user.type(screen.getByLabelText('Search People'), 'kavya');
     await user.click(screen.getByRole('button', { name: /^Search$/ }));
     await user.click(await screen.findByLabelText('Kavya Nair'));
-    await user.selectOptions(screen.getByLabelText('Role'), 'stalls_volunteer');
+    await choose(user, screen.getByLabelText('Role'), 'stalls_volunteer');
     await user.click(screen.getByRole('combobox', { name: 'Bays' }));
     await user.click(await screen.findByRole('option', { name: 'B2 — Bay B2' }));
     await user.click(screen.getByRole('button', { name: 'Assign' }));
@@ -853,7 +853,7 @@ describe('adding somebody who is not in the directory', () => {
 
     await user.type(screen.getByLabelText('Name'), 'Kavya Nair');
     await user.type(screen.getByLabelText('Email'), 'kavya.n@ishafoundation.org');
-    await user.selectOptions(screen.getByLabelText('Role'), 'stalls_volunteer');
+    await choose(user, screen.getByLabelText('Role'), 'stalls_volunteer');
     await user.click(screen.getByRole('button', { name: /Add and assign/ }));
 
     await waitFor(() => {
@@ -878,7 +878,7 @@ describe('adding somebody who is not in the directory', () => {
     await user.type(screen.getByLabelText('Search People'), 'kavya');
     await user.click(screen.getByRole('button', { name: /^Search$/ }));
     await user.click(await screen.findByRole('button', { name: 'Add Them' }));
-    await user.selectOptions(screen.getByLabelText('Role'), 'stalls_volunteer');
+    await choose(user, screen.getByLabelText('Role'), 'stalls_volunteer');
 
     expect(screen.getByRole('button', { name: /Add and assign/ })).toBeDisabled();
     await user.type(screen.getByLabelText('Name'), 'Kavya Nair');

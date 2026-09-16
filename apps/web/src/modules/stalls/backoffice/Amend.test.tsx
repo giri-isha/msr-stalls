@@ -2,7 +2,7 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { ME_LEAD, ZONES, detail, installFetch, renderAt, summary } from '../test-utils';
+import { choose, detail, installFetch, ME_LEAD, renderAt, summary, ZONES } from '../test-utils';
 import { RequestDetail } from './RequestDetail';
 import { Requests } from './Requests';
 
@@ -73,8 +73,9 @@ describe('the amend dialog', () => {
     const agreed = await screen.findByLabelText('Bay Agreed');
     // The bays come from the edition, so a bay added in Admin this year is
     // offered without a code change.
-    expect(agreed).toHaveTextContent('A4 — Snake side');
-    await userEvent.selectOptions(agreed, 'A4');
+    await userEvent.click(agreed);
+    expect(await screen.findByRole('option', { name: 'A4 — Snake side' })).toBeInTheDocument();
+    await choose(userEvent, agreed, 'A4');
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(fx.calls.some((c) => c.method === 'PATCH')).toBe(true));
@@ -98,7 +99,7 @@ describe('the amend dialog', () => {
     await openDetail();
     await userEvent.click(await screen.findByRole('button', { name: /Amend/ }));
 
-    await userEvent.selectOptions(await screen.findByLabelText('Bay Agreed'), '');
+    await choose(userEvent, await screen.findByLabelText('Bay Agreed'), '');
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(fx.calls.some((c) => c.method === 'PATCH')).toBe(true));

@@ -1,5 +1,5 @@
-import type { PaymentClaimView, PublicPaymentDue } from '@msr/stalls';
-import { formatInr } from '@msr/stalls';
+import type { PaymentClaimView, PublicPaymentDue } from '@stalls/core';
+import { formatInr } from '@stalls/core';
 import { useState } from 'react';
 import { submitPaymentClaim } from '../api';
 import { fieldErrorsFrom } from '../api-client';
@@ -117,7 +117,7 @@ export function PaymentClaim({
             <Select
               id='claim-purpose'
               value={purpose}
-              onChange={(e) => setPurpose(e.target.value as 'RENT' | 'DEPOSIT')}
+              onChange={(v) => setPurpose(v as 'RENT' | 'DEPOSIT')}
             >
               <option value='RENT'>Rent</option>
               <option value='DEPOSIT'>Refundable deposit</option>

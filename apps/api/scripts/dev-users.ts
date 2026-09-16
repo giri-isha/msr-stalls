@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { type HeldRole, parseContact, unionPrivileges, unionRequestTypeScope } from '@msr/stalls';
+import { type HeldRole, parseContact, unionPrivileges, unionRequestTypeScope } from '@stalls/core';
 import { hashPassword } from '../src/modules/stalls/credentials';
 import { prisma } from '../src/prisma';
 

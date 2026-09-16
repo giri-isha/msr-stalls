@@ -103,7 +103,7 @@ const BANK_VIEW = {
   email: 'priya@greenleaf.example',
   stallNumbers: ['C1-4'],
   zoneCode: 'C1',
-  editionName: 'MSR 2026',
+  editionName: 'Stalls 2026',
   termsUrl: null as string | null,
   current: {
     plugs5a: 4,

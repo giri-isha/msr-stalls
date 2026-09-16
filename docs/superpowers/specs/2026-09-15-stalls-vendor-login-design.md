@@ -1,4 +1,4 @@
-# MSR Stalls — Requester Login (temporary, pre-SSO) Design
+# Stall Management — Requester Login (temporary, pre-SSO) Design
 
 Date: 2026-09-15
 Status: Approved, not yet built
@@ -24,7 +24,7 @@ day SSO lands.
 | Find-my-requests, emails a signed link | `public/AccessLink.tsx`, `POST /public/access-link` |
 | The requester's portal — status, allocation, "Still to do", "Open the form" | `public/StatusPage.tsx`, `GET /public/status/:token` |
 | Token mint/resolve with hashing, expiry, revocation, purpose narrowing | `accounts.ts` — `mintAccessLink`, `resolveAccessLink` |
-| Contact normalisation for email **and** mobile | `parseContact` in `@msr/stalls/access.ts` |
+| Contact normalisation for email **and** mobile | `parseContact` in `@stalls/core/access.ts` |
 | Outbound email and outbound WhatsApp ports | `mailer.ts`, `whatsapp.ts` |
 | Cookie support | `@fastify/cookie`, registered in `app.ts:61` |
 
@@ -97,8 +97,8 @@ of it.
     password and unconfirmed credential are indistinguishable.
 
 13. **The requester session is named apart from the staff one.** Staff already
-    hold a `msr_session` cookie, a `MeResponse` and `useMe()`. The requester
-    gets `msr_stall_requester`, `RequesterSession` and `useRequester()`. Two
+    hold a `stalls_session` cookie, a `MeResponse` and `useMe()`. The requester
+    gets `stall_requester`, `RequesterSession` and `useRequester()`. Two
     things called "me" in one module is how a requester ends up being asked
     what they `can()` do.
 
@@ -221,7 +221,7 @@ Added to the 284 that pass today:
 
 ## Documents to amend
 
-- `docs/superpowers/specs/2026-09-13-msr-stalls-phase2-phase3-design.md` —
+- `docs/superpowers/specs/2026-09-13-stall-management-phase2-phase3-design.md` —
   decision 16 is reversed by decision 1 here and must say so.
 - `docs/requirements-traceability.md:26` — "Register and log in with email or
   phone number" moves from **Differs** to **Built**, and the "Vendor identity"

@@ -1,4 +1,4 @@
-# MSR Stalls — Phases 2 & 3 (Onboarding, Money, Event Ops) Design
+# Stall Management — Phases 2 & 3 (Onboarding, Money, Event Ops) Design
 
 Date: 2026-09-12
 Status: Directed by the user ("build the full App"); builds on the approved Phase 1 spec.
@@ -27,7 +27,7 @@ Status: Directed by the user ("build the full App"); builds on the approved Phas
 
 The web module adopts the **msr-volunteering** UI system, ported verbatim under the module's own scope:
 
-- `apps/web/src/modules/stalls/ui/tokens.css` — the same tokens, scoped to `.msrs` (not `.msrv`) so both modules coexist in the host without collision, following the volunteering header's own reasoning.
+- `apps/web/src/modules/stalls/ui/tokens.css` — the same tokens, scoped to `.stalls` (not `.msrv`) so both modules coexist in the host without collision, following the volunteering header's own reasoning.
 - `ui/ui.tsx` — `Card`, `H1`, `Pill`/`Tag`/`TONE`, `Btn`, `Toolbar`, `Search`, `KV`, `Empty`, `Loading`, `ErrorBox`, `toolBtnStyle`, `gridMinWidth`. `STATUS_TONE` carries this module's vocabulary.
 - `ui/components/` — `Dialog` (+ `Field`, `inputStyle`), `IconBtn`, `StatTiles`, `RowCard`, `Pager`, `Toast`, `Overlay`, `SearchSelect`.
 - `ui/icons.tsx` — `<Icon name=… />` over lucide.
@@ -55,7 +55,7 @@ The shadcn/Tailwind primitives from Phase 1 are removed from the module; the she
 
 `NEW → BANK_FORM_SENT` (selection confirmation sent) `→ BANK_FORM_FILLED` (vendor submits) `→ PAYMENT_SENT` (payment email) `→ PAYMENT_CONFIRMED` (finance) `→ FSSAI_PENDING` (food stalls, when the flow enables FSSAI) `→ READY → CHECKED_IN`. Flow toggles skip steps: bank off → selection goes to PAYMENT_SENT path; payment off → straight to FSSAI/READY; FSSAI off or non-food → READY after payment. Ashram requests skip bank and payment entirely (no rent) and go READY on selection.
 
-## Pure logic in `@msr/stalls`
+## Pure logic in `@stalls/core`
 
 - `billing.ts` — `computeBill(request, charges, rate)`: stall fee = rent × stalls; plug fee = max(0, plugs5a − stalls) × 5A rate + plugs15a × 15A rate (one 5 A point per stall is included); furniture fee = (chairs × chair rate + tables × table rate) × event days, with the rate picked by requester type; GST on net; deposits by type. Every figure is integer paise.
 - `refund.ts` — `computeRefund(deposits, ledger, fines, rates)`: deductions for missing/damaged at replacement rates, fines summed, floor at zero.

@@ -1,10 +1,5 @@
-import type {
-  BuiltFormField,
-  FormField as FieldDef,
-  PresignUploadInput,
-  SubmitBankDetailsInput,
-} from '@msr/stalls';
-import { formFields, uploadPurposeFor } from '@msr/stalls';
+import type { BuiltFormField, PresignUploadInput, SubmitBankDetailsInput } from '@stalls/core';
+import { asFormField, formFields, uploadPurposeFor } from '@stalls/core';
 import { useState } from 'react';
 import { useParams } from 'react-router';
 import { fieldErrorsFrom } from '../api-client';
@@ -17,7 +12,7 @@ import { useLoad } from '../hooks';
 import { Btn, Card, ErrorBox, FormField, H1, Icon, Loading, Tag, Textarea, useToast } from '../ui';
 
 /**
- * "MSR Stalls Bank Details and Requirements" — the vendor's own Phase 2 form.
+ * "Stall Management Bank Details and Requirements" — the vendor's own Phase 2 form.
  *
  * Reached only from the link in the selection email. The link is what says
  * which request this is; nothing the browser sends does. That is why there is
@@ -90,22 +85,6 @@ const _COUNTS: Array<{
 ];
 
 type Values = Record<string, string>;
-
-/** A row as `FieldControl` wants it. The control speaks `FormField`, the
- *  definition speaks `BuiltFormField`; the two differ only in the bookkeeping
- *  the control has no use for. */
-const asFormField = (f: BuiltFormField): FieldDef => ({
-  name: f.name ?? f.id,
-  label: f.label,
-  labelTa: f.labelTa,
-  help: f.help ?? undefined,
-  helpTa: f.helpTa ?? undefined,
-  type: f.type,
-  required: f.required,
-  options: f.options ?? undefined,
-  min: f.min ?? undefined,
-  max: f.max ?? undefined,
-});
 
 export function BankForm() {
   const { token = '' } = useParams();

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { PrivilegeCatalogEntry } from '@msr/stalls';
+import type { PrivilegeCatalogEntry } from '@stalls/core';
 import { Checkbox, Icon, Search, Tag } from '../../ui';
 import { KIND_TONE, groupByCategory } from './catalogue';
 

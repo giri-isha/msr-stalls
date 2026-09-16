@@ -1,4 +1,4 @@
-// MSR Stalls — Phase 1 data model.
+// Stall Management — Phase 1 data model.
 //
 // Everything the module owns lives in the `stalls` Postgres schema and every
 // model is prefixed `Stall`, following the host's multiSchema convention (its
@@ -74,9 +74,21 @@ model ActivityTrail {
 
 // ── Enums ───────────────────────────────────────────────────────────────────
 
+/// What somebody APPLIED as.
+///
+/// 🔴 `ASHRAM_FOOD` was a member and is not one now. The two ashram forms were
+/// the same twenty-odd questions differing by whether the stall sells food —
+/// which is `stall_type`, a column this table has always had, and the column
+/// the FSSAI step, the rate card's food column and the planning grid already
+/// read. Two request types for one fact meant a department declared it by
+/// picking a form before being asked a question, and picking wrong was
+/// unrecoverable.
+///
+/// ⚠️ The `AFD-` references those requests carry were NOT rewritten. They are
+/// printed on challans; `RETIRED_PREFIX` in `reference.ts` is what still
+/// parses them.
 enum StallRequestType {
   ASHRAM
-  ASHRAM_FOOD
   LOCAL_WELFARE
   VENDOR
 
@@ -160,7 +172,6 @@ enum StallSignatureStatus {
 
 enum StallFormType {
   ASHRAM
-  ASHRAM_FOOD
   LOCAL_WELFARE
   VENDOR
   BANK
@@ -208,7 +219,7 @@ enum StallAshramUsage {
 
 // ── Configuration ───────────────────────────────────────────────────────────
 
-/// One MSR. Everything hangs off an edition so 2027 does not reuse 2026's data.
+/// One edition. Everything hangs off an edition so 2027 does not reuse 2026's data.
 model StallEdition {
   id        String   @id @default(uuid()) @db.Uuid
   year      Int      @unique
@@ -460,8 +471,8 @@ model StallDeclaration {
   ///
   /// ⚠️ A FORM type, not a request type. The bank details form, the FSSAI
   /// upload and staff registration all ask somebody to agree to something, and
-  /// none of them is an application. The four shared names are deliberately the
-  /// same strings, which is what let the widening migration leave every row
+  /// none of them is an application. The three shared names are deliberately
+  /// the same strings, which is what let the widening migration leave every row
   /// where it was.
   formType StallFormType? @map("form_type")
 
@@ -473,7 +484,7 @@ model StallDeclaration {
   /// paste — see `packages/stalls/src/declarations.ts` for what survives.
   body   String
   /// The Tamil beside the English. Null where the form has none, exactly as
-  /// `label_ta` is null on the two ashram forms.
+  /// `label_ta` is null on the ashram form.
   bodyTa String? @map("body_ta")
 
   /// Whether a form still shows it. Retiring a declaration must not orphan the
@@ -640,9 +651,40 @@ model StallFormField {
 
   /// `[{ value, label, labelTa }]` for a select or radio. Null for the rest.
   options Json?
-  /// Bounds for a number field.
-  min     Int?
-  max     Int?
+
+  /// What the question accepts, beyond its type.
+  ///
+  /// 🔴 `min`/`max` are read THREE ways, decided by `field_type`: the VALUE for
+  /// a number, the DIGIT count for a telephone number, and HOW MANY for a file
+  /// or appliance list. One pair of columns, because they were one pair before
+  /// the rest of this landed and the type already says which reading applies —
+  /// `ruleKindOf` in `@stalls/core` is what every reader goes through.
+  min         Int?
+  max         Int?
+  /// text — the shortest and longest the answer may be.
+  minLen      Int?    @map("min_len")
+  maxLen      Int?    @map("max_len")
+  /// number — digits allowed after the point. Null or 0 is a whole number.
+  ///
+  /// ⚠️ Never set on a BUILT-IN: every numeric column on `stall_request` is an
+  /// integer, so a built-in that accepted 2.5 plug points would be rounded on
+  /// its way in or refused by the contract. The API refuses the write.
+  decimals    Int?
+  /// text — an expression the answer must match, and what it is asking for in
+  /// words. The message quotes the words, never the expression.
+  pattern     String?
+  patternHint String? @map("pattern_hint")
+  /// date — the days the question accepts, as a `DateWindow`: pinned days, or a
+  /// window that rolls with today.
+  dateWindow  Json?   @map("date_window")
+
+  /// The picture a `display` block draws, as a media-store key.
+  ///
+  /// 🔴 The ADMIN's picture, not a reader's answer. A `file` question's answer
+  /// is the reader's and lands on their record; this is part of the QUESTION —
+  /// the venue layout above "where would you like to stand" — so it belongs on
+  /// the field row and travels with it when a form is copied to a new edition.
+  mediaKey String? @map("media_key")
 
   edition    StallEdition            @relation(fields: [editionId], references: [id], onDelete: Cascade)
   definition StallFormDefinition?    @relation(fields: [definitionId], references: [id], onDelete: Cascade)
@@ -742,14 +784,14 @@ model StallAccessLink {
 // role MEANS is data, so an admin retunes it without a deploy.
 //
 // The split that matters: the privilege vocabulary is developer-defined and
-// seeded from `@msr/stalls`, because a privilege means nothing unless a route
+// seeded from `@stalls/core`, because a privilege means nothing unless a route
 // enforces it. Only the BUNDLING of privileges into roles is authored.
 
 /// One thing a person can be allowed to do, named after what they DO rather
 /// than after a screen — screens get renamed and merged, "may confirm a
 /// payment" does not.
 ///
-/// Seeded from `PRIVILEGE_CATEGORIES` in `@msr/stalls` and never written by the
+/// Seeded from `PRIVILEGE_CATEGORIES` in `@stalls/core` and never written by the
 /// application. `isActive` retires one without deleting it, so a role that
 /// still bundles it keeps resolving.
 model StallPrivilege {
@@ -910,7 +952,7 @@ model StallReferenceSequence {
   @@schema("stalls")
 }
 
-/// One table for all four forms. They overlap by ~70%, and the pipeline,
+/// One table for every request form. They overlap by ~70%, and the pipeline,
 /// search and export screens all read one list.
 model StallRequest {
   id        String @id @default(uuid()) @db.Uuid

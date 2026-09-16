@@ -1,21 +1,31 @@
+import type { DateWindow } from './field-rules';
 import type { StallRequestType } from './reference';
 import { ZONE_BLURB_2025 } from './zones';
 import type { PublicZone } from './contracts';
 
-/** The four 2025 request forms, transcribed from the PDFs in `stalls_forms/`.
+/** The three 2025 request forms, transcribed from the PDFs in `stalls_forms/`.
+ *
+ *  🔴 THREE, where 2025 printed four. "Ashram Stall Request" and "Ashram Food
+ *  Stall Request" asked the same twenty-odd questions and differed by one:
+ *  whether the stall sells food. That was the FORM's identity rather than an
+ *  answer on it, so a department that picked wrong had filed the wrong kind of
+ *  request and the fix was a new one. They are one form now, and the difference
+ *  is the `stallType` question — the same question the vendor and local welfare
+ *  forms have always asked, landing in the same `stall_type` column that
+ *  already decides FSSAI, the rate card's food column and the planning grid.
  *
  *  ── On the Tamil ───────────────────────────────────────────────────────────
  *  Every `labelTa` below was copied character-for-character from the printed
  *  2025 Google Form. None of it is machine-translated, and none of it is
- *  guessed. Where the source form had no Tamil — the two ashram forms, which
- *  ashram departments fill in English — `labelTa` is `null`.
+ *  guessed. Where the source form had no Tamil — the ashram form, which ashram
+ *  departments fill in English — `labelTa` is `null`.
  *
  *  Two plug-point pricing notes did not render legibly in the request-form
  *  PDFs; they were taken from the 2025 bank-details form, where the same text
  *  renders cleanly. Nothing here is an approximation.
  *
  *  ── 🔴 THIS FILE IS THE SEED, NOT THE FORM ─────────────────────────────────
- *  It WAS both: one component rendered all four forms from this table and the
+ *  It WAS both: one component rendered every form from this table and the
  *  API validated against it. Forms are rows now — `StallFormDefinition` and the
  *  fields under it — and `seedFormDefinitions` writes these constants into an
  *  edition the first time it is created.
@@ -26,9 +36,9 @@ import type { PublicZone } from './contracts';
  *  What this file is still for is the transcription below — which is why it is
  *  read by the seed rather than copied into a migration.
  *
- *  The two ashram forms' `FORM_DEFINITIONS` entries also remain the fallback
- *  the public page renders while an edition has no rows yet, which is the
- *  window between deploying this and the API next starting.
+ *  The `FORM_DEFINITIONS` entries also remain the fallback the public page
+ *  renders while an edition has no rows yet, which is the window between
+ *  deploying this and the API next starting.
  */
 
 export type FieldType =
@@ -40,6 +50,11 @@ export type FieldType =
   | 'select'
   | 'radio'
   | 'checkbox'
+  /** One calendar day, as an ISO `YYYY-MM-DD` string. The 2025 forms asked for
+   *  no dates, which is why this type did not exist; an edition that wants to
+   *  ask when a vendor will arrive has a control and a window rather than a
+   *  text box and a hope — see `DateWindow`. */
+  | 'date'
   | 'appliances'
   /** The preferred-location radio list. Its choices are the edition's zones,
    *  resolved at render time rather than stored here. */
@@ -49,7 +64,15 @@ export type FieldType =
   | 'file'
   /** Several files, up to `max`. The FSSAI certificate is photographed a page
    *  at a time, which is the case this exists for. */
-  | 'files';
+  | 'files'
+  /** 🔴 NOT A QUESTION. Wording, and optionally a picture, drawn where it sits
+   *  in the form — the venue layout above the location question, a note about
+   *  what counts as a food stall above the food ones.
+   *
+   *  ⚠️ It has no answer, and every path that deals in answers has to know it:
+   *  it is never required, `validateAgainstForm` asks nothing of it, and it
+   *  posts nothing. See `isDisplayField`, which is the one spelling of that. */
+  | 'display';
 
 export interface FieldOption {
   value: string;
@@ -68,8 +91,21 @@ export interface FormField {
   type: FieldType;
   required: boolean;
   options?: FieldOption[];
+  /** Read three ways, decided by `type`: the VALUE for a number, the DIGIT
+   *  count for a telephone number, and HOW MANY for a file or appliance list.
+   *  See `FieldRuleValues`, which is where the rest of the limits live. */
   min?: number;
   max?: number;
+  minLen?: number;
+  maxLen?: number;
+  decimals?: number;
+  pattern?: string;
+  patternHint?: string;
+  /** The days a `date` question accepts. */
+  window?: DateWindow;
+  /** The picture a `display` block draws, as a media-store key. Null or absent
+   *  on every other type, and on a display block that is words only. */
+  mediaKey?: string | null;
 }
 
 export interface FormDefinition {
@@ -364,7 +400,21 @@ const LOCAL_WELFARE_FIELDS: FormField[] = [
 
 // ── Ashram (English only — ashram departments work in English) ───────────────
 
-const ashramFields = (food: boolean): FormField[] => [
+/**
+ * ONE ashram form, where 2025 printed two.
+ *
+ * 🔴 `stallType` is what used to be the difference between them. A department
+ * chose "Ashram Stall Request" or "Ashram Food Stall Request" at the picker,
+ * before it had been asked a single question — and the choice was not a
+ * preference but a fact about the stall, one the other two forms have always
+ * collected as an answer. Picking wrong meant a request of the wrong type, a
+ * reference with the wrong prefix, and no way back but a fresh submission.
+ *
+ * ⚠️ It sits near the TOP, above the questions whose answers depend on it.
+ * `fssaiExpected` is only asked of a food stall, and a question that appears
+ * halfway up a form already filled in is a question most readers scroll past.
+ */
+const ashramFields = (): FormField[] => [
   { name: 'email', label: 'Email', labelTa: null, type: 'email', required: true },
   { name: 'departmentHead', label: 'Department Head', labelTa: null, type: 'text', required: true },
   {
@@ -389,6 +439,18 @@ const ashramFields = (food: boolean): FormField[] => [
     labelTa: null,
     type: 'text',
     required: true,
+  },
+  {
+    name: 'stallType',
+    label: 'Type of stall',
+    labelTa: null,
+    help: 'A food stall must hold an FSSAI certificate before the event.',
+    type: 'select',
+    required: true,
+    options: [
+      { value: 'FOOD', label: 'Food', labelTa: null },
+      { value: 'NON_FOOD', label: 'Non Food', labelTa: null },
+    ],
   },
   {
     name: 'creditCardNeeded',
@@ -499,20 +561,39 @@ const ashramFields = (food: boolean): FormField[] => [
     type: 'textarea',
     required: false,
   },
-  ...(food
-    ? [
-        {
-          name: 'fssaiExpected',
-          label: 'Will you hold an FSSAI certificate for this stall?',
-          labelTa: null,
-          help: 'Food stalls must upload an FSSAI certificate before the event',
-          type: 'select' as const,
-          required: true,
-          options: YES_NO,
-        },
-      ]
-    : []),
+  /* 🔴 Asked only of a FOOD stall, and the form decides that from the
+   * `stallType` answer above rather than from which page the reader opened.
+   *
+   * ⚠️ It is still a row on the one ashram form — `FOOD_ONLY_FIELDS` below is
+   * what both the page and the submit validator read to skip it. A field the
+   * seed omitted could not be switched back on from the Form Builder without a
+   * migration, and "do not ask this of a non-food stall" is a rule about one
+   * answer, not a reason for two forms again. */
+  {
+    name: 'fssaiExpected',
+    label: 'Will you hold an FSSAI certificate for this stall?',
+    labelTa: null,
+    help: 'Food stalls must upload an FSSAI certificate before the event',
+    type: 'select',
+    required: true,
+    options: YES_NO,
+  },
 ];
+
+/**
+ * Questions a form asks only when the stall sells food.
+ *
+ * 🔴 Read by BOTH the public page (which hides them) and the submit path
+ * (which neither requires nor stores them). A page that merely hid the control
+ * would leave the API insisting on an answer nobody was asked for — the
+ * non-food ashram request would fail validation with an error pointing at a
+ * field that is not on screen.
+ */
+export const FOOD_ONLY_FIELDS: readonly string[] = ['fssaiExpected'];
+
+export function isFoodOnlyField(name: string | null): boolean {
+  return name !== null && FOOD_ONLY_FIELDS.includes(name);
+}
 
 export const FORM_DEFINITIONS: Record<StallRequestType, FormDefinition> = {
   VENDOR: {
@@ -537,15 +618,7 @@ export const FORM_DEFINITIONS: Record<StallRequestType, FormDefinition> = {
     titleTa: null,
     disclaimer: ASHRAM_DISCLAIMER,
     disclaimerTa: null,
-    fields: ashramFields(false),
-  },
-  ASHRAM_FOOD: {
-    type: 'ASHRAM_FOOD',
-    title: 'Ashram Food Stall Request Form',
-    titleTa: null,
-    disclaimer: ASHRAM_DISCLAIMER,
-    disclaimerTa: null,
-    fields: ashramFields(true),
+    fields: ashramFields(),
   },
 };
 

@@ -1,4 +1,4 @@
-import type { RequestStatus } from '@msr/stalls';
+import { type RequestStatus, STALL_REQUEST_TYPES } from '@stalls/core';
 import { Link } from 'react-router';
 import { getDashboard } from '../api';
 import { requestStatusTone, STATUS_LABEL, TYPE_LABEL } from '../components/StatusPill';
@@ -73,7 +73,7 @@ function Tile({
   const box: React.CSSProperties = { ...card, padding: mobile ? 12 : 14 };
   if (!to) return <div style={box}>{face}</div>;
   return (
-    <Link to={to} className='msrs-lift' style={{ ...box, display: 'block', color: 'inherit' }}>
+    <Link to={to} className='stalls-lift' style={{ ...box, display: 'block', color: 'inherit' }}>
       {face}
     </Link>
   );
@@ -111,7 +111,6 @@ const TYPE_GLYPH: Record<string, string> = {
   VENDOR: 'ticket',
   LOCAL_WELFARE: 'users',
   ASHRAM: 'layout-grid',
-  ASHRAM_FOOD: 'layers',
 };
 
 const STATUS_GLYPH: Record<RequestStatus, string> = {
@@ -132,7 +131,7 @@ export function Dashboard() {
   const s = data.byStatus;
   return (
     <div>
-      <H1 icon={<Icon name='home' size={18} />} sub='Maha Shivratri · MSR Stalls Program'>
+      <H1 icon={<Icon name='home' size={18} />} sub='Requests, selection and operations'>
         Dashboard
       </H1>
 
@@ -144,7 +143,12 @@ export function Dashboard() {
           tone='info'
           to='/m/stalls/requests'
         />
-        {(['VENDOR', 'LOCAL_WELFARE', 'ASHRAM', 'ASHRAM_FOOD'] as const).map((t) => (
+        {/* ⚠️ `STALL_REQUEST_TYPES`, not a list written out here. Ashram food
+            stopped being a request type when the two ashram forms merged, and a
+            tile hand-listed in this file would have gone on counting a type the
+            API no longer returns — reading zero, for ever, next to the real
+            ones. */}
+        {STALL_REQUEST_TYPES.map((t) => (
           <Tile
             key={t}
             label={TYPE_LABEL[t]}

@@ -1,6 +1,6 @@
 // Which requesters a backoffice member's roles reach, applied.
 //
-// `@msr/stalls/rbac.ts` decides the rule — `unionRequestTypeScope` turns the
+// `@stalls/core/rbac.ts` decides the rule — `unionRequestTypeScope` turns the
 // roles a person holds into the requester types they cover, or `null` for all
 // of them, and `requireBackoffice` resolves it once per request.
 // This file is the half that makes the answer bite: a `where` clause for the
@@ -12,7 +12,7 @@
 // otherwise unscoped — so without this the only way to let them enter a request
 // was to also let them read a commercial vendor's bank details.
 import type { Prisma, PrismaClient, StallRequestType } from '@prisma/client';
-import { canReach, zoneOfRequest } from '@msr/stalls';
+import { canReach, zoneOfRequest } from '@stalls/core';
 import { RequestTypeForbiddenError, ZoneForbiddenError } from './errors';
 import type { BackofficeCaller } from './roles';
 

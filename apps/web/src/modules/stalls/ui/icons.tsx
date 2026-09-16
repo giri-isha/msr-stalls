@@ -72,7 +72,7 @@ import {
 /**
  * Semantic icon name → lucide component.
  *
- * Nav items and buckets carry a NAME (from @msr/volunteering), not a glyph, so the
+ * Nav items and buckets carry a NAME (from @stalls/volunteering), not a glyph, so the
  * server never ships presentation and the icon set can change in one place.
  */
 /**

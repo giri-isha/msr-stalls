@@ -1,11 +1,36 @@
-import { SEED_ROLES, STALL_PRIVILEGES } from '@msr/stalls';
-import { render } from '@testing-library/react';
+import { SEED_ROLES, STALL_PRIVILEGES } from '@stalls/core';
+import { render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { type RouteObject, RouterProvider, createMemoryRouter } from 'react-router';
 import { vi } from 'vitest';
 import { MeProvider } from './me';
 import { RequesterProvider } from './requester';
 import { ToastProvider } from './ui';
+
+/**
+ * Choose `value` from one of the module's dropdowns.
+ *
+ * ⚠️ This replaces `userEvent.selectOptions`, which drives a native `<select>`
+ * and nothing else. The module draws its own list — see `ui/components/Select.tsx`
+ * for why — so choosing is what a person actually does: press the control, then
+ * press the row. The row is found by the VALUE it carries rather than by its
+ * label, so a test still says `'SHORTLISTED'` and not "Shortlisted".
+ */
+export async function choose(
+  user: { click: (el: Element) => Promise<unknown> },
+  control: HTMLElement,
+  value: string,
+) {
+  // Tolerates a list a test opened for itself — to read the options it offers,
+  // say — so asserting on the panel does not close it under the next line.
+  if (control.getAttribute('aria-expanded') !== 'true') await user.click(control);
+  const list = await screen.findByRole('listbox');
+  const option = within(list)
+    .getAllByRole('option')
+    .find((o) => o.getAttribute('data-value') === value);
+  if (!option) throw new Error(`no option with value ${JSON.stringify(value)} in this list`);
+  await user.click(option);
+}
 
 export interface Call {
   method: string;
@@ -94,7 +119,7 @@ export const ME_LEAD = {
 };
 
 export const PUBLIC_CONFIG = {
-  edition: { year: 2026, name: 'MSR 2026' },
+  edition: { year: 2026, name: 'Stalls 2026' },
   zones: [
     {
       code: 'A3',
@@ -483,7 +508,7 @@ export const BACKOFFICE_CONFIG = {
   edition: {
     id: 'e1',
     year: 2026,
-    name: 'MSR 2026',
+    name: 'Stalls 2026',
     isActive: true,
     virtualAccountRentPrefix: null,
     virtualAccountDepositPrefix: null,
@@ -563,8 +588,8 @@ const EDITION_SETTINGS = {
   termsUrl: null,
 };
 export const EDITIONS = [
-  { id: 'e1', year: 2026, name: 'MSR 2026', isActive: true, ...EDITION_SETTINGS },
-  { id: 'e0', year: 2025, name: 'MSR 2025', isActive: false, ...EDITION_SETTINGS },
+  { id: 'e1', year: 2026, name: 'Stalls 2026', isActive: true, ...EDITION_SETTINGS },
+  { id: 'e0', year: 2025, name: 'Stalls 2025', isActive: false, ...EDITION_SETTINGS },
 ];
 
 /** Last year's configuration, which is what `/config?editionId=e0` answers. */
@@ -574,7 +599,7 @@ export const PAST_CONFIG = {
     ...BACKOFFICE_CONFIG.edition,
     id: 'e0',
     year: 2025,
-    name: 'MSR 2025',
+    name: 'Stalls 2025',
     isActive: false,
   },
   zones: BACKOFFICE_CONFIG.zones.map((z) =>

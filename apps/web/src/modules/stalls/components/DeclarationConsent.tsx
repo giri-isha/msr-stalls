@@ -1,4 +1,4 @@
-import type { Declaration } from '@msr/stalls';
+import type { Declaration } from '@stalls/core';
 import { Checkbox, ChoicePlate, FieldError } from '../ui';
 import { DeclarationText } from './DeclarationText';
 
@@ -61,7 +61,7 @@ export function DeclarationConsent({
                   parsed rather than the text being sanitised. */}
               <DeclarationText body={d.body} />
               {d.bodyTa && (
-                <span className='msrs-tamil' lang='ta' style={{ display: 'block', marginTop: 7 }}>
+                <span className='stalls-tamil' lang='ta' style={{ display: 'block', marginTop: 7 }}>
                   <DeclarationText body={d.bodyTa} />
                 </span>
               )}

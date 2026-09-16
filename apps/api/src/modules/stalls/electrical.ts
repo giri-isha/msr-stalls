@@ -1,5 +1,5 @@
-import type { ElectricalRow, ElectricalSheet } from '@msr/stalls';
-import { plugs5aIncludingDefault } from '@msr/stalls';
+import type { ElectricalRow, ElectricalSheet } from '@stalls/core';
+import { plugs5aIncludingDefault } from '@stalls/core';
 import type { Db } from './editions';
 
 /** The stall-wise electrical layout, in the shape the 2025 spreadsheet had it.

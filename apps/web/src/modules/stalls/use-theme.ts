@@ -4,7 +4,7 @@ type Theme = 'light' | 'dark';
 
 /** The host's key, so a module mounted inside it inherits the choice rather
  *  than keeping a second one that disagrees. */
-const STORAGE_KEY = 'msr-theme';
+const STORAGE_KEY = 'stalls-theme';
 
 function currentTheme(): Theme {
   return document.documentElement.classList.contains('dark') ? 'dark' : 'light';

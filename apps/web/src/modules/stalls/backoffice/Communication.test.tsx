@@ -1,8 +1,8 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { DEFAULT_TEMPLATES, TEMPLATE_PLACEHOLDERS } from '@msr/stalls';
+import { DEFAULT_TEMPLATES, TEMPLATE_PLACEHOLDERS } from '@stalls/core';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { ME_ADMIN, installFetch, recipient, renderAt } from '../test-utils';
+import { choose, installFetch, ME_ADMIN, recipient, renderAt } from '../test-utils';
 import { Communication } from './Communication';
 
 const routes = [{ path: '/m/stalls/communication', element: <Communication /> }];
@@ -129,7 +129,7 @@ describe('sending the selection letter', () => {
     await user.click(await screen.findByLabelText('Select Green Leaf Organics'));
     expect(screen.getByRole('button', { name: 'Send 1 selected' })).toBeEnabled();
 
-    await user.selectOptions(screen.getByLabelText('Letter'), 'PAYMENT_DETAILS');
+    await choose(user, screen.getByLabelText('Letter'), 'PAYMENT_DETAILS');
     expect(screen.getByRole('button', { name: 'Send selected' })).toBeDisabled();
   });
 });
@@ -140,7 +140,7 @@ describe('the template editor', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Templates' }));
+    await user.click(await screen.findByRole('tab', { name: 'Templates' }));
     const subject = await screen.findByLabelText('Subject');
     await user.clear(subject);
     await user.type(subject, 'Confirmed');
@@ -161,7 +161,7 @@ describe('the template editor', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Templates' }));
+    await user.click(await screen.findByRole('tab', { name: 'Templates' }));
     const subject = await screen.findByLabelText('Subject');
     await user.clear(subject);
     await user.type(subject, 'Confirmed');
@@ -178,7 +178,7 @@ describe('the template editor', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Templates' }));
+    await user.click(await screen.findByRole('tab', { name: 'Templates' }));
     const wa = await screen.findByLabelText('WhatsApp message');
     await user.clear(wa);
     await user.type(wa, 'You have been selected. Details by email.');
@@ -198,7 +198,7 @@ describe('the template editor', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Templates' }));
+    await user.click(await screen.findByRole('tab', { name: 'Templates' }));
     const body = await screen.findByLabelText('Body');
     // `fireEvent`, not `user.type`: userEvent reads `{{` as an escape for a
     // literal brace, and a placeholder is the one thing this field is for.
@@ -212,7 +212,7 @@ describe('the template editor', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Templates' }));
+    await user.click(await screen.findByRole('tab', { name: 'Templates' }));
     expect(await screen.findByRole('button', { name: 'Save Template' })).toBeDisabled();
   });
 });
@@ -245,7 +245,7 @@ describe('reminder calls', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Reminder calls' }));
+    await user.click(await screen.findByRole('tab', { name: 'Reminder calls' }));
     await user.click(await screen.findByRole('button', { name: /Log Call/ }));
 
     await waitFor(() => {

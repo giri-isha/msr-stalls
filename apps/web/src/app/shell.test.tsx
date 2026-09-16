@@ -21,7 +21,7 @@ const DASH = [
   /\/m\/stalls\/dashboard$/,
   () => ({
     total: 3,
-    byType: { VENDOR: 2, LOCAL_WELFARE: 1, ASHRAM: 0, ASHRAM_FOOD: 0 },
+    byType: { VENDOR: 2, LOCAL_WELFARE: 1, ASHRAM: 0 },
     byStatus: { SUBMITTED: 3 },
     stallsPlanned: 10,
     stallsAllocated: 1,
@@ -82,7 +82,7 @@ describe('the backoffice shell', () => {
     expect(within(nav).getByTitle('Dashboard')).toBeInTheDocument();
     expect(within(nav).getByTitle('All Requests')).toBeInTheDocument();
     // The crumb names the group and the title the route.
-    expect(await screen.findByText('Maha Shivratri · MSR Stalls Program')).toBeInTheDocument();
+    expect(await screen.findByText('Requests, selection and operations')).toBeInTheDocument();
   });
 
   test('hides the nav items the caller has no action for', async () => {

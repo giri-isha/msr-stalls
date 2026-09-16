@@ -16,7 +16,7 @@ assertTestDatabase(process.env.DATABASE_URL);
 // test file to import `src/prisma.ts` pulls in `dotenv/config`, which loads
 // `.env` and would put a deleted value straight back. dotenv never overwrites a
 // key already present, so an empty string is what actually holds.
-process.env.MSR_DEV_MEDIA_DIR = '';
+process.env.STALLS_DEV_MEDIA_DIR = '';
 
 // Public submit is rate-limited per IP. The suite fires dozens of submissions
 // from one address; lift the cap so tests exercise the domain, not the limiter.

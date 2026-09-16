@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { RoleDetail, RoleSummary } from '@msr/stalls';
+import type { RoleDetail, RoleSummary } from '@stalls/core';
 import * as api from '../../api';
 import { useLoad } from '../../hooks';
 import { useMe } from '../../me';
@@ -11,6 +11,7 @@ import {
   Icon,
   Loading,
   Search,
+  Tabs,
   Tag,
   toolBtnStyle,
   useToast,
@@ -89,27 +90,13 @@ export function RolesPrivileges() {
         Roles &amp; Privileges
       </H1>
 
-      {/* Tabs on the shared control skin rather than an underlined rail — the
-          one look a chosen control wears across the product, as on Admin. */}
-      <div
-        style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}
-        role='tablist'
-        aria-label='Access Sections'
-      >
-        {TABS.map((t) => (
-          <button
-            key={t.label}
-            type='button'
-            role='tab'
-            aria-selected={tab === t.label}
-            onClick={() => setTab(t.label)}
-            style={toolBtnStyle(tab === t.label)}
-          >
-            <Icon name={t.glyph} size={14} />
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {/* The shared underlined rail, as on Admin. */}
+      <Tabs
+        label='Access Sections'
+        tabs={TABS.map((t) => ({ key: t.label, label: t.label, glyph: t.glyph }))}
+        active={tab}
+        onPick={(k) => setTab(k as Tab)}
+      />
 
       {tab === 'Roles' && (
         <div style={{ display: 'grid', gap: 14 }}>

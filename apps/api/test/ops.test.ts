@@ -1,4 +1,4 @@
-import { DEFAULT_STAFF_COUPON_CAPACITY, rupeesToPaise } from '@msr/stalls';
+import { DEFAULT_STAFF_COUPON_CAPACITY, rupeesToPaise } from '@stalls/core';
 import type { StallEdition } from '@prisma/client';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { checkIn, listCheckIns, undoCheckIn } from '../src/modules/stalls/checkin';
@@ -219,7 +219,7 @@ describe('chairs and tables', () => {
     expect(slip.tablesOnline).toBe(2);
     expect(slip.extraChairs).toBe(2);
     expect(slip.extraChargePaise).toBe(rupeesToPaise(2 * 50 + 150));
-    expect(slip.editionName).toBe('MSR 2026');
+    expect(slip.editionName).toBe('Stalls 2026');
   });
 
   test('an undo puts the counter back where it was', async () => {

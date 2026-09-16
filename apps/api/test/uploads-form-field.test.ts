@@ -63,3 +63,49 @@ describe('a file answer belongs to ONE question', () => {
     expect(isOurKey(cheque.key, 'FORM_FIELD', FIELD_A)).toBe(false);
   });
 });
+
+/**
+ * A display block's picture, which is the ADMIN's and not an answer.
+ *
+ * 🔴 `/public/form-image` serves this folder unauthenticated, by key, with no
+ * lookup — so "which folder" is the whole of the authorization, and these are
+ * the tests that say a vendor's cheque can never be presented as one.
+ */
+describe("a display block's picture", () => {
+  const note = (contentType = 'image/png') =>
+    presignUpload(fakeStore(), {
+      purpose: 'FORM_NOTE',
+      fileName: 'layout.png',
+      contentType,
+      bytes: 400_000,
+    });
+
+  test('needs no field id — it belongs to the form, not to a question', async () => {
+    const { key } = await note();
+    expect(isOurKey(key, 'FORM_NOTE')).toBe(true);
+  });
+
+  /** 🔴 The refusal that keeps the public route honest. A vendor's documents
+   *  live in folders of their own, so a key naming one is not servable however
+   *  it reaches a field row. */
+  test('and no other purpose can pass for one', async () => {
+    const { key } = await note();
+    expect(isOurKey(key, 'BANK_CHEQUE')).toBe(false);
+    expect(isOurKey(key, 'FORM_FIELD', FIELD_A)).toBe(false);
+
+    const cheque = await presignUpload(fakeStore(), {
+      purpose: 'BANK_CHEQUE',
+      fileName: 'cheque.jpg',
+      contentType: 'image/jpeg',
+      bytes: 120_000,
+    });
+    expect(isOurKey(cheque.key, 'FORM_NOTE')).toBe(false);
+  });
+
+  /** ⚠️ The block draws its picture in an `<img>`, so a PDF there is a broken
+   *  image on every form it sits on. Refused at the presign rather than
+   *  discovered by a requester. */
+  test('is an image, never a PDF', async () => {
+    await expect(note('application/pdf')).rejects.toThrow();
+  });
+});

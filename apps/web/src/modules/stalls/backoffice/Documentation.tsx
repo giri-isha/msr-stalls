@@ -1,4 +1,4 @@
-import { PRIVILEGE_CATEGORIES, type StallPrivilege } from '@msr/stalls';
+import { PRIVILEGE_CATEGORIES, type StallPrivilege } from '@stalls/core';
 import { Fragment } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
@@ -14,13 +14,14 @@ import {
   THead,
   TR,
   Table,
+  Tabs,
+  type TabDef,
   Tag,
   TONE,
   type Tone,
   useIsMobile,
   useIsNarrow,
 } from '../ui';
-import { Tabs } from './Communication';
 
 /**
  * The manual, inside the app.
@@ -39,7 +40,7 @@ import { Tabs } from './Communication';
  * is drawn.
  *
  * ⚠️ Anything the app already knows is IMPORTED rather than retyped: the
- * privilege table is `PRIVILEGE_CATEGORIES` from `@msr/stalls`, the status words
+ * privilege table is `PRIVILEGE_CATEGORIES` from `@stalls/core`, the status words
  * are the same `STATUS_LABEL` the pills use. Documentation that restates a
  * constant is documentation that goes stale on the first commit that changes it,
  * silently, because nothing tests prose.
@@ -168,12 +169,12 @@ const JOURNEY: JourneyStep[] = [
   {
     title: 'Choose a form',
     where: '/stalls/apply',
-    body: 'Four forms — Vendor, Local Welfare, Ashram and Ashram Food — each transcribed from the 2025 Google Form with its Tamil labels intact, plus any extra questions an admin has appended.',
+    body: 'Three forms — Vendor, Local Welfare and Ashram — each transcribed from the 2025 Google Form with its Tamil labels intact, plus any extra questions an admin has appended. The 2025 sheets had a fourth, Ashram Food; it is the ashram form answered "Food", so a department is asked rather than made to choose a page.',
     note: 'Which form they pick decides the reference prefix, the questions they are asked, and which of the later steps will ever apply to them.',
   },
   {
     title: 'Fill it in and submit',
-    where: '/stalls/apply/:type',
+    where: '/stalls/apply/vendor, /local-welfare, /ashram',
     body: 'Who they are, what they sell, the zone they would like, plug points and appliances, gas stoves, chairs, tables and passes, and the two consent lines. No password and no OTP: submitting is the signup.',
     note: 'Appliances are rows, not four fixed boxes — the electrical sheet sums whatever is listed.',
   },
@@ -1265,12 +1266,12 @@ function FlowPanel() {
 
 // ── The screen ──────────────────────────────────────────────────────────────
 
-const TAB_LIST: [string, string][] = [
-  ['overview', 'Overview'],
-  ['flows', 'Flow charts'],
-  ['vendor', 'The vendor’s journey'],
-  ['screens', 'Backoffice screens'],
-  ['reference', 'Reference'],
+const TAB_LIST: TabDef[] = [
+  { key: 'overview', label: 'Overview', glyph: 'home' },
+  { key: 'flows', label: 'Flow charts', glyph: 'arrow-left-right' },
+  { key: 'vendor', label: 'The vendor’s journey', glyph: 'user' },
+  { key: 'screens', label: 'Backoffice screens', glyph: 'layout-grid' },
+  { key: 'reference', label: 'Reference', glyph: 'file-text' },
 ];
 
 export function Documentation() {
@@ -1279,7 +1280,7 @@ export function Documentation() {
   // into a message, and the back button has to leave the page rather than
   // silently undo three tab clicks.
   const [params, setParams] = useSearchParams();
-  const active = TAB_LIST.some(([k]) => k === params.get('tab'))
+  const active = TAB_LIST.some((t) => t.key === params.get('tab'))
     ? (params.get('tab') as string)
     : 'overview';
 
@@ -1293,6 +1294,7 @@ export function Documentation() {
       </H1>
 
       <Tabs
+        label='Documentation Sections'
         tabs={TAB_LIST}
         active={active}
         onPick={(key) => setParams(key === 'overview' ? {} : { tab: key }, { replace: true })}

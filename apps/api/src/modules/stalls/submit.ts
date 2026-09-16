@@ -4,7 +4,7 @@ import {
   isPlaceholderEmail,
   type SubmitRequestInput,
   validateAgainstForm,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { mintAccessLink, normalizeEmail } from './accounts';
 import { allowedCustomValues } from './custom-values';
 import { declarationsForForm, recordConsent, sameDeclarations } from './declarations';
@@ -64,10 +64,10 @@ async function nextSequence(
 /**
  * The submission keyed the way the FORM names its fields.
  *
- * 🔴 The two ashram forms do not use the contract's names. They ask for the
+ * 🔴 The ashram form does not use the contract's names. It asks for the
  * requester under `requestedBy` and their number under `requesterContact`, and
  * everything about the department is nested under `ashram` — because the
- * printed 2025 forms ask it that way and the transcription kept their words.
+ * printed 2025 form asks it that way and the transcription kept its words.
  * The contract flattens all of that into `requesterName`, `contactNumber` and a
  * nested block, which is the right shape for the columns and the wrong shape
  * for looking a field up by the name the form gave it.
@@ -125,7 +125,7 @@ export async function submitRequest(
 
     // 🔴 What the EDITION'S OWN FORM insists on, checked before anything is
     // written. `SubmitRequestInput` can only say what a field's type is — it is
-    // a constant, and it has to accept everything any of the four forms might
+    // a constant, and it has to accept everything any of the forms might
     // send — so almost everything in it is optional. Which questions must be
     // answered moved into the rows when forms became data, and this is where
     // that half is enforced.
@@ -135,10 +135,15 @@ export async function submitRequest(
     // the fallback on the page honest.
     const form = await formFor(tx, edition.id, input.requestType);
     if (form) {
-      const violations = validateAgainstForm(form, {
-        builtIn: formValues(input),
-        custom: input.customFields,
-      });
+      // ⚠️ `isFood` goes in, because one question depends on it: the ashram
+      // form asks `fssaiExpected` only of a food stall. The page hides it; if
+      // this did not skip it too, a non-food ashram request would be refused
+      // over a question that was never on screen.
+      const violations = validateAgainstForm(
+        form,
+        { builtIn: formValues(input), custom: input.customFields },
+        { isFood: input.stallType === 'FOOD' },
+      );
       if (violations.length > 0) {
         throw new ValidationFailedError(violations.map((v) => ({ row: 0, ...v })));
       }
@@ -205,7 +210,12 @@ export async function submitRequest(
                 usage: input.ashram.usage,
                 usageOther: input.ashram.usageOther ?? null,
                 wantsThembu: input.ashram.wantsThembu,
-                fssaiExpected: input.ashram.fssaiExpected ?? null,
+                // ⚠️ Null for a non-food stall, whatever the body carried. The
+                // question is not asked of one — see `isFoodOnlyField` — and
+                // storing an answer to it would be recording a reply nobody
+                // made.
+                fssaiExpected:
+                  input.stallType === 'FOOD' ? (input.ashram.fssaiExpected ?? null) : null,
               },
             }
           : undefined,
@@ -269,7 +279,7 @@ export async function submitRequest(
       // Registered on a mobile: there is no address to write to.
       await deps.whatsapp.send({
         to: result.account.phone,
-        text: `Your MSR stall request ${result.reference} has been received. ${statusUrl}`,
+        text: `Your stall request ${result.reference} has been received. ${statusUrl}`,
       });
     }
   } catch {
@@ -285,7 +295,7 @@ export async function submitRequest(
 
 function receiptMail(to: string, input: SubmitRequestInput, reference: string, statusUrl: string) {
   const text = [
-    `Your MSR stall request has been received.`,
+    `Your stall request has been received.`,
     ``,
     `Reference: ${reference}`,
     `Stall name: ${input.stallName}`,
@@ -300,7 +310,7 @@ function receiptMail(to: string, input: SubmitRequestInput, reference: string, s
     `Submission of a stall request does not guarantee allocation. Allocation is at the`,
     `sole discretion of the Isha Stall Team. Only selected stalls will be informed.`,
   ].join('\n');
-  return { to, subject: `MSR stall request received — ${reference}`, text };
+  return { to, subject: `Stall request received — ${reference}`, text };
 }
 
 export type { Db };

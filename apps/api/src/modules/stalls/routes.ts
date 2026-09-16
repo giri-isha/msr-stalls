@@ -35,6 +35,7 @@ import {
   ListRequestsQuery,
   ListUsersQuery,
   LogReminderInput,
+  MoveAllocationInput,
   CreateRoleInput,
   type ListPrivilegesResponse,
   type ListRolesResponse,
@@ -60,7 +61,7 @@ import {
   ZoneCodeValue,
   ZoneInput,
   ZonePlanInput,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { prisma } from '../../prisma';
 import type { ZodTypeProvider } from '../../zod-validation';
 import * as checkin from './checkin';
@@ -97,6 +98,7 @@ import {
   backupRequest,
   cancelRequest,
   rejectRequest,
+  moveAllocation,
   releaseAllocation,
   selectRequest,
   shortlist,
@@ -354,6 +356,24 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
         },
         caller.personId,
       );
+    },
+  );
+
+  /** A correction to a number already given out, kept out of DELETE + POST so
+   *  the stall being moved to cannot be taken in the gap between them. */
+  zod.patch(
+    '/allocations/:id',
+    { schema: { params: IdParams, body: MoveAllocationInput } },
+    async (req) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'selection.write');
+      await requireOwnerScope(caller, prisma, () =>
+        prisma.stallAllocation.findUnique({
+          where: { id: req.params.id },
+          select: { requestId: true },
+        }),
+      );
+      return moveAllocation(prisma, req.params.id, req.body.stallNumber, caller.personId);
     },
   );
 
@@ -879,7 +899,12 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
   // The vendor-facing one is in `public-routes.ts` and is gated by a link.
   zod.post('/uploads', { schema: { body: PresignUploadInput } }, async (req) => {
     const caller = await requireBackoffice(req, prisma);
-    requirePrivilege(caller, 'comms.write');
+    // ⚠️ The privilege follows the PURPOSE. A display block's picture is part of
+    // a form, authored on the Form Builder by somebody who configures the
+    // edition; the template attachment is part of an email. Asking for
+    // `comms.write` before a form image would mean nobody could put the venue
+    // layout on a form without also being able to send mail to every vendor.
+    requirePrivilege(caller, req.body.purpose === 'FORM_NOTE' ? 'config.write' : 'comms.write');
     return presignUpload(deps.files, req.body);
   });
 

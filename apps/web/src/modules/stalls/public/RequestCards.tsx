@@ -8,7 +8,7 @@ import {
   type PublicRequestStatus,
   formatInr,
   isSelfServe,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { StatusPill, TYPE_LABEL } from '../components/StatusPill';
 import { PaymentClaim } from './PaymentClaim';
 import { formatDate } from '../hooks';

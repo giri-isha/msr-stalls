@@ -1,4 +1,4 @@
-import { rupeesToPaise } from '@msr/stalls';
+import { rupeesToPaise } from '@stalls/core';
 import type { StallEdition } from '@prisma/client';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { sendTemplate } from '../src/modules/stalls/comms';
@@ -51,7 +51,7 @@ describe('what is owed', () => {
   test('ashram departments are absent, not present with a row of zeros', async () => {
     await selected(['C1-1']);
     const { requestId } = await selected(['C1-2'], {
-      requestType: 'ASHRAM_FOOD',
+      requestType: 'ASHRAM',
       email: 'dept@ashram.example',
       ashram: {
         departmentHead: 'R Iyer',

@@ -1,4 +1,4 @@
-# MSR Stalls — Phases 2 & 3 (Onboarding, Money, Event Ops) Design
+# Stall Management — Phases 2 & 3 (Onboarding, Money, Event Ops) Design
 
 Date: 2026-09-13
 Status: Built
@@ -61,7 +61,7 @@ These shaped the code and are the ones worth arguing with.
    send. Two paths would be two places for rule 4 to be got wrong.
 
 6. **One function decides what is outstanding.** `pendingSteps` in
-   `@msr/stalls/onboarding.ts` is called by the vendor's portal, the Onboarding
+   `@stalls/core/onboarding.ts` is called by the vendor's portal, the Onboarding
    table and the check-in counter. Before it existed, each screen decided for
    itself and a vendor could be "all set" on one and blocked on another.
 
@@ -247,7 +247,7 @@ the team was waiting on even though `pendingSteps` already knew.
     moves a payment against a bank credit, and staff register on a coupon the
     vendor forwards to their own team. A button on either would promise
     something the portal cannot do; hiding them would hide what the team is
-    waiting for. `isSelfServe` in `@msr/stalls/access.ts` is the one place that
+    waiting for. `isSelfServe` in `@stalls/core/access.ts` is the one place that
     decides.
 
 **Still not built**

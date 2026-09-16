@@ -1,5 +1,5 @@
 import { Prisma, type PrismaClient, type StallRequestStatus } from '@prisma/client';
-import { parseStallNumber } from '@msr/stalls';
+import { parseStallNumber } from '@stalls/core';
 import { recordActivity } from '../../activity';
 import {
   InvalidTransitionError,
@@ -168,6 +168,78 @@ export async function selectRequest(
     // is the best we can name if Prisma does not say.
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
       throw new StallAlreadyAllocatedError(input.stallNumbers[0] ?? '?');
+    }
+    throw err;
+  }
+}
+
+/** Move a live allocation onto another stall, atomically.
+ *
+ *  ⚠️ NOT a release followed by a select, which is what the screens would
+ *  otherwise have to do. Between those two calls the stall being moved TO is
+ *  free for another coordinator to take, and the request sits holding one stall
+ *  fewer than it was given — so a typo correction can cost a vendor their
+ *  pitch. One transaction gives the old stall back and takes the new one
+ *  together, and the unique constraint on `activeStallId` decides the race the
+ *  same way it decides a selection's.
+ *
+ *  The old row is NOT rewritten: an allocation row is history, and the record
+ *  has to keep saying that this request once stood on that stall. */
+export async function moveAllocation(
+  db: PrismaClient,
+  allocationId: string,
+  stallNumber: string,
+  by: string,
+): Promise<{ stallNumber: string }> {
+  try {
+    return await db.$transaction(async (tx) => {
+      const a = await tx.stallAllocation.findUnique({
+        where: { id: allocationId },
+        include: { stall: true, request: { select: { editionId: true } } },
+      });
+      if (!a || a.releasedAt) throw new UnknownRequestError(allocationId);
+      // Moving a stall onto itself is what a dialog does when nothing was
+      // changed. It is not an error, and it must not write a trail entry.
+      if (a.stall.number === stallNumber) return { stallNumber };
+
+      const parsed = parseStallNumber(stallNumber);
+      if (!parsed) throw new UnknownStallError(stallNumber);
+      const target = await tx.stall.findFirst({
+        where: {
+          number: stallNumber,
+          zone: { editionId: a.request.editionId, code: parsed.zone },
+        },
+      });
+      if (!target) throw new UnknownStallError(stallNumber);
+      if (target.status === 'BLOCKED') throw new StallBlockedError(stallNumber);
+      if (target.status === 'ALLOCATED') throw new StallAlreadyAllocatedError(stallNumber);
+
+      await tx.stallAllocation.update({
+        where: { id: a.id },
+        data: { activeStallId: null, releasedAt: new Date(), releasedBy: by },
+      });
+      await tx.stall.update({ where: { id: a.stallId }, data: { status: 'AVAILABLE' } });
+      await tx.stallAllocation.create({
+        data: {
+          requestId: a.requestId,
+          stallId: target.id,
+          activeStallId: target.id,
+          allocatedBy: by,
+        },
+      });
+      await tx.stall.update({ where: { id: target.id }, data: { status: 'ALLOCATED' } });
+      await recordActivity(tx, {
+        actorRef: by,
+        moduleKey: MODULE_KEY,
+        action: 'stall_allocation.moved',
+        subjectRef: a.requestId,
+        detail: { from: a.stall.number, to: stallNumber },
+      });
+      return { stallNumber };
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      throw new StallAlreadyAllocatedError(stallNumber);
     }
     throw err;
   }

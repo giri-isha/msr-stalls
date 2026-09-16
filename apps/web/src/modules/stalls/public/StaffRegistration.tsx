@@ -1,10 +1,5 @@
-import type {
-  BuiltFormField,
-  CouponView,
-  FormField as FieldDef,
-  RegisterStaffInput,
-} from '@msr/stalls';
-import { formFields } from '@msr/stalls';
+import type { CouponView, RegisterStaffInput } from '@stalls/core';
+import { asFormField, formFields } from '@stalls/core';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { fieldErrorsFrom } from '../api-client';
@@ -223,10 +218,13 @@ export function StaffRegistration() {
                 />
               </FormField>
               <FormField id='staff-idtype' label='ID Proof' required>
+                {/* ⚠️ `?? ''` for the TYPE, not for the screen: the contract
+                    made this optional once a form was allowed to stop asking
+                    for it, and the state here still starts on a real choice. */}
                 <Select
                   id='staff-idtype'
-                  value={idType}
-                  onChange={(e) => setIdType(e.target.value as RegisterStaffInput['idType'])}
+                  value={idType ?? ''}
+                  onChange={(v) => setIdType(v as RegisterStaffInput['idType'])}
                 >
                   {ID_TYPES.map(([value, label]) => (
                     <option key={value} value={value}>
@@ -331,17 +329,3 @@ export function StaffRegistration() {
     </div>
   );
 }
-
-/** A row as `FieldControl` wants it. */
-const asFormField = (f: BuiltFormField): FieldDef => ({
-  name: f.name ?? f.id,
-  label: f.label,
-  labelTa: f.labelTa,
-  help: f.help ?? undefined,
-  helpTa: f.helpTa ?? undefined,
-  type: f.type,
-  required: f.required,
-  options: f.options ?? undefined,
-  min: f.min ?? undefined,
-  max: f.max ?? undefined,
-});

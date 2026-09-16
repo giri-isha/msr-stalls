@@ -5,7 +5,7 @@ import { useCallback, useState } from 'react';
  * platform and every other module now, so a bare `sidebar` would be as much
  * theirs to claim as ours (`volunteering-shell.test.tsx` asserts this).
  */
-const KEY = 'msrs:sidebar-rail';
+const KEY = 'stalls:sidebar-rail';
 
 /**
  * Whether the sidebar was last left as a rail.

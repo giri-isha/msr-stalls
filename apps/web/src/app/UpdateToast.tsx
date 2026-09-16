@@ -102,7 +102,7 @@ export function InstallPrompt() {
   const [event, setEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [dismissed, setDismissed] = useState(() => {
     try {
-      return localStorage.getItem('msr-stalls.install-dismissed') === '1';
+      return localStorage.getItem('stalls.install-dismissed') === '1';
     } catch {
       return false;
     }
@@ -129,7 +129,7 @@ export function InstallPrompt() {
   const dismiss = () => {
     setDismissed(true);
     try {
-      localStorage.setItem('msr-stalls.install-dismissed', '1');
+      localStorage.setItem('stalls.install-dismissed', '1');
     } catch {
       // A preference that cannot be saved still holds for this session.
     }
@@ -155,7 +155,7 @@ export function InstallPrompt() {
         <Icon name='download' size={15} />
       </span>
       <span style={{ flex: 1, minWidth: 140 }}>
-        Install MSR Stalls for the counter — it opens full screen and works with no signal.
+        Install Stall Management for the counter — it opens full screen and works with no signal.
       </span>
       <Btn
         kind='primary'

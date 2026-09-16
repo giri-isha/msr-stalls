@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { ListUsersResponse } from '@msr/stalls';
+import type { ListUsersResponse } from '@stalls/core';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { buildApp } from '../src/app';
 import { authenticate, createCredential } from '../src/modules/stalls/credentials';

@@ -1,4 +1,4 @@
-import { SubmitBankDetailsInput } from '@msr/stalls';
+import { SubmitBankDetailsInput } from '@stalls/core';
 import type { StallEdition } from '@prisma/client';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { getBankForm, submitBankDetails } from '../src/modules/stalls/bank';

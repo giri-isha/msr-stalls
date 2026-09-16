@@ -5,7 +5,7 @@ import {
   declarationPreview,
   isDeclarationKey,
   needsNewVersion,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { useMemo, useState } from 'react';
 import * as api from '../api';
 import { DeclarationText } from '../components/DeclarationText';
@@ -27,6 +27,8 @@ import {
   Icon,
   Input,
   Loading,
+  RowActions,
+  Select,
   Tag,
   TBody,
   TD,
@@ -49,7 +51,7 @@ import {
 const FORM_TYPES = STALL_FORM_TYPES;
 type FormType = StallFormType;
 
-/** ⚠️ A narrowing, not a cast. The `<select>` hands back a plain string and
+/** ⚠️ A narrowing, not a cast. The picker hands back a plain string and
  *  the contract wants the union — writing `as FormType` there would let a
  *  value the enum has never heard of through to a 400 from the server with no
  *  hint of where it came from. */
@@ -234,16 +236,19 @@ export function Declarations({
                             {formatDate(d.archivedAt ?? d.createdAt)}
                           </TD>
                           <TD align='right'>
-                            {/* ⚠️ Only the current version. An archived one is a
-                                record of what somebody agreed to, and editing
-                                it would change that — the API refuses it too. */}
-                            {d.isCurrent && (
-                              <EditBtn
-                                what={`${d.key} v${d.version}`}
-                                writable={writable}
-                                onClick={() => setEditing(d)}
-                              />
-                            )}
+                            <RowActions>
+                              {/* ⚠️ Only the current version. An archived one is
+                                  a record of what somebody agreed to, and
+                                  editing it would change that — the API
+                                  refuses it too. */}
+                              {d.isCurrent && (
+                                <EditBtn
+                                  what={`${d.key} v${d.version}`}
+                                  writable={writable}
+                                  onClick={() => setEditing(d)}
+                                />
+                              )}
+                            </RowActions>
                           </TD>
                         </TR>
                       ))}
@@ -385,20 +390,11 @@ function DeclarationDialog({
         </FormField>
 
         <FormField id='dec-form' label='Form'>
-          <select
+          <Select
             id='dec-form'
             value={v.formType ?? ''}
             disabled={existing !== undefined}
-            onChange={(e) => setV({ ...v, formType: asFormType(e.target.value) })}
-            style={{
-              width: '100%',
-              padding: '9px 11px',
-              borderRadius: 'var(--r2)',
-              border: '1px solid var(--bd)',
-              background: 'var(--card)',
-              color: 'var(--fg)',
-              fontSize: 13,
-            }}
+            onChange={(formType) => setV({ ...v, formType: asFormType(formType) })}
           >
             <option value=''>Default — Every Form Without Its Own</option>
             {FORM_TYPES.map((t) => (
@@ -406,7 +402,7 @@ function DeclarationDialog({
                 {TYPE_LABEL[t] ?? t}
               </option>
             ))}
-          </select>
+          </Select>
         </FormField>
 
         <FormField id='dec-title' label='Title'>
@@ -431,7 +427,7 @@ function DeclarationDialog({
         <FormField id='dec-body-ta' label='Tamil (Optional)'>
           <Textarea
             id='dec-body-ta'
-            className='msrs-tamil'
+            className='stalls-tamil'
             lang='ta'
             rows={5}
             value={v.bodyTa ?? ''}
@@ -465,7 +461,7 @@ function DeclarationDialog({
             >
               <DeclarationText body={v.body} />
               {v.bodyTa?.trim() && (
-                <div className='msrs-tamil' lang='ta' style={{ marginTop: 7 }}>
+                <div className='stalls-tamil' lang='ta' style={{ marginTop: 7 }}>
                   <DeclarationText body={v.bodyTa} />
                 </div>
               )}

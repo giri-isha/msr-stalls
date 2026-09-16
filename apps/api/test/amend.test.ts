@@ -6,7 +6,7 @@
 // cap on how many stalls one request may ask for in one bay.
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
-import { SubmitRequestInput } from '@msr/stalls';
+import { SubmitRequestInput } from '@stalls/core';
 import { buildApp } from '../src/app';
 import { TooManyStallsRequestedError } from '../src/modules/stalls/errors';
 import { submitRequest } from '../src/modules/stalls/submit';

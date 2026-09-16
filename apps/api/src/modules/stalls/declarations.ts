@@ -1,7 +1,7 @@
 // Consent declarations: reads, writes, and the versioning rule.
 //
 // ⚠️ Nothing here decides WHICH declaration a form shows — `declarationsFor`
-// in `@msr/stalls` does, so the public form, the submit validator and the
+// in `@stalls/core` does, so the public form, the submit validator and the
 // backoffice preview cannot answer it differently. This file resolves rows and
 // applies the one rule that needs a transaction: a new version arriving must
 // archive the old one and take its place, atomically.
@@ -12,7 +12,7 @@ import {
   declarationsFor,
   isDeclarationKey,
   needsNewVersion,
-} from '@msr/stalls';
+} from '@stalls/core';
 import {
   ArchivedDeclarationError,
   BadDeclarationKeyError,
@@ -103,7 +103,7 @@ export async function createDeclaration(
  *
  * A changed title, or a flipped `isActive`, edits the row: neither changes what
  * anybody agreed to. `needsNewVersion` is the rule, and it lives in
- * `@msr/stalls` so the screen can warn about it before the save.
+ * `@stalls/core` so the screen can warn about it before the save.
  *
  * ⚠️ The archive and the insert are one transaction because the database
  * enforces ONE current version per variant (a partial unique index). Two

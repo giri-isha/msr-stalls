@@ -48,7 +48,10 @@ describe('pendingSteps', () => {
 
   it('never asks an ashram department for bank details or payment', () => {
     expect(needsBankStep('ASHRAM')).toBe(false);
-    expect(steps({ requestType: 'ASHRAM_FOOD' })).toEqual(['FSSAI', 'STAFF_REGISTRATION']);
+    // ⚠️ Food-ness is the `isFood` FACT, not the request type. It was
+    // `ASHRAM_FOOD` when the ashram forms were two; the one form asks it.
+    expect(steps({ requestType: 'ASHRAM', isFood: true })).toEqual(['FSSAI', 'STAFF_REGISTRATION']);
+    expect(steps({ requestType: 'ASHRAM', isFood: false })).toEqual(['STAFF_REGISTRATION']);
   });
 
   it('asks local welfare for payment but not for bank details', () => {

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
-import { SubmitRequestInput } from '@msr/stalls';
+import { SubmitRequestInput } from '@stalls/core';
 import { buildApp } from '../src/app';
 import { shortlist } from '../src/modules/stalls/selection';
 import { submitRequest } from '../src/modules/stalls/submit';
@@ -204,7 +204,7 @@ describe('pagination', () => {
 describe('detail', () => {
   test('carries every submitted field, appliances and the ashram block', async () => {
     const r = await submit({
-      requestType: 'ASHRAM_FOOD',
+      requestType: 'ASHRAM',
       appliances: [{ name: 'Deep freezer', watts: 900 }],
       plugs15a: 2,
       ashram: {

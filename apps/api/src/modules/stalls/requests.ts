@@ -6,7 +6,7 @@ import type {
   RequestDetail,
   RequestPage,
   RequestSummary,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { recordActivity } from '../../activity';
 import type { Db } from './editions';
 import { UnknownRequestError, UnknownZoneError } from './errors';

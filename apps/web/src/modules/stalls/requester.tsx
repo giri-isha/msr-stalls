@@ -1,4 +1,4 @@
-import type { RequesterSession } from '@msr/stalls';
+import type { RequesterSession } from '@stalls/core';
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { getRequesterSession } from './api';
 

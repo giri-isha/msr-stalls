@@ -1,5 +1,5 @@
-import type { CommRecipient, ReminderKind, TemplateKeyValue } from '@msr/stalls';
-import { unknownPlaceholders } from '@msr/stalls';
+import type { CommRecipient, ReminderKind, TemplateKeyValue } from '@stalls/core';
+import { unknownPlaceholders } from '@stalls/core';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   clearSent,
@@ -36,6 +36,7 @@ import {
   THead,
   TR,
   Table,
+  Tabs,
   Textarea,
   toolBtnStyle,
   useIsMobile,
@@ -79,10 +80,11 @@ export function Communication() {
         Communication
       </H1>
       <Tabs
+        label='Communication Sections'
         tabs={[
-          ['send', 'Send letters'],
-          ['templates', 'Templates'],
-          ['reminders', 'Reminder calls'],
+          { key: 'send', label: 'Send letters', glyph: 'send' },
+          { key: 'templates', label: 'Templates', glyph: 'file-text' },
+          { key: 'reminders', label: 'Reminder calls', glyph: 'phone' },
         ]}
         active={tab}
         onPick={(t) => setTab(t as typeof tab)}
@@ -90,35 +92,6 @@ export function Communication() {
       {tab === 'send' && <SendPanel />}
       {tab === 'templates' && <TemplatePanel />}
       {tab === 'reminders' && <ReminderPanel />}
-    </div>
-  );
-}
-
-/** The segmented control the money and communication screens share. Local to
- *  these two screens rather than in `ui/` — the kit's `Chip` is a filter, and
- *  these are page sections. */
-export function Tabs({
-  tabs,
-  active,
-  onPick,
-}: {
-  tabs: [string, string][];
-  active: string;
-  onPick: (key: string) => void;
-}) {
-  return (
-    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-      {tabs.map(([key, label]) => (
-        <button
-          key={key}
-          type='button'
-          aria-pressed={key === active}
-          onClick={() => onPick(key)}
-          style={toolBtnStyle(key === active)}
-        >
-          {label}
-        </button>
-      ))}
     </div>
   );
 }
@@ -230,7 +203,7 @@ function SendPanel() {
         <Select
           aria-label='Letter'
           value={templateKey}
-          onChange={(e) => setTemplateKey(e.target.value as TemplateKeyValue)}
+          onChange={(v) => setTemplateKey(v as TemplateKeyValue)}
           style={{ width: 'auto', minWidth: 240 }}
         >
           {Object.entries(TEMPLATE_LABEL).map(([k, v]) => (
@@ -243,7 +216,7 @@ function SendPanel() {
         <Select
           aria-label='Sent'
           value={sentFilter}
-          onChange={(e) => setSentFilter(e.target.value as typeof sentFilter)}
+          onChange={(v) => setSentFilter(v as typeof sentFilter)}
           style={{ width: 'auto', minWidth: 150 }}
         >
           <option value='all'>All Vendors</option>
@@ -700,9 +673,10 @@ function ReminderPanel() {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <Tabs
+        label='Reminder Kind'
         tabs={[
-          ['BANK', 'Pending Bank Details'],
-          ['PAYMENT', 'Pending Payment'],
+          { key: 'BANK', label: 'Pending Bank Details' },
+          { key: 'PAYMENT', label: 'Pending Payment' },
         ]}
         active={kind}
         onPick={(k) => setKind(k as ReminderKind)}

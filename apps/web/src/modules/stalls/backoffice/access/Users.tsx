@@ -8,7 +8,7 @@ import {
   type RoleSummary,
   MIN_PASSWORD_LENGTH,
   isPlaceholderEmail,
-} from '@msr/stalls';
+} from '@stalls/core';
 import * as api from '../../api';
 import { Panel } from '../../components/Panel';
 import { useDebounced, useLoad } from '../../hooks';
@@ -31,6 +31,7 @@ import {
   Pager,
   PopHeader,
   Popover,
+  RowActions,
   RowCard,
   Search,
   Select,
@@ -369,7 +370,7 @@ export function Users() {
                     </TD>
                   ))}
                   <TD align='right'>
-                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                    <RowActions>
                       <Actions
                         user={u}
                         writable={writable}
@@ -378,7 +379,7 @@ export function Users() {
                         onEdit={setEditing}
                         onSetPassword={setSettingPassword}
                       />
-                    </div>
+                    </RowActions>
                   </TD>
                 </TR>
               ))}
@@ -1328,12 +1329,7 @@ function AssignDialog({
           )}
 
           <FormField id='new-role' label='Role'>
-            <Select
-              id='new-role'
-              aria-label='Role'
-              value={newRole}
-              onChange={(e) => setNewRole(e.target.value)}
-            >
+            <Select id='new-role' aria-label='Role' value={newRole} onChange={(v) => setNewRole(v)}>
               <option value=''>Choose a Role…</option>
               {assignable.map((r) => (
                 <option key={r.roleKey} value={r.roleKey}>

@@ -13,7 +13,7 @@
 
 ## Global Constraints
 
-- The module boundary is machine-checked. `apps/api/src/modules/stalls/` may import only itself, `@msr/stalls`, and the Foundation files; `apps/web/src/modules/stalls/` may import only itself and `@msr/stalls`. Run `npm run lint:boundaries` before every commit.
+- The module boundary is machine-checked. `apps/api/src/modules/stalls/` may import only itself, `@stalls/core`, and the Foundation files; `apps/web/src/modules/stalls/` may import only itself and `@stalls/core`. Run `npm run lint:boundaries` before every commit.
 - Nothing may reintroduce a closed list of zone codes or category keys. Both are per-edition rows; screens read the columns the payload carries.
 - The stall NUMBER stays hidden from a requester until check-in. The allocated ZONE is disclosed early, because the rent depends on it.
 - Money is paise, integers, everywhere. GST applies to fees only, never to a deposit.
@@ -132,7 +132,7 @@ Expected: Planning and Electrical errors gone (Admin and RequestForm remain, Tas
 
 - [x] **Step 1: Fix the client's `BackofficeConfig.rateCard` type**
 
-It still reads `{ zoneGroup: 'AB' | 'C' | 'CLOSED'; isFood; amountPaise }`. Replace with `RateCardEntry[]` imported from `@msr/stalls`.
+It still reads `{ zoneGroup: 'AB' | 'C' | 'CLOSED'; isFood; amountPaise }`. Replace with `RateCardEntry[]` imported from `@stalls/core`.
 
 - [x] **Step 2: Rewrite the `Rates` panel**
 

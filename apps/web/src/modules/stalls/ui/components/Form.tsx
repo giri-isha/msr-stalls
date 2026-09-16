@@ -142,14 +142,6 @@ export function Textarea({
   );
 }
 
-export function Select({
-  invalid,
-  style,
-  ...props
-}: React.SelectHTMLAttributes<HTMLSelectElement> & { invalid?: boolean }) {
-  return <select style={{ ...controlStyle(invalid), ...style }} {...props} />;
-}
-
 /**
  * A tick box.
  *

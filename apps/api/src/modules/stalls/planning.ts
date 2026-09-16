@@ -8,7 +8,7 @@ import {
   parseStallNumber,
   planTotals,
   suggestStallCount,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { recordActivity } from '../../activity';
 import { chargesFor, listZones, planCategoriesFor } from './config';
 import type { Db } from './editions';

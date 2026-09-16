@@ -59,7 +59,7 @@ export function useListView(key: string): [ListView, (v: ListView) => void] {
   return [chosen ?? byWidth, choose];
 }
 
-const storageKey = (key: string) => `msr-stalls.view.${key}`;
+const storageKey = (key: string) => `stalls.view.${key}`;
 
 /**
  * ⚠️ Every access is wrapped. `localStorage` THROWS rather than returning null

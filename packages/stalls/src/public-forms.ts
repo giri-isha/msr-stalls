@@ -68,7 +68,7 @@ const count = (name: string, label: string, max: number): FormField => ({
 /* ── Bank details ───────────────────────────────────────────────────────────*/
 
 /**
- * "MSR Stalls Bank Details and Requirements".
+ * "Stall Management Bank Details and Requirements".
  *
  * 🔴 The second half is not bookkeeping. A request made in November is stale by
  * February, so the 2025 form asks for plug points, chairs, tables and passes
@@ -77,7 +77,7 @@ const count = (name: string, label: string, max: number): FormField => ({
  */
 export const BANK_FORM: PublicFormDefinition = {
   formType: 'BANK',
-  title: 'MSR Stalls Bank Details and Requirements',
+  title: 'Stall Management Bank Details and Requirements',
   titleTa: null,
   target: 'BANK_DETAIL',
   fields: [

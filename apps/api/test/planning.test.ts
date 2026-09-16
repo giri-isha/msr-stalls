@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
-import { SubmitRequestInput } from '@msr/stalls';
+import { SubmitRequestInput } from '@stalls/core';
 import type { StallEdition } from '@prisma/client';
 import { buildApp } from '../src/app';
 import { applyPlan, readPlan, writePlan } from '../src/modules/stalls/planning';

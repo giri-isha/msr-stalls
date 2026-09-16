@@ -8,7 +8,7 @@ import { useCallback, useState } from 'react';
  * platform now — a bare `rows` would be the platform's to claim as much as
  * this module's.
  */
-const keyFor = (screenKey: string) => `msrs:rows-${screenKey}`;
+const keyFor = (screenKey: string) => `stalls:rows-${screenKey}`;
 
 /**
  * A size is only honoured if the select could show it.

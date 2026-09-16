@@ -1,7 +1,7 @@
 // The forms, as rows: what gets seeded, what an admin may change, and the one
 // thing having a database underneath makes impossible.
 import type { FastifyInstance } from 'fastify';
-import { SubmitRequestInput } from '@msr/stalls';
+import { NO_RULES, SubmitRequestInput } from '@stalls/core';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { buildApp } from '../src/app';
 import {
@@ -16,7 +16,11 @@ import {
   updateFormField,
 } from '../src/modules/stalls/form-builder';
 import {
+  BadFieldMediaError,
+  BadFieldRuleError,
+  BuiltInDecimalsError,
   BuiltInFieldLockedError,
+  FieldShapeChangeError,
   CustomFieldInUseError,
   UnauthorableFieldTypeError,
   UnknownFormFieldError,
@@ -68,14 +72,13 @@ const submit = async (body: Record<string, unknown> = {}) =>
   );
 
 describe('seeded from the printed forms', () => {
-  /** 🔴 SEVEN, not four. The bank details form, the FSSAI upload and staff
+  /** 🔴 SIX, not three. The bank details form, the FSSAI upload and staff
    *  registration used to be JSX — rewording a label or ceasing to ask one of
    *  their questions was a redeploy. They are definitions like the rest now. */
-  test('all seven exist, with their own titles', async () => {
+  test('all six exist, with their own titles', async () => {
     const forms = await formsFor(prisma, editionId);
     expect(forms.map((f) => f.formType).sort()).toEqual([
       'ASHRAM',
-      'ASHRAM_FOOD',
       'BANK',
       'FSSAI',
       'LOCAL_WELFARE',
@@ -84,7 +87,7 @@ describe('seeded from the printed forms', () => {
     ]);
     expect(forms.find((f) => f.formType === 'VENDOR')?.title).toBe('Vendor Stall Request Form');
     expect(forms.find((f) => f.formType === 'BANK')?.title).toBe(
-      'MSR Stalls Bank Details and Requirements',
+      'Stall Management Bank Details and Requirements',
     );
   });
 
@@ -127,6 +130,20 @@ describe('what an admin may change', () => {
     return f;
   };
 
+  /** A question of the admin's own, for the cases about limits — an appended
+   *  field has no column, so it is where every knob is reachable. */
+  const appended = async (label: string, fieldType = 'text') =>
+    addFormField(prisma, editionId, await definitionId(), {
+      label,
+      labelTa: null,
+      help: null,
+      fieldType,
+      isRequired: false,
+      sectionId: null,
+      options: null,
+      ...NO_RULES,
+    });
+
   test('the wording, the Tamil and the help on a built-in question', async () => {
     const f = await stallName();
     await updateFormField(prisma, editionId, f.id, {
@@ -140,13 +157,95 @@ describe('what an admin may change', () => {
     expect(after?.help).toBe('As it should appear on the board');
   });
 
-  /** 🔴 Not a policy choice: its answer lands in `stall_request.stall_name`, so
-   *  retyping it would post a string into a column expecting something else. */
-  test('but never the TYPE of a built-in question', async () => {
+  /** 🔴 And its TYPE, within the kind of answer its column holds.
+   *  `stall_request.stall_name` is a text column, and it does not care whether
+   *  the requester typed into a box, picked from a dropdown or pressed one of a
+   *  set of buttons — all three post a string. */
+  test('and the answer type of a built-in, within its own kind', async () => {
+    const f = await stallName();
+    await updateFormField(prisma, editionId, f.id, { fieldType: 'textarea' });
+    expect((await vendorForm()).fields.find((x) => x.id === f.id)?.type).toBe('textarea');
+  });
+
+  /** ⚠️ What it may NOT do is change the kind. A number posts an integer, a
+   *  file posts a media-store key, a display block posts nothing — and
+   *  `stall_name` has nowhere to put any of them. */
+  test('but never into a different kind of answer', async () => {
     const f = await stallName();
     await expect(
       updateFormField(prisma, editionId, f.id, { fieldType: 'number' }),
-    ).rejects.toBeInstanceOf(BuiltInFieldLockedError);
+    ).rejects.toBeInstanceOf(FieldShapeChangeError);
+    await expect(
+      updateFormField(prisma, editionId, f.id, { fieldType: 'display' }),
+    ).rejects.toBeInstanceOf(FieldShapeChangeError);
+  });
+
+  /** ⚠️ Every numeric column on `stall_request` is an integer, so a built-in
+   *  that accepted 2.5 plug points would be rounded on its way in. */
+  test('and a built-in number never takes decimals', async () => {
+    const f = (await vendorForm()).fields.find((x) => x.name === 'numStallsRequested');
+    await expect(
+      updateFormField(prisma, editionId, f?.id ?? '', { decimals: 2 }),
+    ).rejects.toBeInstanceOf(BuiltInDecimalsError);
+  });
+
+  /* ── The limits a question carries ─────────────────────────────────────── */
+
+  /** 🔴 A limit that cannot be met is refused where it is SET. A vendor meeting
+   *  it three submissions later, on a form that refuses every value, is the
+   *  outcome this prevents. */
+  test('a maximum below its minimum is refused on the way in', async () => {
+    const f = (await vendorForm()).fields.find((x) => x.name === 'numStallsRequested');
+    await expect(
+      updateFormField(prisma, editionId, f?.id ?? '', { min: 10, max: 5 }),
+    ).rejects.toBeInstanceOf(BadFieldRuleError);
+  });
+
+  test('a pattern with nothing said about it is refused', async () => {
+    const added = await appended('GST Number');
+    await expect(
+      updateFormField(prisma, editionId, added.id, { pattern: '^[0-9A-Z]{15}$' }),
+    ).rejects.toBeInstanceOf(BadFieldRuleError);
+    await updateFormField(prisma, editionId, added.id, {
+      pattern: '^[0-9A-Z]{15}$',
+      patternHint: 'fifteen characters',
+    });
+    const after = (await vendorForm()).fields.find((x) => x.id === added.id);
+    expect(after?.pattern).toBe('^[0-9A-Z]{15}$');
+  });
+
+  /** ⚠️ Set one knob at a time. A PATCH sends what it changed, so a second save
+   *  that only touches the maximum must not clear the minimum set by the
+   *  first — which is what reading the omitted knobs off the row is for. */
+  test('one limit at a time does not clear the last one', async () => {
+    const added = await appended('Helpers', 'number');
+    await updateFormField(prisma, editionId, added.id, { min: 1 });
+    await updateFormField(prisma, editionId, added.id, { max: 20 });
+    const after = (await vendorForm()).fields.find((x) => x.id === added.id);
+    expect(after?.min).toBe(1);
+    expect(after?.max).toBe(20);
+  });
+
+  /** 🔴 A cap of 20 helpers would silently become "at most twenty characters"
+   *  on a text question. A limit whose meaning changed under it is not a limit
+   *  anybody set. */
+  test('a limit the new type has no meaning for is dropped by the retype', async () => {
+    const added = await appended('Helpers', 'number');
+    await updateFormField(prisma, editionId, added.id, { min: 1, max: 20 });
+    await updateFormField(prisma, editionId, added.id, { fieldType: 'text' });
+    const after = (await vendorForm()).fields.find((x) => x.id === added.id);
+    expect(after?.min).toBeNull();
+    expect(after?.max).toBeNull();
+  });
+
+  /** ⚠️ Stored as JSON, and it survives the round trip as the union it is. */
+  test('a date question keeps the window it was given', async () => {
+    const added = await appended('Arrival day', 'date');
+    await updateFormField(prisma, editionId, added.id, {
+      window: { mode: 'rolling', minDays: 0, maxDays: 30 },
+    });
+    const after = (await vendorForm()).fields.find((x) => x.id === added.id);
+    expect(after?.window).toEqual({ mode: 'rolling', minDays: 0, maxDays: 30 });
   });
 
   test('and never its existence — it is switched off instead', async () => {
@@ -169,8 +268,7 @@ describe('what an admin may change', () => {
       isRequired: false,
       sectionId: null,
       options: null,
-      min: null,
-      max: null,
+      ...NO_RULES,
     });
     await updateFormField(prisma, editionId, added.id, { fieldType: 'textarea' });
     const after = (await vendorForm()).fields.find((x) => x.id === added.id);
@@ -193,8 +291,7 @@ describe('what an admin may change', () => {
         isRequired: false,
         sectionId: null,
         options: null,
-        min: null,
-        max: null,
+        ...NO_RULES,
       }),
     ).rejects.toBeInstanceOf(UnauthorableFieldTypeError);
   });
@@ -211,8 +308,7 @@ describe('deleteFormField', () => {
       isRequired: false,
       sectionId: null,
       options: null,
-      min: null,
-      max: null,
+      ...NO_RULES,
     });
 
   test('removes a question nobody has answered', async () => {
@@ -237,7 +333,7 @@ describe('deleteFormField', () => {
     const f = await appended('Website');
     const other = await createEdition(
       prisma,
-      { year: 2031, name: 'MSR 2031', activate: false },
+      { year: 2031, name: 'Stalls 2031', activate: false },
       SYSTEM,
     );
     await expect(deleteFormField(prisma, other.id, f.id)).rejects.toBeInstanceOf(
@@ -328,7 +424,7 @@ describe('over HTTP', () => {
       headers: admin.headers,
     });
     expect(list.statusCode).toBe(200);
-    expect(list.json().forms).toHaveLength(7);
+    expect(list.json().forms).toHaveLength(6);
 
     const patched = await app.inject({
       method: 'PATCH',
@@ -340,7 +436,9 @@ describe('over HTTP', () => {
     expect((await vendorForm()).title).toBe('Trade Stall Request');
   });
 
-  test('retyping a built-in question is a 409 that says which one', async () => {
+  /** ⚠️ A 400 rather than a 409: nothing on the server collides with it, the
+   *  change simply does not describe an answer the column could hold. */
+  test('retyping a built-in across kinds is a 400 that says which one', async () => {
     const form = await vendorForm();
     const f = form.fields.find((x) => x.name === 'stallName');
     const res = await app.inject({
@@ -349,8 +447,22 @@ describe('over HTTP', () => {
       headers: admin.headers,
       payload: { fieldType: 'number' },
     });
-    expect(res.statusCode).toBe(409);
-    expect(res.json().error).toContain('built-in');
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain('Stall Name');
+  });
+
+  /** 🔴 And the same request within the kind is a 204. The picker is filled
+   *  from `fieldTypeChoices`, so a coordinator only ever sends this one. */
+  test('and within its kind it simply saves', async () => {
+    const form = await vendorForm();
+    const f = form.fields.find((x) => x.name === 'stallName');
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/m/stalls/config/form-fields/${f?.id}`,
+      headers: admin.headers,
+      payload: { fieldType: 'textarea' },
+    });
+    expect(res.statusCode).toBe(204);
   });
 
   test('a volunteer may not read the forms at all', async () => {
@@ -361,5 +473,90 @@ describe('over HTTP', () => {
       headers: volunteer.headers,
     });
     expect(res.statusCode).toBe(403);
+  });
+});
+
+/**
+ * A display block: a row that says something rather than asking it.
+ *
+ * 🔴 Everything here is enforced on the API and not only on the screen. The
+ * builder hides the Required tick and offers a picture on nothing else, but a
+ * screen that hides a control is a suggestion — these are the refusals that
+ * make it a rule.
+ */
+describe('a display block', () => {
+  const NOTE_KEY = 'stalls/form-note/33333333-3333-4333-8333-333333333333.png';
+
+  const block = async (over: Record<string, unknown> = {}) =>
+    addFormField(prisma, editionId, await definitionId(), {
+      label: 'The venue layout',
+      labelTa: null,
+      help: 'Bays A1 to C4, as they stand this year.',
+      fieldType: 'display',
+      isRequired: false,
+      sectionId: null,
+      options: null,
+      ...NO_RULES,
+      ...over,
+    });
+
+  const read = async (id: string) => (await vendorForm()).fields.find((x) => x.id === id);
+
+  test('carries its picture', async () => {
+    const added = await block({ mediaKey: NOTE_KEY });
+    expect((await read(added.id))?.mediaKey).toBe(NOTE_KEY);
+  });
+
+  /** 🔴 A required block is a form nobody can submit: the validator skips it,
+   *  so the refusal would come from nothing the reader can see or fix. Forced
+   *  false however it arrives. */
+  test('is never required, whatever the write asks for', async () => {
+    const added = await block({ isRequired: true });
+    expect((await read(added.id))?.required).toBe(false);
+
+    await updateFormField(prisma, editionId, added.id, { isRequired: true });
+    expect((await read(added.id))?.required).toBe(false);
+  });
+
+  /** ⚠️ And a block asking nothing cannot hold a submission up. */
+  test('does not stop a request being submitted', async () => {
+    await block({ isRequired: true, mediaKey: NOTE_KEY });
+    await expect(submit()).resolves.toBeTruthy();
+  });
+
+  /** 🔴 `/public/form-image` serves whatever a field row points at,
+   *  unauthenticated. A key minted for a vendor's cheque reaching this column
+   *  would be that vendor's document served to the world. */
+  test('refuses a key that was not minted for one', async () => {
+    await expect(block({ mediaKey: 'stalls/bank/cheque/whatever.jpg' })).rejects.toBeInstanceOf(
+      BadFieldMediaError,
+    );
+  });
+
+  test('and no question may carry a picture at all', async () => {
+    await expect(
+      block({ fieldType: 'text', label: 'Instagram handle', mediaKey: NOTE_KEY }),
+    ).rejects.toBeInstanceOf(BadFieldMediaError);
+  });
+
+  /** ⚠️ Retyped back into a question, the picture goes with it. A row pointing
+   *  at an image nothing draws would come back the moment somebody retyped it
+   *  to `display` again. */
+  test('loses its picture when it stops being one', async () => {
+    const added = await block({ mediaKey: NOTE_KEY });
+    await updateFormField(prisma, editionId, added.id, { fieldType: 'text' });
+    expect((await read(added.id))?.mediaKey).toBeNull();
+  });
+
+  test('over HTTP, a picture on a question is a 400 that says why', async () => {
+    const added = await block();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/m/stalls/config/form-fields/${added.id}`,
+      headers: admin.headers,
+      payload: { fieldType: 'text', mediaKey: NOTE_KEY },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain('display block');
   });
 });

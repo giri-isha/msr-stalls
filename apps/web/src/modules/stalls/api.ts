@@ -84,7 +84,7 @@ import type {
   PaymentClaimsResponse,
   ReviewPaymentClaimInput,
   SubmitPaymentClaimInput,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { apiFetch } from './api-client';
 
 /** Typed client for every stalls endpoint. One place for paths, so a route
@@ -232,6 +232,13 @@ export const select = (id: string, stallNumbers: string[], agreedZoneCode?: stri
   });
 export const releaseAllocation = (allocationId: string) =>
   apiFetch<void>(`${BASE}/allocations/${allocationId}`, { method: 'DELETE' });
+/** Correct a stall number already given out. One call rather than a release
+ *  and a fresh select, so nobody can take the stall in between. */
+export const moveAllocation = (allocationId: string, stallNumber: string) =>
+  apiFetch<{ stallNumber: string }>(`${BASE}/allocations/${allocationId}`, {
+    method: 'PATCH',
+    json: { stallNumber },
+  });
 export const availableStalls = (zoneCode?: string) =>
   apiFetch<AvailableStall[]>(`${BASE}/stalls/available${qs({ zoneCode })}`);
 
@@ -562,6 +569,16 @@ export const presignPublicUpload = (token: string) => (input: PresignUploadInput
 
 export const presignBackofficeUpload = (input: PresignUploadInput) =>
   apiFetch<PresignUploadResponse>(`${BASE}/uploads`, { method: 'POST', json: input });
+
+/** Where a display block's picture is drawn from.
+ *
+ *  ⚠️ A URL, not a fetch. The browser asks for it as an `<img src>` and the API
+ *  redirects to a short-lived signed URL — pulling the bytes through `apiFetch`
+ *  would put a phone-sized photograph in memory on every form render, and the
+ *  key is not secret: the route serves the display-block folder and nothing
+ *  else. */
+export const formImageUrl = (mediaKey: string) =>
+  `${P}/form-image?key=${encodeURIComponent(mediaKey)}`;
 
 // ── Backoffice: communication ────────────────────────────────────────────────────
 

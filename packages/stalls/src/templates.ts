@@ -32,7 +32,7 @@ export interface TemplateSeed {
    *  screen uses it to pick a default, and the send path uses it to refuse a
    *  mismatch — an ashram department must never receive the vendor letter with
    *  its bank-form link. */
-  appliesTo: ReadonlyArray<'ASHRAM' | 'ASHRAM_FOOD' | 'LOCAL_WELFARE' | 'VENDOR'>;
+  appliesTo: ReadonlyArray<'ASHRAM' | 'LOCAL_WELFARE' | 'VENDOR'>;
 }
 
 /** Every placeholder the module knows how to fill, with what it means. Shown
@@ -51,7 +51,7 @@ export const TEMPLATE_PLACEHOLDERS: Array<{ key: string; description: string }> 
   { key: 'virtualAccountRent', description: 'Virtual account for the rent' },
   { key: 'virtualAccountDeposit', description: 'Virtual account for the deposit' },
   { key: 'signatureUrl', description: 'Link to sign the stall agreement' },
-  { key: 'editionName', description: 'e.g. Maha Shivratri 2026' },
+  { key: 'editionName', description: 'e.g. Stalls 2026' },
   { key: 'feeTotal', description: 'Fee including GST, formatted' },
   { key: 'depositTotal', description: 'Refundable deposit, formatted' },
   { key: 'grandTotal', description: 'Fee plus deposit, formatted' },
@@ -126,7 +126,7 @@ export const DEFAULT_TEMPLATES: TemplateSeed[] = [
     key: 'SELECTION_ASHRAM',
     name: 'Ashram selection confirmation',
     description: 'Sent to an ashram department. No bank form, no payment.',
-    appliesTo: ['ASHRAM', 'ASHRAM_FOOD'],
+    appliesTo: ['ASHRAM'],
     subject: 'Your ashram stall is confirmed — {{stallName}} ({{reference}})',
     whatsappBody: [
       'Namaskaram {{requesterName}},',
@@ -268,7 +268,7 @@ export const DEFAULT_TEMPLATES: TemplateSeed[] = [
       'unclean stall.',
       '',
       'Pranam,',
-      'Isha — MSR Stalls Team',
+      'Isha — Stall Management Team',
     ].join('\n'),
   },
   {
@@ -276,7 +276,11 @@ export const DEFAULT_TEMPLATES: TemplateSeed[] = [
     name: 'FSSAI and staff registration',
     description:
       'Sent once payment is confirmed. Carries the FSSAI upload link and the staff coupon.',
-    appliesTo: ['VENDOR', 'LOCAL_WELFARE', 'ASHRAM_FOOD'],
+    // ⚠️ `ASHRAM`, where this was `ASHRAM_FOOD`. The ashram forms are one, so
+    // this list can no longer say "ashram departments that sell food" — and it
+    // does not need to: a non-food ashram stall has no FSSAI step outstanding,
+    // so `pendingSteps` leaves it off the sending list on its own.
+    appliesTo: ['VENDOR', 'LOCAL_WELFARE', 'ASHRAM'],
     subject: 'Next steps for your stall — FSSAI and staff registration',
     whatsappBody: [
       'Namaskaram {{requesterName}},',

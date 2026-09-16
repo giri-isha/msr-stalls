@@ -1,4 +1,4 @@
-import type { SignatureStatus } from '@msr/stalls';
+import type { SignatureStatus } from '@stalls/core';
 
 /** The module's digital-signature PORT.
  *

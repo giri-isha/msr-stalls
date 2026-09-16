@@ -1,5 +1,5 @@
-import type { CouponSummary, OnboardingRow } from '@msr/stalls';
-import { formatInr } from '@msr/stalls';
+import type { CouponSummary, OnboardingRow } from '@stalls/core';
+import { formatInr } from '@stalls/core';
 import { useMemo, useState } from 'react';
 import {
   getOnboarding,
@@ -8,7 +8,7 @@ import {
   setCouponCapacity,
   verifyFssai,
 } from '../api';
-import { ONBOARDING_STEPS } from '@msr/stalls';
+import { ONBOARDING_STEPS } from '@stalls/core';
 import { TYPE_LABEL, TypeBadge } from '../components/StatusPill';
 import { formatDate, formatDateTime, useLoad } from '../hooks';
 import { listOnboarding } from '../api';
@@ -133,7 +133,7 @@ export function Onboarding() {
         <Select
           aria-label='Outstanding'
           value={outstanding}
-          onChange={(e) => setOutstanding(e.target.value)}
+          onChange={(v) => setOutstanding(v)}
           style={{ width: 'auto', minWidth: 170 }}
         >
           <option value=''>Anything Outstanding</option>
@@ -146,7 +146,7 @@ export function Onboarding() {
         <Select
           aria-label='Type'
           value={requestType}
-          onChange={(e) => setRequestType(e.target.value)}
+          onChange={(v) => setRequestType(v)}
           style={{ width: 'auto', minWidth: 150 }}
         >
           <option value=''>All Types</option>

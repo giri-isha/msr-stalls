@@ -1,4 +1,4 @@
-import type { ListRequestsQuery, RequestSummary } from '@msr/stalls';
+import { type ListRequestsQuery, type RequestSummary, STALL_REQUEST_TYPES } from '@stalls/core';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { listRequests, listZones } from '../api';
@@ -178,20 +178,25 @@ export function Requests() {
         <Select
           aria-label='Type'
           value={requestType}
-          onChange={(e) => setParam('requestType', e.target.value)}
+          onChange={(v) => setParam('requestType', v)}
           style={{ width: 'auto', minWidth: 150 }}
         >
           <option value=''>All Types</option>
-          {Object.entries(TYPE_LABEL).map(([k, v]) => (
-            <option key={k} value={k}>
-              {v}
+          {/* ⚠️ `STALL_REQUEST_TYPES`, not every key in `TYPE_LABEL`. That map
+              also labels BANK, FSSAI and STAFF — which are FORM types, there
+              because the Declarations screen names a consent's variant — and no
+              request is ever one of them. Iterating it put three filters in
+              this list that could only ever return nothing. */}
+          {STALL_REQUEST_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {TYPE_LABEL[t]}
             </option>
           ))}
         </Select>
         <Select
           aria-label='Status'
           value={status}
-          onChange={(e) => setParam('status', e.target.value)}
+          onChange={(v) => setParam('status', v)}
           style={{ width: 'auto', minWidth: 140 }}
         >
           <option value=''>All Statuses</option>
@@ -209,7 +214,7 @@ export function Requests() {
         <Select
           aria-label='Stage'
           value={stage}
-          onChange={(e) => setParam('stage', e.target.value)}
+          onChange={(v) => setParam('stage', v)}
           style={{ width: 'auto', minWidth: 170 }}
         >
           <option value=''>All Stages</option>
@@ -222,7 +227,7 @@ export function Requests() {
         <Select
           aria-label='Zone'
           value={zoneCode}
-          onChange={(e) => setParam('zoneCode', e.target.value)}
+          onChange={(v) => setParam('zoneCode', v)}
           style={{ width: 'auto', minWidth: 120 }}
         >
           <option value=''>All Zones</option>

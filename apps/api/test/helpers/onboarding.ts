@@ -1,4 +1,4 @@
-import { SubmitRequestInput } from '@msr/stalls';
+import { SubmitRequestInput } from '@stalls/core';
 import type { StallsDeps } from '../../src/modules/stalls/deps';
 import { selectRequest } from '../../src/modules/stalls/selection';
 import type { Signer, SignatureHandle, SignatureRequest } from '../../src/modules/stalls/signer';

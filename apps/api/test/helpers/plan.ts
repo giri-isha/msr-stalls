@@ -1,4 +1,4 @@
-import { DEFAULT_PLAN_CATEGORIES, type ZoneCode } from '@msr/stalls';
+import { DEFAULT_PLAN_CATEGORIES, type ZoneCode } from '@stalls/core';
 import { applyPlan, writePlan } from '../../src/modules/stalls/planning';
 import { SYSTEM, prisma } from './db';
 

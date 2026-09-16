@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { type PrivilegeCatalogEntry, privilegeCategoryName } from '@msr/stalls';
+import { type PrivilegeCatalogEntry, privilegeCategoryName } from '@stalls/core';
 import { Empty, Search, Select, TBody, TD, TH, THead, TR, Table, Tag } from '../../ui';
 import { KIND_TONE } from './catalogue';
 
@@ -45,7 +45,7 @@ export function Privileges({ catalogue }: { catalogue: readonly PrivilegeCatalog
         <Select
           aria-label='Category'
           value={category}
-          onChange={(e) => setCategory(e.target.value)}
+          onChange={(v) => setCategory(v)}
           style={{ width: 'auto', minWidth: 190 }}
         >
           <option value=''>All Categories</option>

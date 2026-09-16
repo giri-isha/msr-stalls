@@ -1,4 +1,4 @@
-import { type ZoneCode, type ZonePlanView, suggestStallCount } from '@msr/stalls';
+import { type ZoneCode, type ZonePlanView, suggestStallCount } from '@stalls/core';
 import { useEffect, useState } from 'react';
 import { applyPlan, getPlan, putPlan } from '../../api';
 import { Panel } from '../../components/Panel';
@@ -13,6 +13,7 @@ import {
   IconBtn,
   Input,
   Loading,
+  RowActions,
   TBody,
   TD,
   TH,
@@ -358,12 +359,14 @@ export function Plan() {
                   </TD>
                   <TD align='right'>{live.stallsAllocated}</TD>
                   <TD align='right'>
-                    <IconBtn
-                      label={`Edit ${r.zoneCode}`}
-                      glyph='pencil'
-                      disabled={!writable}
-                      onClick={() => setEditing(i)}
-                    />
+                    <RowActions>
+                      <IconBtn
+                        label={`Edit ${r.zoneCode}`}
+                        glyph='pencil'
+                        disabled={!writable}
+                        onClick={() => setEditing(i)}
+                      />
+                    </RowActions>
                   </TD>
                 </TR>
               );

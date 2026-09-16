@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { buildApp } from '../src/app';
-import { SubmitRequestInput } from '@msr/stalls';
+import { SubmitRequestInput } from '@stalls/core';
 import { submitRequest } from '../src/modules/stalls/submit';
 import {
   type Backoffice,
@@ -81,7 +81,7 @@ describe('edition scope', () => {
   // nothing in it and left to guess why.
   test('a grant naming only another edition is refused, and says so', async () => {
     const other = await prisma.stallEdition.create({
-      data: { year: 2099, name: 'MSR 2099', isActive: false },
+      data: { year: 2099, name: 'Stalls 2099', isActive: false },
     });
     const who = await scopedBackoffice(
       'stalls_lead',
@@ -98,7 +98,7 @@ describe('edition scope', () => {
   test('an unscoped grant follows the module into an edition created later', async () => {
     const who = await scopedBackoffice('stalls_lead', {}, 'always@example.org');
     const next = await prisma.stallEdition.create({
-      data: { year: 2098, name: 'MSR 2098', isActive: false },
+      data: { year: 2098, name: 'Stalls 2098', isActive: false },
     });
     await prisma.stallEdition.updateMany({ data: { isActive: false } });
     await prisma.stallEdition.update({ where: { id: next.id }, data: { isActive: true } });

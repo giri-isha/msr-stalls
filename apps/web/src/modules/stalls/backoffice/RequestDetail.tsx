@@ -1,4 +1,4 @@
-import type { OnboardingDetail, RequestDetail as Detail } from '@msr/stalls';
+import type { OnboardingDetail, RequestAllocation, RequestDetail as Detail } from '@stalls/core';
 import { useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { ApiError } from '../api-client';
@@ -23,6 +23,8 @@ import {
   THead,
   TR,
   Table,
+  Tabs,
+  type TabDef,
   Textarea,
   toolBtnStyle,
   useEscape,
@@ -31,6 +33,7 @@ import {
   titleCase,
 } from '../ui';
 import { AmendDialog } from './AmendDialog';
+import { MoveAllocationDialog } from './MoveAllocationDialog';
 import { SelectDialog } from './SelectDialog';
 
 const USAGE: Record<string, string> = {
@@ -99,6 +102,10 @@ export function RequestDetail() {
   const [reason, setReason] = useState('');
   const [selecting, setSelecting] = useState(false);
   const [amending, setAmending] = useState(false);
+  // ⚠️ Held here rather than in `Allocations` for the Escape gate below: this
+  // page closes on Escape, and a dialog whose open state it cannot see would
+  // be dismissed together with the record behind it.
+  const [moving, setMoving] = useState<RequestAllocation | null>(null);
   const [tab, setTab] = useState('application');
 
   const listPath = pathname.slice(0, pathname.lastIndexOf('/'));
@@ -109,7 +116,7 @@ export function RequestDetail() {
   // picker are `Dialog`s with their own Escape handler; without this gate one
   // key press closes both, so dismissing a confirm also walks off the record
   // behind it.
-  useEscape(() => navigate(listTo), reasonFor === null && !selecting && !amending);
+  useEscape(() => navigate(listTo), reasonFor === null && !selecting && !amending && !moving);
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -135,6 +142,13 @@ export function RequestDetail() {
 
   const canSelect = can('selection.write');
   const canWrite = can('requests.write');
+  /** 🔴 The rail's stall button goes away once the request holds everything it
+   *  was given. It stayed, reading "Add stall", onto a dialog that could only
+   *  say "release one first" — an action offered and then refused, on the
+   *  screen where the refusal is least obvious. Correcting a number that is
+   *  already there is Edit, in the allocation row itself, where the stall being
+   *  corrected is named. */
+  const fullyAllocated = !!r && r.allocations.length >= r.numStallsRequested;
 
   /**
    * ⚠️ A tab is present when the form is part of THIS requester's flow, not
@@ -144,17 +158,18 @@ export function RequestDetail() {
    * one says the vendor was asked and has not answered. Collapsing them would
    * make a chased vendor look identical to one nobody has to chase.
    */
-  const tabs: Array<[string, string, string]> = [['application', 'Application', 'clipboard-list']];
+  const tabs: TabDef[] = [{ key: 'application', label: 'Application', glyph: 'clipboard-list' }];
   if (forms && forms.bankDetails !== 'NOT_APPLICABLE')
-    tabs.push(['bank', 'Bank Form', 'file-text']);
-  if (forms && forms.fssai !== 'NOT_APPLICABLE') tabs.push(['fssai', 'FSSAI', 'shield']);
+    tabs.push({ key: 'bank', label: 'Bank Form', glyph: 'file-text' });
+  if (forms && forms.fssai !== 'NOT_APPLICABLE')
+    tabs.push({ key: 'fssai', label: 'FSSAI', glyph: 'shield' });
   if (forms && (forms.staffExpected > 0 || forms.staff.length > 0)) {
-    tabs.push(['staff', 'Staff', 'users']);
+    tabs.push({ key: 'staff', label: 'Staff', glyph: 'users' });
   }
-  if (tabs.length > 1) tabs.push(['all', 'All Details', 'list-view']);
+  if (tabs.length > 1) tabs.push({ key: 'all', label: 'All Details', glyph: 'list-view' });
   // A tab can vanish under the reader — the forms arrive a moment after the
   // application, and an amendment can take a stall out of the food category.
-  const active = tabs.some(([k]) => k === tab) ? tab : 'application';
+  const active = tabs.some((t) => t.key === tab) ? tab : 'application';
 
   return (
     <section aria-label='Request Detail'>
@@ -267,12 +282,15 @@ export function RequestDetail() {
                 Backup
               </Btn>
             )}
-            {canSelect && r.status !== 'REJECTED' && r.status !== 'CANCELLED' && (
-              <Btn kind='primary' disabled={busy} onClick={() => setSelecting(true)}>
-                <Icon name={r.status === 'SELECTED' ? 'plus' : 'map-pin'} size={14} />
-                {r.status === 'SELECTED' ? 'Add stall' : 'Select…'}
-              </Btn>
-            )}
+            {canSelect &&
+              r.status !== 'REJECTED' &&
+              r.status !== 'CANCELLED' &&
+              !(r.status === 'SELECTED' && fullyAllocated) && (
+                <Btn kind='primary' disabled={busy} onClick={() => setSelecting(true)}>
+                  <Icon name={r.status === 'SELECTED' ? 'plus' : 'map-pin'} size={14} />
+                  {r.status === 'SELECTED' ? 'Add stall' : 'Select…'}
+                </Btn>
+              )}
             {canSelect && r.status !== 'REJECTED' && r.status !== 'CANCELLED' && (
               <Btn kind='danger' disabled={busy} onClick={() => setReasonFor('reject')}>
                 <Icon name='ban' size={14} />
@@ -309,31 +327,11 @@ export function RequestDetail() {
           </div>
 
           {r.allocations.length > 0 && (
-            <Allocations r={r} busy={busy} canSelect={canSelect} run={run} />
+            <Allocations r={r} busy={busy} canSelect={canSelect} run={run} onMove={setMoving} />
           )}
 
-          {/* Tabs as toolbar buttons on the shared control skin, the way Admin
-              draws its sections — an underlined rail here would be a second
-              look for the same idea two screens apart. */}
-          <div
-            role='tablist'
-            aria-label='Record Sections'
-            style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}
-          >
-            {tabs.map(([key, label, glyph]) => (
-              <button
-                key={key}
-                type='button'
-                role='tab'
-                aria-selected={active === key}
-                onClick={() => setTab(key)}
-                style={toolBtnStyle(active === key)}
-              >
-                <Icon name={glyph} size={14} />
-                {label}
-              </button>
-            ))}
-          </div>
+          {/* The shared underlined rail, the way Admin draws its sections. */}
+          <Tabs label='Record Sections' tabs={tabs} active={active} onPick={setTab} />
 
           <Card pad={0}>
             {(active === 'application' || active === 'all') && <ApplicationPanel r={r} />}
@@ -390,6 +388,18 @@ export function RequestDetail() {
         />
       )}
 
+      {r && moving && (
+        <MoveAllocationDialog
+          allocation={moving}
+          stallName={r.stallName}
+          onClose={() => setMoving(null)}
+          onDone={() => {
+            setMoving(null);
+            reload();
+          }}
+        />
+      )}
+
       {r && amending && (
         <AmendDialog
           request={r}
@@ -404,19 +414,27 @@ export function RequestDetail() {
   );
 }
 
-/** The stall numbers this request holds, and the one control that gives one
- *  back. Above the tabs rather than inside Application: an allocation is what
- *  the team decided, not something the requester filled in. */
+/** The stall numbers this request holds, and the two controls that change
+ *  one. Above the tabs rather than inside Application: an allocation is what
+ *  the team decided, not something the requester filled in.
+ *
+ *  ⚠️ Edit and Release are different acts and are worth keeping apart. Release
+ *  gives the pitch back to the pool because the vendor is not taking it; Edit
+ *  keeps it and corrects WHICH pitch it is, which is the common case — a number
+ *  typed against the wrong row, or a bay re-laid after the letter went out.
+ *  Doing the second with the first cost the vendor their place in the gap. */
 function Allocations({
   r,
   busy,
   canSelect,
   run,
+  onMove,
 }: {
   r: Detail;
   busy: boolean;
   canSelect: boolean;
   run: (label: string, fn: () => Promise<unknown>) => Promise<void>;
+  onMove: (allocation: RequestAllocation) => void;
 }) {
   return (
     <Card pad={0} style={{ marginBottom: 16 }}>
@@ -441,13 +459,19 @@ function Allocations({
                 {titleCase(a.category)} · {formatDateTime(a.allocatedAt)}
               </span>
               {canSelect && (
-                <Btn
-                  disabled={busy}
-                  onClick={() => run('Released', () => api.releaseAllocation(a.id))}
-                >
-                  <Icon name='x' size={13} />
-                  Release
-                </Btn>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Btn disabled={busy} onClick={() => onMove(a)}>
+                    <Icon name='pencil' size={13} />
+                    Edit
+                  </Btn>
+                  <Btn
+                    disabled={busy}
+                    onClick={() => run('Released', () => api.releaseAllocation(a.id))}
+                  >
+                    <Icon name='x' size={13} />
+                    Release
+                  </Btn>
+                </div>
               )}
             </div>
           ))}

@@ -37,8 +37,8 @@ import {
 import { DevSignIn } from './DevSignIn';
 
 /** The mark, in the sidebar head and on the sign-in screen. */
-const APP_NAME = 'MSR Stalls';
-const APP_SUB = 'Maha Shivratri · Stalls';
+const APP_NAME = 'Stall Management';
+const APP_SUB = 'Requests, selection and operations';
 
 function Sidebar({
   rail,

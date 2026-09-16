@@ -14,7 +14,7 @@ import {
   type ZoneView,
   lookupRate,
   rupeesToPaise,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { recordActivity } from '../../activity';
 import { seedBankDeclarations, seedDeclarations } from './declarations';
 import { publicFormsFor, seedFormDefinitions } from './form-builder';
@@ -138,7 +138,7 @@ export async function ensureEditionDefaults(db: Db, editionId: string): Promise<
   // The four request forms, from the same constants that used to BE them.
   await seedFormDefinitions(db, editionId);
 
-  // The outbound letters, seeded from `@msr/stalls`. `update: {}` so a
+  // The outbound letters, seeded from `@stalls/core`. `update: {}` so a
   // re-run never overwrites wording an admin has edited.
   for (const t of DEFAULT_TEMPLATES) {
     await db.stallEmailTemplate.upsert({

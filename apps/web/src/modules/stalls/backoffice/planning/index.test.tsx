@@ -3,11 +3,12 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   BACKOFFICE_CONFIG,
+  choose,
   EDITIONS,
+  installFetch,
   ME_ADMIN,
   ME_LEAD,
   PAST_CONFIG,
-  installFetch,
   renderAt,
 } from '../../test-utils';
 import { Planning } from '.';
@@ -130,7 +131,7 @@ describe('the strip', () => {
     render();
 
     // 🔴 `getPlan` takes no edition, so the grid is ALWAYS the active one. A
-    // "Showing MSR 2025" over it would name a year it is not showing.
+    // "Showing Stalls 2025" over it would name a year it is not showing.
     await screen.findByTestId('grand-total');
     expect(screen.queryByLabelText('Showing')).not.toBeInTheDocument();
     const user = userEvent.setup();
@@ -292,17 +293,14 @@ describe('the rent matrix', () => {
 });
 
 describe('looking at another edition', () => {
-  const show = async (user: ReturnType<typeof userEvent.setup>, name: RegExp) => {
-    await user.selectOptions(
-      screen.getByLabelText('Showing'),
-      screen.getByRole('option', { name }),
-    );
+  const show = async (user: ReturnType<typeof userEvent.setup>, editionId: string) => {
+    await choose(user, screen.getByLabelText('Showing'), editionId);
   };
 
   test('re-reads the configuration for the edition chosen', async () => {
     const fetch = base();
     const user = await openTab(/^bays$/i);
-    await show(user, /MSR 2025/);
+    await show(user, 'e0');
 
     await waitFor(() =>
       expect(fetch.calls.some((c) => c.url.includes('/config?editionId=e0'))).toBe(true),
@@ -316,7 +314,7 @@ describe('looking at another edition', () => {
   test('is read only, and says so', async () => {
     base();
     const user = await openTab(/^bays$/i);
-    await show(user, /MSR 2025/);
+    await show(user, 'e0');
 
     expect(await screen.findByText('past edition · read only')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Add bay' })).toBeDisabled());
@@ -328,8 +326,8 @@ describe('copying from another edition', () => {
   const PLAN = {
     section: 'zones',
     fromEditionId: 'e0',
-    fromEditionName: 'MSR 2025',
-    intoEditionName: 'MSR 2026',
+    fromEditionName: 'Stalls 2025',
+    intoEditionName: 'Stalls 2026',
     create: [
       {
         key: 'D1',
@@ -374,7 +372,9 @@ describe('copying from another edition', () => {
     const user = await openTab(/^bays$/i);
     const box = await openCopy(user);
 
-    expect(await box.findByRole('button', { name: 'Copy 2 changes into MSR 2026' })).toBeEnabled();
+    expect(
+      await box.findByRole('button', { name: 'Copy 2 changes into Stalls 2026' }),
+    ).toBeEnabled();
   });
 
   test('confirming sends the section and the source edition, and nothing else', async () => {
@@ -403,7 +403,7 @@ describe('copying from another edition', () => {
     const user = await openTab(/^bays$/i);
     const box = await openCopy(user);
 
-    expect(await box.findByText(/MSR 2026 already matches MSR 2025/)).toBeInTheDocument();
+    expect(await box.findByText(/Stalls 2026 already matches Stalls 2025/)).toBeInTheDocument();
     expect(box.getByRole('button', { name: 'Nothing to copy' })).toBeDisabled();
   });
 });

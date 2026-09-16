@@ -1,6 +1,7 @@
 export * from './access';
 export * from './contracts';
 export * from './coupons';
+export * from './field-rules';
 export * from './forms';
 export * from './money';
 export * from './declarations';

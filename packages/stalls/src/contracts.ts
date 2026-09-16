@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Declaration } from './declarations';
 import type { BuilderForm, BuiltForm } from './form-builder';
+import { AUTHORABLE_FIELD_TYPES } from './form-builder';
 import { SELF_SERVE_STEPS } from './access';
 import type { PendingStep } from './onboarding';
 import { CATEGORY_KEY_PATTERN, ZONE_CODE_PATTERN } from './zones';
@@ -10,13 +11,13 @@ import { VIRTUAL_ACCOUNT_PREFIX_PATTERN } from './virtual-account';
 import { SIGNATURE_STATUSES } from './signing';
 
 /** The shapes that cross the network, shared by api and web so a rename breaks
- *  the build rather than production. Host convention: `@msr/shared` publishes
- *  wire contracts; `@msr/volunteering` does the same for one module. This is
+ *  the build rather than production. Host convention: `@stalls/shared` publishes
+ *  wire contracts; `@stalls/volunteering` does the same for one module. This is
  *  that, for stalls. */
 
 // ── Enums as wire values ────────────────────────────────────────────────────
 
-export const RequestType = z.enum(['ASHRAM', 'ASHRAM_FOOD', 'LOCAL_WELFARE', 'VENDOR']);
+export const RequestType = z.enum(['ASHRAM', 'LOCAL_WELFARE', 'VENDOR']);
 export const StallTypeValue = z.enum(['FOOD', 'NON_FOOD']);
 export const RequestStatus = z.enum([
   'SUBMITTED',
@@ -36,15 +37,7 @@ export const RequestStage = z.enum([
   'READY',
   'CHECKED_IN',
 ]);
-export const FormType = z.enum([
-  'ASHRAM',
-  'ASHRAM_FOOD',
-  'LOCAL_WELFARE',
-  'VENDOR',
-  'BANK',
-  'FSSAI',
-  'STAFF',
-]);
+export const FormType = z.enum(['ASHRAM', 'LOCAL_WELFARE', 'VENDOR', 'BANK', 'FSSAI', 'STAFF']);
 export const RateScopeValue = z.enum(RATE_SCOPES);
 export const AshramUsage = z.enum([
   'DEPT_DISPLAY',
@@ -172,7 +165,7 @@ export const SubmitRequestInput = z
         message: 'the refundable caution deposit must be acknowledged',
       });
     }
-    if ((v.requestType === 'ASHRAM' || v.requestType === 'ASHRAM_FOOD') && !v.ashram) {
+    if (v.requestType === 'ASHRAM' && !v.ashram) {
       ctx.addIssue({
         code: 'custom',
         path: ['ashram'],
@@ -535,6 +528,13 @@ export type PatchRequestInput = z.infer<typeof PatchRequestInput>;
 
 // ── Backoffice: selection ────────────────────────────────────────────────────────
 
+/** A stall number as it is written everywhere else: bay, hyphen, position.
+ *  One definition, because selection and a later correction have to agree on
+ *  what a stall number IS. */
+const StallNumberValue = z
+  .string()
+  .regex(/^[A-Z]{1,2}\d{0,2}-[1-9]\d*$/, 'expected a stall number like A4-17');
+
 export const SelectRequestInput = z.object({
   /** ⚠️ MAY BE EMPTY, and routinely is.
    *
@@ -543,14 +543,22 @@ export const SelectRequestInput = z.object({
    *  still put at the time of the payment". Requiring a number here would force
    *  the two decisions into one moment and pin a vendor to a pitch nobody has
    *  walked yet. `agreedZoneCode` carries the half that has been decided. */
-  stallNumbers: z
-    .array(z.string().regex(/^[A-Z]{1,2}\d{0,2}-[1-9]\d*$/, 'expected a stall number like A4-17'))
-    .max(10)
-    .default([]),
+  stallNumbers: z.array(StallNumberValue).max(10).default([]),
   /** The bay being agreed, when it is being agreed at the same time. */
   agreedZoneCode: ZoneCodeValue.optional(),
 });
 export type SelectRequestInput = z.infer<typeof SelectRequestInput>;
+
+/** Moving a live allocation onto a different stall.
+ *
+ *  🔴 A correction, not a second decision. A number goes onto the wrong record,
+ *  or a bay is re-laid after the letter went out, and until this existed the
+ *  only way back was Release followed by Select — two calls, between which the
+ *  stall being moved TO is free for anyone else to take and the request holds
+ *  one stall fewer than it was given. The move is one transaction, so it cannot
+ *  half-happen. */
+export const MoveAllocationInput = z.object({ stallNumber: StallNumberValue });
+export type MoveAllocationInput = z.infer<typeof MoveAllocationInput>;
 
 export interface AvailableStall {
   id: string;
@@ -859,22 +867,85 @@ export const FieldOptionInput = z.object({
 /** ⚠️ No `name` and no `isBuiltIn`. Both are the API's to decide: an appended
  *  field is never built in, and it has no name because its answer is keyed by
  *  id. A body that could set either would be a body that could claim a column. */
+/** A media-store key as it crosses the wire.
+ *
+ *  ⚠️ The SHAPE only. What makes a key acceptable is `isOurKey`, which checks
+ *  the folder the purpose writes to — a key this passes is still refused if it
+ *  was not minted for a display block. */
+export const MediaKeyValue = z.string().trim().min(1).max(400);
+
+/**
+ * The days a `date` question accepts, on the wire.
+ *
+ * ⚠️ A discriminated union, so a body cannot send `minDate` beside `minDays`
+ * and leave the API to guess which one it meant. There is no `edition` mode —
+ * `StallEdition` has no dates to follow; see the note in `field-rules.ts`.
+ */
+export const DateWindowInput = z.discriminatedUnion('mode', [
+  z.object({
+    mode: z.literal('fixed'),
+    min: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+    max: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+  }),
+  z.object({
+    mode: z.literal('rolling'),
+    minDays: z.number().int().min(-3650).max(3650).optional(),
+    maxDays: z.number().int().min(-3650).max(3650).optional(),
+  }),
+]);
+
+/**
+ * What a question accepts, as the builder sends it.
+ *
+ * 🔴 Shape only, exactly as everywhere else in this file. Whether a maximum
+ * sits below its minimum, or a pattern is an expression that compiles, is
+ * `checkRuleShape` in `@stalls/core` — one function, read by the screen before
+ * it saves and by the API before it writes. A Zod refinement here would be a
+ * second opinion the two sides could drift apart on.
+ */
+const RuleFields = {
+  /** Read three ways, decided by `fieldType`: the VALUE for a number, the DIGIT
+   *  count for a telephone number, HOW MANY for a file list. */
+  min: z.number().int().min(-1_000_000).max(1_000_000).nullable().default(null),
+  max: z.number().int().min(-1_000_000).max(1_000_000).nullable().default(null),
+  minLen: z.number().int().min(0).max(10_000).nullable().default(null),
+  maxLen: z.number().int().min(1).max(10_000).nullable().default(null),
+  decimals: z.number().int().min(0).max(6).nullable().default(null),
+  pattern: z.string().trim().max(400).nullable().default(null),
+  patternHint: z.string().trim().max(200).nullable().default(null),
+  window: DateWindowInput.nullable().default(null),
+};
+
 export const AddFormFieldInput = z.object({
   label: z.string().trim().min(1).max(200),
   labelTa: z.string().trim().max(200).nullable().default(null),
   help: z.string().trim().max(600).nullable().default(null),
-  fieldType: z.enum(['text', 'textarea', 'email', 'tel', 'number', 'select', 'radio', 'checkbox']),
+  /** ⚠️ Read from `AUTHORABLE_FIELD_TYPES` rather than spelled again. The list
+   *  was retyped here and had already drifted: the picker offered `file` and
+   *  `files`, and this enum refused them, so adding a file question failed at
+   *  the API with a message about the shape of the body. */
+  fieldType: z.enum(AUTHORABLE_FIELD_TYPES),
   isRequired: z.boolean().default(false),
   sectionId: z.uuid().nullable().default(null),
   options: z.array(FieldOptionInput).max(60).nullable().default(null),
-  min: z.number().int().nullable().default(null),
-  max: z.number().int().nullable().default(null),
+  ...RuleFields,
+  /** The picture a `display` block draws. Refused on every other type — see
+   *  `canCarryMedia`. */
+  mediaKey: MediaKeyValue.nullable().default(null),
 });
 export type AddFormFieldInput = z.infer<typeof AddFormFieldInput>;
 
-/** ⚠️ `fieldType` is accepted and then REFUSED on a built-in, rather than left
- *  out of the shape. Leaving it out would make an impossible edit look like a
- *  field the client forgot to send; refusing it says which field and why. */
+/** ⚠️ `fieldType` is accepted and then checked against the field's VALUE SHAPE
+ *  on a built-in, rather than left out of the shape. A built-in may be retyped
+ *  to anything that posts the same thing its column holds — see
+ *  `canRetypeBuiltInTo` — and leaving the key out would make a legal edit look
+ *  like a field the client forgot to send. */
 export const FormFieldPatch = z.object({
   label: z.string().trim().min(1).max(200).optional(),
   labelTa: z.string().trim().max(200).nullable().optional(),
@@ -885,8 +956,16 @@ export const FormFieldPatch = z.object({
   isActive: z.boolean().optional(),
   sectionId: z.uuid().nullable().optional(),
   options: z.array(FieldOptionInput).max(60).nullable().optional(),
-  min: z.number().int().nullable().optional(),
-  max: z.number().int().nullable().optional(),
+  min: RuleFields.min.unwrap().optional(),
+  max: RuleFields.max.unwrap().optional(),
+  minLen: RuleFields.minLen.unwrap().optional(),
+  maxLen: RuleFields.maxLen.unwrap().optional(),
+  decimals: RuleFields.decimals.unwrap().optional(),
+  pattern: RuleFields.pattern.unwrap().optional(),
+  patternHint: RuleFields.patternHint.unwrap().optional(),
+  window: RuleFields.window.unwrap().optional(),
+  /** `null` clears the picture and leaves the wording. */
+  mediaKey: MediaKeyValue.nullable().optional(),
 });
 export type FormFieldPatch = z.infer<typeof FormFieldPatch>;
 
@@ -1470,33 +1549,55 @@ export const Gstin = z
 
 const UploadKey = z.string().trim().min(1).max(400);
 
+/**
+ * 🔴 Every answer below is OPTIONAL, and none of them is optional on the form.
+ *
+ * This contract can only say what a field's TYPE is — the same limit
+ * `SubmitRequestInput` has, and for the same reason: it is a constant, while
+ * which questions must be answered is a property of the edition's field rows.
+ * An admin may mark the GST number optional or stop asking for a MICR code
+ * altogether, and a contract that hard-required them would reject a form the
+ * Form Builder had legitimately configured — the page would stop asking, the
+ * payload would omit it, and nobody could submit at all.
+ *
+ * ⚠️ So the halves are: shape HERE, required-ness in `validateAgainstForm`
+ * against the definition, enforced in `submitBankDetails`. An IFSC that is
+ * present is still checked for being an IFSC.
+ *
+ * ⚠️ `.or(z.literal(''))` throughout, because the page sends `''` for a
+ * question it did not draw rather than omitting the key.
+ */
 export const SubmitBankDetailsInput = z.object({
-  email: z.email().max(320),
-  invoiceName: z.string().trim().min(1).max(200),
-  accountHolder: z.string().trim().min(1).max(200),
-  mobile: IndianMobile,
-  address: z.string().trim().min(1).max(1000),
+  email: z.email().max(320).optional().or(z.literal('')),
+  invoiceName: z.string().trim().max(200).optional(),
+  accountHolder: z.string().trim().max(200).optional(),
+  mobile: IndianMobile.optional().or(z.literal('')),
+  address: z.string().trim().max(1000).optional(),
   pincode: z
     .string()
     .trim()
-    .regex(/^\d{6}$/, 'expected a 6-digit pincode'),
-  bankName: z.string().trim().min(1).max(200),
-  branch: z.string().trim().min(1).max(200),
+    .regex(/^\d{6}$/, 'expected a 6-digit pincode')
+    .optional()
+    .or(z.literal('')),
+  bankName: z.string().trim().max(200).optional(),
+  branch: z.string().trim().max(200).optional(),
   accountNumber: z
     .string()
     .trim()
-    .regex(/^\d{6,20}$/, 'expected 6 to 20 digits'),
-  ifsc: Ifsc,
+    .regex(/^\d{6,20}$/, 'expected 6 to 20 digits')
+    .optional()
+    .or(z.literal('')),
+  ifsc: Ifsc.optional().or(z.literal('')),
   micr: z
     .string()
     .trim()
     .regex(/^\d{9}$/, 'expected a 9-digit MICR code')
     .optional()
     .or(z.literal('')),
-  panNumber: Pan,
-  gstNumber: Gstin,
-  chequeKey: UploadKey,
-  panKey: UploadKey,
+  panNumber: Pan.optional().or(z.literal('')),
+  gstNumber: Gstin.optional().or(z.literal('')),
+  chequeKey: UploadKey.optional().or(z.literal('')),
+  panKey: UploadKey.optional().or(z.literal('')),
   gstKey: UploadKey.optional().or(z.literal('')),
   declarationIds: DeclarationIds,
   /** Answers to questions an ADMIN appended, keyed by field id. The built-ins
@@ -1505,15 +1606,15 @@ export const SubmitBankDetailsInput = z.object({
   customFields: z.record(z.uuid(), z.string().trim().max(2000)).optional(),
   // The form is also where the vendor FINALISES what they need — the 2025 form
   // asks again, because a request made in November is stale by February.
-  plugs5a: z.number().int().min(0).max(50),
-  plugs15a: z.number().int().min(0).max(50),
-  gasStoves: z.number().int().min(0).max(10),
+  plugs5a: z.number().int().min(0).max(50).optional(),
+  plugs15a: z.number().int().min(0).max(50).optional(),
+  gasStoves: z.number().int().min(0).max(10).optional(),
   appliances: z.array(ApplianceInput).max(20).default([]),
-  tablesNeeded: z.number().int().min(0).max(50),
-  chairsNeeded: z.number().int().min(0).max(200),
-  passes2w: z.number().int().min(0).max(50),
-  passes4w: z.number().int().min(0).max(50),
-  passesStaff: z.number().int().min(0).max(200),
+  tablesNeeded: z.number().int().min(0).max(50).optional(),
+  chairsNeeded: z.number().int().min(0).max(200).optional(),
+  passes2w: z.number().int().min(0).max(50).optional(),
+  passes4w: z.number().int().min(0).max(50).optional(),
+  passesStaff: z.number().int().min(0).max(200).optional(),
   remarks: z.string().trim().max(2000).optional(),
 });
 export type SubmitBankDetailsInput = z.infer<typeof SubmitBankDetailsInput>;
@@ -1787,12 +1888,15 @@ export const RegisterStaffInput = z.object({
    *  request, so a request-keyed answer would collapse seven of them. See the
    *  partial indexes on `stall_custom_field_value`. */
   customFields: z.record(z.uuid(), z.string().trim().max(2000)).optional(),
-  name: z.string().trim().min(1).max(200),
+  name: z.string().trim().max(200).optional(),
+  /** ⚠️ Still REQUIRED, and the one question on this form that cannot be
+   *  switched off — it is half of the index behind "one person, one
+   *  registration per stall". See `LOCKED_REQUIRED`. */
   mobile: IndianMobile,
-  idType: z.enum(['AADHAAR', 'VOTER_ID', 'DRIVING_LICENCE', 'PASSPORT', 'OTHER']),
+  idType: z.enum(['AADHAAR', 'VOTER_ID', 'DRIVING_LICENCE', 'PASSPORT', 'OTHER']).optional(),
   /** Only the last four digits of an Aadhaar are kept — enough to match a card
    *  at the gate, not enough to be a copy of it. Longer ids are stored whole. */
-  idNumber: z.string().trim().min(4).max(40),
+  idNumber: z.string().trim().min(4).max(40).optional(),
   role: z.string().trim().max(100).optional(),
   declarationIds: DeclarationIds,
 });
@@ -1842,10 +1946,14 @@ export const SubmitFssaiInput = z.object({
   customFields: z.record(z.uuid(), z.string().trim().max(2000)).optional(),
   ownerName: z.string().trim().max(200).optional(),
   mobile: IndianMobile.optional(),
+  /** ⚠️ No `.min(1)` and a generous ceiling. Whether the certificate is
+   *  required, and how many pages are allowed, are the definition's call — this
+   *  form is nothing BUT an upload, so a hardcoded minimum here is the one that
+   *  would make switching the question off impossible. `validateAgainstForm`
+   *  enforces both against the field's own `required` and `max`. */
   files: z
     .array(z.object({ key: z.string().trim().min(1).max(400), name: z.string().trim().max(300) }))
-    .min(1)
-    .max(5),
+    .max(50),
   declarationIds: DeclarationIds,
 });
 export type SubmitFssaiInput = z.infer<typeof SubmitFssaiInput>;
@@ -1905,6 +2013,11 @@ export const PresignUploadInput = z.object({
     'FSSAI',
     'TEMPLATE_ATTACHMENT',
     'FORM_FIELD',
+    // 🔴 The ADMIN's own picture, not a reader's answer — the venue layout
+    // drawn inside a display block. It needs no `fieldId`: the folder holds
+    // nothing but form-note images, every one of them authored in the builder,
+    // so the folder alone is what `/public/form-image` will serve.
+    'FORM_NOTE',
   ]),
   /** Which question this upload answers. Required for `FORM_FIELD` and ignored
    *  otherwise — it becomes part of the key's PATH, which is what makes a key

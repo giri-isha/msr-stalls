@@ -11,7 +11,7 @@
 // privilege is retired by clearing that flag, never by deleting a row roles
 // still bundle, and the compiled-in list cannot know it happened.
 import type { PrismaClient } from '@prisma/client';
-import type { PrivilegeCatalogEntry } from '@msr/stalls';
+import type { PrivilegeCatalogEntry } from '@stalls/core';
 
 export async function listPrivileges(db: PrismaClient): Promise<PrivilegeCatalogEntry[]> {
   // Retired rows included. The catalogue is a reference an admin reads while

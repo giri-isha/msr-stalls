@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'vitest';
-import { SubmitRequestInput } from '@msr/stalls';
+import { SubmitRequestInput } from '@stalls/core';
 import { submitRequest } from '../src/modules/stalls/submit';
 import {
   accountFor,
@@ -82,6 +82,27 @@ describe('submitRequest', () => {
     expect(values[0].value).toBe('@greenleaf');
   });
 
+  /**
+   * 🔴 What the QUESTION accepts, refused by the API and not only by the page.
+   *
+   * ⚠️ The message names the question and says what is wrong with the answer,
+   * because it is the same message the requester already saw under the control
+   * before they posted — a refusal worded differently from the warning reads as
+   * a second, unrelated problem.
+   */
+  test('an appended answer past the question\u2019s own limit is refused', async () => {
+    const e = await seedEdition();
+    const gst = await appendField(e.id, 'VENDOR', 'GST Number');
+    await prisma.stallFormField.update({
+      where: { id: gst.id },
+      data: { maxLen: 15 },
+    });
+    await expect(submit({ customFields: { [gst.id]: 'X'.repeat(30) } })).rejects.toMatchObject({
+      name: 'ValidationFailedError',
+    });
+    await expect(submit({ customFields: { [gst.id]: '22AAAAA0000A1Z5' } })).resolves.toBeTruthy();
+  });
+
   test('two submissions from one email land on one account', async () => {
     await seedEdition();
     await submit({ stallName: 'First' });
@@ -125,6 +146,9 @@ describe('submitRequest', () => {
     await seedEdition();
     const r = await submit({
       requestType: 'ASHRAM',
+      // ⚠️ The body's default is FOOD, and a food ashram stall is asked
+      // `fssaiExpected`. This department sells books.
+      stallType: 'NON_FOOD',
       ashram: {
         departmentHead: 'Ravi Shankar',
         departmentHeadContact: '9840012345',

@@ -9,7 +9,7 @@ import {
   type SelfServeStepValue,
   isSelfServe,
   virtualAccountFor,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { findAccountByContact, mintAccessLink } from './accounts';
 import { flowFor } from './config';
 import { claimsFor } from './payment-claims';
@@ -104,7 +104,7 @@ export async function deliverAccessLink(
 
 function accessLinkMail(account: StallAccount, statusUrl: string) {
   const text = [
-    `Here is the link to your MSR stall requests.`,
+    `Here is the link to your stall requests.`,
     ``,
     statusUrl,
     ``,
@@ -114,7 +114,7 @@ function accessLinkMail(account: StallAccount, statusUrl: string) {
     `Please keep this link private — anyone with it can see your requests.`,
     `If you did not ask for it, you can ignore this email.`,
   ].join('\n');
-  return { to: account.email, subject: 'Your MSR stall requests', text };
+  return { to: account.email, subject: 'Your stall requests', text };
 }
 
 /** That vendor's own requests, and nothing else.

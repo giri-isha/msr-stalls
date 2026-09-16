@@ -1,5 +1,5 @@
-import { can as grants } from '@msr/stalls';
-import type { MeResponse, StallPrivilege } from '@msr/stalls';
+import { can as grants } from '@stalls/core';
+import type { MeResponse, StallPrivilege } from '@stalls/core';
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { ApiError } from './api-client';
 import { getMe } from './api';
@@ -47,7 +47,7 @@ export function MeProvider({ children }: { children: ReactNode }) {
    *  This was a second implementation of `can`, which is the one thing the
    *  shared one exists to prevent — and it went wrong the moment the rule
    *  stopped being a plain membership test. A write implies its read (see
-   *  `IMPLIED_READ` in `@msr/stalls`), so a volunteer holding `checkin.write`
+   *  `IMPLIED_READ` in `@stalls/core`), so a volunteer holding `checkin.write`
    *  reaches `checkin.read`; the API agreed and this screen did not, which
    *  shows up as a nav item missing from the one person it is for. */
   const can = useCallback((action: StallPrivilege) => grants(me?.privileges ?? [], action), [me]);

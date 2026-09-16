@@ -60,7 +60,6 @@ const ACRONYMS: Record<string, string> = {
   imps: 'IMPS',
   inr: 'INR',
   kyc: 'KYC',
-  msr: 'MSR',
   neft: 'NEFT',
   otp: 'OTP',
   pan: 'PAN',

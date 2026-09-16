@@ -1,7 +1,7 @@
-/* MSR Stalls — the module's design tokens, SCOPED.
+/* Stall Management — the module's design tokens, SCOPED.
  *
  * ⚠️ COPIED from the MSR Volunteering module so the two read as one product.
- * The values are unchanged; the scope class is `.msrs` rather than `.msrv`, and
+ * The values are unchanged; the scope class is `.stalls` rather than `.msrv`, and
  * `--font-tamil` is added for the bilingual public forms. See `frame.tsx` for
  * why each module owns its own scope. The header below is the original's and
  * still describes why these are scoped at all.
@@ -27,19 +27,19 @@
  *     match, so this one is a tint difference rather than a break — but it is
  *     the same mistake and would drift the moment either side is retuned.
  *
- * ⚠️ So the tokens live on `.msrs`, the class the module's shell puts on its
+ * ⚠️ So the tokens live on `.stalls`, the class the module's shell puts on its
  * own outermost element, and they inherit down from there. Nothing leaks up.
  *
- * ⚠️ The dark block is `.dark .msrs`, not `.msrs.dark`. The platform owns the
+ * ⚠️ The dark block is `.dark .stalls`, not `.stalls.dark`. The platform owns the
  * theme and stamps `.dark` on `<html>` (`use-theme.ts`), so the module
  * follows the platform's theme rather than keeping a second one. Specificity
- * works out: `.dark .msrs` (0,2,0) beats `.msrs` (0,1,0).
+ * works out: `.dark .stalls` (0,2,0) beats `.stalls` (0,1,0).
  *
  * Re-extracting from the design file? The standalone header's warning still
  * applies — see `styles/tokens.css` in the standalone app for the list of
  * deliberate divergences to re-apply afterwards.
  */
-.msrs{--bg:oklch(0.985 0.003 277.366); --fg:oklch(0.24 0.006 277.366); --card:oklch(1 0 0);
+.stalls{--bg:oklch(0.985 0.003 277.366); --fg:oklch(0.24 0.006 277.366); --card:oklch(1 0 0);
     --pri:oklch(0.398 0.195 277.366); --pfg:oklch(0.962 0.018 277.366);
     --mut:oklch(0.972 0.008 277.366); --mfg:oklch(0.48 0.016 277.366);
     --bd:oklch(0.918 0.006 277.366); --line:oklch(0.945 0.005 277.366);
@@ -168,7 +168,7 @@
      * apertures that it reads as a voice.
      *
      * ⚠️ The platform retired its own `--font-display` (a serif, Fraunces) and
-     * that retirement STANDS — this token lives on `.msrs`, so it reaches this
+     * that retirement STANDS — this token lives on `.stalls`, so it reaches this
      * module's headings and nothing else. The reasons the serif went were two
      * users and a lone line reading as a leftover; both are answered by a face
      * used on every heading across the module.
@@ -188,7 +188,7 @@
      *
      * Not self-hosted, unlike the two Latin faces: the stack names families the
      * platform is likely to ship rather than shipping a 400K Tamil webfont for
-     * the four screens that print it. Worn through `.msrs-tamil`, never as the
+     * the four screens that print it. Worn through `.stalls-tamil`, never as the
      * body face — the two do not share a baseline. */
     --font-tamil:'Noto Sans Tamil','Latha','Nirmala UI',ui-sans-serif,system-ui,sans-serif;
     /* 🔴 The overlay backdrop was a RAW `oklch(0.24 0.006 277.366/.45)` written
@@ -209,7 +209,7 @@
     color-scheme:light;
 }
 
-.dark .msrs{--bg:oklch(0.265 0.008 285.8); --fg:oklch(0.97 0 0); --card:oklch(0.315 0.008 285.9);
+.dark .stalls{--bg:oklch(0.265 0.008 285.8); --fg:oklch(0.97 0 0); --card:oklch(0.315 0.008 285.9);
     --mut:oklch(0.365 0.008 286); --mfg:oklch(0.775 0.014 286);
     --bd:oklch(1 0 0/0.15); --line:oklch(1 0 0/0.10); --hov:oklch(0.41 0.010 286);
     --des:oklch(0.72 0.17 22.2); --pri-t:oklch(0.395 0.065 277.4); --pri-t2:oklch(0.47 0.10 277.4);
@@ -292,8 +292,8 @@
  * font, every link colour and the font-size of every input on every screen of
  * every other module.
  */
-.msrs,
-.msrs *{box-sizing:border-box}
+.stalls,
+.stalls *{box-sizing:border-box}
 
 /* ⚠️ `html, body, #root{height:100%}` is DELETED, not scoped. Page-level
  * layout belongs to the platform shell now; the module gets the height its
@@ -318,19 +318,19 @@
  * sidebar sticks to the viewport, which is what it was written to do.
  * It clips the same content `hidden` did, so the reason the rule exists — a
  * wide screen in here must not widen the page — is unchanged. */
-.msrs{
+.stalls{
   overflow-x:clip;
   background:var(--bg);
   font-family:'Geist','Geist Variable',-apple-system,Segoe UI,sans-serif;
   color:var(--fg);-webkit-font-smoothing:antialiased;font-feature-settings:"cv11";
 }
-.msrs input,.msrs select,.msrs textarea,.msrs button{font-family:inherit;font-size:15px;color:inherit}
-.msrs a{color:var(--pri);text-decoration:none}
+.stalls input,.stalls select,.stalls textarea,.stalls button{font-family:inherit;font-size:15px;color:inherit}
+.stalls a{color:var(--pri);text-decoration:none}
 
 /* The Tamil half of a bilingual label. A class rather than an inline style
    because it is worn by spans inside text the screens build with `<>`, where
    there is no element of our own to hang a style object on. */
-.msrs .msrs-tamil{font-family:var(--font-tamil)}
+.stalls .stalls-tamil{font-family:var(--font-tamil)}
 
 /* ── The hover lift ──
  *
@@ -347,8 +347,8 @@
  *
  * The reduced-motion block at the foot of this file already flattens the
  * transition, so this needs no second opinion about motion. */
-.msrs .msrs-lift{transition:box-shadow .18s ease,transform .18s ease}
-.msrs .msrs-lift:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+.stalls .stalls-lift{transition:box-shadow .18s ease,transform .18s ease}
+.stalls .stalls-lift:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
 
 /* 🔴 The lift is gated on a device that actually HAS a pointer, and this is a
  * correctness fix rather than an optimisation. On a touch screen there is no
@@ -365,7 +365,7 @@
  * The focus ring stays OUTSIDE this query: a phone with a keyboard attached
  * still needs it, and `:focus-visible` does not latch. */
 @media (hover: hover) and (pointer: fine){
-  .msrs .msrs-lift:hover{box-shadow:var(--sh-2);transform:translateY(-1px)}
+  .stalls .stalls-lift:hover{box-shadow:var(--sh-2);transform:translateY(-1px)}
 }
 
 /* ── The row action's tinted well ──
@@ -377,10 +377,10 @@
  *
  * `color-mix` sits at roughly the same browser floor as `oklch()`, which this
  * whole sheet already requires, so it adds no new constraint. */
-.msrs .msrs-icon-btn{transition:background .15s ease,border-color .15s ease}
-.msrs .msrs-icon-btn:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+.stalls .stalls-icon-btn{transition:background .15s ease,border-color .15s ease}
+.stalls .stalls-icon-btn:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
 @media (hover: hover) and (pointer: fine){
-  .msrs .msrs-icon-btn:hover{
+  .stalls .stalls-icon-btn:hover{
     background:color-mix(in oklch, currentColor 12%, var(--card));
     border-color:color-mix(in oklch, currentColor 32%, var(--bd));
   }
@@ -401,7 +401,7 @@
  * Gated on `(hover: none)` so a desktop pointer keeps a precise 28px target and
  * two adjacent actions do not overlap each other's invisible margins. */
 @media (hover: none){
-  .msrs .msrs-icon-btn::after{content:'';position:absolute;inset:-8px}
+  .stalls .stalls-icon-btn::after{content:'';position:absolute;inset:-8px}
 }
 
 /* ⚠️ Keyframes are namespaced. `fade` and `rise` are generic enough that a
@@ -411,12 +411,12 @@
  *
  * `drawer-in` is NOT carried over: it had no reference anywhere in the
  * standalone client, so it was dead before the port. */
-@keyframes msrs-rise{from{transform:translateY(14px);opacity:0}to{transform:translateY(0);opacity:1}}
-@keyframes msrs-fade{from{opacity:0}to{opacity:1}}
-@keyframes msrs-sheet-up{from{transform:translateY(100%)}to{transform:translateY(0)}}
+@keyframes stalls-rise{from{transform:translateY(14px);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes stalls-fade{from{opacity:0}to{opacity:1}}
+@keyframes stalls-sheet-up{from{transform:translateY(100%)}to{transform:translateY(0)}}
 /* The loading shimmer. Namespaced like the rest — `shimmer` is exactly the kind
    of generic name a platform stylesheet would also declare. */
-@keyframes msrs-shimmer{from{background-position:-180% 0}to{background-position:180% 0}}
+@keyframes stalls-shimmer{from{background-position:-180% 0}to{background-position:180% 0}}
 
 /* One shimmering block. Sized by the caller; the sweep is here because a
    gradient animation cannot be expressed in an inline style. `--mut` is the
@@ -424,20 +424,20 @@
    surface rather than a stripe in an unrelated grey.
    The reduced-motion block below flattens the sweep and leaves a plain block,
    which is the correct still frame. */
-.msrs .msrs-shimmer{
+.stalls .stalls-shimmer{
   background:linear-gradient(90deg,var(--mut) 25%,var(--hov) 37%,var(--mut) 63%);
   background-size:180% 100%;
   border-radius:var(--r2);
-  animation:msrs-shimmer 1.4s ease-in-out infinite;
+  animation:stalls-shimmer 1.4s ease-in-out infinite;
 }
 
 /* Touch targets and text inputs on a phone. 16px is the threshold below which
    iOS Safari zooms the page on focus, which then leaves the layout scrolled
    sideways with no way back. */
 @media (max-width: 719px){
-  .msrs input,.msrs select,.msrs textarea{font-size:16px}
+  .stalls input,.stalls select,.stalls textarea{font-size:16px}
 }
 @media (prefers-reduced-motion: reduce){
-  .msrs *{animation-duration:.01ms !important;animation-iteration-count:1 !important;
+  .stalls *{animation-duration:.01ms !important;animation-iteration-count:1 !important;
     transition-duration:.01ms !important}
 }

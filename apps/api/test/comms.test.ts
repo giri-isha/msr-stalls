@@ -119,7 +119,7 @@ describe('sending', () => {
 
   test('the vendor letter is refused for an ashram department', async () => {
     const { requestId } = await selected(['C1-6'], {
-      requestType: 'ASHRAM_FOOD',
+      requestType: 'ASHRAM',
       email: 'dept@ashram.example',
       ashram: {
         departmentHead: 'R Iyer',
@@ -130,16 +130,17 @@ describe('sending', () => {
         creditCardNeeded: false,
         usage: 'DEPT_SALES',
         wantsThembu: false,
-        // Required by the ashram FOOD form, and by nothing else. Since the form
-        // definition became what the API validates against, omitting it is an
-        // unanswered question rather than a field the contract will default.
+        // Asked only of a FOOD ashram stall, which this body is — `stallType`
+        // defaults to FOOD. Since the form definition became what the API
+        // validates against, omitting it is an unanswered question rather than
+        // a field the contract will default.
         fssaiExpected: false,
       },
     });
     const result = await send('SELECTION_VENDOR', [requestId]);
 
     expect(result.sent).toEqual([]);
-    expect(result.skipped[0].reason).toContain('not for a ashram_food request');
+    expect(result.skipped[0].reason).toContain('not for a ashram request');
     expect(deps.mail.sent).toHaveLength(0);
   });
 
@@ -250,6 +251,8 @@ describe('recipients and reminders', () => {
     const vendor = await selected(['C1-1']);
     const ashram = await selected(['C1-6'], {
       requestType: 'ASHRAM',
+      // Non-food, so the ashram form's FSSAI question is not asked of it.
+      stallType: 'NON_FOOD',
       email: 'dept@ashram.example',
       ashram: {
         departmentHead: 'R Iyer',

@@ -26,12 +26,12 @@ export default defineConfig({
       registerType: 'prompt',
       includeAssets: ['favicon-32.png', 'apple-touch-icon.png'],
       manifest: {
-        name: 'MSR Stalls',
+        name: 'Stall Management',
         // The launcher label. Short on purpose — Android truncates around 12
-        // characters and "MSR Stalls" already fits, so it is the same words
-        // rather than a second abbreviation to keep in step.
-        short_name: 'MSR Stalls',
-        description: 'Stall requests, selection and operations for Maha Shivratri.',
+        // characters, which "Stall Management" does not fit inside, so the
+        // launcher gets the one-word form the tab title also uses.
+        short_name: 'Stalls',
+        description: 'Stall requests, selection and operations.',
         id: '/',
         // 🔴 The BACKOFFICE, not the public form. An installed app is installed
         // by the team who work it every day; a vendor fills one form once, from

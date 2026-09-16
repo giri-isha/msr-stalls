@@ -1,4 +1,4 @@
-import { COPY_SECTION_LABELS, type CopyPlan, type CopyRow, type CopySection } from '@msr/stalls';
+import { COPY_SECTION_LABELS, type CopyPlan, type CopyRow, type CopySection } from '@stalls/core';
 import { useState } from 'react';
 import * as api from '../api';
 import { useLoad } from '../hooks';
@@ -97,7 +97,7 @@ export function CopyFromDialog({
         ) : (
           <>
             <FormField id='copy-from' label='Copy From'>
-              <Select id='copy-from' value={chosen} onChange={(e) => setFrom(e.target.value)}>
+              <Select id='copy-from' value={chosen} onChange={(v) => setFrom(v)}>
                 {sources.map((e) => (
                   <option key={e.id} value={e.id}>
                     {e.name}

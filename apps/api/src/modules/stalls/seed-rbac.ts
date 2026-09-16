@@ -16,7 +16,7 @@
 // constants and must survive, and a privilege dropped from the code is retired
 // by setting `isActive` false, never by deleting a row that roles still bundle.
 import type { PrismaClient } from '@prisma/client';
-import { PRIVILEGE_CATEGORIES, SEED_ROLES } from '@msr/stalls';
+import { PRIVILEGE_CATEGORIES, SEED_ROLES } from '@stalls/core';
 
 export async function seedRbac(db: PrismaClient): Promise<void> {
   let sortOrder = 0;

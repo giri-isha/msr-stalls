@@ -117,7 +117,7 @@ export function useColumns(key: string, defs: readonly ColumnDef[]): ColumnState
   };
 }
 
-const storageKey = (key: string) => `msr-stalls.columns.${key}`;
+const storageKey = (key: string) => `stalls.columns.${key}`;
 
 /**
  * ⚠️ Every access is wrapped, and a failure means "no preference" rather than

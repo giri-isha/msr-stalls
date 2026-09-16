@@ -1,5 +1,5 @@
-import type { RateCardEntry, RateScope } from '@msr/stalls';
-import { formatInr } from '@msr/stalls';
+import type { RateCardEntry, RateScope } from '@stalls/core';
+import { formatInr } from '@stalls/core';
 import { Fragment, useEffect, useState } from 'react';
 import * as api from '../../api';
 import { Grid, type PanelProps, RupeeInput } from '../../components/config';
@@ -10,6 +10,7 @@ import {
   DialogButtons,
   EditBtn,
   Icon,
+  RowActions,
   TBody,
   TD,
   TH,
@@ -139,11 +140,13 @@ export function Rates({ c, writable, run, reload }: PanelProps) {
                 );
               })}
               <TD align='right'>
-                <EditBtn
-                  what={`${z.code} ${isFood ? 'food' : 'non-food'} rates`}
-                  writable={writable}
-                  onClick={() => setEditing(z)}
-                />
+                <RowActions>
+                  <EditBtn
+                    what={`${z.code} ${isFood ? 'food' : 'non-food'} rates`}
+                    writable={writable}
+                    onClick={() => setEditing(z)}
+                  />
+                </RowActions>
               </TD>
             </TR>
           ))}

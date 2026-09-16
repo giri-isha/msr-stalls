@@ -45,7 +45,7 @@ module.exports = {
       // survive the move.
       name: 'stalls-api-imports-only-foundation',
       comment:
-        'apps/api/src/modules/stalls/ may import only its own folder, @msr/stalls, ' +
+        'apps/api/src/modules/stalls/ may import only its own folder, @stalls/core, ' +
         'and the Foundation files that exist in msr-app-replit at the same relative ' +
         'path with the same signatures. Importing any other shell file would break ' +
         'on migration. Add a dependency to StallsDeps instead.',
@@ -66,9 +66,9 @@ module.exports = {
       // not import the standalone shell's routing or layout.
       name: 'stalls-web-imports-only-shared',
       comment:
-        'apps/web/src/modules/stalls/ may import only its own folder and @msr/stalls. ' +
+        'apps/web/src/modules/stalls/ may import only its own folder and @stalls/core. ' +
         'It carries its own UI system (ui/, ported from msr-volunteering under the ' +
-        '.msrs scope) and its own API client, so nothing from the shell migrates with it.',
+        '.stalls scope) and its own API client, so nothing from the shell migrates with it.',
       severity: 'error',
       from: { path: '^apps/web/src/modules/stalls/' },
       to: {

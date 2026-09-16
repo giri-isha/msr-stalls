@@ -87,7 +87,7 @@ export class DiskMediaStore implements MediaStore {
 }
 
 export function devMediaDir(): string | undefined {
-  return process.env.MSR_DEV_MEDIA_DIR || undefined;
+  return process.env.STALLS_DEV_MEDIA_DIR || undefined;
 }
 
 export { join as joinPath };

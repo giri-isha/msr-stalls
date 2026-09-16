@@ -1,7 +1,7 @@
 import { randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import type { StallCredential } from '@prisma/client';
-import { type Contact, parseContact } from '@msr/stalls';
+import { type Contact, parseContact } from '@stalls/core';
 import type { Db } from './editions';
 import { InvalidCredentialsError } from './errors';
 

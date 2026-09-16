@@ -1,5 +1,5 @@
 {
-  "name": "@msr/stalls-api",
+  "name": "@stalls/api",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -21,7 +21,7 @@
     "@fastify/cors": "^10.0.2",
     "@fastify/helmet": "^13.1.1",
     "@fastify/rate-limit": "^11.2.0",
-    "@msr/stalls": "*",
+    "@stalls/core": "*",
     "@prisma/adapter-pg": "8.1.0-dev.6",
     "@prisma/client": "8.1.0-dev.6",
     "dotenv": "^16.4.7",

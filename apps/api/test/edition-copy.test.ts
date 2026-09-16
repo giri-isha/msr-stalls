@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { StallEdition } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
-import type { CopyPlan, CopyResult, CopySection } from '@msr/stalls';
+import type { CopyPlan, CopyResult, CopySection } from '@stalls/core';
 import { buildApp } from '../src/app';
 import {
   type Backoffice,
@@ -181,7 +181,7 @@ describe('charges', () => {
   test("never carries the edition's own settings across", async () => {
     await prisma.stallEdition.update({
       where: { id: past.id },
-      data: { virtualAccountRentPrefix: 'MSR2025', termsUrl: 'https://example.org/2025' },
+      data: { virtualAccountRentPrefix: 'STALLS2025', termsUrl: 'https://example.org/2025' },
     });
     await applied('charges');
     const after = await prisma.stallEdition.findUniqueOrThrow({ where: { id: current.id } });

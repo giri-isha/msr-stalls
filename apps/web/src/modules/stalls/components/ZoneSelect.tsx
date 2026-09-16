@@ -1,5 +1,5 @@
-import type { FieldOption, PublicZone } from '@msr/stalls';
-import { formatInr } from '@msr/stalls';
+import type { FieldOption, PublicZone } from '@stalls/core';
+import { formatInr } from '@stalls/core';
 import { ChoicePlate, Radio } from '../ui';
 
 /** The preferred-location radio list, quoting each bay at the asking form's

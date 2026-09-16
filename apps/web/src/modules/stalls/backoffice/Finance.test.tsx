@@ -8,7 +8,7 @@ const routes = [{ path: '/m/stalls/finance', element: <Finance /> }];
 const render = () => renderAt('/m/stalls/finance', routes, { me: true });
 
 const CONFIG = {
-  edition: { id: 'e1', year: 2026, name: 'MSR 2026', isActive: true },
+  edition: { id: 'e1', year: 2026, name: 'Stalls 2026', isActive: true },
   zones: [],
   rateCard: [],
   charges: {},
@@ -116,7 +116,7 @@ describe('confirming a credit', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Payment confirmation' }));
+    await user.click(await screen.findByRole('tab', { name: 'Payment confirmation' }));
     await user.click(await screen.findByRole('button', { name: 'Record Credit' }));
 
     const dialog = await screen.findByRole('dialog');
@@ -141,7 +141,7 @@ describe('confirming a credit', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Payment confirmation' }));
+    await user.click(await screen.findByRole('tab', { name: 'Payment confirmation' }));
     await user.click(await screen.findByRole('button', { name: 'Record Credit' }));
 
     const dialog = await screen.findByRole('dialog');
@@ -167,7 +167,7 @@ describe('confirming a credit', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Payment confirmation' }));
+    await user.click(await screen.findByRole('tab', { name: 'Payment confirmation' }));
     await user.click(await screen.findByRole('button', { name: 'Record Credit' }));
     const dialog = await screen.findByRole('dialog');
     await user.click(
@@ -204,7 +204,7 @@ describe('confirming a credit', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Payment confirmation' }));
+    await user.click(await screen.findByRole('tab', { name: 'Payment confirmation' }));
     await user.click(await screen.findByRole('button', { name: 'Record Credit' }));
 
     const dialog = await screen.findByRole('dialog');
@@ -237,7 +237,7 @@ describe('confirming a credit', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Payment confirmation' }));
+    await user.click(await screen.findByRole('tab', { name: 'Payment confirmation' }));
     expect(await screen.findByText(/1 · settled/)).toBeInTheDocument();
   });
 });
@@ -248,7 +248,7 @@ describe('refunds', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Refunds & deductions' }));
+    await user.click(await screen.findByRole('tab', { name: 'Refunds & deductions' }));
     await user.click(await screen.findByRole('button', { name: 'Prepare' }));
 
     const dialog = await screen.findByRole('dialog');
@@ -261,7 +261,7 @@ describe('refunds', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Refunds & deductions' }));
+    await user.click(await screen.findByRole('tab', { name: 'Refunds & deductions' }));
     await user.click(await screen.findByRole('button', { name: 'Prepare' }));
 
     const dialog = await screen.findByRole('dialog');
@@ -288,7 +288,7 @@ describe('refunds', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Refunds & deductions' }));
+    await user.click(await screen.findByRole('tab', { name: 'Refunds & deductions' }));
     await user.click(await screen.findByRole('button', { name: 'Voucher' }));
 
     const dialog = await screen.findByRole('dialog');
@@ -308,7 +308,7 @@ describe('refunds', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Refunds & deductions' }));
+    await user.click(await screen.findByRole('tab', { name: 'Refunds & deductions' }));
     await user.click(await screen.findByRole('button', { name: 'Prepare' }));
 
     const dialog = await screen.findByRole('dialog');
@@ -320,7 +320,7 @@ describe('refunds', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Refunds & deductions' }));
+    await user.click(await screen.findByRole('tab', { name: 'Refunds & deductions' }));
     await user.click(await screen.findByRole('button', { name: 'Prepare' }));
 
     const dialog = await screen.findByRole('dialog');
@@ -349,7 +349,7 @@ describe('refunds', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Refunds & deductions' }));
+    await user.click(await screen.findByRole('tab', { name: 'Refunds & deductions' }));
     await user.click(await screen.findByRole('button', { name: 'Voucher' }));
 
     const dialog = await screen.findByRole('dialog');
@@ -370,7 +370,7 @@ describe('refunds', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Refunds & deductions' }));
+    await user.click(await screen.findByRole('tab', { name: 'Refunds & deductions' }));
     expect(await screen.findByText('₹2,000 still owed')).toBeInTheDocument();
   });
 });
@@ -394,7 +394,7 @@ describe('access', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Payment confirmation' }));
+    await user.click(await screen.findByRole('tab', { name: 'Payment confirmation' }));
     await user.click(await screen.findByRole('button', { name: 'View' }));
 
     const dialog = await screen.findByRole('dialog');

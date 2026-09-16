@@ -1,4 +1,4 @@
-import { parseDeclaration } from '@msr/stalls';
+import { parseDeclaration } from '@stalls/core';
 
 /**
  * A declaration body, drawn.

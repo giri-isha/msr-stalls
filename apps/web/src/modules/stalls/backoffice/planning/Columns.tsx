@@ -13,6 +13,7 @@ import {
   Icon,
   IconBtn,
   Input,
+  RowActions,
   TBody,
   TD,
   TH,
@@ -82,43 +83,47 @@ export function PlanCategories({ c, writable, run, reload }: PanelProps) {
               <TD>{r.name}</TD>
               <TD muted>{r.isFood ? 'Yes' : '—'}</TD>
               <TD align='right'>
-                <IconBtn
-                  label={`Move ${r.key} up`}
-                  glyph='chevron-up'
-                  disabled={!writable || i === 0}
-                  onClick={() =>
-                    setRows((rs) => {
-                      const next = [...rs];
-                      [next[i - 1], next[i]] = [next[i], next[i - 1]];
-                      return next;
-                    })
-                  }
-                />
-                <IconBtn
-                  label={`Move ${r.key} down`}
-                  glyph='chevron-down'
-                  disabled={!writable || i === rows.length - 1}
-                  onClick={() =>
-                    setRows((rs) => {
-                      const next = [...rs];
-                      [next[i], next[i + 1]] = [next[i + 1], next[i]];
-                      return next;
-                    })
-                  }
-                />
-              </TD>
-              <TD align='right' style={{ whiteSpace: 'nowrap' }}>
-                <EditBtn what={r.key} writable={writable} onClick={() => setEditing(i)} />
-                {r.inUse ? (
-                  <span style={{ fontSize: 11.5, color: 'var(--mfg)', marginLeft: 6 }}>In use</span>
-                ) : (
+                <RowActions>
                   <IconBtn
-                    label={`Remove ${r.key}`}
-                    glyph='trash'
-                    disabled={!writable}
-                    onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))}
+                    label={`Move ${r.key} up`}
+                    glyph='chevron-up'
+                    disabled={!writable || i === 0}
+                    onClick={() =>
+                      setRows((rs) => {
+                        const next = [...rs];
+                        [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                        return next;
+                      })
+                    }
                   />
-                )}
+                  <IconBtn
+                    label={`Move ${r.key} down`}
+                    glyph='chevron-down'
+                    disabled={!writable || i === rows.length - 1}
+                    onClick={() =>
+                      setRows((rs) => {
+                        const next = [...rs];
+                        [next[i], next[i + 1]] = [next[i + 1], next[i]];
+                        return next;
+                      })
+                    }
+                  />
+                </RowActions>
+              </TD>
+              <TD align='right'>
+                <RowActions>
+                  <EditBtn what={r.key} writable={writable} onClick={() => setEditing(i)} />
+                  {r.inUse ? (
+                    <span style={{ fontSize: 11.5, color: 'var(--mfg)' }}>In use</span>
+                  ) : (
+                    <IconBtn
+                      label={`Remove ${r.key}`}
+                      glyph='trash'
+                      disabled={!writable}
+                      onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))}
+                    />
+                  )}
+                </RowActions>
               </TD>
             </TR>
           ))}

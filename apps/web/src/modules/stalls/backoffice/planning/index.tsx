@@ -1,9 +1,9 @@
-import type { StallPrivilege } from '@msr/stalls';
+import type { StallPrivilege } from '@stalls/core';
 import { useState } from 'react';
 import * as api from '../../api';
 import { useLoad } from '../../hooks';
 import { useMe } from '../../me';
-import { ErrorBox, H1, Icon, Loading, Select, Tag, toolBtnStyle, useToast } from '../../ui';
+import { ErrorBox, H1, Icon, Loading, Select, Tabs, Tag, useToast } from '../../ui';
 import { Bays } from './Bays';
 import { Charges } from './Charges';
 import { PlanCategories } from './Columns';
@@ -98,7 +98,7 @@ export function Planning() {
         icon={<Icon name='layers' size={18} />}
         // ⚠️ The edition only while a configuration tab is open. The plan grid
         // is always the ACTIVE edition — `getPlan` takes no edition — so a
-        // subtitle reading "MSR 2025 · read only" over it would name a year the
+        // subtitle reading "Stalls 2025 · read only" over it would name a year the
         // grid underneath is not showing.
         sub={
           onPlan || !c ? undefined : (
@@ -114,29 +114,15 @@ export function Planning() {
         Planning &amp; Zones
       </H1>
 
-      {/* ⚠️ Tabs as toolbar buttons on the shared control skin, not an underlined
-          rail. `toolBtnStyle` is the one look a chosen control wears across the
-          product, and a tab strip here would be another near-copy of it. */}
+      {/* The shared underlined rail, as on Admin. Hidden when a coordinator can
+          reach only one section — a one-tab rail names nothing. */}
       {tabs.length > 1 && (
-        <div
-          style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}
-          role='tablist'
-          aria-label='Planning Sections'
-        >
-          {tabs.map((t) => (
-            <button
-              key={t.label}
-              type='button'
-              role='tab'
-              aria-selected={tab === t.label}
-              onClick={() => setChosen(t.label)}
-              style={toolBtnStyle(tab === t.label)}
-            >
-              <Icon name={t.glyph} size={14} />
-              {t.label}
-            </button>
-          ))}
-        </div>
+        <Tabs
+          label='Planning Sections'
+          tabs={tabs.map((t) => ({ key: t.label, label: t.label, glyph: t.glyph }))}
+          active={tab ?? ''}
+          onPick={(k) => setChosen(k as Tab)}
+        />
       )}
 
       {/* The edition being looked at. Above the panel rather than inside it: it
@@ -158,7 +144,7 @@ export function Planning() {
           <Select
             id='planning-edition'
             value={viewing || (editions.data?.find((e) => e.isActive)?.id ?? '')}
-            onChange={(e) => setViewing(e.target.value)}
+            onChange={(v) => setViewing(v)}
             style={{ width: 'auto', minWidth: 190 }}
           >
             {editions.data?.map((e) => (

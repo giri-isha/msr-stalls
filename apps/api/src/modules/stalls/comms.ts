@@ -14,7 +14,7 @@ import {
   formatInr,
   renderTemplate,
   virtualAccountFor,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { recordActivity } from '../../activity';
 import { mintAccessLink } from './accounts';
 import type { StallsDeps } from './deps';
@@ -135,9 +135,7 @@ export async function setTemplateAttachment(
 // ── Who is due a letter ─────────────────────────────────────────────────────
 
 function suggestedTemplate(requestType: string): TemplateKeyValue {
-  return requestType === 'ASHRAM' || requestType === 'ASHRAM_FOOD'
-    ? 'SELECTION_ASHRAM'
-    : 'SELECTION_VENDOR';
+  return requestType === 'ASHRAM' ? 'SELECTION_ASHRAM' : 'SELECTION_VENDOR';
 }
 
 /** Everyone SELECTED, with what has already gone out. Not paginated: the whole

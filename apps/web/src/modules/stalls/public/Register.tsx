@@ -1,4 +1,4 @@
-import { MIN_PASSWORD_LENGTH } from '@msr/stalls';
+import { MIN_PASSWORD_LENGTH } from '@stalls/core';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { registerRequester } from '../api';

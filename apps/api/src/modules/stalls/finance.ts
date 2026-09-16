@@ -9,7 +9,7 @@ import {
   computeRefund,
   equipmentDeduction,
   needsPaymentStep,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { recordActivity } from '../../activity';
 import { ValidationFailedError } from '../../errors';
 import { chargesFor } from './config';

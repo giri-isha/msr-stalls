@@ -1,5 +1,5 @@
-import type { RoleSummary } from '@msr/stalls';
-import { Icon, IconBtn, Tag, card } from '../../ui';
+import type { RoleSummary } from '@stalls/core';
+import { card, Icon, IconBtn, RowActions, Tag } from '../../ui';
 import { scopeLabel } from './catalogue';
 
 /** `1 user`, `2 users` — the count and the noun agreeing, because a card that
@@ -81,7 +81,7 @@ export function RoleCard({
         </div>
 
         {writable && (
-          <div style={{ display: 'flex', gap: 6 }}>
+          <RowActions>
             <IconBtn
               label={`Edit ${role.name}`}
               glyph='pencil'
@@ -100,7 +100,7 @@ export function RoleCard({
                 disabled={!role.assignable || role.grantCount > 0}
               />
             )}
-          </div>
+          </RowActions>
         )}
       </div>
 

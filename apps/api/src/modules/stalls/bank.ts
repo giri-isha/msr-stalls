@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
-import type { BankFormView, SubmitBankDetailsInput } from '@msr/stalls';
+import { type BankFormView, type SubmitBankDetailsInput, validateAgainstForm } from '@stalls/core';
+import { ValidationFailedError } from '../../errors';
 import { recordActivity } from '../../activity';
 import { flowFor } from './config';
 import { declarationsForForm, recordConsent, sameDeclarations } from './declarations';
@@ -90,9 +91,36 @@ export async function submitBankDetails(
 
   // Keys the browser sends back must be ones this module handed out, for this
   // purpose. See `isOurKey`.
-  if (!isOurKey(input.chequeKey, 'BANK_CHEQUE')) throw new StepNotOpenError('cheque upload');
-  if (!isOurKey(input.panKey, 'BANK_PAN')) throw new StepNotOpenError('PAN upload');
+  // ⚠️ Checked only when PRESENT. Whether a document is required is the
+  // definition's call — an edition may stop asking for a PAN card — and what
+  // this guards is that a key which did arrive is one we minted.
+  if (input.chequeKey && !isOurKey(input.chequeKey, 'BANK_CHEQUE')) {
+    throw new StepNotOpenError('cheque upload');
+  }
+  if (input.panKey && !isOurKey(input.panKey, 'BANK_PAN')) {
+    throw new StepNotOpenError('PAN upload');
+  }
   if (input.gstKey && !isOurKey(input.gstKey, 'BANK_GST')) throw new StepNotOpenError('GST upload');
+
+  // 🔴 What the EDITION'S OWN FORM insists on. The contract above can only say
+  // what a field's TYPE is — which questions must be answered is a property of
+  // the field rows, and an admin may mark one optional or stop asking it. A
+  // rule the page applies and the API does not is a form somebody submits by
+  // hand with half of it blank; a rule the CONTRACT applies and the definition
+  // does not is a form the Form Builder configured and nobody can submit.
+  //
+  // ⚠️ Skipped when the edition has no definition yet — the window between
+  // deploying and the API next starting, exactly as `submitRequest` does.
+  const form = await publicFormFor(db, r.editionId, 'BANK');
+  if (form) {
+    const violations = validateAgainstForm(form, {
+      builtIn: input as unknown as Record<string, unknown>,
+      custom: input.customFields ?? {},
+    });
+    if (violations.length > 0) {
+      throw new ValidationFailedError(violations.map((v) => ({ row: 0, ...v })));
+    }
+  }
 
   const now = new Date();
   await db.$transaction(async (tx) => {
@@ -118,7 +146,7 @@ export async function submitBankDetails(
     await tx.stallBankDetail.create({
       data: {
         requestId,
-        email: input.email.trim().toLowerCase(),
+        email: input.email?.trim().toLowerCase() || null,
         invoiceName: input.invoiceName,
         accountHolder: input.accountHolder,
         mobile: input.mobile,
@@ -176,7 +204,7 @@ export async function submitBankDetails(
       moduleKey: MODULE_KEY,
       action: 'stall_bank_detail.submitted',
       subjectRef: requestId,
-      detail: { gst: input.gstNumber.toUpperCase() !== 'NONE' },
+      detail: { gst: (input.gstNumber ?? '').toUpperCase() !== 'NONE' },
     });
   });
 

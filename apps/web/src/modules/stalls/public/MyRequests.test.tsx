@@ -49,8 +49,8 @@ const PAYMENT = {
   feePaise: 11_800_000, // ₹1,18,000
   depositPaise: 2_000_000, // ₹20,000
   totalPaise: 13_800_000, // ₹1,38,000
-  virtualAccountRent: 'MSRR9840012345',
-  virtualAccountDeposit: 'MSRD9840012345',
+  virtualAccountRent: 'STALLR9840012345',
+  virtualAccountDeposit: 'STALLD9840012345',
 };
 
 const signedIn = (requests: unknown) =>
@@ -176,8 +176,8 @@ describe('MyRequests', () => {
     expect(screen.getByText('₹1,18,000')).toBeInTheDocument();
     expect(screen.getByText('₹20,000')).toBeInTheDocument();
     expect(screen.getByText('₹1,38,000')).toBeInTheDocument();
-    expect(screen.getByText('MSRR9840012345')).toBeInTheDocument();
-    expect(screen.getByText('MSRD9840012345')).toBeInTheDocument();
+    expect(screen.getByText('STALLR9840012345')).toBeInTheDocument();
+    expect(screen.getByText('STALLD9840012345')).toBeInTheDocument();
   });
 
   test('says where to ask rather than printing a blank account number', async () => {

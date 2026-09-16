@@ -7,7 +7,7 @@ import {
   type UpdatePersonInput,
   cannotAssign,
   cannotEdit,
-} from '@msr/stalls';
+} from '@stalls/core';
 import { recordActivity } from '../../activity';
 import { normalizeEmail } from './accounts';
 import type { Db } from './editions';

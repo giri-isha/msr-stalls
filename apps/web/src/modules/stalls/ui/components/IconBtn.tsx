@@ -50,7 +50,7 @@ export function IconBtn({
       title={label}
       disabled={disabled}
       // Conditional: a disabled control must not answer the pointer.
-      className={disabled ? undefined : 'msrs-icon-btn'}
+      className={disabled ? undefined : 'stalls-icon-btn'}
       onClick={(e) => {
         // ⚠️ These sit inside rows that are themselves clickable, so without
         // this, deleting a thing also navigates to it.
@@ -68,7 +68,13 @@ export function IconBtn({
         color: tone ?? 'var(--fg)',
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.35 : 1,
-        display: 'flex',
+        // ⚠️ INLINE-flex. `flex` is block level, so two of these in a table
+        // cell stacked one above the other and neither answered the cell's
+        // `align='right'` — a block box does not read `text-align`. Row actions
+        // belong in `RowActions`, which gives them their gap; this is what
+        // keeps a stray single one on the line it was written on.
+        display: 'inline-flex',
+        verticalAlign: 'middle',
         alignItems: 'center',
         justifyContent: 'center',
         padding: 0,

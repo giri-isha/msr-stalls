@@ -1,15 +1,18 @@
 import { describe, expect, test } from 'vitest';
-import { FORM_DEFINITIONS, fieldsFor, formDefinition } from './forms';
+import { FORM_DEFINITIONS, fieldsFor, formDefinition, isFoodOnlyField } from './forms';
 import { STALL_REQUEST_TYPES } from './reference';
 
 describe('FORM_DEFINITIONS', () => {
-  test('covers all four request types', () => {
-    expect(Object.keys(FORM_DEFINITIONS).sort()).toEqual([
-      'ASHRAM',
-      'ASHRAM_FOOD',
-      'LOCAL_WELFARE',
-      'VENDOR',
-    ]);
+  test('covers every request type', () => {
+    expect(Object.keys(FORM_DEFINITIONS).sort()).toEqual(['ASHRAM', 'LOCAL_WELFARE', 'VENDOR']);
+  });
+
+  /** 🔴 The two ashram forms are one. A department used to declare whether its
+   *  stall sells food by choosing a form, before being asked a single question;
+   *  picking wrong meant a request of the wrong type and no way back but a
+   *  fresh one. */
+  test('has no separate ashram food form', () => {
+    expect(Object.keys(FORM_DEFINITIONS)).not.toContain('ASHRAM_FOOD');
   });
 });
 
@@ -89,13 +92,23 @@ describe('fieldsFor ASHRAM', () => {
   test('is English-only, as the 2025 ashram form was', () => {
     for (const field of fieldsFor('ASHRAM')) expect(field.labelTa).toBeNull();
   });
-});
 
-describe('fieldsFor ASHRAM_FOOD', () => {
-  test('asks the same department questions as the ashram form', () => {
-    const byName = new Map(fieldsFor('ASHRAM_FOOD').map((f) => [f.name, f]));
-    expect(byName.has('departmentHead')).toBe(true);
-    expect(byName.has('gasStoves')).toBe(true);
+  /** 🔴 The question that replaced the second ashram form. It lands in the same
+   *  `stall_type` column the vendor and local welfare forms have always filled,
+   *  which is what already decides FSSAI, the rate card's food column and the
+   *  planning grid — so the merge cost the pipeline nothing. */
+  test('asks whether the stall sells food, rather than being two forms', () => {
+    expect(byName.get('stallType')?.type).toBe('select');
+    expect(byName.get('stallType')?.required).toBe(true);
+    expect(byName.get('stallType')?.options?.map((o) => o.value)).toEqual(['FOOD', 'NON_FOOD']);
+  });
+
+  /** ⚠️ Present on the one form, asked only of a food stall — `isFoodOnlyField`
+   *  is what both the page and the submit validator read to skip it. */
+  test('still asks about FSSAI, as a food-only question', () => {
+    expect(byName.has('fssaiExpected')).toBe(true);
+    expect(isFoodOnlyField('fssaiExpected')).toBe(true);
+    expect(isFoodOnlyField('stallType')).toBe(false);
   });
 });
 
