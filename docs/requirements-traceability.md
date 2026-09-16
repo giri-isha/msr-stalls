@@ -48,6 +48,8 @@ package both sides share.
 | One stall, one occupant | Database constraint on `StallAllocation.activeStallId`, not a check-then-write | Built |
 | Moving a requester to another bay — "that side is already filled up, why don't you look at this side" | `StallRequest.agreedZoneCode`, written by `POST /requests/:id/select` or `PATCH /requests/:id`. It is what the quote prices, ahead of the bay that was asked for | Built |
 | Selecting before a stall number exists — "the side will be decided, but the stall number may not be still put at the time of the payment" | `stallNumbers` may be empty; the bay alone selects the request | Built |
+| Correcting a stall number already given out | `PATCH /allocations/:id`, request detail → Allocation → Edit. One transaction gives the old stall back and takes the new one, so the stall being moved to cannot be taken in between | Built |
+| The number of stalls agreed, settled in the same call as the bay | Optional on `SelectDialog`, written through `PATCH /requests/:id`. Left alone it changes nothing; it is what the quote prices until a stall number exists | Built |
 | Correcting a request over the phone — "in case there are any other changes, we anyway speak to them and make that" | `PATCH /requests/:id`, Stall Requests → request detail → Amend. Status, allocations, money and the agreement timestamps are deliberately not patchable | Built |
 
 ## 4. Vendor communication

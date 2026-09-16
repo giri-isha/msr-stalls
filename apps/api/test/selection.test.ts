@@ -11,6 +11,7 @@ import {
 import {
   backupRequest,
   cancelRequest,
+  moveAllocation,
   rejectRequest,
   releaseAllocation,
   selectRequest,
@@ -200,5 +201,94 @@ describe('releaseAllocation', () => {
     const other = await submit({ email: 'other@x.com' });
     await selectRequest(prisma, { requestId: other.requestId, stallNumbers: ['A4-1'] }, SYSTEM);
     expect(await liveAllocations('A4-1')).toBe(1);
+  });
+});
+
+describe('moveAllocation', () => {
+  const liveStall = async (requestId: string) =>
+    (
+      await prisma.stallAllocation.findFirstOrThrow({
+        where: { requestId, releasedAt: null },
+        include: { stall: true },
+      })
+    ).stall.number;
+
+  test('corrects the number without giving the stall back to the pool', async () => {
+    const r = await submit();
+    await selectRequest(prisma, { requestId: r.requestId, stallNumbers: ['A4-1'] }, SYSTEM);
+    const a = await prisma.stallAllocation.findFirstOrThrow({ where: { requestId: r.requestId } });
+
+    await moveAllocation(prisma, a.id, 'A4-3', SYSTEM);
+
+    expect(await liveStall(r.requestId)).toBe('A4-3');
+    expect(await liveAllocations('A4-1')).toBe(0);
+    expect(await liveAllocations('A4-3')).toBe(1);
+    // Still one stall, not two — a move is not an extra allocation, and the
+    // count is what the request is priced on.
+    expect(
+      await prisma.stallAllocation.count({ where: { requestId: r.requestId, releasedAt: null } }),
+    ).toBe(1);
+    expect(await statusOf(r.requestId)).toBe('SELECTED');
+    // The old stall is free for someone else.
+    expect((await prisma.stall.findFirstOrThrow({ where: { number: 'A4-1' } })).status).toBe(
+      'AVAILABLE',
+    );
+  });
+
+  test('keeps the row that says the request once stood on the old stall', async () => {
+    const r = await submit();
+    await selectRequest(prisma, { requestId: r.requestId, stallNumbers: ['A4-1'] }, SYSTEM);
+    const a = await prisma.stallAllocation.findFirstOrThrow({ where: { requestId: r.requestId } });
+    await moveAllocation(prisma, a.id, 'A4-3', SYSTEM);
+
+    const history = await prisma.stallAllocation.findUniqueOrThrow({ where: { id: a.id } });
+    expect(history.releasedAt).not.toBeNull();
+    expect(history.activeStallId).toBeNull();
+  });
+
+  test('a stall somebody else holds is refused, and the move does not half-happen', async () => {
+    const mine = await submit({ email: 'mine@x.com' });
+    const theirs = await submit({ email: 'theirs@x.com' });
+    await selectRequest(prisma, { requestId: mine.requestId, stallNumbers: ['A4-1'] }, SYSTEM);
+    await selectRequest(prisma, { requestId: theirs.requestId, stallNumbers: ['A4-2'] }, SYSTEM);
+    const a = await prisma.stallAllocation.findFirstOrThrow({
+      where: { requestId: mine.requestId },
+    });
+
+    await expect(moveAllocation(prisma, a.id, 'A4-2', SYSTEM)).rejects.toBeInstanceOf(
+      StallAlreadyAllocatedError,
+    );
+    // 🔴 The point of the single transaction: the stall it was moving FROM is
+    // still held, so a refused correction has not cost the vendor their pitch.
+    expect(await liveStall(mine.requestId)).toBe('A4-1');
+    expect(await liveAllocations('A4-1')).toBe(1);
+  });
+
+  test('a number nobody laid out is refused', async () => {
+    const r = await submit();
+    await selectRequest(prisma, { requestId: r.requestId, stallNumbers: ['A4-1'] }, SYSTEM);
+    const a = await prisma.stallAllocation.findFirstOrThrow({ where: { requestId: r.requestId } });
+    await expect(moveAllocation(prisma, a.id, 'A4-99', SYSTEM)).rejects.toBeInstanceOf(
+      UnknownStallError,
+    );
+    expect(await liveStall(r.requestId)).toBe('A4-1');
+  });
+
+  test('moving a stall onto itself changes nothing and writes no second row', async () => {
+    const r = await submit();
+    await selectRequest(prisma, { requestId: r.requestId, stallNumbers: ['A4-1'] }, SYSTEM);
+    const a = await prisma.stallAllocation.findFirstOrThrow({ where: { requestId: r.requestId } });
+    await moveAllocation(prisma, a.id, 'A4-1', SYSTEM);
+    expect(await prisma.stallAllocation.count({ where: { requestId: r.requestId } })).toBe(1);
+    expect(await liveStall(r.requestId)).toBe('A4-1');
+  });
+
+  test('an allocation already released cannot be moved', async () => {
+    const r = await submit();
+    await selectRequest(prisma, { requestId: r.requestId, stallNumbers: ['A4-1'] }, SYSTEM);
+    const a = await prisma.stallAllocation.findFirstOrThrow({ where: { requestId: r.requestId } });
+    await releaseAllocation(prisma, a.id, SYSTEM);
+    await expect(moveAllocation(prisma, a.id, 'A4-3', SYSTEM)).rejects.toBeInstanceOf(Error);
+    expect(await liveAllocations('A4-3')).toBe(0);
   });
 });

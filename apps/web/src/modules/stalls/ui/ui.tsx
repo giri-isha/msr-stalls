@@ -525,6 +525,19 @@ export function Btn({
         // module had it both ways — 15 buttons spaced, 10 not — and the two
         // are indistinguishable in review and obvious side by side on screen.
         gap: 6,
+        // 🔴 A label is one line and is never squeezed. Without these three a
+        // button is a flex ITEM like any other: it shrinks to its longest word
+        // when the row runs out of room, so "Flag for Follow-Up" breaks across
+        // two lines inside a pill sized for one and the second line is cut off
+        // by the padding. It showed on the request rail, which is eight
+        // buttons wide, and in the allocation row, where the button sits beside
+        // a `flex:1` description that takes the space first. `Tag` and
+        // `toolBtnStyle` have said `nowrap` all along — this was the outlier.
+        // A rail that cannot fit its buttons wraps them, which is what its
+        // `flexWrap` is for.
+        whiteSpace: 'nowrap',
+        flexShrink: 0,
+        lineHeight: 1.35,
         padding: '8px 14px',
         // 🔴 Was `calc(var(--r4) - 6px)` — reasonable when the sheet had only
         // two steps and a control had nothing between them to name, but it tied

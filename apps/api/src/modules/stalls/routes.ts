@@ -35,6 +35,7 @@ import {
   ListRequestsQuery,
   ListUsersQuery,
   LogReminderInput,
+  MoveAllocationInput,
   CreateRoleInput,
   type ListPrivilegesResponse,
   type ListRolesResponse,
@@ -97,6 +98,7 @@ import {
   backupRequest,
   cancelRequest,
   rejectRequest,
+  moveAllocation,
   releaseAllocation,
   selectRequest,
   shortlist,
@@ -354,6 +356,24 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
         },
         caller.personId,
       );
+    },
+  );
+
+  /** A correction to a number already given out, kept out of DELETE + POST so
+   *  the stall being moved to cannot be taken in the gap between them. */
+  zod.patch(
+    '/allocations/:id',
+    { schema: { params: IdParams, body: MoveAllocationInput } },
+    async (req) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'selection.write');
+      await requireOwnerScope(caller, prisma, () =>
+        prisma.stallAllocation.findUnique({
+          where: { id: req.params.id },
+          select: { requestId: true },
+        }),
+      );
+      return moveAllocation(prisma, req.params.id, req.body.stallNumber, caller.personId);
     },
   );
 

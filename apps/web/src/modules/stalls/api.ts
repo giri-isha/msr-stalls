@@ -232,6 +232,13 @@ export const select = (id: string, stallNumbers: string[], agreedZoneCode?: stri
   });
 export const releaseAllocation = (allocationId: string) =>
   apiFetch<void>(`${BASE}/allocations/${allocationId}`, { method: 'DELETE' });
+/** Correct a stall number already given out. One call rather than a release
+ *  and a fresh select, so nobody can take the stall in between. */
+export const moveAllocation = (allocationId: string, stallNumber: string) =>
+  apiFetch<{ stallNumber: string }>(`${BASE}/allocations/${allocationId}`, {
+    method: 'PATCH',
+    json: { stallNumber },
+  });
 export const availableStalls = (zoneCode?: string) =>
   apiFetch<AvailableStall[]>(`${BASE}/stalls/available${qs({ zoneCode })}`);
 

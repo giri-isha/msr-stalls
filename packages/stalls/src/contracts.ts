@@ -528,6 +528,13 @@ export type PatchRequestInput = z.infer<typeof PatchRequestInput>;
 
 // ── Backoffice: selection ────────────────────────────────────────────────────────
 
+/** A stall number as it is written everywhere else: bay, hyphen, position.
+ *  One definition, because selection and a later correction have to agree on
+ *  what a stall number IS. */
+const StallNumberValue = z
+  .string()
+  .regex(/^[A-Z]{1,2}\d{0,2}-[1-9]\d*$/, 'expected a stall number like A4-17');
+
 export const SelectRequestInput = z.object({
   /** ⚠️ MAY BE EMPTY, and routinely is.
    *
@@ -536,14 +543,22 @@ export const SelectRequestInput = z.object({
    *  still put at the time of the payment". Requiring a number here would force
    *  the two decisions into one moment and pin a vendor to a pitch nobody has
    *  walked yet. `agreedZoneCode` carries the half that has been decided. */
-  stallNumbers: z
-    .array(z.string().regex(/^[A-Z]{1,2}\d{0,2}-[1-9]\d*$/, 'expected a stall number like A4-17'))
-    .max(10)
-    .default([]),
+  stallNumbers: z.array(StallNumberValue).max(10).default([]),
   /** The bay being agreed, when it is being agreed at the same time. */
   agreedZoneCode: ZoneCodeValue.optional(),
 });
 export type SelectRequestInput = z.infer<typeof SelectRequestInput>;
+
+/** Moving a live allocation onto a different stall.
+ *
+ *  🔴 A correction, not a second decision. A number goes onto the wrong record,
+ *  or a bay is re-laid after the letter went out, and until this existed the
+ *  only way back was Release followed by Select — two calls, between which the
+ *  stall being moved TO is free for anyone else to take and the request holds
+ *  one stall fewer than it was given. The move is one transaction, so it cannot
+ *  half-happen. */
+export const MoveAllocationInput = z.object({ stallNumber: StallNumberValue });
+export type MoveAllocationInput = z.infer<typeof MoveAllocationInput>;
 
 export interface AvailableStall {
   id: string;

@@ -1,4 +1,4 @@
-import type { OnboardingDetail, RequestDetail as Detail } from '@stalls/core';
+import type { OnboardingDetail, RequestAllocation, RequestDetail as Detail } from '@stalls/core';
 import { useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { ApiError } from '../api-client';
@@ -33,6 +33,7 @@ import {
   titleCase,
 } from '../ui';
 import { AmendDialog } from './AmendDialog';
+import { MoveAllocationDialog } from './MoveAllocationDialog';
 import { SelectDialog } from './SelectDialog';
 
 const USAGE: Record<string, string> = {
@@ -101,6 +102,10 @@ export function RequestDetail() {
   const [reason, setReason] = useState('');
   const [selecting, setSelecting] = useState(false);
   const [amending, setAmending] = useState(false);
+  // ⚠️ Held here rather than in `Allocations` for the Escape gate below: this
+  // page closes on Escape, and a dialog whose open state it cannot see would
+  // be dismissed together with the record behind it.
+  const [moving, setMoving] = useState<RequestAllocation | null>(null);
   const [tab, setTab] = useState('application');
 
   const listPath = pathname.slice(0, pathname.lastIndexOf('/'));
@@ -111,7 +116,7 @@ export function RequestDetail() {
   // picker are `Dialog`s with their own Escape handler; without this gate one
   // key press closes both, so dismissing a confirm also walks off the record
   // behind it.
-  useEscape(() => navigate(listTo), reasonFor === null && !selecting && !amending);
+  useEscape(() => navigate(listTo), reasonFor === null && !selecting && !amending && !moving);
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -137,6 +142,13 @@ export function RequestDetail() {
 
   const canSelect = can('selection.write');
   const canWrite = can('requests.write');
+  /** 🔴 The rail's stall button goes away once the request holds everything it
+   *  was given. It stayed, reading "Add stall", onto a dialog that could only
+   *  say "release one first" — an action offered and then refused, on the
+   *  screen where the refusal is least obvious. Correcting a number that is
+   *  already there is Edit, in the allocation row itself, where the stall being
+   *  corrected is named. */
+  const fullyAllocated = !!r && r.allocations.length >= r.numStallsRequested;
 
   /**
    * ⚠️ A tab is present when the form is part of THIS requester's flow, not
@@ -270,12 +282,15 @@ export function RequestDetail() {
                 Backup
               </Btn>
             )}
-            {canSelect && r.status !== 'REJECTED' && r.status !== 'CANCELLED' && (
-              <Btn kind='primary' disabled={busy} onClick={() => setSelecting(true)}>
-                <Icon name={r.status === 'SELECTED' ? 'plus' : 'map-pin'} size={14} />
-                {r.status === 'SELECTED' ? 'Add stall' : 'Select…'}
-              </Btn>
-            )}
+            {canSelect &&
+              r.status !== 'REJECTED' &&
+              r.status !== 'CANCELLED' &&
+              !(r.status === 'SELECTED' && fullyAllocated) && (
+                <Btn kind='primary' disabled={busy} onClick={() => setSelecting(true)}>
+                  <Icon name={r.status === 'SELECTED' ? 'plus' : 'map-pin'} size={14} />
+                  {r.status === 'SELECTED' ? 'Add stall' : 'Select…'}
+                </Btn>
+              )}
             {canSelect && r.status !== 'REJECTED' && r.status !== 'CANCELLED' && (
               <Btn kind='danger' disabled={busy} onClick={() => setReasonFor('reject')}>
                 <Icon name='ban' size={14} />
@@ -312,7 +327,7 @@ export function RequestDetail() {
           </div>
 
           {r.allocations.length > 0 && (
-            <Allocations r={r} busy={busy} canSelect={canSelect} run={run} />
+            <Allocations r={r} busy={busy} canSelect={canSelect} run={run} onMove={setMoving} />
           )}
 
           {/* The shared underlined rail, the way Admin draws its sections. */}
@@ -373,6 +388,18 @@ export function RequestDetail() {
         />
       )}
 
+      {r && moving && (
+        <MoveAllocationDialog
+          allocation={moving}
+          stallName={r.stallName}
+          onClose={() => setMoving(null)}
+          onDone={() => {
+            setMoving(null);
+            reload();
+          }}
+        />
+      )}
+
       {r && amending && (
         <AmendDialog
           request={r}
@@ -387,19 +414,27 @@ export function RequestDetail() {
   );
 }
 
-/** The stall numbers this request holds, and the one control that gives one
- *  back. Above the tabs rather than inside Application: an allocation is what
- *  the team decided, not something the requester filled in. */
+/** The stall numbers this request holds, and the two controls that change
+ *  one. Above the tabs rather than inside Application: an allocation is what
+ *  the team decided, not something the requester filled in.
+ *
+ *  ⚠️ Edit and Release are different acts and are worth keeping apart. Release
+ *  gives the pitch back to the pool because the vendor is not taking it; Edit
+ *  keeps it and corrects WHICH pitch it is, which is the common case — a number
+ *  typed against the wrong row, or a bay re-laid after the letter went out.
+ *  Doing the second with the first cost the vendor their place in the gap. */
 function Allocations({
   r,
   busy,
   canSelect,
   run,
+  onMove,
 }: {
   r: Detail;
   busy: boolean;
   canSelect: boolean;
   run: (label: string, fn: () => Promise<unknown>) => Promise<void>;
+  onMove: (allocation: RequestAllocation) => void;
 }) {
   return (
     <Card pad={0} style={{ marginBottom: 16 }}>
@@ -424,13 +459,19 @@ function Allocations({
                 {titleCase(a.category)} · {formatDateTime(a.allocatedAt)}
               </span>
               {canSelect && (
-                <Btn
-                  disabled={busy}
-                  onClick={() => run('Released', () => api.releaseAllocation(a.id))}
-                >
-                  <Icon name='x' size={13} />
-                  Release
-                </Btn>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Btn disabled={busy} onClick={() => onMove(a)}>
+                    <Icon name='pencil' size={13} />
+                    Edit
+                  </Btn>
+                  <Btn
+                    disabled={busy}
+                    onClick={() => run('Released', () => api.releaseAllocation(a.id))}
+                  >
+                    <Icon name='x' size={13} />
+                    Release
+                  </Btn>
+                </div>
               )}
             </div>
           ))}
