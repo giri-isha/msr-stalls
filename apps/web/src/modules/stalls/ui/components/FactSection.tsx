@@ -65,7 +65,15 @@ export function Facts({ items }: { items: [string, React.ReactNode][] }) {
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))',
+        // 🔴 `auto-fill`, not `auto-fit`. Both lay the same number of tracks,
+        // but `auto-fit` COLLAPSES the ones no cell landed in, so a block of
+        // three facts stretches its three cells across the full width while the
+        // block above it — four facts, four tracks, none empty — keeps the
+        // narrower column. Stacked in one card the two read as different grids:
+        // Electrical's labels sat a third of the way in, nowhere near the
+        // column Application had just established. `auto-fill` keeps the empty
+        // track, so every block on a card shares one set of column positions.
+        gridTemplateColumns: 'repeat(auto-fill,minmax(210px,1fr))',
         gap: '14px 20px',
       }}
     >

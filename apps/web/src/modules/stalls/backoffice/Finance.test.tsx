@@ -146,7 +146,7 @@ describe('confirming a credit', () => {
 
     const dialog = await screen.findByRole('dialog');
     await user.click(
-      within(dialog).getByRole('button', { name: 'Agree a Different Fee for This Stall…' }),
+      within(dialog).getByRole('button', { name: 'Agree a Different Fee for This Stall' }),
     );
     await user.type(within(dialog).getByLabelText('Fee Agreed (₹)'), '5000');
     await user.type(within(dialog).getByLabelText('Why'), 'Local welfare — agreed by the dept');
@@ -171,7 +171,7 @@ describe('confirming a credit', () => {
     await user.click(await screen.findByRole('button', { name: 'Record Credit' }));
     const dialog = await screen.findByRole('dialog');
     await user.click(
-      within(dialog).getByRole('button', { name: 'Agree a Different Fee for This Stall…' }),
+      within(dialog).getByRole('button', { name: 'Agree a Different Fee for This Stall' }),
     );
     await user.type(within(dialog).getByLabelText('Fee Agreed (₹)'), '5000');
     await user.click(within(dialog).getByRole('button', { name: 'Save Agreed Fee' }));
