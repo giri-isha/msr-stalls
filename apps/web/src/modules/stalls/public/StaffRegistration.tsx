@@ -218,9 +218,12 @@ export function StaffRegistration() {
                 />
               </FormField>
               <FormField id='staff-idtype' label='ID Proof' required>
+                {/* ⚠️ `?? ''` for the TYPE, not for the screen: the contract
+                    made this optional once a form was allowed to stop asking
+                    for it, and the state here still starts on a real choice. */}
                 <Select
                   id='staff-idtype'
-                  value={idType}
+                  value={idType ?? ''}
                   onChange={(v) => setIdType(v as RegisterStaffInput['idType'])}
                 >
                   {ID_TYPES.map(([value, label]) => (

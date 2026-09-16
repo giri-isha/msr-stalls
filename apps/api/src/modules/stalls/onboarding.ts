@@ -13,6 +13,7 @@ import {
   needsPaymentStep,
   normalizeCouponCode,
 } from '@stalls/core';
+import { ValidationFailedError } from '../../errors';
 import { recordActivity } from '../../activity';
 import type { MediaStore } from '../../storage/media-namespace';
 import { flowFor } from './config';
@@ -26,7 +27,7 @@ import {
   UnknownCouponError,
   UnknownRequestError,
 } from './errors';
-import { DEFAULT_STAFF_COUPON_CAPACITY } from '@stalls/core';
+import { DEFAULT_STAFF_COUPON_CAPACITY, validateAgainstForm } from '@stalls/core';
 import {
   allocatedNumbers,
   factsInclude,
@@ -227,7 +228,14 @@ export async function setCouponCapacity(
 /** Aadhaar is reduced to its last four digits and never stored whole. The gate
  *  volunteer compares four digits against the card in a person's hand; the
  *  system has no use for the other eight and every reason not to hold them. */
-function narrowId(idType: RegisterStaffInput['idType'], idNumber: string): string {
+/** ⚠️ Null in, null out. An edition may stop asking for an ID at all, and a
+ *  narrowed empty string would read as an answer of "" at the check-in counter
+ *  rather than as a question nobody asked. */
+function narrowId(
+  idType: RegisterStaffInput['idType'] | undefined,
+  idNumber: string | undefined,
+): string | null {
+  if (!idNumber) return null;
   const cleaned = idNumber.replace(/\s+/g, '').toUpperCase();
   return idType === 'AADHAAR' ? cleaned.slice(-4) : cleaned;
 }
@@ -251,6 +259,19 @@ export async function registerStaff(
     throw new CouponFullError(cap);
   }
 
+  // 🔴 What the edition's own staff form insists on. See the note in
+  // `submitBankDetails`: shape is the contract's, required-ness is the rows'.
+  const staffForm = await publicFormFor(db, request.editionId, 'STAFF');
+  if (staffForm) {
+    const violations = validateAgainstForm(staffForm, {
+      builtIn: input as unknown as Record<string, unknown>,
+      custom: input.customFields ?? {},
+    });
+    if (violations.length > 0) {
+      throw new ValidationFailedError(violations.map((v) => ({ row: 0, ...v })));
+    }
+  }
+
   // One transaction, so a person's row and their own consent are written
   // together or not at all. A registration recorded without the consent it was
   // given under is exactly the gap this work closes.
@@ -263,15 +284,15 @@ export async function registerStaff(
       create: {
         requestId: request.id,
         couponId: coupon.id,
-        name: input.name,
+        name: input.name ?? null,
         mobile: input.mobile,
-        idType: input.idType,
+        idType: input.idType ?? null,
         idNumber: narrowId(input.idType, input.idNumber),
         role: input.role ?? null,
       },
       update: {
-        name: input.name,
-        idType: input.idType,
+        name: input.name ?? null,
+        idType: input.idType ?? null,
         idNumber: narrowId(input.idType, input.idNumber),
         role: input.role ?? null,
       },
@@ -335,6 +356,17 @@ export async function submitFssai(
     where: { id: requestId },
     select: { editionId: true },
   });
+
+  const fssaiForm = await publicFormFor(db, r.editionId, 'FSSAI');
+  if (fssaiForm) {
+    const violations = validateAgainstForm(fssaiForm, {
+      builtIn: { ...input, files: input.files.map((f) => f.key) },
+      custom: input.customFields ?? {},
+    });
+    if (violations.length > 0) {
+      throw new ValidationFailedError(violations.map((v) => ({ row: 0, ...v })));
+    }
+  }
 
   await db.$transaction(async (tx) => {
     // The same staleness refusal the request and bank forms make. The FSSAI

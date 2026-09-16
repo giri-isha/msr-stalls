@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { NO_RULES } from './field-rules';
 import {
   AUTHORABLE_FIELD_TYPES,
   type BuiltForm,
@@ -370,5 +371,66 @@ describe('a display block', () => {
   test('is dropped when it is switched off', () => {
     const f = form([field({ id: 'd1', type: 'display', isActive: false })]);
     expect(formFields(f)).toEqual([]);
+  });
+});
+
+describe('a files question', () => {
+  const filesForm = (over: Partial<BuiltFormField> = {}): BuiltForm => ({
+    formType: 'FSSAI',
+    title: 'FSSAI',
+    titleTa: null,
+    sections: [],
+    fields: [
+      {
+        id: 'f1',
+        name: 'files',
+        label: 'FSSAI Certificate',
+        labelTa: null,
+        help: null,
+        helpTa: null,
+        type: 'files',
+        required: true,
+        isBuiltIn: true,
+        isActive: true,
+        sectionId: null,
+        sortOrder: 0,
+        options: null,
+        mediaKey: null,
+        ...NO_RULES,
+        max: 5,
+        ...over,
+      },
+    ],
+  });
+
+  /** ⚠️ A cap only the page applies is one a hand-built post ignores.
+   *
+   *  The wording is `field-rules`' own: the count on a `files` question is the
+   *  same `max` a `tel` counts digits with, and it is refused by the one limit
+   *  check every question goes through rather than by a rule of its own. */
+  test('refuses more files than its max', () => {
+    const tooMany = Array.from({ length: 6 }, (_, i) => `k${i}`);
+    const out = validateAgainstForm(filesForm(), { builtIn: { files: tooMany }, custom: {} });
+    expect(out).toHaveLength(1);
+    expect(out[0]?.message).toContain('at most 5');
+  });
+
+  test('accepts exactly its max', () => {
+    const exact = Array.from({ length: 5 }, (_, i) => `k${i}`);
+    expect(validateAgainstForm(filesForm(), { builtIn: { files: exact }, custom: {} })).toEqual([]);
+  });
+
+  /** An empty list is an unanswered question, not a list of nothing. */
+  test('an empty list is blank when required', () => {
+    const out = validateAgainstForm(filesForm(), { builtIn: { files: [] }, custom: {} });
+    expect(out.map((v) => v.fieldKey)).toEqual(['files']);
+  });
+
+  /** 🔴 The form that is nothing BUT an upload. Switching its one question off
+   *  has to be possible, which is why the contract no longer carries a
+   *  hardcoded minimum. */
+  test('and nothing is required once the question is switched off', () => {
+    const off = filesForm({ isActive: false });
+    expect(validateAgainstForm(off, { builtIn: {}, custom: {} })).toEqual([]);
   });
 });
