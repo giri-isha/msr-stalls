@@ -1308,6 +1308,16 @@ model StallPaymentPlan {
   depositTotalPaise     Int      @map("deposit_total_paise")
   quotedAt              DateTime @default(now()) @map("quoted_at") @db.Timestamptz
 
+  /// The itemised charges as they stood when the letter went out — `QuoteLine[]`.
+  ///
+  /// 🔴 Frozen, not recomputed. The plan is what the vendor was TOLD, and a
+  /// vendor who revised their plug points after the letter would otherwise get
+  /// a reprint whose lines no longer add up to the total beside them.
+  ///
+  /// Null on plans frozen before this column existed; the letter then prints
+  /// the summed figures it always did.
+  lines                 Json?
+
   /// What was actually agreed, where the team agreed something other than the
   /// quote.
   ///

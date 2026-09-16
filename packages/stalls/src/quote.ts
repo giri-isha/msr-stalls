@@ -76,10 +76,29 @@ export interface QuoteInput {
   tables: number;
 }
 
+/**
+ * One charged item, as the payment letter prints it.
+ *
+ * 🔴 `count` and `unitRatePaise` exist because the 2025 letter shows the
+ * arithmetic — "15 Amp : 4 × 1000 : ₹4,000.00" — and a vendor querying their
+ * bill asks about the multiplication, not the total. A summed line cannot
+ * answer "why four thousand?", so the reader has to take it on trust or ring up.
+ *
+ * ⚠️ `group` is what the letter indents under. Plug points and furniture each
+ * print a heading with their items beneath, exactly as the 2025 document does;
+ * the stall rent stands alone.
+ */
 export interface QuoteLine {
-  key: 'stall' | 'plugs' | 'equipment';
+  key: 'stall' | 'plugs5a' | 'plugs15a' | 'chairs' | 'tables';
+  group: 'stall' | 'plugs' | 'equipment';
   label: string;
+  /** How many. `1` for the stall rent when a single stall was allocated. */
+  count: number;
+  unitRatePaise: number;
   amountPaise: number;
+  /** Chairs and tables are charged per DAY; nothing else is. Null where the
+   *  multiplication has no day in it, so the letter does not print "× 1 day". */
+  days: number | null;
 }
 
 export interface Quote {
@@ -138,6 +157,26 @@ function chairTableRates(
 /** Returns `null` when this bay carries no rate at this requester's scope, so
  *  the caller can say "not priced" rather than "free". A zero would read as a
  *  stall given away. */
+/** One line, with its arithmetic intact. */
+function line(
+  key: QuoteLine['key'],
+  group: QuoteLine['group'],
+  label: string,
+  count: number,
+  unitRatePaise: number,
+  days: number | null,
+): QuoteLine {
+  return {
+    key,
+    group,
+    label,
+    count,
+    unitRatePaise,
+    days,
+    amountPaise: count * unitRatePaise * (days ?? 1),
+  };
+}
+
 export function quoteRequest(
   input: QuoteInput,
   card: RateCardEntry[],
@@ -186,22 +225,23 @@ export function quoteRequest(
     input.chairs > 0 || input.tables > 0 ? rates.chairTableDepositPaise : 0;
 
   return {
+    // ⚠️ Every item, including the ones charged nothing. The letter drops the
+    // zeroes when it prints; a quote that dropped them here could not tell
+    // "asked for none" from "not charged for", and the electrical sheet reads
+    // the same rows.
     lines: [
-      {
-        key: 'stall',
-        label: `Stall rent × ${numStalls}`,
-        amountPaise: stallFeePaise,
-      },
-      {
-        key: 'plugs',
-        label: `Plug points (${input.plugs5a} × 5A, ${input.plugs15a} × 15A)`,
-        amountPaise: plugFeePaise,
-      },
-      {
-        key: 'equipment',
-        label: `Chairs and tables (${input.chairs} chairs, ${input.tables} tables${days > 1 ? `, ${days} days` : ''})`,
-        amountPaise: equipmentFeePaise,
-      },
+      line('stall', 'stall', 'Rent for the stall', numStalls, unitRate, null),
+      line('plugs5a', 'plugs', '5 Amp', Math.max(0, input.plugs5a), rates.plug5aRatePaise, null),
+      line(
+        'plugs15a',
+        'plugs',
+        '15 Amp',
+        Math.max(0, input.plugs15a),
+        rates.plug15aRatePaise,
+        null,
+      ),
+      line('chairs', 'equipment', 'Chair', Math.max(0, input.chairs), chair, days),
+      line('tables', 'equipment', 'Table', Math.max(0, input.tables), table, days),
     ],
     stallFeePaise,
     plugFeePaise,

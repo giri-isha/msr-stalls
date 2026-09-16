@@ -8,6 +8,7 @@ export * from './form-builder';
 export * from './onboarding';
 export * from './public-forms';
 export * from './quote';
+export * from './quote-letter';
 export * from './rates';
 export * from './rbac';
 export * from './signing';
