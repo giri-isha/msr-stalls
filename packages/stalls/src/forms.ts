@@ -43,7 +43,13 @@ export type FieldType =
   | 'appliances'
   /** The preferred-location radio list. Its choices are the edition's zones,
    *  resolved at render time rather than stored here. */
-  | 'zone';
+  | 'zone'
+  /** One file. The answer is a media-store KEY, never bytes — no column in this
+   *  module ever holds a file. */
+  | 'file'
+  /** Several files, up to `max`. The FSSAI certificate is photographed a page
+   *  at a time, which is the case this exists for. */
+  | 'files';
 
 export interface FieldOption {
   value: string;

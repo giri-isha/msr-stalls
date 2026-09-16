@@ -24,6 +24,10 @@ const FOLDER: Record<PresignUploadInput['purpose'], string> = {
   BANK_GST: 'bank/gst',
   FSSAI: 'fssai',
   TEMPLATE_ATTACHMENT: 'templates',
+  // 🔴 A folder PER FIELD, not one bucket for every admin-added question. The
+  // field id goes in the path, so a key minted for the PAN upload can never be
+  // presented as the answer to the GST one — see `isOurKey`.
+  FORM_FIELD: 'form-field',
 };
 
 /** Images and PDFs. A cancelled cheque is photographed on a phone and a
@@ -62,7 +66,18 @@ export async function presignUpload(
     throw new UnsupportedFileTypeError(`${Math.round(input.bytes / 1_000_000)}MB`);
   }
 
-  const key = `${NAMESPACE}${FOLDER[input.purpose]}/${randomUUID()}.${ext}`;
+  // ⚠️ `FORM_FIELD` needs the question it answers, and refuses without one.
+  // A key under a shared `form-field/` root would be valid for every
+  // admin-added file question at once, which is the guarantee the other five
+  // purposes get from having a folder to themselves.
+  if (input.purpose === 'FORM_FIELD' && !input.fieldId) {
+    throw new UnsupportedFileTypeError('a file question id');
+  }
+  const folder =
+    input.purpose === 'FORM_FIELD'
+      ? `${FOLDER.FORM_FIELD}/${input.fieldId}`
+      : FOLDER[input.purpose];
+  const key = `${NAMESPACE}${folder}/${randomUUID()}.${ext}`;
   const { url, headers } = await files.presignUpload({
     key,
     contentType: input.contentType,
@@ -71,15 +86,33 @@ export async function presignUpload(
   return { key, url, headers };
 }
 
+const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+
 /** Refuses a key the caller did not get from `presignUpload` for this purpose.
  *
  *  The browser sends back a key when it submits the form, and without this a
  *  vendor could post any key under the namespace — including another vendor's
  *  cancelled cheque — and have it filed as their own. The shape is the whole
- *  check: a UUID under the folder this purpose writes to. */
-export function isOurKey(key: string, purpose: PresignUploadInput['purpose']): boolean {
-  const pattern = new RegExp(
-    `^${NAMESPACE}${FOLDER[purpose]}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.[a-z0-9]{2,5}$`,
-  );
-  return pattern.test(key);
+ *  check: a UUID under the folder this purpose writes to.
+ *
+ *  🔴 For `FORM_FIELD` the folder INCLUDES the field id, so `fieldId` is
+ *  required and a key minted for one question is refused for every other one.
+ *  Without it a vendor could answer "GST certificate" with the file they
+ *  uploaded for "PAN card" — both are their own files, both were minted
+ *  legitimately, and the record would still be wrong. */
+export function isOurKey(
+  key: string,
+  purpose: PresignUploadInput['purpose'],
+  fieldId?: string,
+): boolean {
+  if (purpose === 'FORM_FIELD') {
+    if (!fieldId) return false;
+    // The id is interpolated into a pattern, so anything but a plain uuid is
+    // refused outright rather than allowed to carry regex metacharacters.
+    if (!new RegExp(`^${UUID}$`).test(fieldId)) return false;
+    return new RegExp(`^${NAMESPACE}${FOLDER.FORM_FIELD}/${fieldId}/${UUID}\\.[a-z0-9]{2,5}$`).test(
+      key,
+    );
+  }
+  return new RegExp(`^${NAMESPACE}${FOLDER[purpose]}/${UUID}\\.[a-z0-9]{2,5}$`).test(key);
 }

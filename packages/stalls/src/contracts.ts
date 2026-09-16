@@ -1777,7 +1777,22 @@ export interface SendSignatureResult {
 // ── Uploads ─────────────────────────────────────────────────────────────────
 
 export const PresignUploadInput = z.object({
-  purpose: z.enum(['BANK_CHEQUE', 'BANK_PAN', 'BANK_GST', 'FSSAI', 'TEMPLATE_ATTACHMENT']),
+  /** ⚠️ `FORM_FIELD` is the only purpose that needs a `fieldId`, and it is the
+   *  purpose for a question an ADMIN added. The other five back typed columns
+   *  and keep their own folders, so every key already in the store stays
+   *  valid. */
+  purpose: z.enum([
+    'BANK_CHEQUE',
+    'BANK_PAN',
+    'BANK_GST',
+    'FSSAI',
+    'TEMPLATE_ATTACHMENT',
+    'FORM_FIELD',
+  ]),
+  /** Which question this upload answers. Required for `FORM_FIELD` and ignored
+   *  otherwise — it becomes part of the key's PATH, which is what makes a key
+   *  valid for exactly one question. */
+  fieldId: z.uuid().optional(),
   fileName: z.string().trim().min(1).max(300),
   contentType: z.string().trim().min(1).max(200),
   bytes: z.number().int().min(1).max(20_000_000),

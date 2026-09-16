@@ -6,6 +6,7 @@ export * from './money';
 export * from './declarations';
 export * from './form-builder';
 export * from './onboarding';
+export * from './public-forms';
 export * from './quote';
 export * from './rates';
 export * from './rbac';

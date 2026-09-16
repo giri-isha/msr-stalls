@@ -181,6 +181,11 @@ export const AUTHORABLE_FIELD_TYPES = [
   'select',
   'radio',
   'checkbox',
+  // ⚠️ Authorable, unlike `appliances` and `zone`, because a file field needs
+  // nothing resolved at render time — its upload purpose is `FORM_FIELD` and
+  // its own id scopes the key. See `isOurKey`.
+  'file',
+  'files',
 ] as const satisfies readonly FieldType[];
 
 export type AuthorableFieldType = (typeof AUTHORABLE_FIELD_TYPES)[number];
@@ -189,9 +194,17 @@ export function isAuthorableFieldType(t: string): t is AuthorableFieldType {
   return (AUTHORABLE_FIELD_TYPES as readonly string[]).includes(t);
 }
 
-/** Whether this type needs a list of choices to mean anything. */
+/** Whether this type needs a list of choices to mean anything.
+ *
+ *  ⚠️ Never true for `file` or `files`: a file question with a choice list is a
+ *  question nobody can answer. */
 export function needsOptions(type: string): boolean {
   return type === 'select' || type === 'radio';
+}
+
+/** Whether an answer to this question is a media-store key rather than text. */
+export function isFileType(type: string): type is 'file' | 'files' {
+  return type === 'file' || type === 'files';
 }
 
 /* ── Validation ─────────────────────────────────────────────────────────────*/
@@ -267,6 +280,8 @@ export function validateAgainstForm(
  */
 function isBlank(v: unknown, type: FieldType): boolean {
   if (v === undefined || v === null) return true;
+  // A `file` answer is a key; the empty string is "nothing uploaded", not a
+  // file named "". `files` falls through to the array case below.
   if (typeof v === 'boolean') return type === 'checkbox' ? v === false : false;
   if (typeof v === 'string') return v.trim() === '';
   if (Array.isArray(v)) return v.length === 0;
