@@ -227,6 +227,20 @@ export async function formsFor(db: Db, editionId: string): Promise<BuilderForm[]
  *  ⚠️ `definitionId` is dropped rather than simply not asked for: it is the
  *  handle every write takes, and the public payload has no business carrying
  *  the address of something it cannot call. */
+/** One form's definition, for the page that draws it.
+ *
+ *  ⚠️ Returns null rather than throwing when an edition has no definition yet —
+ *  the window between deploying and the API next starting. The page then falls
+ *  back to what it can, rather than showing an error for a form that exists. */
+export async function publicFormFor(
+  db: Db,
+  editionId: string,
+  formType: StallFormType,
+): Promise<BuiltForm | null> {
+  const forms = await publicFormsFor(db, editionId);
+  return forms.find((f) => f.formType === formType) ?? null;
+}
+
 export async function publicFormsFor(db: Db, editionId: string): Promise<BuiltForm[]> {
   const forms = await formsFor(db, editionId);
   return forms.map(({ definitionId: _drop, ...form }) => form);

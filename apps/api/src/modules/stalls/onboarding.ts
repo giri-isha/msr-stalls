@@ -17,6 +17,8 @@ import { recordActivity } from '../../activity';
 import type { MediaStore } from '../../storage/media-namespace';
 import { flowFor } from './config';
 import { declarationsForForm, recordConsent, sameDeclarations } from './declarations';
+import { allowedCustomValues, replaceCustomValues } from './custom-values';
+import { publicFormFor } from './form-builder';
 import type { Db } from './editions';
 import {
   CouponFullError,
@@ -144,12 +146,25 @@ export async function resolveCoupon(
   return { request, coupon: rest };
 }
 
-export function toCouponView(r: RequestWithFacts, coupon: StallStaffCoupon): CouponView {
+/** ⚠️ Async now, because the view carries the edition's own definition of the
+ *  staff form. The page has to draw what THIS year asks — including a question
+ *  an admin appended — and that is a read. */
+export async function toCouponView(
+  db: Db,
+  r: RequestWithFacts,
+  coupon: StallStaffCoupon,
+): Promise<CouponView> {
+  const [form, declarations] = await Promise.all([
+    publicFormFor(db, r.editionId, 'STAFF'),
+    declarationsForForm(db, r.editionId, 'STAFF'),
+  ]);
   // ⚠️ Scoped to the coupon in the reader's hand. The page is seen by the
   // vendor's team and, where a stall holds two codes, by a caterer's team as
   // well — neither is owed the other's roster or the other's remaining room.
   const mine = r.staff.filter((st) => st.couponId === coupon.id);
   return {
+    form,
+    declarations,
     stallName: r.stallName,
     reference: r.reference,
     // ⚠️ Withheld until the stall checks in, like everywhere else the requester
@@ -276,7 +291,7 @@ export async function registerStaff(
     where: { id: request.id },
     include: factsInclude,
   });
-  return toCouponView(fresh, coupon);
+  return toCouponView(db, fresh, coupon);
 }
 
 export async function listStaffFor(db: Db, requestId: string): Promise<VendorStaffView[]> {
@@ -328,6 +343,12 @@ export async function submitFssai(
     const live = await declarationsForForm(tx, r.editionId, 'FSSAI');
     if (!sameDeclarations(live, input.declarationIds)) throw new DeclarationsChangedError();
     await recordConsent(tx, { requestId, formType: 'FSSAI' }, live);
+
+    await replaceCustomValues(
+      tx,
+      { requestId },
+      await allowedCustomValues(tx, r.editionId, 'FSSAI', input.customFields),
+    );
 
     await tx.stallFssaiCertificate.upsert({
       where: { requestId },

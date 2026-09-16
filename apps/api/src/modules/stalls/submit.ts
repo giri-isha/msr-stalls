@@ -6,6 +6,7 @@ import {
   validateAgainstForm,
 } from '@msr/stalls';
 import { mintAccessLink, normalizeEmail } from './accounts';
+import { allowedCustomValues } from './custom-values';
 import { declarationsForForm, recordConsent, sameDeclarations } from './declarations';
 import { formFor } from './form-builder';
 import { ValidationFailedError } from '../../errors';
@@ -153,19 +154,12 @@ export async function submitRequest(
     // second, shadow copy of the stall name into `stall_custom_field_value`,
     // where the record page would then show it as an extra answer nobody asked
     // for.
-    const allowedFields = await tx.stallFormField.findMany({
-      where: {
-        editionId: edition.id,
-        formType: input.requestType,
-        isActive: true,
-        isBuiltIn: false,
-      },
-      select: { id: true },
-    });
-    const allowed = new Set(allowedFields.map((f: { id: string }) => f.id));
-    const customValues = Object.entries(input.customFields)
-      .filter(([id, v]) => allowed.has(id) && v.trim().length > 0)
-      .map(([customFieldId, value]) => ({ customFieldId, value }));
+    const customValues = await allowedCustomValues(
+      tx,
+      edition.id,
+      input.requestType,
+      input.customFields,
+    );
 
     const request = await tx.stallRequest.create({
       data: {

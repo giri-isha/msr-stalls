@@ -3,6 +3,8 @@ import type { BankFormView, SubmitBankDetailsInput } from '@msr/stalls';
 import { recordActivity } from '../../activity';
 import { flowFor } from './config';
 import { declarationsForForm, recordConsent, sameDeclarations } from './declarations';
+import { allowedCustomValues, replaceCustomValues } from './custom-values';
+import { publicFormFor } from './form-builder';
 import type { Db } from './editions';
 import {
   BankDetailsLockedError,
@@ -29,7 +31,15 @@ export async function getBankForm(db: Db, requestId: string): Promise<BankFormVi
     include: { ...factsInclude, edition: true, appliances: { orderBy: { sortOrder: 'asc' } } },
   });
   if (!r) throw new UnknownRequestError(requestId);
+  // 🔴 The edition's own definition, so the page draws what THIS year asks —
+  // including a question an admin appended — rather than a constant.
+  const [form, declarations] = await Promise.all([
+    publicFormFor(db, r.editionId, 'BANK'),
+    declarationsForForm(db, r.editionId, 'BANK'),
+  ]);
   return {
+    form,
+    declarations,
     reference: r.reference,
     stallName: r.stallName,
     requesterName: r.requesterName,
@@ -97,6 +107,13 @@ export async function submitBankDetails(
     const live = await declarationsForForm(tx, r.editionId, 'BANK');
     if (!sameDeclarations(live, input.declarationIds)) throw new DeclarationsChangedError();
     await recordConsent(tx, { requestId, formType: 'BANK' }, live);
+
+    // Answers to questions an admin appended to this form.
+    await replaceCustomValues(
+      tx,
+      { requestId },
+      await allowedCustomValues(tx, r.editionId, 'BANK', input.customFields),
+    );
 
     await tx.stallBankDetail.create({
       data: {

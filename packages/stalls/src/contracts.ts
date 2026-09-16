@@ -1493,6 +1493,10 @@ export const SubmitBankDetailsInput = z.object({
   panKey: UploadKey,
   gstKey: UploadKey.optional().or(z.literal('')),
   declarationIds: DeclarationIds,
+  /** Answers to questions an ADMIN appended, keyed by field id. The built-ins
+   *  above land in typed columns; these have no column and are filed by id, the
+   *  same split `SubmitRequestInput` already uses. */
+  customFields: z.record(z.uuid(), z.string().trim().max(2000)).optional(),
   // The form is also where the vendor FINALISES what they need — the 2025 form
   // asks again, because a request made in November is stale by February.
   plugs5a: z.number().int().min(0).max(50),
@@ -1535,6 +1539,12 @@ export interface BankFormView {
   /** Non-null once submitted: the form becomes a read-back rather than a
    *  second chance to change bank details after Finance has acted on them. */
   submittedAt: string | null;
+  /** 🔴 The edition's own definition of this form. What it asks, in what order,
+   *  with what wording — including any question an admin appended. The page
+   *  draws from this rather than from a constant, which is the whole point of
+   *  the bank form becoming rows. */
+  form: BuiltForm | null;
+  declarations: Declaration[];
 }
 
 // ── Payment and finance ─────────────────────────────────────────────────────
@@ -1683,6 +1693,10 @@ export const CouponCode = z.string().trim().min(6).max(40);
 
 export const RegisterStaffInput = z.object({
   couponCode: CouponCode,
+  /** ⚠️ Filed against the STAFF MEMBER, not the stall — eight people share one
+   *  request, so a request-keyed answer would collapse seven of them. See the
+   *  partial indexes on `stall_custom_field_value`. */
+  customFields: z.record(z.uuid(), z.string().trim().max(2000)).optional(),
   name: z.string().trim().min(1).max(200),
   mobile: IndianMobile,
   idType: z.enum(['AADHAAR', 'VOTER_ID', 'DRIVING_LICENCE', 'PASSPORT', 'OTHER']),
@@ -1697,6 +1711,10 @@ export type RegisterStaffInput = z.infer<typeof RegisterStaffInput>;
 export interface CouponView {
   stallName: string;
   reference: string;
+  /** The edition's own definition of the staff form, and the consents it asks
+   *  for. Empty declarations means the team has authored none yet. */
+  form: BuiltForm | null;
+  declarations: Declaration[];
   /** ⚠️ Empty until the stall checks in — the same rule the vendor's own status
    *  page follows, and for the same reason. The coupon page is read by the
    *  vendor's whole team, which is the last place a number should leak early. */
@@ -1731,6 +1749,7 @@ export interface VendorStaffView {
 
 export const SubmitFssaiInput = z.object({
   stallName: z.string().trim().min(1).max(200),
+  customFields: z.record(z.uuid(), z.string().trim().max(2000)).optional(),
   ownerName: z.string().trim().max(200).optional(),
   mobile: IndianMobile.optional(),
   files: z
@@ -1748,6 +1767,11 @@ export interface FssaiFormView {
   uploadedAt: string | null;
   verifiedAt: string | null;
   files: Array<{ name: string; uploadedAt: string }>;
+  /** The edition's own definition of this form, and the consents it asks for.
+   *  Both may be empty: this form seeds no declaration, so it gates on nothing
+   *  until the team authors one. */
+  form: BuiltForm | null;
+  declarations: Declaration[];
 }
 
 // ── Contract signature ──────────────────────────────────────────────────────

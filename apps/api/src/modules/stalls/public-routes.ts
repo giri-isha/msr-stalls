@@ -58,6 +58,8 @@ import { prisma } from '../../prisma';
 import type { ZodTypeProvider } from '../../zod-validation';
 import { resolveAccessLink } from './accounts';
 import { getBankForm, submitBankDetails } from './bank';
+import { declarationsForForm } from './declarations';
+import { publicFormFor } from './form-builder';
 import { getPublicConfig } from './config';
 import type { StallsDeps } from './deps';
 import { UnknownAccessLinkError } from './errors';
@@ -393,7 +395,13 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
         include: { fssai: { include: { files: true } } },
       });
       if (!r) throw new UnknownAccessLinkError();
+      const [form, declarations] = await Promise.all([
+        publicFormFor(prisma, r.editionId, 'FSSAI'),
+        declarationsForForm(prisma, r.editionId, 'FSSAI'),
+      ]);
       return {
+        form,
+        declarations,
         reference: r.reference,
         stallName: r.stallName,
         requesterName: r.requesterName,
@@ -435,7 +443,7 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
       const { request, coupon } = await resolveCoupon(prisma, req.params.code);
       // ⚠️ Scoped to the code that was typed. A stall can hold more than one,
       // and the team holding a caterer's code is not shown the vendor's roster.
-      return toCouponView(request, coupon);
+      return toCouponView(prisma, request, coupon);
     },
   );
 
