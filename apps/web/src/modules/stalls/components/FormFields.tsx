@@ -1,4 +1,4 @@
-import type { FieldOption, FormField, PublicConfig, StallRequestType } from '@msr/stalls';
+import type { FormField, PublicConfig, StallRequestType } from '@msr/stalls';
 import { zoneOptions } from '@msr/stalls';
 import { useState } from 'react';
 import { type ApplianceRow, ApplianceRows } from './ApplianceRows';
@@ -291,7 +291,6 @@ function FilePicker({
       ))}
 
       {!full && onPickFile && (
-        // biome-ignore lint/a11y/noLabelWithoutControl: the label wraps its input
         <label
           style={{
             display: 'inline-flex',

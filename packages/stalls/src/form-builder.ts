@@ -1,5 +1,5 @@
 import type { FieldOption, FieldType, FormField } from './forms';
-import type { StallRequestType } from './reference';
+import type { StallFormType } from './reference';
 
 /**
  * A form, as rows rather than as a constant.
@@ -57,7 +57,10 @@ export interface BuiltFormSection {
 }
 
 export interface BuiltForm {
-  formType: StallRequestType;
+  /** ⚠️ A FORM type, not a request type. Four of the seven are applications;
+   *  the bank details form, the FSSAI upload and staff registration are not,
+   *  and all seven are definitions. */
+  formType: StallFormType;
   title: string;
   titleTa: string | null;
   sections: BuiltFormSection[];

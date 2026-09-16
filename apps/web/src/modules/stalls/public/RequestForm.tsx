@@ -5,38 +5,21 @@ import {
   type FormField,
   renderForm,
   type RenderedGroup,
-  type PublicConfig,
   type RateScope,
   type RequesterSession,
   type StallRequestType,
   SubmitRequestInput,
-  zoneOptions,
 } from '@msr/stalls';
 import { useMemo, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router';
 import { ApiError, fieldErrorsFrom } from '../api-client';
 import { getPublicConfig, submitRequest } from '../api';
-import { type ApplianceRow, ApplianceRows } from '../components/ApplianceRows';
-import { BilingualLabel } from '../components/BilingualLabel';
+import type { ApplianceRow } from '../components/ApplianceRows';
 import { DeclarationConsent, allTicked } from '../components/DeclarationConsent';
-import { type FieldValue, FieldControl } from '../components/FormFields';
-import { ZoneSelect } from '../components/ZoneSelect';
+import { FieldControl } from '../components/FormFields';
 import { useLoad } from '../hooks';
 import { useRequester } from '../requester';
-import {
-  Card,
-  Checkbox,
-  ChoicePlate,
-  FieldError,
-  FieldStack,
-  FormField as Labelled,
-  Icon,
-  Input,
-  Loading,
-  Radio,
-  Select,
-  Textarea,
-} from '../ui';
+import { Card, FieldStack, Icon, Loading } from '../ui';
 import { SLUG_TYPE } from './FormPicker';
 
 /** ⚠️ Includes `string[]`, for a `file`/`files` answer — a list of media-store
