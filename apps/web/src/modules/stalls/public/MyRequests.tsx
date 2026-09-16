@@ -1,5 +1,5 @@
 import { Link, Navigate } from 'react-router';
-import { continueMyStep, getMyRequests } from '../api';
+import { continueMyStep, getMyRequests, requestMyCoupon } from '../api';
 import { useLoad } from '../hooks';
 import { useRequester } from '../requester';
 import { Btn, Card, H1, Icon, Loading } from '../ui';
@@ -68,6 +68,7 @@ function Loaded() {
           <RequestCards
             requests={requests}
             openStep={(reference, step) => continueMyStep({ reference, step })}
+            getCoupon={(reference) => requestMyCoupon({ reference })}
           />
           <p style={{ fontSize: 12.5, color: 'var(--mfg)', marginTop: 18, lineHeight: 1.6 }}>
             Need another stall? <Link to='/stalls/apply'>Send in Another Request</Link>.

@@ -1000,6 +1000,18 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     return onboarding.getOnboarding(prisma, req.params.id, deps.files);
   });
 
+  /** Issues a staff coupon — the first one, or ANOTHER one.
+   *
+   *  🔴 Always mints. The team's second lever beside raising a capacity: "if
+   *  they want more staff members" a caterer can be handed their own code
+   *  rather than a share of the vendor's, and the two are counted apart so the
+   *  gate can say who somebody came in with.
+   *
+   *  ⚠️ `issueCoupon`, not `ensureCoupon`. The idempotent one is for everything
+   *  that runs on its own — a letter going out, a vendor pressing Get Your
+   *  Coupon — where a second code would mean staff registering against
+   *  something nobody is counting. This route is a person pressing a button
+   *  that says New Coupon, and it must do what it says. */
   zod.post('/onboarding/:id/coupon', { schema: { params: IdParams } }, async (req) => {
     const caller = await requireBackoffice(req, prisma);
     requirePrivilege(caller, 'onboarding.write');
@@ -1009,14 +1021,14 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
       include: { edition: true },
     });
     if (!r) throw new UnknownRequestError(req.params.id);
-    const coupon = await onboarding.ensureCoupon(
+    const coupon = await onboarding.issueCoupon(
       prisma,
       r.id,
       r.stallName,
       r.edition.year,
       caller.personId,
     );
-    return { code: coupon.code };
+    return { id: coupon.id, code: coupon.code, capacity: coupon.capacity };
   });
 
   /** Raising what one coupon may register.
@@ -1026,19 +1038,28 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
    *  effect on a coupon already in the vendor's hands, so nobody has to be sent
    *  a new code. */
   zod.put(
-    '/onboarding/:id/coupon/capacity',
-    { schema: { params: IdParams, body: SetCouponCapacityInput } },
+    '/onboarding/:id/coupons/:couponId/capacity',
+    {
+      schema: {
+        params: IdParams.extend({ couponId: z.string().uuid() }),
+        body: SetCouponCapacityInput,
+      },
+    },
     async (req) => {
       const caller = await requireBackoffice(req, prisma);
       requirePrivilege(caller, 'onboarding.write');
+      // ⚠️ Scoped on the REQUEST in the path, and `setCouponCapacity` then
+      // refuses a coupon that does not belong to it — otherwise the id in the
+      // path would be a way past the scope check above.
       await requireRequestScope(caller, prisma, req.params.id);
       const coupon = await onboarding.setCouponCapacity(
         prisma,
         req.params.id,
+        req.params.couponId,
         req.body.capacity,
         caller.personId,
       );
-      return { code: coupon.code, capacity: coupon.capacity };
+      return { id: coupon.id, code: coupon.code, capacity: coupon.capacity };
     },
   );
 

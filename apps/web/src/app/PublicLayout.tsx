@@ -9,17 +9,28 @@
 import { Link, Outlet, useNavigate } from 'react-router';
 import { RequesterProvider, useRequester } from '@/modules/stalls';
 import { logoutRequester } from '@/modules/stalls/api';
-import { Frame, Icon, useIsMobile } from '@/modules/stalls/ui';
+import { Frame, Icon, ToastProvider, useIsMobile } from '@/modules/stalls/ui';
 import { useTheme } from '@/modules/stalls/use-theme';
 
-/** ⚠️ The provider wraps the whole public tree, not just the apply page. The
- *  header's "signed in as" reads it, and so does the gate on `FormPicker` and
- *  on `RequestForm` — one fetch for the lot rather than one per screen. */
+/** ⚠️ The requester provider wraps the whole public tree, not just the apply
+ *  page. The header's "signed in as" reads it, and so does the gate on
+ *  `FormPicker` and on `RequestForm` — one fetch for the lot rather than one
+ *  per screen.
+ *
+ *  ⚠️ `ToastProvider` sits OUTSIDE it, the same way round as the backoffice
+ *  shell and for the same reason: the gate on `MyRequests` swaps its whole
+ *  subtree once the session lands, and a toast host inside it would unmount on
+ *  that transition and drop what it was holding. The public side needs one at
+ *  all because `MyRequests`, `StaffRegistration`, `BankForm` and `FssaiForm`
+ *  each call `useToast()`, which THROWS outside a provider — and the shell is
+ *  the only thing above all four. */
 export function PublicLayout() {
   return (
-    <RequesterProvider>
-      <PublicChrome />
-    </RequesterProvider>
+    <ToastProvider>
+      <RequesterProvider>
+        <PublicChrome />
+      </RequesterProvider>
+    </ToastProvider>
   );
 }
 

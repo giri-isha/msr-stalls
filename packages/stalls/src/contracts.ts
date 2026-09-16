@@ -261,6 +261,58 @@ export interface PublicRequestStatus {
    *  for a request that has not been selected: a vendor waiting on a decision
    *  has nothing to do, and a list of future chores would read as one. */
   pending: PendingStep[];
+  /** What is owed and where to send it — the `PAYMENT_DETAILS` letter, as data.
+   *
+   *  🔴 Present as soon as the request is SELECTED and its zone has a rate —
+   *  NOT only once the payment letter has frozen a plan. The letter is one way
+   *  to learn this figure; it is no longer the only one.
+   *
+   *  Null for a request that was never selected, null for an EXEMPT stall (an
+   *  ashram department is billed internally), and null where the zone is
+   *  UNPRICED. Zero is not the answer to the last two: on a vendor's own page a
+   *  zero reads as "free".
+   *
+   *  ⚠️ ONE fee, and it is what is OWED — `payableFeePaise`, so a concession is
+   *  what the requester is asked for. The quoted rate is not here beside it.
+   *  The gap between the two is the concession and that is the team's to see;
+   *  showing a trader the figure they were talked down from serves nobody. */
+  payment: PublicPaymentDue | null;
+  /** The staff coupon and how far the vendor's own team has got.
+   *
+   *  ⚠️ An EMPTY `coupons` means none has been ISSUED, which is not the same as
+   *  having none to issue — the requester can ask for one, and that is the
+   *  difference it carries. `pendingSteps` stays silent until a
+   *  coupon exists (nobody can register against one that does not), so this
+   *  block is how the portal offers a step the pending list cannot yet name.
+   *
+   *  Null for a request that was never selected. */
+  staff: PublicStaffCoupon | null;
+}
+
+export interface PublicPaymentDue {
+  /** Fee including GST, after any concession. See the warning above. */
+  feePaise: number;
+  /** ⚠️ Never discounted. The deposit comes back in full, so a concession on it
+   *  would mean refunding money that was never taken. */
+  depositPaise: number;
+  totalPaise: number;
+  /** Null when the edition has no virtual-account prefix configured, or the
+   *  contact number is not a mobile `virtualAccountFor` will build one from.
+   *  The page then says where to ask rather than naming an account it guessed. */
+  virtualAccountRent: string | null;
+  virtualAccountDeposit: string | null;
+}
+
+export interface PublicStaffCoupon {
+  /** 🔴 Every live coupon the stall holds, oldest first. Empty when none has
+   *  been issued, which is not a dead end — the requester can ask for one. */
+  coupons: CouponSummary[];
+  /** Everyone on the stall's roster, however many codes they came in on. This
+   *  is the number the check-in counter reads. */
+  registered: number;
+  /** Every coupon's capacity added up. A CEILING, never a quota: a vendor who
+   *  needs three people registers three and is done. */
+  capacity: number;
 }
 
 export interface PublicStatusResponse {
@@ -305,6 +357,25 @@ export interface ContinueStepResponse {
   /** A freshly minted single-purpose link. Short-lived, like the one the
    *  selection email carried. */
   url: string;
+}
+
+/** Asks for the staff coupon on one of the caller's own requests.
+ *
+ *  ⚠️ Same rule as `ContinueStepInput`: the CREDENTIAL is the status link or
+ *  the session, and `reference` only picks which of that account's requests is
+ *  meant. A reference belonging to anyone else reads as "not valid", exactly as
+ *  an unknown one does.
+ *
+ *  Issuing is idempotent — `ensureCoupon` returns the existing code — so this
+ *  is safe to press twice, and a vendor who lost the letter gets the SAME
+ *  coupon their staff may already be registering against. */
+export const RequestCouponInput = z.object({
+  reference: z.string().trim().min(3).max(40),
+});
+export type RequestCouponInput = z.infer<typeof RequestCouponInput>;
+
+export interface RequestCouponResponse {
+  code: string;
 }
 
 // ── Backoffice: requests ─────────────────────────────────────────────────────────
@@ -1711,6 +1782,15 @@ export interface PresignUploadResponse {
 
 // ── Onboarding ──────────────────────────────────────────────────────────────
 
+export interface CouponSummary {
+  id: string;
+  code: string;
+  /** What this ONE coupon admits. */
+  capacity: number;
+  /** How many came in on THIS coupon, not on the stall as a whole. */
+  registered: number;
+}
+
 export interface OnboardingRow {
   requestId: string;
   reference: string;
@@ -1723,11 +1803,15 @@ export interface OnboardingRow {
   payment: 'CONFIRMED' | 'PENDING' | 'NOT_APPLICABLE';
   fssai: 'VERIFIED' | 'UPLOADED' | 'PENDING' | 'NOT_APPLICABLE';
   staffRegistered: number;
-  /** The coupon's capacity, not the vendor's own pass count. */
+  /** Every live coupon's capacity added up — what the stall may register in
+   *  total, not what it owes. See `pendingSteps`. */
   staffExpected: number;
-  couponCode: string | null;
-  /** Null until a coupon has been issued. */
-  couponCapacity: number | null;
+  /** 🔴 A LIST. A stall may hold more than one live coupon: the team issues a
+   *  caterer their own code rather than a share of the vendor's, and the two are
+   *  counted apart so the gate can say who somebody came in with. Empty until
+   *  the first one is issued. Oldest first — the first is the one the letters
+   *  name. */
+  coupons: CouponSummary[];
   stage: string;
   pending: Array<{ step: string; label: string }>;
 }

@@ -315,8 +315,7 @@ export function onboarding(over: Record<string, unknown> = {}) {
     fssai: 'PENDING',
     staffRegistered: 0,
     staffExpected: 8,
-    couponCode: 'GRE-2026-ABCD',
-    couponCapacity: 8,
+    coupons: [{ id: 'c-1', code: 'GRE-2026-ABCD', capacity: 8, registered: 0 }],
     stage: 'BANK_FORM_FILLED',
     pending: [],
     bank: {

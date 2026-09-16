@@ -79,7 +79,7 @@ cp apps/api/.env.test.example apps/api/.env.test  # edit DATABASE_URL
 
 npm run db:migrate                                # dev database
 npm run db:test:deploy --workspace=apps/api       # test database
-npm run db:seed                                   # 2026 edition, the backoffice, a full pipeline
+npm run db:seed                                   # MSR 2027 edition, the backoffice, a full pipeline
 
 npm run dev                                       # api :3000, web :5173
 ```

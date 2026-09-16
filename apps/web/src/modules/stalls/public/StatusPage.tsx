@@ -1,6 +1,6 @@
 import { Link, useParams } from 'react-router';
 import { ApiError } from '../api-client';
-import { continueStep, getStatus } from '../api';
+import { continueStep, getStatus, requestCoupon } from '../api';
 import { useLoad } from '../hooks';
 import { Card, H1, Icon, Loading } from '../ui';
 import { RequestCards } from './RequestCards';
@@ -72,6 +72,7 @@ export function StatusPage() {
       <RequestCards
         requests={data.requests}
         openStep={(reference, step) => continueStep(token, { reference, step })}
+        getCoupon={(reference) => requestCoupon(token, { reference })}
       />
     </div>
   );

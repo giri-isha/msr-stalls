@@ -330,13 +330,13 @@ describe('FSSAI upload, reached with nothing but a link', () => {
 /** A coupon for this request, the way the onboarding letter mints one. */
 const coupon = async (requestId: string) => {
   const r = await prisma.stallRequest.findUniqueOrThrow({ where: { id: requestId } });
-  return (await ensureCoupon(prisma, requestId, r.stallName, edition.year, admin.personId)).code;
+  return ensureCoupon(prisma, requestId, r.stallName, edition.year, admin.personId);
 };
 
 describe('staff registration, reached with nothing but a coupon', () => {
   test('shows the stall and accepts a registration', async () => {
     const { requestId } = await selected(['C1-1'], { passesStaff: 2 });
-    const code = await coupon(requestId);
+    const code = (await coupon(requestId)).code;
 
     const view = await pub('GET', `/staff-registration/${code}`);
     expect(view.statusCode).toBe(200);
@@ -361,17 +361,17 @@ describe('staff registration, reached with nothing but a coupon', () => {
 
   test('the cap is enforced at the edge, with a 409 the page can explain', async () => {
     const { requestId } = await selected(['C1-1'], { passesStaff: 1 });
-    const code = await coupon(requestId);
-    await setCouponCapacity(prisma, requestId, 1, 'system');
+    const c = await coupon(requestId);
+    await setCouponCapacity(prisma, requestId, c.id, 1, 'system');
     await pub('POST', '/staff-registration', {
-      couponCode: code,
+      couponCode: c.code,
       name: 'A',
       mobile: '9840055555',
       idType: 'OTHER',
       idNumber: 'X123',
     });
     const second = await pub('POST', '/staff-registration', {
-      couponCode: code,
+      couponCode: c.code,
       name: 'B',
       mobile: '9840066666',
       idType: 'OTHER',
@@ -438,12 +438,12 @@ describe('the ops surfaces over HTTP', () => {
 describe('the coupon capacity, raised from the back office', () => {
   test('a lead raises a coupon already in the vendor’s hands', async () => {
     const { requestId } = await selected(['C1-1']);
-    const code = await coupon(requestId);
-    await setCouponCapacity(prisma, requestId, 1, 'system');
+    const c = await coupon(requestId);
+    await setCouponCapacity(prisma, requestId, c.id, 1, 'system');
 
     const res = await app.inject({
       method: 'PUT',
-      url: `/api/m/stalls/onboarding/${requestId}/coupon/capacity`,
+      url: `/api/m/stalls/onboarding/${requestId}/coupons/${c.id}/capacity`,
       headers: lead.headers,
       payload: { capacity: 12 },
     });
@@ -451,31 +451,39 @@ describe('the coupon capacity, raised from the back office', () => {
     expect(res.json().capacity).toBe(12);
 
     // Same code, more room — nobody has to be sent a new one.
-    const view = await pub('GET', `/staff-registration/${code}`);
+    const view = await pub('GET', `/staff-registration/${c.code}`);
     expect(view.json().maxStaff).toBe(12);
   });
 
   test('a capacity beyond the ceiling is refused, so a typo cannot open a stall', async () => {
     const { requestId } = await selected(['C1-1']);
-    await coupon(requestId);
+    const c = await coupon(requestId);
     const res = await app.inject({
       method: 'PUT',
-      url: `/api/m/stalls/onboarding/${requestId}/coupon/capacity`,
+      url: `/api/m/stalls/onboarding/${requestId}/coupons/${c.id}/capacity`,
       headers: lead.headers,
       payload: { capacity: 100_000 },
     });
     expect(res.statusCode).toBe(400);
   });
 
-  test('a request with no coupon yet is a 404, not a silently created one', async () => {
-    const { requestId } = await selected(['C1-2']);
+  test('a coupon belonging to another stall is a 404, never a way past the scope', async () => {
+    const mine = await selected(['C1-2']);
+    const theirs = await selected(['C1-3'], { stallName: 'Other Stall' });
+    const c = await coupon(theirs.requestId);
+
+    // ⚠️ The route scopes on the REQUEST in the path. Without the ownership
+    // check in `setCouponCapacity`, naming another stall's coupon id here would
+    // walk straight past that scope.
     const res = await app.inject({
       method: 'PUT',
-      url: `/api/m/stalls/onboarding/${requestId}/coupon/capacity`,
+      url: `/api/m/stalls/onboarding/${mine.requestId}/coupons/${c.id}/capacity`,
       headers: lead.headers,
       payload: { capacity: 10 },
     });
     expect(res.statusCode).toBe(404);
+    const after = await prisma.stallStaffCoupon.findUniqueOrThrow({ where: { id: c.id } });
+    expect(after.capacity).toBe(c.capacity);
   });
 });
 

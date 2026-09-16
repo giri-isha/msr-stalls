@@ -31,6 +31,10 @@ export interface OnboardingFacts {
   paymentConfirmed: boolean;
   fssaiOnFile: boolean;
   staffRegistered: number;
+  /** 🔴 A CEILING, not a target — the coupon's capacity. Nothing is "expected"
+   *  of a stall that registers three of the eight it is allowed; see
+   *  `pendingSteps`. The name is older than that rule and reads as a quota,
+   *  which is exactly the misreading to avoid. */
   staffExpected: number;
 }
 
@@ -56,7 +60,7 @@ const LABEL: Record<OnboardingStep, string> = {
   BANK_FORM: 'Bank details pending',
   PAYMENT: 'Payment pending',
   FSSAI: 'FSSAI certificate pending',
-  STAFF_REGISTRATION: 'Backoffice not fully registered',
+  STAFF_REGISTRATION: 'Backoffice not registered',
 };
 
 /** Ordered: the first entry is what the vendor's portal should open next, and
@@ -76,7 +80,13 @@ export function pendingSteps(facts: OnboardingFacts, flow: FlowConfig): PendingS
   if (flow.fssaiStepEnabled && facts.isFood && !facts.fssaiOnFile) {
     out.push('FSSAI');
   }
-  if (facts.staffExpected > 0 && facts.staffRegistered < facts.staffExpected) {
+  // 🔴 Outstanding only when NOBODY has registered — not until the coupon is
+  // filled. The capacity is a ceiling the gate enforces, never a quota the
+  // stall owes: a vendor who needs three people registers three and is done,
+  // and chasing them for the other five is chasing a number the stall team
+  // picked as a default. Reading it as a quota left every such stall flagged
+  // on Onboarding and held at the check-in counter for the whole edition.
+  if (facts.staffExpected > 0 && facts.staffRegistered === 0) {
     out.push('STAFF_REGISTRATION');
   }
 

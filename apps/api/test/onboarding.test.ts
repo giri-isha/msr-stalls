@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, test } from 'vitest';
 import { CouponFullError, UnknownCouponError } from '../src/modules/stalls/errors';
 import {
   ensureCoupon,
+  issueCoupon,
   getOnboarding,
   listOnboarding,
   listStaffFor,
@@ -32,6 +33,11 @@ beforeEach(async () => {
 const couponFor = async (requestId: string) => {
   const r = await prisma.stallRequest.findUniqueOrThrow({ where: { id: requestId } });
   return ensureCoupon(prisma, requestId, r.stallName, edition.year, SYSTEM);
+};
+
+const secondCouponFor = async (requestId: string) => {
+  const r = await prisma.stallRequest.findUniqueOrThrow({ where: { id: requestId } });
+  return issueCoupon(prisma, requestId, r.stallName, edition.year, SYSTEM);
 };
 
 const staffBody = (overrides: Record<string, unknown> = {}) =>
@@ -74,7 +80,7 @@ describe('staff coupons', () => {
     );
 
     await prisma.stallStaffCoupon.update({
-      where: { requestId },
+      where: { id: coupon.id },
       data: { revokedAt: new Date() },
     });
     await expect(resolveCoupon(prisma, coupon.code)).rejects.toBeInstanceOf(UnknownCouponError);
@@ -145,7 +151,7 @@ describe('staff registration', () => {
   test('refuses more staff than the coupon was raised for', async () => {
     const { requestId } = await selected(['C1-1'], { passesStaff: 1 });
     const coupon = await couponFor(requestId);
-    await setCouponCapacity(prisma, requestId, 1, SYSTEM);
+    await setCouponCapacity(prisma, requestId, coupon.id, 1, SYSTEM);
 
     await registerStaff(prisma, staffBody({ couponCode: coupon.code }));
     await expect(
@@ -159,10 +165,10 @@ describe('staff registration', () => {
   test('the back office raises a coupon that is already out, and it lets more in', async () => {
     const { requestId } = await selected(['C1-1']);
     const coupon = await couponFor(requestId);
-    await setCouponCapacity(prisma, requestId, 1, SYSTEM);
+    await setCouponCapacity(prisma, requestId, coupon.id, 1, SYSTEM);
     await registerStaff(prisma, staffBody({ couponCode: coupon.code }));
 
-    await setCouponCapacity(prisma, requestId, 2, SYSTEM);
+    await setCouponCapacity(prisma, requestId, coupon.id, 2, SYSTEM);
     const view = await registerStaff(
       prisma,
       staffBody({ couponCode: coupon.code, mobile: '9840066666' }),
@@ -177,7 +183,7 @@ describe('staff registration', () => {
   test('a capacity of zero admits nobody rather than everybody', async () => {
     const { requestId } = await selected(['C1-1']);
     const coupon = await couponFor(requestId);
-    await setCouponCapacity(prisma, requestId, 0, SYSTEM);
+    await setCouponCapacity(prisma, requestId, coupon.id, 0, SYSTEM);
     await expect(
       registerStaff(prisma, staffBody({ couponCode: coupon.code })),
     ).rejects.toBeInstanceOf(CouponFullError);
@@ -337,5 +343,114 @@ describe('the onboarding table', () => {
 
     await couponFor(requestId);
     expect(await pending()).toEqual(['BANK_FORM', 'PAYMENT', 'FSSAI', 'STAFF_REGISTRATION']);
+  });
+});
+
+// "If they want more staff members" the team has two levers, and they are not
+// the same lever. Raising a capacity gives an existing code more room. Issuing
+// a SECOND code lets a caterer be handed their own, counted apart from the
+// vendor's own kitchen team — which is the thing a bigger number cannot say.
+describe('a stall holding more than one coupon', () => {
+  test('issues another code without disturbing the first', async () => {
+    const { requestId } = await selected(['C1-1']);
+    const first = await couponFor(requestId);
+    const second = await secondCouponFor(requestId);
+
+    expect(second.code).not.toBe(first.code);
+    expect(second.capacity).toBe(DEFAULT_STAFF_COUPON_CAPACITY);
+
+    // ⚠️ `ensureCoupon` still answers with the FIRST. Everything that runs on
+    // its own — a letter going out, a vendor pressing Get Your Coupon — must
+    // keep naming the code already in their hands.
+    expect((await couponFor(requestId)).code).toBe(first.code);
+  });
+
+  test('each code carries its own cap, and one cannot spend the other’s room', async () => {
+    const { requestId } = await selected(['C1-1']);
+    const first = await couponFor(requestId);
+    const second = await secondCouponFor(requestId);
+    await setCouponCapacity(prisma, requestId, first.id, 1, SYSTEM);
+    await setCouponCapacity(prisma, requestId, second.id, 1, SYSTEM);
+
+    await registerStaff(prisma, staffBody({ couponCode: first.code }));
+    await expect(
+      registerStaff(prisma, staffBody({ couponCode: first.code, mobile: '9840066666' })),
+    ).rejects.toBeInstanceOf(CouponFullError);
+
+    // 🔴 The second code still has its own person to spend. Against the stall's
+    // TOTAL it would already be full, which is why the cap is per coupon.
+    const view = await registerStaff(
+      prisma,
+      staffBody({ couponCode: second.code, mobile: '9840077777' }),
+    );
+    expect(view.registered).toBe(1);
+    expect(view.maxStaff).toBe(1);
+  });
+
+  test('shows each team only what came in on their own code', async () => {
+    const { requestId } = await selected(['C1-1']);
+    const first = await couponFor(requestId);
+    const second = await secondCouponFor(requestId);
+
+    await registerStaff(prisma, staffBody({ couponCode: first.code, name: 'Kitchen Ravi' }));
+    const caterer = await registerStaff(
+      prisma,
+      staffBody({ couponCode: second.code, name: 'Caterer Meena', mobile: '9840077777' }),
+    );
+
+    // ⚠️ The roster is read by whoever holds the code. A caterer's team is not
+    // owed the vendor's list of names and numbers, nor the other way round.
+    expect(caterer.registered).toBe(1);
+    expect(caterer.staff.map((st) => st.name)).toEqual(['Caterer Meena']);
+  });
+
+  test('adds the caps up for the stall, and counts everybody once', async () => {
+    const { requestId } = await selected(['C1-1']);
+    const first = await couponFor(requestId);
+    const second = await secondCouponFor(requestId);
+    await setCouponCapacity(prisma, requestId, second.id, 4, SYSTEM);
+
+    await registerStaff(prisma, staffBody({ couponCode: first.code }));
+    await registerStaff(prisma, staffBody({ couponCode: second.code, mobile: '9840077777' }));
+
+    const row = await getOnboarding(prisma, requestId, deps.files);
+    expect(row.staffExpected).toBe(DEFAULT_STAFF_COUPON_CAPACITY + 4);
+    expect(row.staffRegistered).toBe(2);
+    expect(row.coupons.map((c) => c.code)).toEqual([first.code, second.code]);
+    expect(row.coupons.map((c) => c.registered)).toEqual([1, 1]);
+  });
+
+  test('a retired code stops lending its capacity, and keeps its people', async () => {
+    const { requestId } = await selected(['C1-1']);
+    const first = await couponFor(requestId);
+    const second = await secondCouponFor(requestId);
+    await registerStaff(prisma, staffBody({ couponCode: second.code }));
+
+    await prisma.stallStaffCoupon.update({
+      where: { id: second.id },
+      data: { revokedAt: new Date() },
+    });
+
+    const row = await getOnboarding(prisma, requestId, deps.files);
+    // ⚠️ The capacity goes; the person does not. They may already be holding a
+    // wristband, and the gate checks the roster, not the code they arrived on.
+    expect(row.staffExpected).toBe(DEFAULT_STAFF_COUPON_CAPACITY);
+    expect(row.staffRegistered).toBe(1);
+    expect(row.coupons.map((c) => c.code)).toEqual([first.code]);
+    await expect(resolveCoupon(prisma, second.code)).rejects.toBeInstanceOf(UnknownCouponError);
+  });
+
+  test('one person handed both codes is still one registration', async () => {
+    const { requestId } = await selected(['C1-1']);
+    const first = await couponFor(requestId);
+    const second = await secondCouponFor(requestId);
+
+    await registerStaff(prisma, staffBody({ couponCode: first.code, mobile: '9840055555' }));
+    await registerStaff(prisma, staffBody({ couponCode: second.code, mobile: '9840055555' }));
+
+    // ⚠️ Keyed on the stall and the mobile, not on the coupon — otherwise
+    // somebody given both codes is counted twice at the gate.
+    const row = await getOnboarding(prisma, requestId, deps.files);
+    expect(row.staffRegistered).toBe(1);
   });
 });

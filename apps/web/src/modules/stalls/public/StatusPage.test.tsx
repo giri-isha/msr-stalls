@@ -49,6 +49,44 @@ describe('StatusPage', () => {
     expect(screen.getByText('Shortlisted')).toBeInTheDocument();
   });
 
+  test('the emailed link can ask for a coupon too, naming its own token', async () => {
+    // ⚠️ The two credentials are two callers onto ONE portal. A vendor still
+    // following the link in their inbox gets the same way forward as one who
+    // logged in — when these drifted apart is how somebody was told they were
+    // all set on one screen and stopped at the counter.
+    const token = 't'.repeat(43);
+    const fx = installFetch([
+      [
+        'GET',
+        /\/public\/status\//,
+        () => ({
+          displayName: 'Priya Venkat',
+          requests: [
+            {
+              reference: 'VEN-2026-0001',
+              requestType: 'VENDOR',
+              stallName: 'Green Leaf Organics',
+              status: 'SELECTED',
+              submittedAt: '2026-09-01T10:00:00.000Z',
+              allocatedStalls: [],
+              pending: [],
+              payment: null,
+              staff: { coupons: [], capacity: 0, registered: 0 },
+            },
+          ],
+        }),
+      ],
+      ['POST', /\/public\/status\/.*\/coupon$/, () => ({ code: 'GLO-2026-K7Q4M2X9' })],
+    ]);
+    renderAt(`/stalls/status/${token}`, routes);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Get Your Coupon/ }));
+
+    expect(await screen.findByText('GLO-2026-K7Q4M2X9')).toBeInTheDocument();
+    expect(fx.last().url).toContain(`/public/status/${token}/coupon`);
+    expect(fx.last().body).toEqual({ reference: 'VEN-2026-0001' });
+  });
+
   test('a 404 renders a plain "not valid" page with no detail', async () => {
     installFetch([['GET', /\/public\/status\//, () => [404, { error: 'this link is not valid' }]]]);
     renderAt('/stalls/status/wrong-token-wrong-token', routes);
@@ -101,7 +139,7 @@ describe('the portal half of the status page', () => {
     // Payment is shown — the vendor should know the team is waiting on it —
     // but there is no button, because Finance moves it, not the vendor.
     expect(screen.getByText('Payment pending')).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: /Open the form/ })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /Open the Form/ })).toHaveLength(1);
   });
 
   test('a request still under consideration is given no list of future chores', async () => {
@@ -148,7 +186,7 @@ describe('the portal half of the status page', () => {
     ]);
     renderAt(`/stalls/status/${'t'.repeat(43)}`, routes);
 
-    await userEvent.click(await screen.findByRole('button', { name: /Open the form/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /Open the Form/ }));
 
     await waitFor(() => expect(assign).toHaveBeenCalledWith('http://web.test/stalls/fssai/tok'));
     expect(fx.last().body).toEqual({ reference: 'VEN-2026-0001', step: 'FSSAI' });

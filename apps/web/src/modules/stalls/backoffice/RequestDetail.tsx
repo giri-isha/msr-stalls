@@ -688,8 +688,12 @@ function StaffPanel({ forms }: { forms: OnboardingDetail | null }) {
       <div style={{ display: 'grid', gap: 14 }}>
         <Facts
           items={facts([
-            ['Coupon', forms.couponCode],
-            ['Registered', `${forms.staffRegistered} of ${forms.staffExpected}`],
+            // A stall can hold more than one live code — a caterer's beside the
+            // vendor's own — so this names them all rather than the first.
+            ['Coupon', forms.coupons.map((c) => c.code).join(', ') || null],
+            // ⚠️ A ceiling, not a quota: the second number is what the coupons
+            // admit between them, never what the stall owes.
+            ['Registered', `${forms.staffRegistered} (up to ${forms.staffExpected})`],
           ])}
         />
         {forms.staff.length === 0 ? (

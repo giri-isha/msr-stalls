@@ -1,5 +1,11 @@
 import type { Prisma } from '@prisma/client';
-import { type FlowConfig, type OnboardingFacts, deriveStage, pendingSteps } from '@msr/stalls';
+import {
+  type FlowConfig,
+  type OnboardingFacts,
+  deriveStage,
+  payableFeePaise,
+  pendingSteps,
+} from '@msr/stalls';
 import type { Db } from './editions';
 import { flowFor } from './config';
 
@@ -18,7 +24,10 @@ export const factsInclude = {
   bankDetail: true,
   payments: true,
   fssai: { include: { files: true } },
-  coupon: true,
+  // ⚠️ LIVE coupons only. A retired code must not keep contributing capacity —
+  // that is the whole point of retiring it — while the people who registered on
+  // it stay on the roster, which is why `staff` is not filtered the same way.
+  coupons: { where: { revokedAt: null }, orderBy: { issuedAt: 'asc' } },
   staff: true,
   messages: true,
   paymentPlan: true,
@@ -27,12 +36,17 @@ export const factsInclude = {
 
 export type RequestWithFacts = Prisma.StallRequestGetPayload<{ include: typeof factsInclude }>;
 
-/** How many staff a stall may register: its COUPON's capacity.
+/** How many staff a stall may register: the capacity of its LIVE COUPONS, added
+ *  up.
+ *
+ *  🔴 A ceiling the gate enforces, never a quota the stall owes. A vendor who
+ *  needs three people registers three and is done — see `pendingSteps`, which
+ *  stops chasing as soon as anybody is registered.
  *
  *  🔴 Not `passesStaff`, which is what the requester asked for on a form months
- *  earlier. The cap the gate enforces is what the stall team has agreed to let
- *  through, and the team sets it: eight by default — their own figure — raised
- *  case by case.
+ *  earlier. The cap is what the stall team has agreed to let through, and the
+ *  team sets it: eight by default — their own figure — raised case by case, or
+ *  topped up by issuing a second coupon.
  *
  *  Reading the request's own number had two failures at once. It was zero for
  *  every local welfare stall, whose form never asks, and zero was treated as
@@ -40,11 +54,41 @@ export type RequestWithFacts = Prisma.StallRequestGetPayload<{ include: typeof f
  *  vendor who typed 8 could not be raised to 12 without editing what they had
  *  asked for, which is a different fact.
  *
- *  Zero before a coupon exists, which is correct: nobody can register against a
- *  coupon that has not been issued, and `pendingSteps` does not chase a step
+ *  Zero before any coupon exists, which is correct: nobody can register against
+ *  a coupon that has not been issued, and `pendingSteps` does not chase a step
  *  that cannot be started. */
-export function staffExpected(r: { coupon: { capacity: number } | null }): number {
-  return r.coupon?.capacity ?? 0;
+export function staffExpected(r: { coupons: Array<{ capacity: number }> }): number {
+  return r.coupons.reduce((total, c) => total + c.capacity, 0);
+}
+
+/** How many people came in on ONE coupon.
+ *
+ *  ⚠️ Counted off `couponId`, not off the stall's whole roster. A stall holding
+ *  a code for its kitchen team and another for a caterer has to be able to see
+ *  each one's remaining room, and the registration form has to enforce each cap
+ *  separately — otherwise the first code to be used up blocks the second.
+ *
+ *  ⚠️ Registrations made before a stall could hold more than one coupon carry a
+ *  null `couponId`. They are backfilled by the migration, so a null here means
+ *  the coupon they came in on was retired, not that they are unaccounted for —
+ *  they still count towards the stall's total. */
+export function registeredOn(couponId: string, staff: Array<{ couponId: string | null }>): number {
+  return staff.filter((s) => s.couponId === couponId).length;
+}
+
+/** What this request actually has to pay, or undefined before Finance quotes.
+ *
+ *  🔴 `payableFeePaise`, NOT `feeTotalPaise`. A local welfare trader quoted
+ *  ₹10,000 and agreed down to ₹5,000 pays ₹5,000; against the quoted figure
+ *  they never settle, and they sit in "payment pending" for the rest of the
+ *  edition. `quote.ts` has held this function for exactly that reason — this
+ *  was the one caller that did not ask it.
+ *
+ *  ⚠️ It is also the figure the requester's own portal shows them. A page that
+ *  asks for one amount while the check wants another is how a vendor pays what
+ *  they were told and watches the chip stay put. */
+export function feeDuePaise(r: RequestWithFacts): number | undefined {
+  return r.paymentPlan ? payableFeePaise(r.paymentPlan) : undefined;
 }
 
 export function paymentConfirmed(r: RequestWithFacts): boolean {
@@ -55,7 +99,7 @@ export function paymentConfirmed(r: RequestWithFacts): boolean {
     .filter((p) => p.purpose === 'RENT')
     .reduce((sum, p) => sum + p.amountPaise, 0);
   if (rent <= 0) return false;
-  const due = r.paymentPlan?.feeTotalPaise;
+  const due = feeDuePaise(r);
   return due === undefined || rent >= due;
 }
 

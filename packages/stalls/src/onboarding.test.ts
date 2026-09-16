@@ -68,8 +68,18 @@ describe('pendingSteps', () => {
     ]);
   });
 
-  it('does not chase staff registration when no staff passes were asked for', () => {
+  it('does not chase staff registration when no coupon has been issued', () => {
     expect(steps({ staffExpected: 0 })).not.toContain('STAFF_REGISTRATION');
+  });
+
+  it('stops chasing the backoffice as soon as anybody is registered', () => {
+    // 🔴 The capacity is a CEILING the gate enforces, not a quota the stall
+    // owes. Eight is the stall team's own default; a vendor who needs three
+    // people registers three and is done. Reading it as a quota left that stall
+    // flagged on Onboarding and held at the counter for the whole edition.
+    expect(steps({ staffRegistered: 0 })).toContain('STAFF_REGISTRATION');
+    expect(steps({ staffRegistered: 1 })).not.toContain('STAFF_REGISTRATION');
+    expect(steps({ staffRegistered: 1, staffExpected: 8 })).not.toContain('STAFF_REGISTRATION');
   });
 });
 
@@ -111,5 +121,7 @@ describe('deriveStage', () => {
     };
     expect(stage(cleared)).toBe('PAYMENT_CONFIRMED');
     expect(stage({ ...cleared, staffRegistered: 3 })).toBe('READY');
+    // One person is enough to be READY — the coupon does not have to be filled.
+    expect(stage({ ...cleared, staffRegistered: 1 })).toBe('READY');
   });
 });

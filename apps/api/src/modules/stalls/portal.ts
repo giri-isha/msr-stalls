@@ -1,17 +1,30 @@
-import type { StallAccount } from '@prisma/client';
+import type { PrismaClient, StallAccount } from '@prisma/client';
 import {
   type ContinueStepInput,
+  type PublicPaymentDue,
+  type QuoteView,
+  type PublicStaffCoupon,
   type PublicStatusResponse,
+  type RequestCouponInput,
   type SelfServeStepValue,
   isSelfServe,
+  virtualAccountFor,
 } from '@msr/stalls';
 import { findAccountByContact, mintAccessLink } from './accounts';
 import { flowFor } from './config';
 import type { StallsDeps } from './deps';
 import type { Db } from './editions';
 import { StepNotOpenError, UnknownAccessLinkError } from './errors';
-import { factsInclude, pendingFor } from './facts';
+import {
+  type RequestWithFacts,
+  factsInclude,
+  pendingFor,
+  registeredOn,
+  staffExpected,
+} from './facts';
 import type { Mailer } from './mailer';
+import { ensureCoupon } from './onboarding';
+import { planToView, quoteContext, quoteFor, toQuoteView } from './quotes';
 import { STATUS_LINK_TTL_DAYS } from './submit';
 
 /** The vendor's own portal: getting back in, seeing what is outstanding, and
@@ -34,6 +47,15 @@ import { STATUS_LINK_TTL_DAYS } from './submit';
 /** Same TTL as a selection email's links, and for the same reason: a form that
  *  sat open in a tab for six months should be reopened, not resumed. */
 const STEP_LINK_TTL_DAYS = 180;
+
+/** A request as the portal reads it: the shared facts, plus the edition
+ *  prefixes the virtual accounts are built from. */
+type PortalRequest = RequestWithFacts & {
+  edition: {
+    virtualAccountRentPrefix: string | null;
+    virtualAccountDepositPrefix: string | null;
+  };
+};
 
 /** Mints a status link and mails it, if the contact matches an account.
  *
@@ -111,7 +133,16 @@ export async function statusView(db: Db, account: StallAccount): Promise<PublicS
   const requests = await db.stallRequest.findMany({
     where: { accountId: account.id },
     orderBy: { submittedAt: 'desc' },
-    include: factsInclude,
+    // The EDITION rides along for one reason: the virtual accounts a requester
+    // is asked to transfer to are built from its prefixes. Kept local to this
+    // query rather than added to `factsInclude`, which six screens share and
+    // none of the others need it.
+    include: {
+      ...factsInclude,
+      edition: {
+        select: { virtualAccountRentPrefix: true, virtualAccountDepositPrefix: true },
+      },
+    },
   });
 
   // One flow lookup per edition, not per request — a vendor with four stalls
@@ -123,6 +154,16 @@ export async function statusView(db: Db, account: StallAccount): Promise<PublicS
     const flow = await flowFor(db, editionId);
     flows.set(editionId, flow);
     return flow;
+  };
+
+  // The rate card, cached the same way and for the same reason.
+  const quotes = new Map<string, Awaited<ReturnType<typeof quoteContext>>>();
+  const quoteCtxOf = async (editionId: string) => {
+    const cached = quotes.get(editionId);
+    if (cached) return cached;
+    const ctx = await quoteContext(db, editionId);
+    quotes.set(editionId, ctx);
+    return ctx;
   };
 
   return {
@@ -153,8 +194,94 @@ export async function statusView(db: Db, account: StallAccount): Promise<PublicS
         // have that conversation.
         allocatedStalls: r.checkIn ? r.allocations.map((a) => a.stall.number) : [],
         pending: r.status === 'SELECTED' ? pendingFor(r, await flowOf(r.editionId)) : [],
+        // Both blocks are null for anything not SELECTED, for the same reason
+        // `pending` is empty there: a requester still waiting on a decision has
+        // nothing to pay and nobody to register, and showing either would read
+        // as a decision already made.
+        payment:
+          r.status === 'SELECTED'
+            ? paymentDue(
+                r,
+                r.paymentPlan
+                  ? planToView(r.paymentPlan)
+                  : toQuoteView(quoteFor(r, await quoteCtxOf(r.editionId))),
+              )
+            : null,
+        staff: r.status === 'SELECTED' ? staffView(r) : null,
       })),
     ),
+  };
+}
+
+/** The `PAYMENT_DETAILS` letter, as data.
+ *
+ *  🔴 The caller picks the quote the way Finance does — `planToView` where the
+ *  payment letter has frozen one, the live `quoteFor` otherwise. That fallback
+ *  is the point. The plan row is written only by `freezePaymentPlan` when the
+ *  letter goes out, so a vendor waiting on a letter that never came would
+ *  otherwise be shown "payment pending" with no figure and no way to get one —
+ *  which is the whole complaint this work answers. The rate card is public and
+ *  the quote is computed from what they themselves filled in; there is nothing
+ *  here they are not entitled to see before a letter names it.
+ *
+ *  🔴 `payableFeePaise` — what is OWED, which for a local welfare trader is the
+ *  concession the team agreed and not the card rate they were quoted. The same
+ *  figure `paymentConfirmed` settles against, so paying what this page asks for
+ *  actually clears the chip. The quoted rate is deliberately not returned
+ *  beside it; see the note on `PublicPaymentDue`.
+ *
+ *  ⚠️ Null for an EXEMPT stall (an ashram department is billed internally and
+ *  owes nothing here) and null for an UNPRICED one (a zone with no rate). Zero
+ *  is not the answer to either: on this page a zero reads as "free", and
+ *  telling a trader their stall is free because nobody has set a rate for their
+ *  area is worse than telling them nothing. The chip stands on its own until
+ *  there is a real figure.
+ *
+ *  The account numbers come from `virtualAccountFor`, the call `comms.ts` makes
+ *  when it writes the letter — the page and the letter cannot name different
+ *  accounts. */
+function paymentDue(r: PortalRequest, quote: QuoteView): PublicPaymentDue | null {
+  if (quote.exempt || quote.unpriced) return null;
+
+  const prefixes = {
+    rentPrefix: r.edition.virtualAccountRentPrefix,
+    depositPrefix: r.edition.virtualAccountDepositPrefix,
+  };
+
+  return {
+    feePaise: quote.payableFeePaise,
+    // ⚠️ Never discounted. The deposit comes back in full, so a concession on
+    // it would mean refunding money that was never taken.
+    depositPaise: quote.depositTotalPaise,
+    // Already the payable fee plus the deposit — see `planToView`.
+    totalPaise: quote.grandTotalPaise,
+    virtualAccountRent: virtualAccountFor(prefixes, r.contactNumber, 'RENT'),
+    virtualAccountDeposit: virtualAccountFor(prefixes, r.contactNumber, 'DEPOSIT'),
+  };
+}
+
+/** The stall's live coupons, or the fact that there are none yet.
+ *
+ *  ⚠️ An EMPTY list is what lets the portal offer a step `pendingSteps` cannot
+ *  yet name. `staffExpected` is the coupons' capacity, so until one is issued
+ *  the pending list is silent — correctly, since nobody can register against a
+ *  coupon that does not exist. This block says "and you may ask for one", which
+ *  is the whole point of `couponFor` below.
+ *
+ *  ⚠️ The vendor sees EVERY live code, including one the team issued to a
+ *  caterer against this stall. That is deliberate: the registrations land on
+ *  their stall and are counted against their roster at the gate, so a code they
+ *  cannot see would be a number they are answerable for and cannot check. */
+function staffView(r: PortalRequest): PublicStaffCoupon {
+  return {
+    coupons: r.coupons.map((c) => ({
+      id: c.id,
+      code: c.code,
+      capacity: c.capacity,
+      registered: registeredOn(c.id, r.staff),
+    })),
+    registered: r.staff.length,
+    capacity: staffExpected(r),
   };
 }
 
@@ -195,4 +322,54 @@ export async function stepLink(
     FSSAI: deps.fssaiUrl(token),
   };
   return { url: url[input.step] };
+}
+
+/**
+ * Issues the staff-registration coupon for one of the caller's own requests,
+ * or hands back the one already issued.
+ *
+ * 🔴 The step this unblocks is the one a requester could not reach at all. A
+ * coupon was minted only by an admin pressing Issue Coupon, or as a side effect
+ * of sending `ONBOARDING_FSSAI_STAFF` — so a vendor who never received that
+ * letter had no coupon, `staffExpected` was 0, `pendingSteps` said nothing was
+ * outstanding, and their team could not be registered. Staff registration is
+ * the one step `FlowConfig` cannot switch off, because an unregistered person
+ * cannot be let onto the venue.
+ *
+ * ⚠️ Idempotent, and that is load-bearing rather than tidy. `ensureCoupon`
+ * returns the existing code, so pressing this twice — or pressing it after the
+ * letter went out — hands back the SAME coupon the vendor's staff may already
+ * be registering against. A second code would leave those registrations
+ * counting against something nobody is looking at.
+ *
+ * ⚠️ The CREDENTIAL was checked by the caller; `reference` only picks which of
+ * THAT account's requests is meant, so one belonging to somebody else is
+ * indistinguishable from one that does not exist. Same rule as `stepLink`.
+ *
+ * ⚠️ SELECTED only. A coupon on a request still under review would be a
+ * decision this route is not entitled to leak.
+ *
+ * The trail records the REQUEST as its own actor, following the bank form:
+ * the vendor acted, and attributing it to whichever admin opens the record next
+ * would be a lie about who asked.
+ */
+export async function couponFor(
+  db: PrismaClient,
+  accountId: string,
+  input: RequestCouponInput,
+): Promise<{ code: string }> {
+  const request = await db.stallRequest.findFirst({
+    where: { accountId, reference: input.reference },
+    include: { edition: { select: { year: true } } },
+  });
+  if (request?.status !== 'SELECTED') throw new UnknownAccessLinkError();
+
+  const coupon = await ensureCoupon(
+    db,
+    request.id,
+    request.stallName,
+    request.edition.year,
+    request.id,
+  );
+  return { code: coupon.code };
 }

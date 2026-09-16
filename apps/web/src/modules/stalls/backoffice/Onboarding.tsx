@@ -1,4 +1,4 @@
-import type { OnboardingRow } from '@msr/stalls';
+import type { CouponSummary, OnboardingRow } from '@msr/stalls';
 import { formatInr } from '@msr/stalls';
 import { useMemo, useState } from 'react';
 import {
@@ -297,7 +297,12 @@ function StatusTag({ value }: { value: string }) {
 
 function StaffCount({ row }: { row: OnboardingRow }) {
   if (row.staffExpected === 0) return <span style={{ color: 'var(--mfg)' }}>—</span>;
-  const done = row.staffRegistered >= row.staffExpected;
+  // 🔴 Green once ANYBODY is registered, matching `pendingSteps`. The second
+  // number is what the coupon admits, not what the stall owes — a stall that
+  // needs three people registers three and is done. When this cell wanted the
+  // coupon filled and `pendingSteps` did not, that was the table and the chips
+  // beside it disagreeing about the same stall.
+  const done = row.staffRegistered > 0;
   return (
     <Tag tone={done ? 'ok' : 'warn'} size='sm'>
       {row.staffRegistered} of {row.staffExpected}
@@ -484,56 +489,12 @@ function OnboardingDetailDialog({
 
           <Section title='Staff Registration' count={data.staff.length}>
             <div style={{ display: 'grid', gap: 10 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  gap: 10,
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  fontSize: 12.5,
-                  color: 'var(--mfg)',
-                }}
-              >
-                {data.couponCode ? (
-                  <span>
-                    Coupon{' '}
-                    <strong style={{ fontFamily: 'ui-monospace,Menlo,monospace' }}>
-                      {data.couponCode}
-                    </strong>{' '}
-                    — registrations made with it are recorded against this stall.
-                  </span>
-                ) : (
-                  <span>
-                    No coupon issued yet. One is created automatically when the FSSAI and staff
-                    letter goes out.
-                  </span>
-                )}
-                {can('onboarding.write') && !data.couponCode && (
-                  <Btn
-                    onClick={async () => {
-                      try {
-                        const { code } = await issueCoupon(id);
-                        toast.ok(`Coupon ${code} issued.`);
-                        refresh();
-                      } catch (e) {
-                        toast.fail(e);
-                      }
-                    }}
-                  >
-                    <Icon name='key' size={13} />
-                    Issue Coupon
-                  </Btn>
-                )}
-                {data.couponCode && (
-                  <CouponCapacity
-                    requestId={id}
-                    capacity={data.couponCapacity ?? 0}
-                    registered={data.staffRegistered}
-                    writable={can('onboarding.write')}
-                    onSaved={refresh}
-                  />
-                )}
-              </div>
+              <Coupons
+                requestId={id}
+                coupons={data.coupons}
+                writable={can('onboarding.write')}
+                onChanged={refresh}
+              />
               {data.staff.length === 0 ? (
                 <Empty>Nobody registered yet.</Empty>
               ) : (
@@ -609,7 +570,98 @@ function OnboardingDetailDialog({
  * is how a stall with eight passes registered eighty.
  */
 /**
- * How many people the stall's coupon admits: read here, changed in a box.
+ * Every live coupon the stall holds, and the way to add one.
+ *
+ * 🔴 A LIST, because a stall can hold more than one. Raising a capacity gives an
+ * existing code more room; issuing a SECOND code lets a caterer be handed their
+ * own, counted apart from the vendor's own kitchen team — which is the thing a
+ * bigger number cannot say. Both levers are here, and they are not the same
+ * lever.
+ *
+ * ⚠️ `registered` is per COUPON, not the stall's total. A cap can only be read
+ * against the registrations it actually governs.
+ */
+function Coupons({
+  requestId,
+  coupons,
+  writable,
+  onChanged,
+}: {
+  requestId: string;
+  coupons: CouponSummary[];
+  writable: boolean;
+  onChanged: () => void;
+}) {
+  const toast = useToast();
+  const [issuing, setIssuing] = useState(false);
+
+  const issue = async () => {
+    setIssuing(true);
+    try {
+      const { code } = await issueCoupon(requestId);
+      toast.ok(`Coupon ${code} issued.`);
+      onChanged();
+    } catch (e) {
+      toast.fail(e);
+    } finally {
+      setIssuing(false);
+    }
+  };
+
+  return (
+    <div style={{ display: 'grid', gap: 8 }}>
+      {coupons.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: 'var(--mfg)' }}>
+          No coupon issued yet. One is created when the FSSAI and staff letter goes out, or when the
+          vendor asks for it from their own portal.
+        </div>
+      ) : (
+        coupons.map((c) => (
+          <div
+            key={c.id}
+            style={{
+              display: 'flex',
+              gap: 10,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              fontSize: 12.5,
+              color: 'var(--mfg)',
+            }}
+          >
+            <strong style={{ fontFamily: 'ui-monospace,Menlo,monospace', color: 'var(--fg)' }}>
+              {c.code}
+            </strong>
+            <CouponCapacity
+              requestId={requestId}
+              couponId={c.id}
+              capacity={c.capacity}
+              registered={c.registered}
+              writable={writable}
+              onSaved={onChanged}
+            />
+            <span>{c.registered} registered on this code</span>
+          </div>
+        ))
+      )}
+      {writable && (
+        <div>
+          <Btn onClick={() => void issue()} disabled={issuing}>
+            <Icon name='key' size={13} />
+            {issuing ? 'Issuing…' : coupons.length === 0 ? 'Issue Coupon' : 'New Coupon'}
+          </Btn>
+        </div>
+      )}
+      {coupons.length > 0 && (
+        <div style={{ fontSize: 12, color: 'var(--mfg)' }}>
+          Registrations made with any of these are recorded against this stall.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * How many people ONE of the stall's coupons admits: read here, changed in a box.
  *
  * 🔴 Was a number field and a Save sitting in the middle of a panel. The figure
  * is a CAP that the registration form enforces — lower it below the people
@@ -620,12 +672,14 @@ function OnboardingDetailDialog({
  */
 function CouponCapacity({
   requestId,
+  couponId,
   capacity,
   registered,
   writable,
   onSaved,
 }: {
   requestId: string;
+  couponId: string;
   capacity: number;
   registered: number;
   writable: boolean;
@@ -642,6 +696,7 @@ function CouponCapacity({
       {editing && (
         <CouponCapacityDialog
           requestId={requestId}
+          couponId={couponId}
           capacity={capacity}
           registered={registered}
           onClose={() => setEditing(false)}
@@ -657,12 +712,14 @@ function CouponCapacity({
 
 function CouponCapacityDialog({
   requestId,
+  couponId,
   capacity,
   registered,
   onClose,
   onSaved,
 }: {
   requestId: string;
+  couponId: string;
   capacity: number;
   registered: number;
   onClose: () => void;
@@ -682,7 +739,7 @@ function CouponCapacityDialog({
   const save = async () => {
     setSaving(true);
     try {
-      await setCouponCapacity(requestId, next);
+      await setCouponCapacity(requestId, couponId, next);
       toast.ok(`Coupon now admits ${next}.`);
       onSaved();
     } catch (e) {

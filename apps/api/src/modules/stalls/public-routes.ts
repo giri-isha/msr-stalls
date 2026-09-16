@@ -37,6 +37,7 @@ import {
   type FssaiFormView,
   type PublicStatusResponse,
   type RequestAccessLinkResponse,
+  type RequestCouponResponse,
   ContinueStepInput,
   PresignUploadInput,
   RATE_SCOPES,
@@ -46,6 +47,7 @@ import {
   RegisterInput,
   RegisterStaffInput,
   RequestAccessLinkInput,
+  RequestCouponInput,
   type SubmitRequestResponse,
   SubmitBankDetailsInput,
   SubmitFssaiInput,
@@ -70,7 +72,7 @@ import {
   setSessionCookie,
   startSession,
 } from './session';
-import { sendAccessLink, statusView, stepLink } from './portal';
+import { couponFor, sendAccessLink, statusView, stepLink } from './portal';
 import { submitRequest } from './submit';
 import { isOurKey, presignUpload } from './uploads';
 
@@ -294,6 +296,41 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
     },
   );
 
+  /** The staff coupon, asked for by the vendor rather than waited on.
+   *
+   *  🔴 Until this existed, a coupon arrived only when a backoffice member
+   *  pressed Issue Coupon or sent the FSSAI-and-staff letter — so a vendor who
+   *  never got that letter could not register their team at all, and staff
+   *  registration is the one step that is never skipped, because an
+   *  unregistered person cannot be let onto the venue.
+   *
+   *  Idempotent: pressing it twice, or pressing it after the letter went out,
+   *  returns the code already in hand. See `couponFor`. */
+  zod.post(
+    '/status/:token/coupon',
+    {
+      schema: { params: TokenParams, body: RequestCouponInput },
+      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
+    },
+    async (req): Promise<RequestCouponResponse> => {
+      const link = await resolveAccessLink(prisma, req.params.token, 'STATUS');
+      return couponFor(prisma, link.accountId, req.body);
+    },
+  );
+
+  /** The same coupon, asked for from the logged-in list rather than the letter. */
+  zod.post(
+    '/requests/coupon',
+    {
+      schema: { body: RequestCouponInput },
+      config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
+    },
+    async (req): Promise<RequestCouponResponse> => {
+      const account = await requireRequester(prisma, req);
+      return couponFor(prisma, account.id, req.body);
+    },
+  );
+
   // ── Uploads ───────────────────────────────────────────────────────────────
 
   /** Presigns a PUT for a vendor holding a live bank-form or FSSAI link.
@@ -395,8 +432,10 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
     '/staff-registration/:code',
     { schema: { params: z.object({ code: z.string().trim().min(6).max(40) }) } },
     async (req): Promise<CouponView> => {
-      const request = await resolveCoupon(prisma, req.params.code);
-      return toCouponView(request);
+      const { request, coupon } = await resolveCoupon(prisma, req.params.code);
+      // ⚠️ Scoped to the code that was typed. A stall can hold more than one,
+      // and the team holding a caterer's code is not shown the vendor's roster.
+      return toCouponView(request, coupon);
     },
   );
 

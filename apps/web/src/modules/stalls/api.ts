@@ -21,6 +21,7 @@ import type {
   CheckInRow,
   CommRecipient,
   ConfirmPaymentInput,
+  CouponSummary,
   CouponView,
   DashboardCounts,
   ElectricalSheet,
@@ -48,6 +49,8 @@ import type {
   RateScope,
   SignatureView,
   RequestAccessLinkResponse,
+  RequestCouponInput,
+  RequestCouponResponse,
   RefundRow,
   RegisterInput,
   RegisterStaffInput,
@@ -121,6 +124,14 @@ export const continueStep = (token: string, body: ContinueStepInput) =>
     json: body,
   });
 
+/** Issues the staff coupon, or returns the one already issued. Idempotent — see
+ *  `couponFor` on the API side for why that matters. */
+export const requestCoupon = (token: string, body: RequestCouponInput) =>
+  apiFetch<RequestCouponResponse>(`${BASE}/public/status/${encodeURIComponent(token)}/coupon`, {
+    method: 'POST',
+    json: body,
+  });
+
 /** The same two calls, for a requester who is logged in rather than following a
  *  link. No token in either URL — the session cookie is the credential, and the
  *  API reads the account off it.
@@ -131,6 +142,12 @@ export const getMyRequests = () => apiFetch<PublicStatusResponse>(`${BASE}/publi
 
 export const continueMyStep = (body: ContinueStepInput) =>
   apiFetch<ContinueStepResponse>(`${BASE}/public/requests/continue`, {
+    method: 'POST',
+    json: body,
+  });
+
+export const requestMyCoupon = (body: RequestCouponInput) =>
+  apiFetch<RequestCouponResponse>(`${BASE}/public/requests/coupon`, {
     method: 'POST',
     json: body,
   });
@@ -568,12 +585,15 @@ export const logReminder = (requestId: string, kind: ReminderKind, note?: string
 
 export const listOnboarding = () => apiFetch<OnboardingRow[]>(`${BASE}/onboarding`);
 export const getOnboarding = (id: string) => apiFetch<OnboardingDetail>(`${BASE}/onboarding/${id}`);
+/** Issues a staff coupon — the first, or ANOTHER one beside it. Always mints:
+ *  a stall may hold several live codes so a caterer can be handed their own,
+ *  counted apart from the vendor's own team. */
 export const issueCoupon = (id: string) =>
-  apiFetch<{ code: string }>(`${BASE}/onboarding/${id}/coupon`, { method: 'POST' });
+  apiFetch<CouponSummary>(`${BASE}/onboarding/${id}/coupon`, { method: 'POST' });
 /** Eight by default, raised case by case. Takes effect on the coupon the vendor
  *  already holds, so nobody has to be sent a new code. */
-export const setCouponCapacity = (id: string, capacity: number) =>
-  apiFetch<{ code: string; capacity: number }>(`${BASE}/onboarding/${id}/coupon/capacity`, {
+export const setCouponCapacity = (id: string, couponId: string, capacity: number) =>
+  apiFetch<CouponSummary>(`${BASE}/onboarding/${id}/coupons/${couponId}/capacity`, {
     method: 'PUT',
     json: { capacity },
   });

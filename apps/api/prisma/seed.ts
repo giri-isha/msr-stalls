@@ -36,11 +36,19 @@ import type { MediaStore } from '../src/storage/media-namespace';
 const SYSTEM = '00000000-0000-0000-0000-000000000000';
 const force = process.argv.includes('--force');
 
-/** The edition this seed builds. Everything dated below hangs off it — the
- *  payment dates, the bank references that carry those dates, the prior
- *  edition a flag refers back to — so rolling the seed forward a year is this
- *  one number and nothing else. */
-const EDITION_YEAR = 2026;
+/** The edition this seed builds — MSR 2027, the one a developer starting today
+ *  is working towards. Everything dated below hangs off it — the payment dates,
+ *  the bank references that carry those dates, the prior edition a flag refers
+ *  back to — so rolling the seed forward a year is this one number and nothing
+ *  else.
+ *
+ *  ⚠️ SEED DATA, not a fact the application knows. The seed activates the
+ *  edition it creates because a freshly seeded database needs one active, and
+ *  the module refuses to guess (`NoActiveEditionError`). Nothing outside this
+ *  file may name a year: every route resolves the active edition from the
+ *  database, and the year the team is running is whichever row Admin has
+ *  activated. */
+const EDITION_YEAR = 2027;
 
 /** The two credits Finance confirms for the vendor walked all the way through.
  *  Mid-February, which is when the money lands in a real edition. */

@@ -29,6 +29,21 @@ const DASH = [
   }),
 ] as const;
 
+const SESSION = {
+  accountId: 'a-1',
+  displayName: 'Priya Venkat',
+  email: 'priya@greenleaf.example',
+  phone: '9840012345',
+};
+
+function renderPublic(path = '/stalls/apply') {
+  const router = createMemoryRouter(
+    [{ path: '/stalls', element: <PublicLayout />, children: stallsPublicRoutes }],
+    { initialEntries: [path] },
+  );
+  return render(<RouterProvider router={router} />);
+}
+
 function renderBackoffice(path = '/m/stalls') {
   const router = createMemoryRouter(
     [{ path: '/m/stalls', element: <BackofficeLayout />, children: stallsBackofficeRoutes }],
@@ -155,11 +170,7 @@ describe('the public shell', () => {
   test('wraps the forms and carries nothing but the theme control', async () => {
     // Signed out — the gate is on the page, and the header stays bare.
     installFetch([['GET', /\/public\/session$/, () => [404, { error: 'no session' }]]]);
-    const router = createMemoryRouter(
-      [{ path: '/stalls', element: <PublicLayout />, children: stallsPublicRoutes }],
-      { initialEntries: ['/stalls/apply'] },
-    );
-    render(<RouterProvider router={router} />);
+    renderPublic();
 
     expect(await screen.findByText('Request a Stall')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /theme/i })).toBeInTheDocument();
@@ -167,5 +178,46 @@ describe('the public shell', () => {
     // form and nothing else.
     expect(screen.queryByRole('navigation', { name: 'Main Navigation' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Account Menu' })).not.toBeInTheDocument();
+  });
+
+  // ⚠️ Four public screens call `useToast()`, and that hook THROWS outside a
+  // provider. The shell is the only place that can mount one, so this asserts
+  // the wiring from the real route tree rather than from a harness — the
+  // module's own tests wrap every render in `ToastProvider`, which is exactly
+  // why the public tree could ship without one and no test go red.
+  test('mounts the toast host the forms report their failures through', async () => {
+    installFetch([
+      ['GET', /\/public\/session$/, () => SESSION],
+      [
+        'GET',
+        /\/public\/requests$/,
+        () => ({
+          displayName: 'Priya Venkat',
+          requests: [
+            {
+              reference: 'VEN-2026-0001',
+              requestType: 'VENDOR',
+              stallName: 'Green Leaf Organics',
+              status: 'SELECTED',
+              submittedAt: '2026-09-01T10:00:00.000Z',
+              allocatedZone: 'C1',
+              allocatedStalls: ['C1-4'],
+              // A self-serve step, so the card draws the button whose failure
+              // path is the one that needs somewhere to report.
+              pending: [{ step: 'BANK_FORM', label: 'Bank details pending' }],
+            },
+          ],
+        }),
+      ],
+      ['POST', /\/public\/requests\/continue$/, () => [500, { error: 'link could not be minted' }]],
+    ]);
+    renderPublic('/stalls/requests');
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Open the Form' }));
+
+    // The toast, not a crash: the screen stays up and says what went wrong.
+    expect(await screen.findByText('link could not be minted')).toBeInTheDocument();
+    expect(screen.getByText('Green Leaf Organics')).toBeInTheDocument();
   });
 });

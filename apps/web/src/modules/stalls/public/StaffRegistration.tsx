@@ -126,7 +126,7 @@ export function StaffRegistration() {
           <FormField
             id='coupon'
             label='Stall Coupon'
-            help='The stall owner has this. It looks like GRE-2026-K7Q4M2X9.'
+            help='The stall owner has this. Three letters of the stall name, the edition year, then eight characters.'
             error={lookupError ?? undefined}
           >
             <Input

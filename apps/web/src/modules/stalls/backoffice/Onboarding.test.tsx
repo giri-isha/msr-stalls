@@ -23,8 +23,7 @@ function row(over: Record<string, unknown> = {}) {
     fssai: 'PENDING',
     staffRegistered: 1,
     staffExpected: 3,
-    couponCode: null,
-    couponCapacity: null,
+    coupons: [],
     stage: 'BANK_FORM_SENT',
     pending: [
       { step: 'BANK_FORM', label: 'Bank details pending' },
@@ -280,11 +279,26 @@ describe('the vendor detail', () => {
     );
   });
 
-  test('an existing coupon is shown rather than a second one offered', async () => {
+  // 🔴 A stall may hold more than one live code — a caterer's beside the
+  // vendor's own — so an existing coupon does NOT close the door on another.
+  test('an existing coupon is shown, and another can still be issued', async () => {
     installFetch([
       ['GET', /\/me$/, () => ME_ADMIN],
-      ['GET', /\/onboarding$/, () => [row({ couponCode: 'GRE-2026-K7Q4M2X9' })]],
-      ['GET', /\/onboarding\/.+$/, () => detail({ couponCode: 'GRE-2026-K7Q4M2X9' })],
+      [
+        'GET',
+        /\/onboarding$/,
+        () => [
+          row({ coupons: [{ id: 'c-1', code: 'GRE-2026-K7Q4M2X9', capacity: 8, registered: 0 }] }),
+        ],
+      ],
+      [
+        'GET',
+        /\/onboarding\/.+$/,
+        () =>
+          detail({
+            coupons: [{ id: 'c-1', code: 'GRE-2026-K7Q4M2X9', capacity: 8, registered: 0 }],
+          }),
+      ],
     ]);
     render();
     const user = userEvent.setup();
@@ -292,7 +306,10 @@ describe('the vendor detail', () => {
     await user.click(await screen.findByText('Green Leaf Organics'));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('GRE-2026-K7Q4M2X9')).toBeInTheDocument();
+    // The button reads New Coupon rather than Issue Coupon once one exists, so
+    // nobody presses it expecting to be shown the code already out.
     expect(within(dialog).queryByRole('button', { name: /Issue Coupon/ })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: /New Coupon/ })).toBeInTheDocument();
   });
 
   // 🔴 "If they want more staff members, in the back end we raise that capacity
@@ -301,13 +318,26 @@ describe('the vendor detail', () => {
   test('the back office raises what the coupon admits, on the code already out', async () => {
     const fetch = installFetch([
       ['GET', /\/me$/, () => ME_ADMIN],
-      ['GET', /\/onboarding$/, () => [row({ couponCode: 'GRE-2026-K7Q4M2X9' })]],
+      [
+        'GET',
+        /\/onboarding$/,
+        () => [
+          row({ coupons: [{ id: 'c-1', code: 'GRE-2026-K7Q4M2X9', capacity: 8, registered: 0 }] }),
+        ],
+      ],
       [
         'GET',
         /\/onboarding\/.+$/,
-        () => detail({ couponCode: 'GRE-2026-K7Q4M2X9', couponCapacity: 8 }),
+        () =>
+          detail({
+            coupons: [{ id: 'c-1', code: 'GRE-2026-K7Q4M2X9', capacity: 8, registered: 0 }],
+          }),
       ],
-      ['PUT', /\/coupon\/capacity$/, () => ({ code: 'GRE-2026-K7Q4M2X9', capacity: 12 })],
+      [
+        'PUT',
+        /\/coupons\/.+\/capacity$/,
+        () => ({ id: 'c-1', code: 'GRE-2026-K7Q4M2X9', capacity: 12 }),
+      ],
     ]);
     render();
     const user = userEvent.setup();
@@ -334,16 +364,70 @@ describe('the vendor detail', () => {
     });
   });
 
+  // 🔴 The team's SECOND lever. Raising a capacity gives one code more room;
+  // issuing another lets a caterer be handed their own, counted apart from the
+  // vendor's own kitchen team — which is the thing a bigger number cannot say.
+  test('a stall can hold two codes, each with its own cap and its own count', async () => {
+    const fetch = installFetch([
+      ['GET', /\/me$/, () => ME_ADMIN],
+      ['GET', /\/onboarding$/, () => [row({ coupons: [] })]],
+      [
+        'GET',
+        /\/onboarding\/.+$/,
+        () =>
+          detail({
+            coupons: [
+              { id: 'c-1', code: 'GRE-2026-K7Q4M2X9', capacity: 8, registered: 2 },
+              { id: 'c-2', code: 'GRE-2026-B4K2M7PW', capacity: 4, registered: 0 },
+            ],
+            staffRegistered: 2,
+          }),
+      ],
+      [
+        'POST',
+        /\/coupon$/,
+        () => ({ id: 'c-3', code: 'GRE-2026-ZZ11YY22', capacity: 8, registered: 0 }),
+      ],
+    ]);
+    render();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('Green Leaf Organics'));
+    const record = within(await screen.findByRole('dialog', { name: 'Green Leaf Organics' }));
+
+    expect(record.getByText('GRE-2026-K7Q4M2X9')).toBeInTheDocument();
+    expect(record.getByText('GRE-2026-B4K2M7PW')).toBeInTheDocument();
+    expect(record.getByText('2 registered on this code')).toBeInTheDocument();
+    expect(record.getByText('0 registered on this code')).toBeInTheDocument();
+    // One pencil per code — a cap belongs to a coupon, not to the stall.
+    expect(record.getAllByLabelText('Edit coupon capacity')).toHaveLength(2);
+
+    await user.click(record.getByRole('button', { name: /New Coupon/ }));
+    await waitFor(() =>
+      expect(fetch.calls.some((c) => c.method === 'POST' && c.url.endsWith('/coupon'))).toBe(true),
+    );
+  });
+
   // Lowering below what is already registered would leave the stall over its
   // own cap with no way to read the number as a limit again.
   test('refuses to lower the cap below the people already registered', async () => {
     installFetch([
       ['GET', /\/me$/, () => ME_ADMIN],
-      ['GET', /\/onboarding$/, () => [row({ couponCode: 'GRE-2026-K7Q4M2X9' })]],
+      [
+        'GET',
+        /\/onboarding$/,
+        () => [
+          row({ coupons: [{ id: 'c-1', code: 'GRE-2026-K7Q4M2X9', capacity: 8, registered: 0 }] }),
+        ],
+      ],
       [
         'GET',
         /\/onboarding\/.+$/,
-        () => detail({ couponCode: 'GRE-2026-K7Q4M2X9', couponCapacity: 8, staffRegistered: 5 }),
+        () =>
+          detail({
+            coupons: [{ id: 'c-1', code: 'GRE-2026-K7Q4M2X9', capacity: 8, registered: 5 }],
+            staffRegistered: 5,
+          }),
       ],
     ]);
     render();

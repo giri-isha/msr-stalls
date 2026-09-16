@@ -216,12 +216,12 @@ describe('sending', () => {
   test('the onboarding letter mints one coupon and reuses it', async () => {
     const { requestId } = await selected(['C1-1']);
     await send('ONBOARDING_FSSAI_STAFF', [requestId]);
-    const first = await prisma.stallStaffCoupon.findUniqueOrThrow({ where: { requestId } });
+    const first = await prisma.stallStaffCoupon.findFirstOrThrow({ where: { requestId } });
     expect(deps.mail.sent[0].text).toContain(first.code);
 
     await clearSendLog(prisma, requestId, 'ONBOARDING_FSSAI_STAFF', SYSTEM);
     await send('ONBOARDING_FSSAI_STAFF', [requestId]);
-    const second = await prisma.stallStaffCoupon.findUniqueOrThrow({ where: { requestId } });
+    const second = await prisma.stallStaffCoupon.findFirstOrThrow({ where: { requestId } });
     expect(second.code).toBe(first.code);
   });
 

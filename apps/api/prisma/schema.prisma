@@ -947,7 +947,7 @@ model StallRequest {
   payments    StallPaymentRecord[]
   fines       StallFine[]
   refund      StallRefund?
-  coupon      StallStaffCoupon?
+  coupons     StallStaffCoupon[]
   staff       StallVendorStaff[]
   fssai       StallFssaiCertificate?
   checkIn     StallCheckIn?
@@ -1323,7 +1323,12 @@ model StallPaymentRecord {
 /// The secure coupon a vendor's own staff register with. See `coupons.ts` for
 /// what the code is made of and why.
 model StallStaffCoupon {
-  requestId String    @id @map("request_id") @db.Uuid
+  id        String    @id @default(uuid()) @db.Uuid
+  /// 🔴 NOT the primary key any more. A stall may hold SEVERAL live coupons —
+  /// "if they want more staff members" the team issues another rather than
+  /// stretching one — so a caterer and the vendor's own kitchen team can be
+  /// handed separate codes and counted separately.
+  requestId String    @map("request_id") @db.Uuid
   code      String    @unique
   /// How many people this coupon may register. Eight by default — the team's
   /// own figure — and raised case by case by the stall team.
@@ -1339,8 +1344,10 @@ model StallStaffCoupon {
   issuedBy  String    @map("issued_by")
   revokedAt DateTime? @map("revoked_at") @db.Timestamptz
 
-  request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  request StallRequest       @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  staff   StallVendorStaff[]
 
+  @@index([requestId])
   @@map("stall_staff_coupon")
   @@schema("stalls")
 }
@@ -1359,14 +1366,20 @@ model StallVendorStaff {
   idNumber     String      @map("id_number")
   role         String?
   registeredAt DateTime    @default(now()) @map("registered_at") @db.Timestamptz
+  /// WHICH coupon this person came in on, so a stall holding two codes can be
+  /// told how far each has been used. Nullable for the registrations that
+  /// predate a stall being able to hold more than one.
+  couponId     String?     @map("coupon_id") @db.Uuid
 
-  request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  request StallRequest      @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  coupon  StallStaffCoupon? @relation(fields: [couponId], references: [id], onDelete: SetNull)
 
   /// One phone number, one registration per stall. Re-submitting the same
   /// person — the common case when a form is refreshed — must not inflate the
   /// count the check-in counter reads.
   @@unique([requestId, mobile])
   @@index([requestId])
+  @@index([couponId])
   @@map("stall_vendor_staff")
   @@schema("stalls")
 }
