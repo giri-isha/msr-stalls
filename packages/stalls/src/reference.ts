@@ -41,3 +41,25 @@ export function parseReference(
   if (!type) return null;
   return { type, year: Number(match[2]), seq: Number(match[3]) };
 }
+
+/**
+ * Every form an edition serves, request and otherwise.
+ *
+ * 🔴 A superset of `StallRequestType`, and the distinction is real: a request
+ * type is what somebody APPLIED as, and it names a row in `stall_request`. A
+ * form type is a page that asks questions — the four application forms plus the
+ * bank details form, the FSSAI upload and staff registration, none of which is
+ * an application and all of which ask somebody to agree to something.
+ *
+ * ⚠️ The four shared names are deliberately identical strings. A declaration
+ * scoped to `VENDOR` means the vendor application form, and the migration that
+ * widened `stall_declaration` relies on every existing value mapping to itself.
+ */
+export type StallFormType = StallRequestType | 'BANK' | 'FSSAI' | 'STAFF';
+
+export const STALL_FORM_TYPES: readonly StallFormType[] = [
+  ...STALL_REQUEST_TYPES,
+  'BANK',
+  'FSSAI',
+  'STAFF',
+];

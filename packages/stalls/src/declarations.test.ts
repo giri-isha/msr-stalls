@@ -11,7 +11,7 @@ import {
 const d = (over: Partial<Declaration> = {}): Declaration => ({
   id: over.id ?? Math.random().toString(36).slice(2),
   key: 'request_submission',
-  requestType: null,
+  formType: null,
   version: 1,
   title: 'Submission',
   body: 'Allocation is at the sole discretion of the stall team.',
@@ -23,12 +23,12 @@ const d = (over: Partial<Declaration> = {}): Declaration => ({
 
 describe('which declarations a form shows', () => {
   test('the default, when the form has no variant of its own', () => {
-    expect(declarationsFor([d()], 'VENDOR').map((x) => x.requestType)).toEqual([null]);
+    expect(declarationsFor([d()], 'VENDOR').map((x) => x.formType)).toEqual([null]);
   });
 
   test('the variant, when it has one', () => {
     const shown = declarationsFor(
-      [d(), d({ requestType: 'VENDOR', body: 'Vendor wording.' })],
+      [d(), d({ formType: 'VENDOR', body: 'Vendor wording.' })],
       'VENDOR',
     );
     expect(shown).toHaveLength(1);
@@ -39,13 +39,13 @@ describe('which declarations a form shows', () => {
    *  has agreed to two things that may contradict, and no reading of the log
    *  afterwards can say which one they meant. */
   test('never the variant AND the default for one key', () => {
-    const all = [d(), d({ requestType: 'VENDOR' })];
+    const all = [d(), d({ formType: 'VENDOR' })];
     expect(declarationsFor(all, 'VENDOR')).toHaveLength(1);
   });
 
   test('another form still gets the default', () => {
-    const all = [d(), d({ requestType: 'VENDOR', body: 'Vendor wording.' })];
-    expect(declarationsFor(all, 'ASHRAM')[0]?.requestType).toBeNull();
+    const all = [d(), d({ formType: 'VENDOR', body: 'Vendor wording.' })];
+    expect(declarationsFor(all, 'ASHRAM')[0]?.formType).toBeNull();
   });
 
   test('two keys come back in a stable order, whatever the rows arrive in', () => {
@@ -74,8 +74,18 @@ describe('which declarations a form shows', () => {
     // ⚠️ Switching a vendor-specific consent OFF means the vendor form asks
     // nothing for that key — not that it quietly asks the generic one instead,
     // which would be a wording nobody chose for that form.
-    const all = [d(), d({ requestType: 'VENDOR', isActive: false })];
-    expect(declarationsFor(all, 'VENDOR').map((x) => x.requestType)).toEqual([null]);
+    const all = [d(), d({ formType: 'VENDOR', isActive: false })];
+    expect(declarationsFor(all, 'VENDOR').map((x) => x.formType)).toEqual([null]);
+  });
+
+  /** The bank form is not a request type. Before declarations were scoped by
+   *  FORM, the only wording it could show was the default — which is how a
+   *  consent about NEFT transfer ended up typed into JSX instead. */
+  test('a form that is not a request type gets its own variant', () => {
+    const all = [d(), d({ formType: 'BANK', body: 'Transfer by NEFT only.' })];
+    expect(declarationsFor(all, 'BANK')).toHaveLength(1);
+    expect(declarationsFor(all, 'BANK')[0]?.body).toBe('Transfer by NEFT only.');
+    expect(declarationsFor(all, 'VENDOR')[0]?.formType).toBeNull();
   });
 });
 
