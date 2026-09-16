@@ -1470,33 +1470,55 @@ export const Gstin = z
 
 const UploadKey = z.string().trim().min(1).max(400);
 
+/**
+ * 🔴 Every answer below is OPTIONAL, and none of them is optional on the form.
+ *
+ * This contract can only say what a field's TYPE is — the same limit
+ * `SubmitRequestInput` has, and for the same reason: it is a constant, while
+ * which questions must be answered is a property of the edition's field rows.
+ * An admin may mark the GST number optional or stop asking for a MICR code
+ * altogether, and a contract that hard-required them would reject a form the
+ * Form Builder had legitimately configured — the page would stop asking, the
+ * payload would omit it, and nobody could submit at all.
+ *
+ * ⚠️ So the halves are: shape HERE, required-ness in `validateAgainstForm`
+ * against the definition, enforced in `submitBankDetails`. An IFSC that is
+ * present is still checked for being an IFSC.
+ *
+ * ⚠️ `.or(z.literal(''))` throughout, because the page sends `''` for a
+ * question it did not draw rather than omitting the key.
+ */
 export const SubmitBankDetailsInput = z.object({
-  email: z.email().max(320),
-  invoiceName: z.string().trim().min(1).max(200),
-  accountHolder: z.string().trim().min(1).max(200),
-  mobile: IndianMobile,
-  address: z.string().trim().min(1).max(1000),
+  email: z.email().max(320).optional().or(z.literal('')),
+  invoiceName: z.string().trim().max(200).optional(),
+  accountHolder: z.string().trim().max(200).optional(),
+  mobile: IndianMobile.optional().or(z.literal('')),
+  address: z.string().trim().max(1000).optional(),
   pincode: z
     .string()
     .trim()
-    .regex(/^\d{6}$/, 'expected a 6-digit pincode'),
-  bankName: z.string().trim().min(1).max(200),
-  branch: z.string().trim().min(1).max(200),
+    .regex(/^\d{6}$/, 'expected a 6-digit pincode')
+    .optional()
+    .or(z.literal('')),
+  bankName: z.string().trim().max(200).optional(),
+  branch: z.string().trim().max(200).optional(),
   accountNumber: z
     .string()
     .trim()
-    .regex(/^\d{6,20}$/, 'expected 6 to 20 digits'),
-  ifsc: Ifsc,
+    .regex(/^\d{6,20}$/, 'expected 6 to 20 digits')
+    .optional()
+    .or(z.literal('')),
+  ifsc: Ifsc.optional().or(z.literal('')),
   micr: z
     .string()
     .trim()
     .regex(/^\d{9}$/, 'expected a 9-digit MICR code')
     .optional()
     .or(z.literal('')),
-  panNumber: Pan,
-  gstNumber: Gstin,
-  chequeKey: UploadKey,
-  panKey: UploadKey,
+  panNumber: Pan.optional().or(z.literal('')),
+  gstNumber: Gstin.optional().or(z.literal('')),
+  chequeKey: UploadKey.optional().or(z.literal('')),
+  panKey: UploadKey.optional().or(z.literal('')),
   gstKey: UploadKey.optional().or(z.literal('')),
   declarationIds: DeclarationIds,
   /** Answers to questions an ADMIN appended, keyed by field id. The built-ins
@@ -1505,15 +1527,15 @@ export const SubmitBankDetailsInput = z.object({
   customFields: z.record(z.uuid(), z.string().trim().max(2000)).optional(),
   // The form is also where the vendor FINALISES what they need — the 2025 form
   // asks again, because a request made in November is stale by February.
-  plugs5a: z.number().int().min(0).max(50),
-  plugs15a: z.number().int().min(0).max(50),
-  gasStoves: z.number().int().min(0).max(10),
+  plugs5a: z.number().int().min(0).max(50).optional(),
+  plugs15a: z.number().int().min(0).max(50).optional(),
+  gasStoves: z.number().int().min(0).max(10).optional(),
   appliances: z.array(ApplianceInput).max(20).default([]),
-  tablesNeeded: z.number().int().min(0).max(50),
-  chairsNeeded: z.number().int().min(0).max(200),
-  passes2w: z.number().int().min(0).max(50),
-  passes4w: z.number().int().min(0).max(50),
-  passesStaff: z.number().int().min(0).max(200),
+  tablesNeeded: z.number().int().min(0).max(50).optional(),
+  chairsNeeded: z.number().int().min(0).max(200).optional(),
+  passes2w: z.number().int().min(0).max(50).optional(),
+  passes4w: z.number().int().min(0).max(50).optional(),
+  passesStaff: z.number().int().min(0).max(200).optional(),
   remarks: z.string().trim().max(2000).optional(),
 });
 export type SubmitBankDetailsInput = z.infer<typeof SubmitBankDetailsInput>;
@@ -1787,12 +1809,15 @@ export const RegisterStaffInput = z.object({
    *  request, so a request-keyed answer would collapse seven of them. See the
    *  partial indexes on `stall_custom_field_value`. */
   customFields: z.record(z.uuid(), z.string().trim().max(2000)).optional(),
-  name: z.string().trim().min(1).max(200),
+  name: z.string().trim().max(200).optional(),
+  /** ⚠️ Still REQUIRED, and the one question on this form that cannot be
+   *  switched off — it is half of the index behind "one person, one
+   *  registration per stall". See `LOCKED_REQUIRED`. */
   mobile: IndianMobile,
-  idType: z.enum(['AADHAAR', 'VOTER_ID', 'DRIVING_LICENCE', 'PASSPORT', 'OTHER']),
+  idType: z.enum(['AADHAAR', 'VOTER_ID', 'DRIVING_LICENCE', 'PASSPORT', 'OTHER']).optional(),
   /** Only the last four digits of an Aadhaar are kept — enough to match a card
    *  at the gate, not enough to be a copy of it. Longer ids are stored whole. */
-  idNumber: z.string().trim().min(4).max(40),
+  idNumber: z.string().trim().min(4).max(40).optional(),
   role: z.string().trim().max(100).optional(),
   declarationIds: DeclarationIds,
 });
