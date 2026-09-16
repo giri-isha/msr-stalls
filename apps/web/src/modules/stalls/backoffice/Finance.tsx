@@ -687,7 +687,7 @@ function Concession({
       ) : (
         <Btn onClick={() => setEditing(true)}>
           <Icon name='pencil' size={14} />
-          Agree a Different Fee for This Stall…
+          Agree a Different Fee for This Stall
         </Btn>
       )}
       {editing && (

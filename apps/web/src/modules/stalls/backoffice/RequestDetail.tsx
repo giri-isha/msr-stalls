@@ -288,13 +288,13 @@ export function RequestDetail() {
               !(r.status === 'SELECTED' && fullyAllocated) && (
                 <Btn kind='primary' disabled={busy} onClick={() => setSelecting(true)}>
                   <Icon name={r.status === 'SELECTED' ? 'plus' : 'map-pin'} size={14} />
-                  {r.status === 'SELECTED' ? 'Add stall' : 'Select…'}
+                  {r.status === 'SELECTED' ? 'Add stall' : 'Select'}
                 </Btn>
               )}
             {canSelect && r.status !== 'REJECTED' && r.status !== 'CANCELLED' && (
               <Btn kind='danger' disabled={busy} onClick={() => setReasonFor('reject')}>
                 <Icon name='ban' size={14} />
-                Reject…
+                Reject
               </Btn>
             )}
             {canSelect && r.status === 'SELECTED' && (
@@ -306,7 +306,7 @@ export function RequestDetail() {
             {canWrite && (
               <Btn disabled={busy} onClick={() => setAmending(true)}>
                 <Icon name='pencil' size={14} />
-                Amend…
+                Amend
               </Btn>
             )}
             {canWrite &&

@@ -102,9 +102,9 @@ describe('the number of stalls, asked while selecting', () => {
     const fx = installFetch(stubs({ numStallsRequested: 3, ...over }));
     renderAt('/m/stalls/requests', routes, { me: true });
     await userEvent.click(await screen.findByText('Green Leaf Organics'));
-    // The rail says "Select…" on a fresh request and "Add stall" on one that
+    // The rail says "Select" on a fresh request and "Add stall" on one that
     // already holds fewer stalls than it is being given. Same dialog.
-    await userEvent.click(await screen.findByRole('button', { name: /Select…|Add stall/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /^(Select|Add stall)$/ }));
     await screen.findByLabelText(/Number of Stalls/);
     return fx;
   };
