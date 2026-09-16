@@ -1,7 +1,11 @@
+import type { BuiltFormField, FormField as FieldDef } from '@msr/stalls';
+import { formFields } from '@msr/stalls';
 import { useState } from 'react';
 import { useParams } from 'react-router';
 import { getFssaiForm, presignPublicUpload, submitFssai, uploadFile } from '../api';
 import { formatDate, useLoad } from '../hooks';
+import { DeclarationConsent, allTicked } from '../components/DeclarationConsent';
+import { FieldControl } from '../components/FormFields';
 import { Btn, Card, ErrorBox, FormField, H1, Icon, Input, Loading, Tag, useToast } from '../ui';
 
 /**
@@ -26,6 +30,15 @@ export function FssaiForm() {
   const [files, setFiles] = useState<Array<{ key: string; name: string }>>([]);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const [extra, setExtra] = useState<Record<string, string>>({});
+  const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (id: string, on: boolean) =>
+    setTicked((was) => {
+      const next = new Set(was);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
 
   const presign = presignPublicUpload(token);
 
@@ -39,8 +52,16 @@ export function FssaiForm() {
   }
   if (!data) return null;
 
+  // 🔴 The edition's own definition. This form seeds no questions of its own
+  // beyond the three built-ins, but an admin can append any — and until the
+  // definition ARRIVES there is nothing to tick and nothing required, so the
+  // gate would be vacuously satisfied.
+  const rows = data.form ? formFields(data.form) : [];
+  const appendedFields = rows.filter((f) => !f.isBuiltIn);
+  const ready = data.form !== null && files.length > 0 && allTicked(data.declarations, ticked);
+
   const submit = async () => {
-    if (files.length === 0) return;
+    if (!ready) return;
     setBusy(true);
     try {
       await submitFssai(token, {
@@ -48,6 +69,11 @@ export function FssaiForm() {
         ownerName: ownerName.trim() || undefined,
         mobile: mobile.trim() || undefined,
         files,
+        // The exact versions this page drew. This form seeds no declaration, so
+        // the list is usually empty — and stays correct the day the team
+        // authors one, without a deploy.
+        declarationIds: data.declarations.map((d) => d.id),
+        customFields: Object.fromEntries(Object.entries(extra).filter(([, v]) => v.trim() !== '')),
       });
       setDone(true);
       reload();
@@ -165,7 +191,31 @@ export function FssaiForm() {
             </div>
 
             <div>
-              <Btn kind='primary' onClick={submit} disabled={busy || files.length === 0}>
+              {/* Questions this edition appended, and the consents it asks
+                  for. Both are empty until the team authors them, and the
+                  button then behaves exactly as it does today. */}
+              {appendedFields.length > 0 && (
+                <div style={{ display: 'grid', gap: 14 }}>
+                  {appendedFields.map((f) => (
+                    <FieldControl
+                      key={f.id}
+                      field={asFormField(f)}
+                      value={extra[f.id] ?? ''}
+                      onChange={(v) =>
+                        setExtra((was) => ({ ...was, [f.id]: typeof v === 'string' ? v : '' }))
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+
+              <DeclarationConsent
+                declarations={data.declarations}
+                ticked={ticked}
+                onToggle={toggle}
+              />
+
+              <Btn kind='primary' onClick={submit} disabled={busy || !ready}>
                 <Icon name='send' size={14} />
                 {busy ? 'Submitting…' : 'Submit'}
               </Btn>
@@ -176,3 +226,17 @@ export function FssaiForm() {
     </div>
   );
 }
+
+/** A row as `FieldControl` wants it. */
+const asFormField = (f: BuiltFormField): FieldDef => ({
+  name: f.name ?? f.id,
+  label: f.label,
+  labelTa: f.labelTa,
+  help: f.help ?? undefined,
+  helpTa: f.helpTa ?? undefined,
+  type: f.type,
+  required: f.required,
+  options: f.options ?? undefined,
+  min: f.min ?? undefined,
+  max: f.max ?? undefined,
+});
