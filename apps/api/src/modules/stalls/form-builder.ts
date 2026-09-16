@@ -203,7 +203,11 @@ export async function formFor(
 /** Every request form on the edition, for the public config and the builder. */
 export async function formsFor(db: Db, editionId: string): Promise<BuilderForm[]> {
   const rows = await db.stallFormDefinition.findMany({
-    where: { editionId, formType: { in: [...REQUEST_FORMS] } },
+    // ⚠️ Every form the edition serves, not the four applications. The filter
+    // was here because `BANK` and `FSSAI` were enum members with no definition
+    // behind them; all seven have one now, and a filter would hide the three
+    // this work exists to make editable.
+    where: { editionId, formType: { in: [...ALL_FORMS] } },
     select: {
       id: true,
       formType: true,

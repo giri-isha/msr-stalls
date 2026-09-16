@@ -521,9 +521,14 @@ export async function uploadFile(
   presign: (input: PresignUploadInput) => Promise<PresignUploadResponse>,
   file: File,
   purpose: PresignUploadInput['purpose'],
+  /** ⚠️ Required for `FORM_FIELD`, which is the purpose every admin-added file
+   *  question uses. It becomes part of the key's path, so a key minted here is
+   *  only ever valid as the answer to THIS question. */
+  fieldId?: string,
 ): Promise<{ key: string; name: string }> {
   const { key, url, headers } = await presign({
     purpose,
+    fieldId,
     fileName: file.name,
     contentType: file.type || 'application/octet-stream',
     bytes: file.size,

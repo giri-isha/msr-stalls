@@ -19,6 +19,7 @@ import { getPublicConfig, submitRequest } from '../api';
 import { type ApplianceRow, ApplianceRows } from '../components/ApplianceRows';
 import { BilingualLabel } from '../components/BilingualLabel';
 import { DeclarationConsent, allTicked } from '../components/DeclarationConsent';
+import { type FieldValue, FieldControl } from '../components/FormFields';
 import { ZoneSelect } from '../components/ZoneSelect';
 import { useLoad } from '../hooks';
 import { useRequester } from '../requester';
@@ -38,7 +39,10 @@ import {
 } from '../ui';
 import { SLUG_TYPE } from './FormPicker';
 
-type Values = Record<string, string | boolean | ApplianceRow[]>;
+/** ⚠️ Includes `string[]`, for a `file`/`files` answer — a list of media-store
+ *  keys. A request form has no built-in file question, but an admin can append
+ *  one, and the value type has to admit what the control produces. */
+type Values = Record<string, string | boolean | ApplianceRow[] | string[]>;
 
 const ASHRAM_TYPES = new Set<StallRequestType>(['ASHRAM', 'ASHRAM_FOOD']);
 const NUMERIC = new Set([
@@ -69,7 +73,15 @@ function buildInput(
   consented: boolean,
 ): Record<string, unknown> {
   const ashram = ASHRAM_TYPES.has(type);
-  const appliances = (Array.isArray(values.appliances) ? values.appliances : [])
+  // ⚠️ `isApplianceRows`, not `Array.isArray`. A `files` answer is also an
+  // array — of upload keys — and treating one as an appliance list would read
+  // `.name` off a string.
+  const rows = values.appliances;
+  const appliances = (
+    Array.isArray(rows) && rows.every((r) => typeof r === 'object' && r !== null)
+      ? (rows as ApplianceRow[])
+      : []
+  )
     .filter((a) => a.name.trim() !== '')
     .map((a) => ({ name: a.name.trim(), watts: num(a.watts) ?? 0 }));
   const customFields: Record<string, string> = {};
@@ -468,7 +480,7 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
                       field={asFormField(f)}
                       value={values[key]}
                       error={errors[key]}
-                      onChange={(v) => set(key, v)}
+                      onChange={(v) => set(key, v ?? '')}
                       config={config.data}
                       type={type}
                       isFood={isFood}
@@ -535,164 +547,5 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
         </div>
       </Card>
     </form>
-  );
-}
-
-function FieldControl({
-  field: f,
-  value,
-  error,
-  onChange,
-  config,
-  type,
-  isFood,
-}: {
-  field: FormField;
-  value: Values[string] | undefined;
-  error?: string;
-  onChange: (v: Values[string]) => void;
-  config: PublicConfig | null;
-  type: StallRequestType;
-  isFood: boolean;
-}) {
-  const id = f.name;
-  const label = <BilingualLabel en={f.label} ta={f.labelTa} />;
-  const help = f.help ? (
-    <>
-      {f.help}
-      {f.helpTa && (
-        <>
-          {' / '}
-          <span className='msrs-tamil' lang='ta'>
-            {f.helpTa}
-          </span>
-        </>
-      )}
-    </>
-  ) : undefined;
-  const invalid = error ? true : undefined;
-  const common = {
-    id,
-    invalid,
-    'aria-invalid': invalid,
-    'aria-describedby': error ? `${id}-error` : f.help ? `${id}-help` : undefined,
-  };
-
-  if (f.type === 'checkbox') {
-    // ⚠️ The consent question is a PLATE, not a bare tick and a line of text.
-    // It is the control that gates submission, and on a phone a 16px box beside
-    // a two-line paragraph is the smallest target on the longest screen.
-    const on = value === true;
-    return (
-      <div>
-        {f.help && (
-          <div
-            id={`${id}-help`}
-            style={{ fontSize: 12.5, color: 'var(--mfg)', marginBottom: 8, lineHeight: 1.6 }}
-          >
-            {help}
-          </div>
-        )}
-        <ChoicePlate htmlFor={id} selected={on}>
-          <Checkbox
-            {...common}
-            checked={on}
-            onChange={(e) => onChange(e.target.checked)}
-            style={{ marginTop: 1 }}
-          />
-          <span style={{ flex: 1, minWidth: 0 }}>
-            {label}
-            {f.required && (
-              <span aria-hidden style={{ marginLeft: 3, color: 'var(--des-fg)' }}>
-                *
-              </span>
-            )}
-          </span>
-        </ChoicePlate>
-        <FieldError of={error} id={`${id}-error`} />
-      </div>
-    );
-  }
-
-  return (
-    <Labelled id={id} label={label} help={help} error={error} required={f.required}>
-      {f.type === 'appliances' ? (
-        <ApplianceRows
-          id={id}
-          value={Array.isArray(value) ? value : []}
-          onChange={onChange}
-          max={f.max}
-        />
-      ) : f.type === 'zone' ? (
-        // ⚠️ The choices are the edition's own bays, resolved here rather than
-        // baked into the field, so a bay added for a redrawn layout appears on
-        // the form without a code change. The vendor form drops the bays closed
-        // to trade; the local welfare form keeps them, because those are the
-        // ones a village trader is most likely to want.
-        //
-        // Local welfare is quoted a rent too — a lower one for the same ground,
-        // not no rent at all. Only the ashram forms, which are billed
-        // internally and never quoted, hide the figures.
-        <ZoneSelect
-          name={id}
-          value={str(value)}
-          onChange={onChange}
-          options={zoneOptions(config?.zones ?? [], type === 'VENDOR')}
-          zones={config?.zones ?? null}
-          showRent={type === 'VENDOR' || type === 'LOCAL_WELFARE'}
-          isFood={isFood}
-          invalid={invalid}
-        />
-      ) : f.type === 'radio' && f.options ? (
-        <div style={{ display: 'grid', gap: 8 }} role='radiogroup'>
-          {f.options.map((o) => (
-            <ChoicePlate key={o.value} htmlFor={`${id}-${o.value}`} selected={value === o.value}>
-              <Radio
-                id={`${id}-${o.value}`}
-                name={id}
-                value={o.value}
-                checked={value === o.value}
-                onChange={() => onChange(o.value)}
-                style={{ marginTop: 2 }}
-              />
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <BilingualLabel en={o.label} ta={o.labelTa} />
-              </span>
-            </ChoicePlate>
-          ))}
-        </div>
-      ) : f.type === 'select' && f.options ? (
-        <Select {...common} value={str(value)} onChange={(e) => onChange(e.target.value)}>
-          <option value=''>Choose…</option>
-          {f.options.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-              {o.labelTa ? ` / ${o.labelTa}` : ''}
-            </option>
-          ))}
-        </Select>
-      ) : f.type === 'textarea' ? (
-        <Textarea {...common} value={str(value)} onChange={(e) => onChange(e.target.value)} />
-      ) : f.type === 'number' ? (
-        <Input
-          {...common}
-          type='number'
-          inputMode='numeric'
-          min={f.min}
-          max={f.max}
-          value={str(value)}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      ) : (
-        <Input
-          {...common}
-          type={f.type === 'email' ? 'email' : f.type === 'tel' ? 'tel' : 'text'}
-          inputMode={f.type === 'tel' ? 'tel' : undefined}
-          autoComplete={f.type === 'email' ? 'email' : f.type === 'tel' ? 'tel' : undefined}
-          value={str(value)}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      )}
-    </Labelled>
   );
 }
