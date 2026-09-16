@@ -94,7 +94,7 @@ export function RolesPrivileges() {
       <div
         style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}
         role='tablist'
-        aria-label='Access sections'
+        aria-label='Access Sections'
       >
         {TABS.map((t) => (
           <button
@@ -115,7 +115,7 @@ export function RolesPrivileges() {
         <div style={{ display: 'grid', gap: 14 }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <div style={{ flex: 1, minWidth: 200 }}>
-              <Search label='Search roles' value={q} onChange={setQ} placeholder='Search roles…' />
+              <Search label='Search Roles' value={q} onChange={setQ} placeholder='Search roles…' />
             </div>
             <button type='button' onClick={() => setTree(!tree)} style={toolBtnStyle(tree)}>
               <Icon name='layers' size={14} />
@@ -124,7 +124,7 @@ export function RolesPrivileges() {
             {writable && (
               <Btn kind='primary' onClick={() => setAdding(true)}>
                 <Icon name='plus' size={14} />
-                Add role
+                Add Role
               </Btn>
             )}
           </div>
@@ -204,7 +204,7 @@ export function RolesPrivileges() {
 function RoleTree({ roles }: { roles: RoleSummary[] }) {
   return (
     <ul
-      aria-label='Role hierarchy'
+      aria-label='Role Hierarchy'
       style={{ display: 'grid', gap: 2, listStyle: 'none', margin: 0, padding: 0 }}
     >
       {roles.map((r) => (
@@ -226,7 +226,7 @@ function RoleTree({ roles }: { roles: RoleSummary[] }) {
           <span style={{ color: 'var(--mfg)' }}>Level {r.level}</span>
           {!r.assignable && (
             <Tag size='sm' tone='warn'>
-              Above you
+              Above You
             </Tag>
           )}
         </li>

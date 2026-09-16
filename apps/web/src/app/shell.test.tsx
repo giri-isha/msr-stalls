@@ -56,14 +56,14 @@ describe('the backoffice shell', () => {
     expect(await screen.findByText('Sign in — development')).toBeInTheDocument();
     // The chrome must NOT be behind the gate — a signed-out visitor should not
     // be able to Tab into a nav they cannot use.
-    expect(screen.queryByRole('navigation', { name: 'Main navigation' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Main Navigation' })).not.toBeInTheDocument();
   });
 
   test('mounts the nav, the breadcrumb and the dashboard behind it', async () => {
     installFetch([ME, DASH]);
     renderBackoffice();
 
-    const nav = await screen.findByRole('navigation', { name: 'Main navigation' });
+    const nav = await screen.findByRole('navigation', { name: 'Main Navigation' });
     expect(within(nav).getByTitle('Dashboard')).toBeInTheDocument();
     expect(within(nav).getByTitle('All Requests')).toBeInTheDocument();
     // The crumb names the group and the title the route.
@@ -81,7 +81,7 @@ describe('the backoffice shell', () => {
     installFetch([['GET', /\/m\/stalls\/me$/, () => noPlanning], DASH]);
     renderBackoffice();
 
-    const nav = await screen.findByRole('navigation', { name: 'Main navigation' });
+    const nav = await screen.findByRole('navigation', { name: 'Main Navigation' });
     expect(within(nav).queryByTitle('Planning & Zones')).not.toBeInTheDocument();
     expect(within(nav).getByTitle('Admin')).toBeInTheDocument();
   });
@@ -111,9 +111,9 @@ describe('the backoffice shell', () => {
     renderBackoffice();
 
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'Account menu' }));
+    await user.click(await screen.findByRole('button', { name: 'Account Menu' }));
     expect(screen.getByText(ME_LEAD.displayName)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign Out' })).toBeInTheDocument();
   });
 
   test('the theme control sits in the bar, not behind the account menu', async () => {
@@ -145,11 +145,11 @@ describe('the public shell', () => {
     );
     render(<RouterProvider router={router} />);
 
-    expect(await screen.findByText('Request a stall')).toBeInTheDocument();
+    expect(await screen.findByText('Request a Stall')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /theme/i })).toBeInTheDocument();
     // No sidebar, no account chip: a vendor with a link from an email meets the
     // form and nothing else.
-    expect(screen.queryByRole('navigation', { name: 'Main navigation' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Account menu' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Main Navigation' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Account Menu' })).not.toBeInTheDocument();
   });
 });

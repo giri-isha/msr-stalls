@@ -126,7 +126,7 @@ export function Declarations({
 
   return (
     <Panel
-      title='Consent declarations'
+      title='Consent Declarations'
       note='The wording a requester ticks when they apply. A form shows its own variant if there is one, otherwise the default. Changing the text creates a new version and archives the old one; consents stay linked to the exact version agreed to.'
       actions={
         <>
@@ -175,7 +175,7 @@ export function Declarations({
                 {writable && (
                   <Btn onClick={() => setAdding({ key: g.key })}>
                     <Icon name='plus' size={14} />
-                    Form variant
+                    Form Variant
                   </Btn>
                 )}
               </div>
@@ -393,7 +393,7 @@ function DeclarationDialog({
               fontSize: 13,
             }}
           >
-            <option value=''>Default — every form without its own</option>
+            <option value=''>Default — Every Form Without Its Own</option>
             {FORM_TYPES.map((t) => (
               <option key={t} value={t}>
                 {TYPE_LABEL[t] ?? t}
@@ -411,7 +411,7 @@ function DeclarationDialog({
           />
         </FormField>
 
-        <FormField id='dec-body' label='Declaration text'>
+        <FormField id='dec-body' label='Declaration Text'>
           <Textarea
             id='dec-body'
             rows={6}
@@ -421,7 +421,7 @@ function DeclarationDialog({
           <Hint />
         </FormField>
 
-        <FormField id='dec-body-ta' label='Tamil (optional)'>
+        <FormField id='dec-body-ta' label='Tamil (Optional)'>
           <Textarea
             id='dec-body-ta'
             className='msrs-tamil'

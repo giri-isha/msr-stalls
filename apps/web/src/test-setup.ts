@@ -47,7 +47,7 @@ if (!window.matchMedia) {
  * ⚠️ The module remembers two things across visits — the theme, and whether a
  * given list was last read as rows or as tiles (`ui/useListView.ts`) — and
  * jsdom keeps one storage for a whole FILE. Without this, a test that clicks
- * "Card view" writes a preference that the next test in the file silently
+ * "Card View" writes a preference that the next test in the file silently
  * inherits, and `getByRole('table')` fails in a test that never touched the
  * toggle. The failure would point at the second test, which is the one place
  * the bug is not.

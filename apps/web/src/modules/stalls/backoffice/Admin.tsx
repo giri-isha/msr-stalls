@@ -37,11 +37,11 @@ import { FormBuilder } from './FormBuilder';
 
 const TABS = [
   { label: 'Bays', glyph: 'map-pin' },
-  { label: 'Planning columns', glyph: 'layout-grid' },
+  { label: 'Planning Columns', glyph: 'layout-grid' },
   { label: 'Rates', glyph: 'ticket' },
   { label: 'Charges', glyph: 'file-text' },
   { label: 'Fines', glyph: 'ban' },
-  { label: 'Form builder', glyph: 'clipboard-list' },
+  { label: 'Form Builder', glyph: 'clipboard-list' },
   { label: 'Declarations', glyph: 'scroll' },
   { label: 'Flow', glyph: 'arrow-left-right' },
   { label: 'Editions', glyph: 'calendar' },
@@ -218,7 +218,7 @@ export function Admin() {
       <div
         style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}
         role='tablist'
-        aria-label='Configuration sections'
+        aria-label='Configuration Sections'
       >
         {TABS.map((t) => (
           <button
@@ -236,7 +236,7 @@ export function Admin() {
       </div>
 
       {tab === 'Bays' && <Zones c={c} writable={writable} run={run} reload={cfg.reload} />}
-      {tab === 'Planning columns' && (
+      {tab === 'Planning Columns' && (
         <PlanCategories c={c} writable={writable} run={run} reload={cfg.reload} />
       )}
       {tab === 'Rates' && <Rates c={c} writable={writable} run={run} reload={cfg.reload} />}
@@ -248,7 +248,7 @@ export function Admin() {
           appended rows — the same `stall_form_field` records, minus the context
           that says where on the form they are asked. Two screens editing one
           table, and the shorter one could not reorder. */}
-      {tab === 'Form builder' && (
+      {tab === 'Form Builder' && (
         <FormBuilder writable={writable} editionId={viewing || undefined} />
       )}
       {/* ⚠️ Reads its own data rather than taking `c`. The config payload is
@@ -315,7 +315,7 @@ function Zones({ c, writable, run, reload }: PanelProps) {
           <TR>
             <TH>Code</TH>
             <TH>Name</TH>
-            <TH align='right'>Expected crowd</TH>
+            <TH align='right'>Expected Crowd</TH>
             <TH>Vendors</TH>
             <TH align='right'>Stalls</TH>
             <TH />
@@ -363,7 +363,7 @@ function PlanCategories({ c, writable, run, reload }: PanelProps) {
 
   return (
     <Panel
-      title='Planning columns'
+      title='Planning Columns'
       note='What can occupy a stall position. These are the Planning grid’s columns, in this order. A column something is already planned or allocated against cannot be removed.'
       actions={
         <>
@@ -374,7 +374,7 @@ function PlanCategories({ c, writable, run, reload }: PanelProps) {
       footer={
         <Btn kind='primary' disabled={!writable || !dirty} onClick={save}>
           <Icon name='check' size={14} />
-          Save columns
+          Save Columns
         </Btn>
       }
     >
@@ -499,7 +499,7 @@ function PlanCategoryAddDialog({
 
   return (
     <Dialog
-      title='Add a column'
+      title='Add a Column'
       note='Added to the list — nothing is written until Save columns. The key is what every saved plan will refer to, so it cannot be changed afterwards.'
       onClose={onClose}
       footer={
@@ -520,7 +520,7 @@ function PlanCategoryAddDialog({
             onChange={(e) => setKey(e.target.value.toUpperCase())}
           />
         </FormField>
-        <FormField id='nc-name' label='Column heading'>
+        <FormField id='nc-name' label='Column Heading'>
           <Input
             id='nc-name'
             value={name}
@@ -575,7 +575,7 @@ function ColumnDialog({
       }
     >
       <div style={{ display: 'grid', gap: 12 }}>
-        <FormField id='pc-name' label='Column heading'>
+        <FormField id='pc-name' label='Column Heading'>
           <Input id='pc-name' value={name} onChange={(e) => setName(e.target.value)} />
         </FormField>
         <FormField id='pc-food' label='Food'>
@@ -625,7 +625,7 @@ function ZoneRow({
             would put a badge on almost every row and leave the exception
             competing with the rule for attention. */}
         {z.isClosedToVendors ? (
-          <Tag size='sm'>Closed to vendors</Tag>
+          <Tag size='sm'>Closed to Vendors</Tag>
         ) : (
           <span style={{ color: 'var(--mfg)' }}>Open</span>
         )}
@@ -685,7 +685,7 @@ function ZoneAddDialog({ run, onClose }: { run: PanelProps['run']; onClose: () =
 
   return (
     <Dialog
-      title='Add a bay'
+      title='Add a Bay'
       note='The code is the bay’s identity and cannot be changed afterwards.'
       onClose={onClose}
       footer={
@@ -709,7 +709,7 @@ function ZoneAddDialog({ run, onClose }: { run: PanelProps['run']; onClose: () =
             onChange={(e) => setName(e.target.value)}
           />
         </FormField>
-        <FormField id='nz-crowd' label='Expected crowd'>
+        <FormField id='nz-crowd' label='Expected Crowd'>
           <Input
             id='nz-crowd'
             type='number'
@@ -786,7 +786,7 @@ function ZoneDialog({
         <FormField id='z-name' label='Name'>
           <Input id='z-name' value={name} onChange={(e) => setName(e.target.value)} />
         </FormField>
-        <FormField id='z-crowd' label='Expected crowd'>
+        <FormField id='z-crowd' label='Expected Crowd'>
           <Input
             id='z-crowd'
             type='number'
@@ -866,7 +866,7 @@ function Rates({ c, writable, run, reload }: PanelProps) {
 
   return (
     <Panel
-      title='Stall rent and advance'
+      title='Stall Rent and Advance'
       note='Per stall, before GST, for each bay. A bay left at zero is not priced at that scope and the form will not offer it. The advance is refundable and is set per bay beside the rent.'
       actions={<CopyAction section='rates' writable={writable} onCopied={reload} />}
       footer={
@@ -876,14 +876,14 @@ function Rates({ c, writable, run, reload }: PanelProps) {
           onClick={() => run('Rates saved', () => api.putRateCard(priced))}
         >
           <Icon name='check' size={14} />
-          Save rates
+          Save Rates
         </Btn>
       }
     >
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
         {[
           { label: 'Food', value: true },
-          { label: 'Non-food', value: false },
+          { label: 'Non-Food', value: false },
         ].map((t) => (
           <button
             key={t.label}
@@ -901,10 +901,10 @@ function Rates({ c, writable, run, reload }: PanelProps) {
         <THead>
           <TR>
             <TH>Bay</TH>
-            <TH align='right'>Vendor rent</TH>
-            <TH align='right'>Vendor advance</TH>
-            <TH align='right'>Local welfare rent</TH>
-            <TH align='right'>Local welfare advance</TH>
+            <TH align='right'>Vendor Rent</TH>
+            <TH align='right'>Vendor Advance</TH>
+            <TH align='right'>Local Welfare Rent</TH>
+            <TH align='right'>Local Welfare Advance</TH>
             <TH />
           </TR>
         </THead>
@@ -922,7 +922,7 @@ function Rates({ c, writable, run, reload }: PanelProps) {
                 const r = row(z.code, scope);
                 return closedToTrade ? (
                   <TD key={scope} align='right' colSpan={2} muted>
-                    Closed to trade
+                    Closed to Trade
                   </TD>
                 ) : (
                   <Fragment key={scope}>
@@ -1032,13 +1032,13 @@ function RateDialog({
           </div>
         ) : (
           <Grid min={200}>
-            <RupeeInput id='rd-v-rent' label='Vendor rent' {...set('vendorRent')} />
-            <RupeeInput id='rd-v-adv' label='Vendor advance' {...set('vendorAdvance')} />
+            <RupeeInput id='rd-v-rent' label='Vendor Rent' {...set('vendorRent')} />
+            <RupeeInput id='rd-v-adv' label='Vendor Advance' {...set('vendorAdvance')} />
           </Grid>
         )}
         <Grid min={200}>
-          <RupeeInput id='rd-lw-rent' label='Local welfare rent' {...set('lwRent')} />
-          <RupeeInput id='rd-lw-adv' label='Local welfare advance' {...set('lwAdvance')} />
+          <RupeeInput id='rd-lw-rent' label='Local Welfare Rent' {...set('lwRent')} />
+          <RupeeInput id='rd-lw-adv' label='Local Welfare Advance' {...set('lwAdvance')} />
         </Grid>
       </div>
     </Dialog>
@@ -1055,7 +1055,7 @@ function Charges({ c, writable, run, reload }: PanelProps) {
   });
   return (
     <Panel
-      title='Charges and deposits'
+      title='Charges and Deposits'
       actions={<CopyAction section='charges' writable={writable} onCopied={reload} />}
       note='The 2025 forms quoted three different chair and table rates — to ashram departments, to local welfare stalls and to vendors. All three are kept, because they are what was charged. The refundable advance is not here: it is set per bay, beside that bay’s rent.'
       footer={
@@ -1070,29 +1070,29 @@ function Charges({ c, writable, run, reload }: PanelProps) {
           }
         >
           <Icon name='check' size={14} />
-          Save charges
+          Save Charges
         </Btn>
       }
     >
       <Grid>
-        <RupeeInput id='chair' label='Chair / day (ashram)' {...f('chairRatePaise')} />
-        <RupeeInput id='table' label='Table / day (ashram)' {...f('tableRatePaise')} />
-        <RupeeInput id='lwchair' label='Chair / day (local welfare)' {...f('lwChairRatePaise')} />
-        <RupeeInput id='lwtable' label='Table / day (local welfare)' {...f('lwTableRatePaise')} />
-        <RupeeInput id='vchair' label='Chair / day (vendor)' {...f('vendorChairRatePaise')} />
-        <RupeeInput id='vtable' label='Table / day (vendor)' {...f('vendorTableRatePaise')} />
+        <RupeeInput id='chair' label='Chair / Day (Ashram)' {...f('chairRatePaise')} />
+        <RupeeInput id='table' label='Table / Day (Ashram)' {...f('tableRatePaise')} />
+        <RupeeInput id='lwchair' label='Chair / Day (Local Welfare)' {...f('lwChairRatePaise')} />
+        <RupeeInput id='lwtable' label='Table / Day (Local Welfare)' {...f('lwTableRatePaise')} />
+        <RupeeInput id='vchair' label='Chair / Day (Vendor)' {...f('vendorChairRatePaise')} />
+        <RupeeInput id='vtable' label='Table / Day (Vendor)' {...f('vendorTableRatePaise')} />
         <RupeeInput
           id='chairrep'
-          label='Chair replacement (not returned)'
+          label='Chair Replacement (Not Returned)'
           {...f('chairReplacementPaise')}
         />
         <RupeeInput
           id='tablerep'
-          label='Table replacement (not returned)'
+          label='Table Replacement (Not Returned)'
           {...f('tableReplacementPaise')}
         />
-        <RupeeInput id='p5' label='Extra 5 A plug point' {...f('plug5aRatePaise')} />
-        <RupeeInput id='p15' label='15 A plug point' {...f('plug15aRatePaise')} />
+        <RupeeInput id='p5' label='Extra 5 A Plug Point' {...f('plug5aRatePaise')} />
+        <RupeeInput id='p15' label='15 A Plug Point' {...f('plug15aRatePaise')} />
         <FormField id='gst' label='GST %'>
           <Input
             id='gst'
@@ -1109,11 +1109,11 @@ function Charges({ c, writable, run, reload }: PanelProps) {
             every furniture line that has not been frozen onto a payment letter. */}
         <RupeeInput
           id='ctdep'
-          label='Furniture deposit (flat, once)'
+          label='Furniture Deposit (Flat, Once)'
           {...f('chairTableDepositPaise')}
         />
-        <RupeeInput id='damage' label='Damage penalty' {...f('damagePenaltyPaise')} />
-        <FormField id='days' label='Days furniture is held (billing)'>
+        <RupeeInput id='damage' label='Damage Penalty' {...f('damagePenaltyPaise')} />
+        <FormField id='days' label='Days Furniture Is Held (Billing)'>
           <Input
             id='days'
             type='number'
@@ -1124,7 +1124,7 @@ function Charges({ c, writable, run, reload }: PanelProps) {
             onChange={(e) => setV({ ...v, equipmentDays: Number(e.target.value) || 1 })}
           />
         </FormField>
-        <FormField id='cps2' label='People per stall (planning)'>
+        <FormField id='cps2' label='People per Stall (Planning)'>
           <Input
             id='cps2'
             type='number'
@@ -1144,7 +1144,7 @@ function Fines({ c, writable, run, reload }: PanelProps) {
   const [adding, setAdding] = useState(false);
   return (
     <Panel
-      title='Fine types'
+      title='Fine Types'
       note='Deducted from the deposit in Phase 3. Configured here.'
       actions={
         <>
@@ -1224,7 +1224,7 @@ function FineAddDialog({ run, onClose }: { run: PanelProps['run']; onClose: () =
 
   return (
     <Dialog
-      title='Add a fine type'
+      title='Add a Fine Type'
       note='The reason is the fine’s identity and cannot be changed afterwards — a fine that needs renaming is retired and re-added.'
       onClose={onClose}
       footer={
@@ -1245,7 +1245,7 @@ function FineAddDialog({ run, onClose }: { run: PanelProps['run']; onClose: () =
             onChange={(e) => setReason(e.target.value)}
           />
         </FormField>
-        <FormField id='fa' label='Default amount (₹)'>
+        <FormField id='fa' label='Default Amount (₹)'>
           <Input
             id='fa'
             type='number'
@@ -1303,7 +1303,7 @@ function FineDialog({
       footer={<DialogButtons onClose={onClose} onSave={save} disabled={saving || !valid} />}
     >
       <div style={{ display: 'grid', gap: 12 }}>
-        <FormField id='ft-amount' label='Default amount (₹)'>
+        <FormField id='ft-amount' label='Default Amount (₹)'>
           <Input
             id='ft-amount'
             type='number'
@@ -1375,7 +1375,7 @@ function Flow({ c, writable, run }: PanelProps) {
 
   return (
     <Panel
-      title='Onboarding flow'
+      title='Onboarding Flow'
       note='Which steps a selected vendor goes through. Phase 2 and 3 read these.'
       footer={
         <Btn
@@ -1391,17 +1391,17 @@ function Flow({ c, writable, run }: PanelProps) {
       <div style={{ display: 'grid', gap: 10 }}>
         <Step
           k='bankStepEnabled'
-          label='Bank, GST and contract details'
+          label='Bank, GST and Contract Details'
           help='Collected by emailed form after selection.'
         />
         <Step
           k='paymentStepEnabled'
-          label='Payment details and confirmation'
+          label='Payment Details and Confirmation'
           help='Payment email, then finance confirms receipt.'
         />
         <Step
           k='fssaiStepEnabled'
-          label='FSSAI certificate upload'
+          label='FSSAI Certificate Upload'
           help='Food stalls upload before check-in.'
         />
       </div>
@@ -1439,8 +1439,8 @@ function Editions({ writable, run }: { writable: boolean; run: PanelProps['run']
             <TR>
               <TH>Year</TH>
               <TH>Name</TH>
-              <TH>Stalls per request</TH>
-              <TH>Virtual accounts</TH>
+              <TH>Stalls per Request</TH>
+              <TH>Virtual Accounts</TH>
               <TH>Active</TH>
               <TH />
             </TR>
@@ -1572,14 +1572,14 @@ function EditionDialog({
     >
       <div style={{ display: 'grid', gap: 12 }}>
         <Grid>
-          <FormField id='ed-name' label='Edition name'>
+          <FormField id='ed-name' label='Edition Name'>
             <Input
               id='ed-name'
               value={v.name}
               onChange={(ev) => setV({ ...v, name: ev.target.value })}
             />
           </FormField>
-          <FormField id='ed-max' label='Stalls per request'>
+          <FormField id='ed-max' label='Stalls per Request'>
             <Input
               id='ed-max'
               type='number'
@@ -1589,7 +1589,7 @@ function EditionDialog({
               onChange={(ev) => setV({ ...v, maxStallsPerRequest: Number(ev.target.value) || 1 })}
             />
           </FormField>
-          <FormField id='ed-rent' label='Virtual account prefix — rent'>
+          <FormField id='ed-rent' label='Virtual Account Prefix — Rent'>
             <Input
               id='ed-rent'
               value={v.virtualAccountRentPrefix}
@@ -1599,7 +1599,7 @@ function EditionDialog({
               }
             />
           </FormField>
-          <FormField id='ed-dep' label='Virtual account prefix — deposit'>
+          <FormField id='ed-dep' label='Virtual Account Prefix — Deposit'>
             <Input
               id='ed-dep'
               value={v.virtualAccountDepositPrefix}
@@ -1617,7 +1617,7 @@ function EditionDialog({
             without a link rather than one that goes nowhere. */}
         <FormField
           id='ed-terms'
-          label='Terms and conditions link'
+          label='Terms and Conditions Link'
           help='Shown beside the acceptance tick-box on the bank details form. Leave blank until the document is issued.'
         >
           <Input
@@ -1671,7 +1671,7 @@ function EditionAddDialog({
 
   return (
     <Dialog
-      title='Add an edition'
+      title='Add an Edition'
       note='Created and made active immediately — every backoffice screen reads the active edition, so this moves the module to the new year. Zones, rates and charges are seeded from the 2025 defaults; “Copy from…” on a panel brings a past edition’s own settings across afterwards.'
       onClose={onClose}
       footer={

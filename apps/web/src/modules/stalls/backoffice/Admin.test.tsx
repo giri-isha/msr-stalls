@@ -140,7 +140,7 @@ describe('bays', () => {
     const box = within(await screen.findByRole('dialog'));
     await user.type(box.getByLabelText('Code'), 'D1');
     await user.type(box.getByLabelText('Name'), 'D1 — new lawn');
-    await user.type(box.getByLabelText('Expected crowd'), '8000');
+    await user.type(box.getByLabelText('Expected Crowd'), '8000');
     await user.click(box.getByRole('button', { name: 'Add bay' }));
 
     await waitFor(() => {
@@ -175,8 +175,8 @@ describe('bays', () => {
     const box = within(screen.getByRole('dialog'));
     await user.clear(box.getByLabelText('Name'));
     await user.type(box.getByLabelText('Name'), 'C1 — Moon side, widened');
-    await user.clear(box.getByLabelText('Expected crowd'));
-    await user.type(box.getByLabelText('Expected crowd'), '31000');
+    await user.clear(box.getByLabelText('Expected Crowd'));
+    await user.type(box.getByLabelText('Expected Crowd'), '31000');
     await user.click(box.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => {
@@ -223,7 +223,7 @@ describe('planning columns', () => {
     const box = within(await screen.findByRole('dialog'));
     await box.findByLabelText('Key');
     await user.type(box.getByLabelText('Key'), 'SPONSOR_FOOD');
-    await user.type(box.getByLabelText('Column heading'), 'Sponsor food');
+    await user.type(box.getByLabelText('Column Heading'), 'Sponsor food');
     await user.click(box.getByRole('button', { name: 'Add column' }));
     await user.click(screen.getByRole('button', { name: /save columns/i }));
 
@@ -282,7 +282,7 @@ describe('edition settings', () => {
     const user = userEvent.setup();
 
     await openEdition(user, 'MSR 2026');
-    await user.type(screen.getByLabelText('Virtual account prefix — rent'), 'MSRRENT');
+    await user.type(screen.getByLabelText('Virtual Account Prefix — Rent'), 'MSRRENT');
     await user.click(screen.getByRole('button', { name: /^save$/i }));
 
     await waitFor(() => {
@@ -307,7 +307,7 @@ describe('edition settings', () => {
     const user = userEvent.setup();
 
     await openEdition(user, 'MSR 2025');
-    await user.type(screen.getByLabelText('Virtual account prefix — rent'), 'OLD');
+    await user.type(screen.getByLabelText('Virtual Account Prefix — Rent'), 'OLD');
     await user.click(screen.getByRole('button', { name: /^save$/i }));
 
     await waitFor(() => {
@@ -327,15 +327,15 @@ describe('the rent matrix', () => {
     await user.click(screen.getByRole('tab', { name: /rates/i }));
 
     // Closed to trade, so the row says so where the two vendor figures would be…
-    expect(screen.getAllByText('Closed to trade').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Closed to Trade').length).toBeGreaterThan(0);
 
     await user.click(screen.getByLabelText('Edit A3 food rates'));
     // …and the box offers no vendor fields at all, rather than empty ones
     // nobody may fill.
-    expect(screen.queryByLabelText('Vendor rent')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Vendor Rent')).not.toBeInTheDocument();
     // …and it is priced for local welfare, which is the whole point of the rework.
-    expect(screen.getByLabelText('Local welfare rent')).toHaveValue(12000);
-    expect(screen.getByLabelText('Local welfare advance')).toHaveValue(4000);
+    expect(screen.getByLabelText('Local Welfare Rent')).toHaveValue(12000);
+    expect(screen.getByLabelText('Local Welfare Advance')).toHaveValue(4000);
   });
 
   test('a row left at zero is dropped rather than saved as a free stall', async () => {
@@ -346,7 +346,7 @@ describe('the rent matrix', () => {
     await screen.findByLabelText('Edit C1');
     await user.click(screen.getByRole('tab', { name: /rates/i }));
     await user.click(screen.getByLabelText('Edit C1 food rates'));
-    await user.clear(screen.getByLabelText('Vendor rent'));
+    await user.clear(screen.getByLabelText('Vendor Rent'));
     await user.click(screen.getByRole('button', { name: 'Save' }));
     await user.click(screen.getByRole('button', { name: /save rates/i }));
 

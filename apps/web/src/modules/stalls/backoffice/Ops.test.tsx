@@ -64,7 +64,7 @@ describe('the electrical sheet', () => {
     render();
 
     expect(await screen.findByText('C1-4')).toBeInTheDocument();
-    expect(screen.getByText('5A (incl. 1 default)')).toBeInTheDocument();
+    expect(screen.getByText('5A (Incl. 1 Default)')).toBeInTheDocument();
     expect(screen.getByText('Deep fryer 2500W')).toBeInTheDocument();
   });
 
@@ -142,13 +142,13 @@ describe('check-in', () => {
     expect(await screen.findByRole('button', { name: 'Undo check-in' })).toBeInTheDocument();
   });
 
-  test('says "All clear" when nothing is outstanding', async () => {
+  test('says "All Clear" when nothing is outstanding', async () => {
     installFetch([
       ['GET', /\/me$/, () => ME_ADMIN],
       ['GET', /\/checkin/, () => [checkInRow({ pending: [] })]],
     ]);
     render();
-    expect(await screen.findByText('All clear')).toBeInTheDocument();
+    expect(await screen.findByText('All Clear')).toBeInTheDocument();
   });
 
   test('a volunteer without the action sees the state but no button', async () => {
@@ -210,10 +210,10 @@ describe('chairs and tables', () => {
     await user.click(screen.getByLabelText('Edit Green Leaf Organics'));
 
     const box = within(screen.getByRole('dialog'));
-    await user.clear(box.getByLabelText('Extra chairs'));
-    await user.type(box.getByLabelText('Extra chairs'), '12');
-    await user.clear(box.getByLabelText('Chairs missing'));
-    await user.type(box.getByLabelText('Chairs missing'), '1');
+    await user.clear(box.getByLabelText('Extra Chairs'));
+    await user.type(box.getByLabelText('Extra Chairs'), '12');
+    await user.clear(box.getByLabelText('Chairs Missing'));
+    await user.type(box.getByLabelText('Chairs Missing'), '1');
     // Nothing in flight while the figures are still being settled.
     expect(fetch.calls.filter((c) => c.method === 'PATCH')).toHaveLength(0);
 
@@ -256,10 +256,10 @@ describe('chairs and tables', () => {
     await user.click(screen.getByLabelText('Edit Green Leaf Organics'));
 
     const box = within(screen.getByRole('dialog'));
-    expect(box.queryByLabelText('Extra chairs')).not.toBeInTheDocument();
+    expect(box.queryByLabelText('Extra Chairs')).not.toBeInTheDocument();
     expect(box.getByText(/already been collected in cash/)).toBeInTheDocument();
     // What was found on return is still the counter's to record.
-    expect(box.getByLabelText('Chairs missing')).toBeInTheDocument();
+    expect(box.getByLabelText('Chairs Missing')).toBeInTheDocument();
   });
 
   test('missing and damaged items show the deduction they will cause', async () => {

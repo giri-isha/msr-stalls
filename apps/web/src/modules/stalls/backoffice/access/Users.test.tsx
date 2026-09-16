@@ -151,11 +151,11 @@ describe('the directory', () => {
 
   /** ⚠️ The reason `LINK_ONLY` exists. A vendor who never registered a password
    *  is the ordinary case, and must not be drawn as a problem. */
-  test('a requester who never registered reads as "Link only", not as a fault', async () => {
+  test('a requester who never registered reads as "Link Only", not as a fault', async () => {
     base(page([requester()]));
     render();
 
-    expect(within(await rowFor('Priya Venkat')).getByText('Link only')).toBeInTheDocument();
+    expect(within(await rowFor('Priya Venkat')).getByText('Link Only')).toBeInTheDocument();
   });
 });
 
@@ -196,7 +196,7 @@ describe('the toolbar', () => {
     const user = userEvent.setup();
 
     await screen.findByText('Vikram Sethu');
-    await user.type(screen.getByLabelText('Search users'), 'priya');
+    await user.type(screen.getByLabelText('Search Users'), 'priya');
 
     await waitFor(() => expect(fetch.calls.some((c) => c.url.includes('q=priya'))).toBe(true));
     // Five keystrokes, not five requests.
@@ -308,7 +308,7 @@ describe('support actions', () => {
     await screen.findByText('Priya Venkat');
     expect(screen.queryByLabelText('Unlock Priya Venkat')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Send Priya Venkat their access link')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Add user/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Add User/ })).not.toBeInTheDocument();
   });
 });
 
@@ -332,11 +332,11 @@ describe("setting a requester's password", () => {
 
     await user.click(await screen.findByLabelText('Set a password for Priya Venkat'));
 
-    const set = screen.getByRole('button', { name: 'Set password' });
-    await user.type(screen.getByLabelText('New password'), 'short');
+    const set = screen.getByRole('button', { name: 'Set Password' });
+    await user.type(screen.getByLabelText('New Password'), 'short');
     expect(set).toBeDisabled();
 
-    await user.type(screen.getByLabelText('New password'), '-monsoon');
+    await user.type(screen.getByLabelText('New Password'), '-monsoon');
     await user.click(set);
 
     await waitFor(() => {
@@ -352,7 +352,7 @@ describe("setting a requester's password", () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByLabelText('Set a password for Priya Venkat'));
-    expect(screen.getByLabelText('New password')).toHaveAttribute('type', 'text');
+    expect(screen.getByLabelText('New Password')).toHaveAttribute('type', 'text');
   });
 
   /** A backoffice member signs in through the Foundation. There is no password
@@ -387,11 +387,11 @@ describe("setting a requester's password", () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByLabelText('Set a password for Priya Venkat'));
-    await user.type(screen.getByLabelText('New password'), 'monsoon-fig-84');
-    await user.click(screen.getByRole('button', { name: 'Set password' }));
+    await user.type(screen.getByLabelText('New Password'), 'monsoon-fig-84');
+    await user.click(screen.getByRole('button', { name: 'Set Password' }));
 
     expect(await screen.findByText(/another account already signs in/)).toBeInTheDocument();
-    expect(screen.getByLabelText('New password')).toBeInTheDocument();
+    expect(screen.getByLabelText('New Password')).toBeInTheDocument();
   });
 });
 
@@ -414,8 +414,8 @@ describe('granting a role', () => {
     const user = userEvent.setup();
 
     await screen.findByText('Vikram Sethu');
-    await user.click(screen.getByRole('button', { name: /Add user/ }));
-    await user.type(screen.getByLabelText('Search people'), 'kavya');
+    await user.click(screen.getByRole('button', { name: /Add User/ }));
+    await user.type(screen.getByLabelText('Search People'), 'kavya');
     await user.click(screen.getByRole('button', { name: /^Search$/ }));
 
     expect(screen.getByRole('button', { name: 'Assign' })).toBeDisabled();
@@ -439,8 +439,8 @@ describe('granting a role', () => {
     const user = userEvent.setup();
 
     await screen.findByText('Vikram Sethu');
-    await user.click(screen.getByRole('button', { name: /Add user/ }));
-    await user.type(screen.getByLabelText('Search people'), 'kavya');
+    await user.click(screen.getByRole('button', { name: /Add User/ }));
+    await user.type(screen.getByLabelText('Search People'), 'kavya');
     await user.click(screen.getByRole('button', { name: /^Search$/ }));
 
     // No default role: the picker opens on a placeholder, because position 0 of
@@ -708,8 +708,8 @@ describe('what a grant reaches', () => {
     const user = userEvent.setup();
 
     await screen.findByText('Vikram Sethu');
-    await user.click(screen.getByRole('button', { name: /Add user/ }));
-    await user.type(screen.getByLabelText('Search people'), 'kavya');
+    await user.click(screen.getByRole('button', { name: /Add User/ }));
+    await user.type(screen.getByLabelText('Search People'), 'kavya');
     await user.click(screen.getByRole('button', { name: /^Search$/ }));
     await user.click(await screen.findByLabelText('Kavya Nair'));
     await user.selectOptions(screen.getByLabelText('Role'), 'stalls_volunteer');
@@ -821,7 +821,7 @@ describe('adding somebody who is not in the directory', () => {
 
   const openAdd = async (user: ReturnType<typeof userEvent.setup>) => {
     await screen.findByText('Vikram Sethu');
-    await user.click(screen.getByRole('button', { name: /Add user/ }));
+    await user.click(screen.getByRole('button', { name: /Add User/ }));
   };
 
   test('offers to add them only once a search has actually run', async () => {
@@ -830,12 +830,12 @@ describe('adding somebody who is not in the directory', () => {
     const user = userEvent.setup();
 
     await openAdd(user);
-    expect(screen.queryByRole('button', { name: 'Add them' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add Them' })).not.toBeInTheDocument();
 
-    await user.type(screen.getByLabelText('Search people'), 'kavya');
+    await user.type(screen.getByLabelText('Search People'), 'kavya');
     await user.click(screen.getByRole('button', { name: /^Search$/ }));
 
-    expect(await screen.findByRole('button', { name: 'Add them' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Add Them' })).toBeInTheDocument();
   });
 
   test('stages the person and the role in one call', async () => {
@@ -847,9 +847,9 @@ describe('adding somebody who is not in the directory', () => {
     const user = userEvent.setup();
 
     await openAdd(user);
-    await user.type(screen.getByLabelText('Search people'), 'kavya');
+    await user.type(screen.getByLabelText('Search People'), 'kavya');
     await user.click(screen.getByRole('button', { name: /^Search$/ }));
-    await user.click(await screen.findByRole('button', { name: 'Add them' }));
+    await user.click(await screen.findByRole('button', { name: 'Add Them' }));
 
     await user.type(screen.getByLabelText('Name'), 'Kavya Nair');
     await user.type(screen.getByLabelText('Email'), 'kavya.n@ishafoundation.org');
@@ -875,9 +875,9 @@ describe('adding somebody who is not in the directory', () => {
     const user = userEvent.setup();
 
     await openAdd(user);
-    await user.type(screen.getByLabelText('Search people'), 'kavya');
+    await user.type(screen.getByLabelText('Search People'), 'kavya');
     await user.click(screen.getByRole('button', { name: /^Search$/ }));
-    await user.click(await screen.findByRole('button', { name: 'Add them' }));
+    await user.click(await screen.findByRole('button', { name: 'Add Them' }));
     await user.selectOptions(screen.getByLabelText('Role'), 'stalls_volunteer');
 
     expect(screen.getByRole('button', { name: /Add and assign/ })).toBeDisabled();
@@ -893,12 +893,12 @@ describe('adding somebody who is not in the directory', () => {
     const user = userEvent.setup();
 
     await openAdd(user);
-    await user.type(screen.getByLabelText('Search people'), 'kavya');
+    await user.type(screen.getByLabelText('Search People'), 'kavya');
     await user.click(screen.getByRole('button', { name: /^Search$/ }));
-    await user.click(await screen.findByRole('button', { name: 'Add them' }));
-    await user.click(screen.getByRole('button', { name: /Search the directory instead/ }));
+    await user.click(await screen.findByRole('button', { name: 'Add Them' }));
+    await user.click(screen.getByRole('button', { name: /Search the Directory Instead/ }));
 
-    expect(screen.getByLabelText('Search people')).toBeInTheDocument();
+    expect(screen.getByLabelText('Search People')).toBeInTheDocument();
   });
 
   /** Marked, not hidden. A row still waiting on its first sign-in is exactly
@@ -920,11 +920,11 @@ describe('adding somebody who is not in the directory', () => {
     const user = userEvent.setup();
 
     await openAdd(user);
-    await user.type(screen.getByLabelText('Search people'), 'kavya');
+    await user.type(screen.getByLabelText('Search People'), 'kavya');
     await user.click(screen.getByRole('button', { name: /^Search$/ }));
 
     expect(await screen.findByLabelText('Kavya Nair')).toBeInTheDocument();
-    expect(screen.getByText('Not signed in yet')).toBeInTheDocument();
+    expect(screen.getByText('Not Signed in Yet')).toBeInTheDocument();
   });
 });
 

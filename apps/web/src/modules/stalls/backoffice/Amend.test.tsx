@@ -25,15 +25,15 @@ const stubs = (over: Record<string, unknown> = {}) =>
 const openDetail = async () => {
   renderAt('/m/stalls/requests', routes, { me: true });
   await userEvent.click(await screen.findByText('Green Leaf Organics'));
-  return screen.findByRole('region', { name: 'Request detail' });
+  return screen.findByRole('region', { name: 'Request Detail' });
 };
 
 describe('the agreed bay on the record', () => {
   test('is shown apart from the bay that was asked for, and says so when they differ', async () => {
     installFetch(stubs({ agreedZoneCode: 'A4' }));
     await openDetail();
-    expect(await screen.findByText('Bay requested')).toBeInTheDocument();
-    expect(screen.getByText('Bay agreed')).toBeInTheDocument();
+    expect(await screen.findByText('Bay Requested')).toBeInTheDocument();
+    expect(screen.getByText('Bay Agreed')).toBeInTheDocument();
     // The vendor asked for C1 and was given A4 — the row has to say that, or
     // the rent on the payment letter looks wrong to whoever reads it.
     expect(screen.getByText('moved from C1')).toBeInTheDocument();
@@ -42,8 +42,8 @@ describe('the agreed bay on the record', () => {
   test('is absent until the conversation has happened', async () => {
     installFetch(stubs());
     await openDetail();
-    await screen.findByText('Bay requested');
-    expect(screen.queryByText('Bay agreed')).not.toBeInTheDocument();
+    await screen.findByText('Bay Requested');
+    expect(screen.queryByText('Bay Agreed')).not.toBeInTheDocument();
   });
 });
 
@@ -53,7 +53,7 @@ describe('the amend dialog', () => {
     await openDetail();
     await userEvent.click(await screen.findByRole('button', { name: /Amend/ }));
 
-    const contact = await screen.findByLabelText('Contact number');
+    const contact = await screen.findByLabelText('Contact Number');
     await userEvent.clear(contact);
     await userEvent.type(contact, '9876543210');
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
@@ -70,7 +70,7 @@ describe('the amend dialog', () => {
     await openDetail();
     await userEvent.click(await screen.findByRole('button', { name: /Amend/ }));
 
-    const agreed = await screen.findByLabelText('Bay agreed');
+    const agreed = await screen.findByLabelText('Bay Agreed');
     // The bays come from the edition, so a bay added in Admin this year is
     // offered without a code change.
     expect(agreed).toHaveTextContent('A4 — Snake side');
@@ -87,7 +87,7 @@ describe('the amend dialog', () => {
     const fx = installFetch(stubs());
     await openDetail();
     await userEvent.click(await screen.findByRole('button', { name: /Amend/ }));
-    await screen.findByLabelText('Contact number');
+    await screen.findByLabelText('Contact Number');
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(screen.queryByText('Save changes')).not.toBeInTheDocument());
     expect(fx.calls.some((c) => c.method === 'PATCH')).toBe(false);
@@ -98,7 +98,7 @@ describe('the amend dialog', () => {
     await openDetail();
     await userEvent.click(await screen.findByRole('button', { name: /Amend/ }));
 
-    await userEvent.selectOptions(await screen.findByLabelText('Bay agreed'), '');
+    await userEvent.selectOptions(await screen.findByLabelText('Bay Agreed'), '');
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(fx.calls.some((c) => c.method === 'PATCH')).toBe(true));

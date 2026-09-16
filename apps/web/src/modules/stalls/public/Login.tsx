@@ -48,7 +48,7 @@ export function Login() {
   return (
     <div style={{ display: 'grid', gap: 16, maxWidth: 440, margin: '0 auto' }}>
       <H1 icon={<Icon name='log-in' size={18} />} sub='Sign in to your stall account'>
-        Log in
+        Log In
       </H1>
 
       <Card pad={18}>
@@ -117,14 +117,14 @@ export function Login() {
         }}
       >
         <div>
-          <Link to='/stalls/forgot'>Forgotten your password?</Link>
+          <Link to='/stalls/forgot'>Forgotten Your Password?</Link>
         </div>
         <div>
-          No account yet? <Link to='/stalls/register'>Create one</Link>.
+          No account yet? <Link to='/stalls/register'>Create One</Link>.
         </div>
         <div>
           Applied before we had logins?{' '}
-          <Link to='/stalls/status'>Email me a link to my requests</Link>.
+          <Link to='/stalls/status'>Email Me a Link to My Requests</Link>.
         </div>
       </div>
     </div>

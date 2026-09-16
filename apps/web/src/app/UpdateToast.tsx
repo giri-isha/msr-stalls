@@ -172,8 +172,8 @@ export function InstallPrompt() {
       <button
         type='button'
         onClick={dismiss}
-        aria-label='Not now'
-        title='Not now'
+        aria-label='Not Now'
+        title='Not Now'
         style={{
           background: 'none',
           border: 0,

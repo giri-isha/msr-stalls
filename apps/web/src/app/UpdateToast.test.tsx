@@ -84,7 +84,7 @@ describe('the install prompt', () => {
   test('dismissing it is remembered across visits', async () => {
     const first = render(<InstallPrompt />);
     fire();
-    await userEvent.setup().click(await screen.findByRole('button', { name: 'Not now' }));
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Not Now' }));
     expect(screen.queryByRole('button', { name: /Install/ })).not.toBeInTheDocument();
     first.unmount();
 

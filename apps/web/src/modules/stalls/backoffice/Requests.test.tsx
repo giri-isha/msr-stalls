@@ -98,9 +98,9 @@ describe('Requests', () => {
     renderAt('/m/stalls/requests', routes, { me: true });
     await screen.findByText('VEN-2026-0001');
     expect(screen.getByRole('table')).toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Card view' }));
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Card View' }));
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Card view' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'Card View' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
@@ -113,7 +113,7 @@ describe('Requests', () => {
     installFetch(base());
     renderAt('/m/stalls/requests', routes, { me: true });
     await screen.findByText('VEN-2026-0001');
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Card view' }));
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Card View' }));
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
 
     cleanup();
@@ -139,7 +139,7 @@ describe('Requests', () => {
       await user.click((await open(user)).getByRole('option', { name: /Stage$/ }));
       expect(screen.queryByRole('columnheader', { name: 'Stage' })).not.toBeInTheDocument();
       // Every row lost the cell too, not just the header.
-      expect(screen.queryByText('Bank form')).not.toBeInTheDocument();
+      expect(screen.queryByText('Bank Form')).not.toBeInTheDocument();
 
       cleanup();
       installFetch(base());
@@ -180,7 +180,7 @@ describe('Requests', () => {
       const user = userEvent.setup();
       await screen.findByText('VEN-2026-0001');
 
-      await user.click(screen.getByRole('button', { name: 'Card view' }));
+      await user.click(screen.getByRole('button', { name: 'Card View' }));
       expect(screen.queryByRole('button', { name: /Columns/ })).not.toBeInTheDocument();
     });
   });
@@ -190,7 +190,7 @@ describe('Requests', () => {
     const { router } = renderAt('/m/stalls/requests', routes, { me: true });
     await screen.findByText('VEN-2026-0001');
     await userEvent.setup().click(screen.getByText('Green Leaf Organics'));
-    const page = await screen.findByRole('region', { name: 'Request detail' });
+    const page = await screen.findByRole('region', { name: 'Request Detail' });
     expect(
       await within(page).findByText('Organic spices, cold-pressed oils, honey'),
     ).toBeInTheDocument();
@@ -208,7 +208,7 @@ describe('Requests', () => {
     await screen.findByText('LWS-2026-0001');
     const user = userEvent.setup();
     await user.click(screen.getByText('Seva Health Camp'));
-    const page = await screen.findByRole('region', { name: 'Request detail' });
+    const page = await screen.findByRole('region', { name: 'Request Detail' });
     expect(router.state.location.search).toContain('status=SHORTLISTED');
     await user.click(within(page).getByRole('link', { name: 'All Requests' }));
     await waitFor(() => expect(router.state.location.pathname).toBe('/m/stalls/requests'));
@@ -221,7 +221,7 @@ describe('Requests', () => {
     await screen.findByText('VEN-2026-0001');
     const user = userEvent.setup();
     await user.click(screen.getByText('Green Leaf Organics'));
-    const page = await screen.findByRole('region', { name: 'Request detail' });
+    const page = await screen.findByRole('region', { name: 'Request Detail' });
     await user.click(await within(page).findByRole('button', { name: 'Shortlist' }));
     await waitFor(() =>
       expect(fx.calls.some((c) => c.method === 'POST' && c.url.endsWith('/shortlist'))).toBe(true),
@@ -235,7 +235,7 @@ describe('Requests', () => {
     const rows = screen.getAllByRole('row');
     const selected = rows.find((r) => within(r).queryByText('Kodiveli Idli Kadai'));
     const submitted = rows.find((r) => within(r).queryByText('Green Leaf Organics'));
-    expect(within(selected as HTMLElement).getByText('Bank form sent')).toBeInTheDocument();
+    expect(within(selected as HTMLElement).getByText('Bank Form Sent')).toBeInTheDocument();
     // Not selected yet, so there is no onboarding to be at a stage of.
     expect(within(submitted as HTMLElement).getByText('—')).toBeInTheDocument();
   });
@@ -243,14 +243,14 @@ describe('Requests', () => {
   test('the record page tabs the forms the requester has since filled', async () => {
     installFetch(base());
     renderAt('/m/stalls/requests/22222222-2222-4222-8222-222222222222', routes, { me: true });
-    const page = await screen.findByRole('region', { name: 'Request detail' });
+    const page = await screen.findByRole('region', { name: 'Request Detail' });
     const user = userEvent.setup();
     // The application is what opens; the forms are tabs beside it.
     expect(await within(page).findByText('Organic spices, cold-pressed oils, honey')).toBeVisible();
-    await user.click(await within(page).findByRole('tab', { name: 'Bank form' }));
+    await user.click(await within(page).findByRole('tab', { name: 'Bank Form' }));
     expect(await within(page).findByText('HDFC0001234')).toBeInTheDocument();
     // And "All details" is every form at once, without the tabbing.
-    await user.click(within(page).getByRole('tab', { name: 'All details' }));
+    await user.click(within(page).getByRole('tab', { name: 'All Details' }));
     expect(within(page).getByText('HDFC0001234')).toBeInTheDocument();
     expect(within(page).getByText('Organic spices, cold-pressed oils, honey')).toBeInTheDocument();
   });
@@ -268,9 +268,9 @@ describe('Requests', () => {
       ],
     ] as Array<[string, RegExp, (url: URL) => unknown]>);
     renderAt('/m/stalls/requests/22222222-2222-4222-8222-222222222222', routes, { me: true });
-    const page = await screen.findByRole('region', { name: 'Request detail' });
+    const page = await screen.findByRole('region', { name: 'Request Detail' });
     await within(page).findByRole('tab', { name: 'Application' });
-    expect(within(page).queryByRole('tab', { name: 'Bank form' })).not.toBeInTheDocument();
+    expect(within(page).queryByRole('tab', { name: 'Bank Form' })).not.toBeInTheDocument();
     expect(within(page).queryByRole('tab', { name: 'FSSAI' })).not.toBeInTheDocument();
   });
 

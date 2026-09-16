@@ -41,7 +41,7 @@ import {
 const ID_TYPES: Array<[RegisterStaffInput['idType'], string]> = [
   ['AADHAAR', 'Aadhaar'],
   ['VOTER_ID', 'Voter ID'],
-  ['DRIVING_LICENCE', 'Driving licence'],
+  ['DRIVING_LICENCE', 'Driving Licence'],
   ['PASSPORT', 'Passport'],
   ['OTHER', 'Other'],
 ];
@@ -125,7 +125,7 @@ export function StaffRegistration() {
         <Card pad={18} style={{ display: 'grid', gap: 12 }}>
           <FormField
             id='coupon'
-            label='Stall coupon'
+            label='Stall Coupon'
             help='The stall owner has this. It looks like GRE-2026-K7Q4M2X9.'
             error={lookupError ?? undefined}
           >
@@ -174,7 +174,7 @@ export function StaffRegistration() {
             </ErrorBox>
           ) : (
             <Card pad={18} style={{ display: 'grid', gap: 14 }}>
-              <FormField id='staff-name' label='Full name' required error={errors.name}>
+              <FormField id='staff-name' label='Full Name' required error={errors.name}>
                 <Input
                   id='staff-name'
                   value={name}
@@ -182,7 +182,7 @@ export function StaffRegistration() {
                   onChange={(e) => setName(e.target.value)}
                 />
               </FormField>
-              <FormField id='staff-mobile' label='Mobile number' required error={errors.mobile}>
+              <FormField id='staff-mobile' label='Mobile Number' required error={errors.mobile}>
                 <Input
                   id='staff-mobile'
                   type='tel'
@@ -192,7 +192,7 @@ export function StaffRegistration() {
                   onChange={(e) => setMobile(e.target.value)}
                 />
               </FormField>
-              <FormField id='staff-idtype' label='ID proof' required>
+              <FormField id='staff-idtype' label='ID Proof' required>
                 <Select
                   id='staff-idtype'
                   value={idType}
@@ -207,7 +207,7 @@ export function StaffRegistration() {
               </FormField>
               <FormField
                 id='staff-idnumber'
-                label='ID number'
+                label='ID Number'
                 required
                 help={idType === 'AADHAAR' ? 'Only the last four digits are stored.' : undefined}
                 error={errors.idNumber}
@@ -219,7 +219,7 @@ export function StaffRegistration() {
                   onChange={(e) => setIdNumber(e.target.value)}
                 />
               </FormField>
-              <FormField id='staff-role' label='Role on the stall'>
+              <FormField id='staff-role' label='Role on the Stall'>
                 <Input
                   id='staff-role'
                   value={role}

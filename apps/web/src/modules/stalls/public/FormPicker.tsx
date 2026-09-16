@@ -73,7 +73,7 @@ export function FormPicker() {
   return (
     <div>
       <H1 sub='Choose the form that matches who you are. Submission does not guarantee allocation.'>
-        Request a stall
+        Request a Stall
       </H1>
 
       {!signedIn && (
@@ -89,13 +89,13 @@ export function FormPicker() {
             <Link to='/stalls/register' style={{ color: 'inherit' }}>
               <Btn kind='primary'>
                 <Icon name='user' size={14} />
-                Create an account
+                Create an Account
               </Btn>
             </Link>
             <Link to='/stalls/login' style={{ color: 'inherit' }}>
               <Btn>
                 <Icon name='log-in' size={14} />
-                Log in
+                Log In
               </Btn>
             </Link>
           </div>
@@ -108,7 +108,7 @@ export function FormPicker() {
         // anyway — and this page has to stay cheap for readers who are only
         // deciding whether to sign up.
         <p style={{ fontSize: 12.5, marginBottom: 14 }}>
-          <Link to='/stalls/requests'>View your requests</Link> — what has been decided, and which
+          <Link to='/stalls/requests'>View Your Requests</Link> — what has been decided, and which
           forms are still waiting on you.
         </p>
       )}

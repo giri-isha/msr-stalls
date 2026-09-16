@@ -31,6 +31,7 @@ import {
   type ColumnDef,
   useIsMobile,
   useToast,
+  titleCase,
 } from '../ui';
 
 /**
@@ -53,9 +54,9 @@ import {
 const COLUMNS: ColumnDef[] = [
   { key: 'stall', label: 'Stall', locked: true },
   { key: 'ordered', label: 'Ordered' },
-  { key: 'extraChairs', label: 'Extra chairs' },
-  { key: 'extraTables', label: 'Extra tables' },
-  { key: 'cash', label: 'Cash due' },
+  { key: 'extraChairs', label: 'Extra Chairs' },
+  { key: 'extraTables', label: 'Extra Tables' },
+  { key: 'cash', label: 'Cash Due' },
   { key: 'returned', label: 'Returned' },
   { key: 'condition', label: 'Condition' },
 ];
@@ -172,9 +173,9 @@ export function Equipment() {
               <TR>
                 <TH>Stall</TH>
                 {columns.shown('ordered') && <TH align='right'>Ordered</TH>}
-                {columns.shown('extraChairs') && <TH align='right'>Extra chairs</TH>}
-                {columns.shown('extraTables') && <TH align='right'>Extra tables</TH>}
-                {columns.shown('cash') && <TH align='right'>Cash due</TH>}
+                {columns.shown('extraChairs') && <TH align='right'>Extra Chairs</TH>}
+                {columns.shown('extraTables') && <TH align='right'>Extra Tables</TH>}
+                {columns.shown('cash') && <TH align='right'>Cash Due</TH>}
                 {columns.shown('returned') && <TH>Returned</TH>}
                 {columns.shown('condition') && <TH>Condition</TH>}
                 <TH> </TH>
@@ -282,7 +283,7 @@ function StageTag({ row }: { row: EquipmentRow }) {
   }
   return (
     <Tag tone='neutral' size='sm'>
-      Not out
+      Not Out
     </Tag>
   );
 }
@@ -411,7 +412,7 @@ function CounterDialog({
       }
     >
       <div style={{ display: 'grid', gap: 14 }}>
-        <Section title='Taken at the counter'>
+        <Section title='Taken at the Counter'>
           {extrasLocked ? (
             <div style={{ fontSize: 12.5, color: 'var(--mfg)' }}>
               {formatInr(row.extraChargePaise)} for {row.extraChairs} extra chairs and{' '}
@@ -420,26 +421,26 @@ function CounterDialog({
             </div>
           ) : (
             <Pair>
-              <FormField id='eq-xch' label='Extra chairs'>
+              <FormField id='eq-xch' label='Extra Chairs'>
                 <Input id='eq-xch' {...field('extraChairs')} />
               </FormField>
-              <FormField id='eq-xtb' label='Extra tables'>
+              <FormField id='eq-xtb' label='Extra Tables'>
                 <Input id='eq-xtb' {...field('extraTables')} />
               </FormField>
             </Pair>
           )}
         </Section>
 
-        <Section title='Found on return'>
+        <Section title='Found on Return'>
           <Pair>
-            <FormField id='eq-mch' label='Chairs missing'>
+            <FormField id='eq-mch' label='Chairs Missing'>
               <Input id='eq-mch' {...field('missingChairs')} />
             </FormField>
-            <FormField id='eq-mtb' label='Tables missing'>
+            <FormField id='eq-mtb' label='Tables Missing'>
               <Input id='eq-mtb' {...field('missingTables')} />
             </FormField>
           </Pair>
-          <FormField id='eq-note' label='Condition note'>
+          <FormField id='eq-note' label='Condition Note'>
             <Input
               id='eq-note'
               value={v.note}
@@ -545,7 +546,7 @@ function Actions({
       {canWrite && row.extraChargePaise > 0 && !row.extraCollectedAt && (
         <Btn onClick={() => act('COLLECT_EXTRA_PAYMENT', 'Cash recorded.')}>
           <Icon name='rupee' size={14} />
-          Cash taken
+          Cash Taken
         </Btn>
       )}
       {canWrite &&
@@ -553,7 +554,7 @@ function Actions({
         (row.collectedAt ? (
           <Btn onClick={() => act('UNCOLLECT', 'Marked not collected.')}>
             <Icon name='undo' size={14} />
-            Undo collect
+            Undo Collect
           </Btn>
         ) : (
           <Btn onClick={() => act('COLLECT', 'Collected.')}>
@@ -643,7 +644,7 @@ function EquipmentCard({
 function ChallanDialog({ data, onClose }: { data: ChallanView; onClose: () => void }) {
   return (
     <Dialog
-      title='Chairs and tables challan'
+      title='Chairs and Tables Challan'
       onClose={onClose}
       width={760}
       footer={
@@ -676,7 +677,7 @@ function ChallanDialog({ data, onClose }: { data: ChallanView; onClose: () => vo
               <span>
                 Chairs and Tables Challan — {copy} · {data.editionName}
               </span>
-              <span>Category: {data.category.replace(/_/g, ' ').toLowerCase()}</span>
+              <span>Category: {titleCase(data.category)}</span>
             </div>
             <div style={{ display: 'grid', gap: 3, marginBottom: 8 }}>
               <div>

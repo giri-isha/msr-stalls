@@ -96,7 +96,7 @@ export function CopyFromDialog({
           <Empty>There is no other edition to copy from yet.</Empty>
         ) : (
           <>
-            <FormField id='copy-from' label='Copy from'>
+            <FormField id='copy-from' label='Copy From'>
               <Select id='copy-from' value={chosen} onChange={(e) => setFrom(e.target.value)}>
                 {sources.map((e) => (
                   <option key={e.id} value={e.id}>
@@ -247,7 +247,7 @@ export function CopyAction({
     <>
       <Btn disabled={!writable} onClick={() => setOpen(true)}>
         <Icon name='copy' size={14} />
-        Copy from…
+        Copy From…
       </Btn>
       {open && (
         <CopyFromDialog

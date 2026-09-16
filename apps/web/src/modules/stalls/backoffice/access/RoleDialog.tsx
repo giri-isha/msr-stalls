@@ -231,7 +231,7 @@ export function RoleDialog({
         {/* 🔴 Scope UNIONS across the roles a person holds, so a narrow role can
             never take access away from a broad one — it can only be the only
             thing somebody holds. Ticking nothing means every type. */}
-        <Block title='Data scope'>
+        <Block title='Data Scope'>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             {RequestType.options.map((t) => (
               <label
@@ -262,13 +262,13 @@ export function RoleDialog({
         </Block>
 
         <Block title='Hierarchy'>
-          <FormField id='role-parent' label='Sits under'>
+          <FormField id='role-parent' label='Sits Under'>
             <Select
               id='role-parent'
               value={form.parentKey ?? ''}
               onChange={(e) => set('parentKey', e.target.value || null)}
             >
-              <option value=''>Nobody — a role at the top</option>
+              <option value=''>Nobody — a Role at the Top</option>
               {roles
                 .filter((r) => r.roleKey !== existing?.roleKey)
                 .map((r) => (
@@ -281,7 +281,7 @@ export function RoleDialog({
             <Hint>Whoever holds the parent role can hand this one out.</Hint>
           </FormField>
 
-          <FormField id='role-level' label='Level (0 = highest)'>
+          <FormField id='role-level' label='Level (0 = Highest)'>
             <Input
               id='role-level'
               type='number'

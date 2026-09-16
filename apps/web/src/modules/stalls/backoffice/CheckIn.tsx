@@ -194,7 +194,7 @@ function StallCard({
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {row.pending.length === 0 ? (
           <Tag tone='ok' size='sm'>
-            <Icon name='check' size={11} /> All clear
+            <Icon name='check' size={11} /> All Clear
           </Tag>
         ) : (
           row.pending.map((p) => (

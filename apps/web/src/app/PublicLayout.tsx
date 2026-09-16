@@ -188,7 +188,7 @@ function SignedInAs() {
         }}
       >
         <Icon name='log-out' size={14} />
-        Log out
+        Log Out
       </button>
     </div>
   );

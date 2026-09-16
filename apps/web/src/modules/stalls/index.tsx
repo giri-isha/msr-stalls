@@ -216,7 +216,7 @@ export const STALLS_NAV: StallsNavItem[] = [
     requires: 'electrical.read',
   },
   {
-    label: 'Check-in',
+    label: 'Check-In',
     to: '/m/stalls/checkin',
     glyph: 'circle-check',
     group: 'Event Operations',

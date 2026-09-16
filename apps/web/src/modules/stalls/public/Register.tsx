@@ -73,7 +73,7 @@ export function Register() {
             team will set your login up for you — please call them.
           </p>
           <p style={{ margin: 0, fontSize: 12.5, color: 'var(--mfg)', textAlign: 'center' }}>
-            <Link to='/stalls/login'>Go to log in</Link>
+            <Link to='/stalls/login'>Go to Log In</Link>
           </p>
         </Card>
       </div>
@@ -83,7 +83,7 @@ export function Register() {
   return (
     <div style={{ display: 'grid', gap: 16, maxWidth: 440, margin: '0 auto' }}>
       <H1 icon={<Icon name='user' size={18} />} sub='You need one before you can request a stall'>
-        Create an account
+        Create an Account
       </H1>
 
       <Card pad={18}>
@@ -144,7 +144,7 @@ export function Register() {
       </Card>
 
       <p style={{ fontSize: 12.5, color: 'var(--mfg)', textAlign: 'center', margin: 0 }}>
-        Already have one? <Link to='/stalls/login'>Log in</Link>.
+        Already have one? <Link to='/stalls/login'>Log In</Link>.
       </p>
     </div>
   );

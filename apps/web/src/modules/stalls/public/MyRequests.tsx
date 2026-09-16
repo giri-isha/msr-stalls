@@ -45,7 +45,7 @@ function Loaded() {
 
   return (
     <div>
-      <H1 sub={data?.displayName ?? undefined}>Your stall requests</H1>
+      <H1 sub={data?.displayName ?? undefined}>Your Stall Requests</H1>
 
       {requests.length === 0 ? (
         <Card pad={18} style={{ display: 'grid', gap: 12, textAlign: 'center' }}>
@@ -58,7 +58,7 @@ function Loaded() {
             <Link to='/stalls/apply' style={{ color: 'inherit' }}>
               <Btn kind='primary'>
                 <Icon name='ticket' size={14} />
-                Request a stall
+                Request a Stall
               </Btn>
             </Link>
           </div>
@@ -70,7 +70,7 @@ function Loaded() {
             openStep={(reference, step) => continueMyStep({ reference, step })}
           />
           <p style={{ fontSize: 12.5, color: 'var(--mfg)', marginTop: 18, lineHeight: 1.6 }}>
-            Need another stall? <Link to='/stalls/apply'>Send in another request</Link>.
+            Need another stall? <Link to='/stalls/apply'>Send in Another Request</Link>.
           </p>
         </>
       )}

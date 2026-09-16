@@ -91,11 +91,11 @@ describe('Planning', () => {
     await user.click(await screen.findByLabelText('Edit A4'));
 
     const box = within(screen.getByRole('dialog'));
-    const crowd = box.getByLabelText('Expected crowd');
+    const crowd = box.getByLabelText('Expected Crowd');
     await user.clear(crowd);
     await user.type(crowd, '50000');
     // 50,000 ÷ 1,000 people per stall.
-    expect(box.getByText('Suggested from the crowd').parentElement).toHaveTextContent('50');
+    expect(box.getByText('Suggested from the Crowd').parentElement).toHaveTextContent('50');
 
     const vf = box.getByLabelText('Vendor food');
     await user.clear(vf);
@@ -142,7 +142,7 @@ describe('Planning', () => {
     await user.type(box.getByLabelText('Vendor food'), '1');
     await user.click(box.getByRole('button', { name: 'Done' }));
 
-    await user.click(screen.getByRole('button', { name: 'Apply plan' }));
+    await user.click(screen.getByRole('button', { name: 'Apply Plan' }));
     expect(await screen.findByRole('dialog')).toHaveTextContent(/fewer stalls than exist/);
   });
 
@@ -163,6 +163,6 @@ describe('Planning', () => {
     // The grid reads the same to everybody; what a volunteer does not get is
     // the way in to change it.
     expect(await screen.findByLabelText('Edit A4')).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Apply plan' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Apply Plan' })).toBeDisabled();
   });
 });

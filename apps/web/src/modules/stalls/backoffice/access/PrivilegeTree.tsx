@@ -72,7 +72,7 @@ export function PrivilegeTree({
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 180 }}>
           <Search
-            label='Search privileges'
+            label='Search Privileges'
             value={q}
             onChange={setQ}
             placeholder='Search privileges or categories…'

@@ -160,7 +160,7 @@ export function AmendDialog({
               onChange={(e) => set('requesterName')(e.target.value)}
             />
           </FormField>
-          <FormField id='am-stall' label='Stall name'>
+          <FormField id='am-stall' label='Stall Name'>
             <Input
               id='am-stall'
               value={form.stallName}
@@ -175,7 +175,7 @@ export function AmendDialog({
               onChange={(e) => set('email')(e.target.value)}
             />
           </FormField>
-          <FormField id='am-contact' label='Contact number'>
+          <FormField id='am-contact' label='Contact Number'>
             <Input
               id='am-contact'
               value={form.contactNumber}
@@ -194,7 +194,7 @@ export function AmendDialog({
         </FormField>
 
         <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(2, minmax(0,1fr))' }}>
-          <FormField id='am-pref' label='Bay requested' help='What they asked for.'>
+          <FormField id='am-pref' label='Bay Requested' help='What they asked for.'>
             <Select
               id='am-pref'
               value={form.preferredZoneCode}
@@ -209,7 +209,7 @@ export function AmendDialog({
           </FormField>
           <FormField
             id='am-agreed'
-            label='Bay agreed'
+            label='Bay Agreed'
             help='What they are priced at. Blank until the conversation has happened.'
           >
             <Select
@@ -217,7 +217,7 @@ export function AmendDialog({
               value={form.agreedZoneCode}
               onChange={(e) => set('agreedZoneCode')(e.target.value)}
             >
-              <option value=''>Not agreed yet</option>
+              <option value=''>Not Agreed Yet</option>
               {bays.map((z) => (
                 <option key={z.code} value={z.code}>
                   {z.code} — {z.name}
@@ -225,14 +225,14 @@ export function AmendDialog({
               ))}
             </Select>
           </FormField>
-          <FormField id='am-type' label='Stall type'>
+          <FormField id='am-type' label='Stall Type'>
             <Select
               id='am-type'
               value={form.stallType}
               onChange={(e) => set('stallType')(e.target.value)}
             >
               <option value='FOOD'>Food</option>
-              <option value='NON_FOOD'>Non-food</option>
+              <option value='NON_FOOD'>Non-Food</option>
             </Select>
           </FormField>
           {num('am-stalls', 'Stalls requested', 'numStallsRequested', 20)}
@@ -250,7 +250,7 @@ export function AmendDialog({
         <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(3, minmax(0,1fr))' }}>
           {num('am-p5', '5 A points', 'plugs5a', 50)}
           {num('am-p15', '15 A points', 'plugs15a', 50)}
-          {num('am-gas', 'Gas stoves', 'gasStoves', 10)}
+          {num('am-gas', 'Gas Stoves', 'gasStoves', 10)}
           {num('am-tables', 'Tables', 'tablesNeeded', 50)}
           {num('am-chairs', 'Chairs', 'chairsNeeded', 200)}
           {num('am-staff', 'Staff passes', 'passesStaff', 200)}

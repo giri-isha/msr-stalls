@@ -97,13 +97,13 @@ const STAGE_TONE: Record<RequestStage, Tone> = {
  */
 export const STAGE_LABEL: Record<RequestStage, string> = {
   NEW: 'New',
-  BANK_FORM_SENT: 'Bank form sent',
-  BANK_FORM_FILLED: 'Bank form submitted',
-  PAYMENT_SENT: 'Payment letter sent',
-  PAYMENT_CONFIRMED: 'Payment confirmed',
-  FSSAI_PENDING: 'FSSAI form sent',
+  BANK_FORM_SENT: 'Bank Form Sent',
+  BANK_FORM_FILLED: 'Bank Form Submitted',
+  PAYMENT_SENT: 'Payment Letter Sent',
+  PAYMENT_CONFIRMED: 'Payment Confirmed',
+  FSSAI_PENDING: 'FSSAI Form Sent',
   READY: 'Ready',
-  CHECKED_IN: 'Checked in',
+  CHECKED_IN: 'Checked In',
 };
 
 export function StagePill({ stage }: { stage: RequestStage }) {

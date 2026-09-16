@@ -42,7 +42,7 @@ const ROLES = {
     },
     {
       roleKey: 'stalls_local_welfare',
-      name: 'Local Welfare',
+      name: 'Local Welfare Desk',
       description: 'Local welfare stalls only',
       parentKey: 'stalls_lead',
       level: 2,
@@ -148,7 +148,7 @@ describe('the roles grid', () => {
   // all — a card that counted them would call the most powerful role empty.
   test('a role that carries everything says so', async () => {
     render();
-    expect(within(await card('Admin')).getByText('Carries every privilege')).toBeInTheDocument();
+    expect(within(await card('Admin')).getByText('Carries Every Privilege')).toBeInTheDocument();
   });
 
   test('a card names the role it sits under, and how deep it sits', async () => {
@@ -162,14 +162,14 @@ describe('the roles grid', () => {
   // card says it in words rather than leaving the badge blank.
   test('the badge says how far a role reaches across requester types', async () => {
     render();
-    expect(within(await card('Admin')).getByText('All requester types')).toBeInTheDocument();
-    expect(within(await card('Local Welfare')).getByText('Local welfare')).toBeInTheDocument();
+    expect(within(await card('Admin')).getByText('All Requester Types')).toBeInTheDocument();
+    expect(within(await card('Local Welfare Desk')).getByText('Local Welfare')).toBeInTheDocument();
   });
 
   test('a role that ships with the module cannot be deleted', async () => {
     render();
     const admin = await card('Admin');
-    expect(within(admin).getByText('Ships with the module')).toBeInTheDocument();
+    expect(within(admin).getByText('Ships with the Module')).toBeInTheDocument();
     expect(within(admin).queryByRole('button', { name: /delete/i })).not.toBeInTheDocument();
   });
 
@@ -182,7 +182,7 @@ describe('the roles grid', () => {
     render(ME_ADMIN, [], above);
 
     const admin = await card('Admin');
-    expect(within(admin).getByText('Above you')).toBeInTheDocument();
+    expect(within(admin).getByText('Above You')).toBeInTheDocument();
     expect(within(admin).getByRole('button', { name: /edit/i })).toBeDisabled();
   });
 
@@ -193,7 +193,7 @@ describe('the roles grid', () => {
 
     await user.type(screen.getByLabelText(/search roles/i), 'welfare');
 
-    expect(await card('Local Welfare')).toBeInTheDocument();
+    expect(await card('Local Welfare Desk')).toBeInTheDocument();
     expect(screen.queryByRole('article', { name: 'Admin' })).not.toBeInTheDocument();
   });
 
@@ -205,7 +205,7 @@ describe('the roles grid', () => {
     await user.click(screen.getByRole('button', { name: /hierarchy/i }));
 
     const tree = await screen.findByRole('list', { name: /role hierarchy/i });
-    expect(within(tree).getByText('Local Welfare')).toBeInTheDocument();
+    expect(within(tree).getByText('Local Welfare Desk')).toBeInTheDocument();
     expect(screen.queryByRole('article', { name: 'Admin' })).not.toBeInTheDocument();
   });
 });

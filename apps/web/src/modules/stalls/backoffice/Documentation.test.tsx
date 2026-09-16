@@ -67,7 +67,7 @@ describe('the documentation screen', () => {
     render('/m/stalls/docs?tab=screens', ME_VOLUNTEER);
 
     // Check-in is theirs: the block offers a way in.
-    await waitFor(() => expect(screen.getAllByText('No access').length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText('No Access').length).toBeGreaterThan(0));
     const hrefs = screen.getAllByRole('link', { name: /Open/ }).map((l) => l.getAttribute('href'));
     expect(hrefs).toContain('/m/stalls/checkin');
 
@@ -117,9 +117,9 @@ describe('the documentation screen', () => {
     // The fork in selection: flag, select, or turn away — all three drawn, so
     // nobody reads the chart as a single happy path.
     expect(await screen.findByText('What does the coordinator decide?')).toBeInTheDocument();
-    expect(screen.getByText('Needs a call first')).toBeInTheDocument();
-    expect(screen.getByText('Worth a stall')).toBeInTheDocument();
-    expect(screen.getByText('No room')).toBeInTheDocument();
+    expect(screen.getByText('Needs a Call First')).toBeInTheDocument();
+    expect(screen.getByText('Worth a Stall')).toBeInTheDocument();
+    expect(screen.getByText('No Room')).toBeInTheDocument();
     // And the refusal that a reader otherwise meets by surprise.
     expect(screen.getByText('A taken stall is refused')).toBeInTheDocument();
   });

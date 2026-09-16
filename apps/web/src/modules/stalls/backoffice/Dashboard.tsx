@@ -138,7 +138,7 @@ export function Dashboard() {
 
       <Group title='Requests'>
         <Tile
-          label='Total requests'
+          label='Total Requests'
           value={data.total}
           glyph='clipboard-list'
           tone='info'
@@ -182,7 +182,7 @@ export function Dashboard() {
         />
         <Tile label='Allocated' value={data.stallsAllocated} glyph='map-pin' tone='ok' />
         <Tile
-          label='Flagged for follow-up'
+          label='Flagged for Follow-Up'
           value={data.flagged}
           glyph='alert-triangle'
           tone='warn'
@@ -191,10 +191,10 @@ export function Dashboard() {
       </Group>
 
       <Group title='Onboarding · Phase 2 and 3'>
-        <Tile label='Pending bank details' value='—' hint='Phase 2' glyph='file-text' />
-        <Tile label='Pending payment' value='—' hint='Phase 2' glyph='ticket' />
-        <Tile label='FSSAI pending' value='—' hint='Phase 3' glyph='shield' />
-        <Tile label='Not checked in' value='—' hint='Phase 3' glyph='log-in' />
+        <Tile label='Pending Bank Details' value='—' hint='Phase 2' glyph='file-text' />
+        <Tile label='Pending Payment' value='—' hint='Phase 2' glyph='ticket' />
+        <Tile label='FSSAI Pending' value='—' hint='Phase 3' glyph='shield' />
+        <Tile label='Not Checked In' value='—' hint='Phase 3' glyph='log-in' />
       </Group>
     </div>
   );

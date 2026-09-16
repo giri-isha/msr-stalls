@@ -32,6 +32,7 @@ import {
   useIsNarrow,
   useLockScroll,
   useSidebarRail,
+  titleCase,
 } from '@/modules/stalls/ui';
 import { DevSignIn } from './DevSignIn';
 
@@ -65,7 +66,7 @@ function Sidebar({
     // `role="navigation"` never appears on the page at all. The one place the
     // copy is deliberately not followed.
     <nav
-      aria-label='Main navigation'
+      aria-label='Main Navigation'
       style={{
         width: rail ? 64 : 256,
         flex: 'none',
@@ -240,7 +241,7 @@ function Topbar({
     reload();
   };
 
-  const roles = me?.roleKeys.map((r) => r.replace('stalls_', '').replace(/_/g, ' ')).join(', ');
+  const roles = me?.roleKeys.map((r) => titleCase(r.replace('stalls_', ''))).join(', ');
   // `filter(Boolean)` has already dropped the empty segments a double space
   // leaves, so every word here has a first character — but that is a fact about
   // the line above rather than something the type says, so it is read with
@@ -272,7 +273,7 @@ function Topbar({
             onClick={onMenu}
             style={topBtn}
             title='Menu'
-            aria-label='Open navigation'
+            aria-label='Open Navigation'
           >
             <Icon name='menu' size={17} />
           </button>
@@ -313,7 +314,7 @@ function Topbar({
           <button
             type='button'
             onClick={() => setMenuOpen((o) => !o)}
-            aria-label='Account menu'
+            aria-label='Account Menu'
             aria-expanded={menuOpen}
             style={{ ...avatarChip, border: 0, padding: 0, cursor: 'pointer' }}
           >
@@ -327,7 +328,7 @@ function Topbar({
                   racing the tap that opened the menu. */}
               <button
                 type='button'
-                aria-label='Close menu'
+                aria-label='Close Menu'
                 onClick={() => setMenuOpen(false)}
                 style={{
                   position: 'fixed',
@@ -376,7 +377,7 @@ function Topbar({
                 </div>
                 <MenuItem
                   icon='log-out'
-                  label='Sign out'
+                  label='Sign Out'
                   onClick={() => {
                     setMenuOpen(false);
                     void signOut();
@@ -506,7 +507,7 @@ function Gate() {
         {narrow && drawerOpen && (
           <button
             type='button'
-            aria-label='Close navigation'
+            aria-label='Close Navigation'
             onClick={closeDrawer}
             style={{ ...scrim, border: 0, padding: 0 }}
           />

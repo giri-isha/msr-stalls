@@ -226,7 +226,7 @@ export function Users() {
 
       <Toolbar>
         <Search
-          label='Search users'
+          label='Search Users'
           value={typed}
           onChange={(v) => narrow(() => setTyped(v))}
           placeholder='Search name, email, phone…'
@@ -250,7 +250,7 @@ export function Users() {
               ))}
               <div style={{ height: 10 }} />
               <PopHeader
-                title='Sign-in'
+                title='Sign-In'
                 action={signInState ? 'Clear' : undefined}
                 onAction={() => narrow(() => setSignInState(''))}
               />
@@ -297,7 +297,7 @@ export function Users() {
           <div style={{ marginLeft: 'auto' }}>
             <Btn kind='primary' onClick={() => setAdding(true)}>
               <Icon name='user-plus' size={14} />
-              Add user
+              Add User
             </Btn>
           </div>
         )}
@@ -548,7 +548,7 @@ function Actions({
           glyph='lock-open'
           onClick={() =>
             onAsk({
-              title: 'Unlock this login?',
+              title: 'Unlock This Login?',
               body: `${user.displayName} was locked out by repeated wrong passwords. Unlocking lets them try again straight away. Their password is unchanged.`,
               confirm: 'Unlock',
               done: 'Unlocked',
@@ -563,7 +563,7 @@ function Actions({
           glyph='mail'
           onClick={() =>
             onAsk({
-              title: 'Send the access link?',
+              title: 'Send the Access Link?',
               note: `Goes to ${where}`,
               body: `This mails ${user.displayName} a fresh link to their own stall requests. It needs no password, which makes it the way back in for a requester who never registered one. The link goes to the address on their account and is never shown here.`,
               confirm: 'Send link',
@@ -595,7 +595,7 @@ const COLUMNS: Array<{ key: ColKey; label: string; align?: 'left' | 'right'; mut
   { key: 'roles', label: 'Roles' },
   { key: 'phone', label: 'Phone', muted: true },
   { key: 'requests', label: 'Requests', align: 'right' },
-  { key: 'signIn', label: 'Sign-in' },
+  { key: 'signIn', label: 'Sign-In' },
 ];
 
 /** Phone is off by default: it is blank for every backoffice row, and a column that
@@ -652,8 +652,8 @@ const SIGN_IN_STATES: SignInState[] = ['OK', 'INVITED', 'LINK_ONLY', 'LOCKED', '
  *  amber would mark most of the directory as broken. */
 const STATE_LABEL: Record<SignInState, string> = {
   OK: 'Registered',
-  INVITED: 'Not signed in',
-  LINK_ONLY: 'Link only',
+  INVITED: 'Not Signed In',
+  LINK_ONLY: 'Link Only',
   LOCKED: 'Locked',
   DISABLED: 'Disabled',
 };
@@ -720,7 +720,7 @@ function EditRequester({
 
   return (
     <Dialog
-      title='Edit this requester'
+      title='Edit This Requester'
       note='Their own details, as this module holds them.'
       onClose={onClose}
       footer={
@@ -811,7 +811,7 @@ function SetPassword({
 
   return (
     <Dialog
-      title='Set a password'
+      title='Set a Password'
       note={`${user.displayName} signs in with ${isPlaceholderEmail(user.email) && user.phone ? user.phone : user.email}`}
       onClose={onClose}
       footer={
@@ -823,16 +823,16 @@ function SetPassword({
             disabled={password.length < MIN_PASSWORD_LENGTH || saving}
           >
             <Icon name='key' size={14} />
-            Set password
+            Set Password
           </Btn>
         </>
       }
     >
       {error && <ErrorBox>{error}</ErrorBox>}
-      <Field label='New password'>
+      <Field label='New Password'>
         {/* `type='text'`: see the note on this component. */}
         <Input
-          aria-label='New password'
+          aria-label='New Password'
           type='text'
           autoComplete='off'
           spellCheck={false}
@@ -1168,7 +1168,7 @@ function AssignDialog({
   if (!user) {
     return (
       <Dialog
-        title='Add user'
+        title='Add User'
         note={
           staging
             ? 'Adding somebody the directory does not have yet, and giving them a role.'
@@ -1223,7 +1223,7 @@ function AssignDialog({
                     discovered by pressing Assign: most of the directory has no
                     number, and refusing to add somebody over one would put an
                     admin back where this dialog exists to get them out of. */}
-                <Field label='Phone (optional)'>
+                <Field label='Phone (Optional)'>
                   <Input
                     aria-label='Phone'
                     value={draft.phone}
@@ -1233,7 +1233,7 @@ function AssignDialog({
               </div>
               <div style={{ fontSize: 11.5, color: 'var(--mfg)', marginTop: 8, lineHeight: 1.5 }}>
                 <button type='button' onClick={() => setStaging(false)} style={linkBtn}>
-                  Search the directory instead
+                  Search the Directory Instead
                 </button>
               </div>
             </FormField>
@@ -1245,7 +1245,7 @@ function AssignDialog({
             >
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 <Search
-                  label='Search people'
+                  label='Search People'
                   value={q}
                   onChange={setQ}
                   placeholder='Search name or email…'
@@ -1299,7 +1299,7 @@ function AssignDialog({
                           produces a second person on the same address. */}
                       {p.staged && (
                         <Tag tone='neutral' size='sm'>
-                          Not signed in yet
+                          Not Signed in Yet
                         </Tag>
                       )}
                     </label>
@@ -1320,7 +1320,7 @@ function AssignDialog({
                     }}
                     style={linkBtn}
                   >
-                    Add them
+                    Add Them
                   </button>
                 </div>
               )}
@@ -1334,7 +1334,7 @@ function AssignDialog({
               value={newRole}
               onChange={(e) => setNewRole(e.target.value)}
             >
-              <option value=''>Choose a role…</option>
+              <option value=''>Choose a Role…</option>
               {assignable.map((r) => (
                 <option key={r.roleKey} value={r.roleKey}>
                   {r.name}

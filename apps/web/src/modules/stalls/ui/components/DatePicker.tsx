@@ -99,13 +99,13 @@ function Calendar({
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-        <button type='button' onClick={() => step(-1)} style={navBtn} aria-label='Previous month'>
+        <button type='button' onClick={() => step(-1)} style={navBtn} aria-label='Previous Month'>
           <Icon name='chevron-left' size={15} />
         </button>
         <div style={{ flex: 1, textAlign: 'center', fontSize: 14.5, fontWeight: 700 }}>
           {MONTHS[view.m]} {view.y}
         </div>
-        <button type='button' onClick={() => step(1)} style={navBtn} aria-label='Next month'>
+        <button type='button' onClick={() => step(1)} style={navBtn} aria-label='Next Month'>
           <Icon name='chevron-right' size={15} />
         </button>
       </div>
@@ -187,7 +187,7 @@ export function DateRangeField({
   from,
   to,
   onChange,
-  title = 'Select a window',
+  title = 'Select a Window',
   note,
   placeholder = 'Pick dates…',
   minDate,

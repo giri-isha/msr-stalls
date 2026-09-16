@@ -106,7 +106,7 @@ export function AccessLink() {
       )}
 
       <p style={{ fontSize: 12.5, color: 'var(--mfg)', textAlign: 'center', margin: 0 }}>
-        Not applied yet? <Link to='/stalls/apply'>Start a stall request</Link>.
+        Not applied yet? <Link to='/stalls/apply'>Start a Stall Request</Link>.
       </p>
     </div>
   );

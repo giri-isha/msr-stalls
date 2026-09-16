@@ -51,7 +51,7 @@ function AskForLink() {
             password is on its way to it.
           </p>
           <p style={{ margin: 0, fontSize: 12.5, color: 'var(--mfg)', textAlign: 'center' }}>
-            <Link to='/stalls/login'>Back to log in</Link>
+            <Link to='/stalls/login'>Back to Log In</Link>
           </p>
         </Card>
       </div>

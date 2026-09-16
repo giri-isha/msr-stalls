@@ -36,7 +36,7 @@ export function Privileges({ catalogue }: { catalogue: readonly PrivilegeCatalog
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ flex: 1, minWidth: 200 }}>
           <Search
-            label='Search privileges'
+            label='Search Privileges'
             value={q}
             onChange={setQ}
             placeholder='Search privileges…'
@@ -48,7 +48,7 @@ export function Privileges({ catalogue }: { catalogue: readonly PrivilegeCatalog
           onChange={(e) => setCategory(e.target.value)}
           style={{ width: 'auto', minWidth: 190 }}
         >
-          <option value=''>All categories</option>
+          <option value=''>All Categories</option>
           {categories.map((key) => (
             <option key={key} value={key}>
               {privilegeCategoryName(key)}
@@ -71,7 +71,7 @@ export function Privileges({ catalogue }: { catalogue: readonly PrivilegeCatalog
               <TH>Identifier</TH>
               <TH>Category</TH>
               <TH>Status</TH>
-              <TH>What it allows</TH>
+              <TH>What It Allows</TH>
             </TR>
           </THead>
           <TBody>

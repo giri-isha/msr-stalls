@@ -64,17 +64,17 @@ export function RoleCard({
                 number that goes stale the next time one is added. */}
             {role.allPrivileges && (
               <Tag size='sm' tone='violet'>
-                Carries every privilege
+                Carries Every Privilege
               </Tag>
             )}
             {role.isSystem && (
               <Tag size='sm' tone='neutral'>
-                Ships with the module
+                Ships with the Module
               </Tag>
             )}
             {!role.assignable && (
               <Tag size='sm' tone='warn'>
-                Above you
+                Above You
               </Tag>
             )}
           </div>

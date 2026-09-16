@@ -117,13 +117,13 @@ const PRICED = ['stallFee', 'plugs', 'equipment', 'gst', 'total'] as const;
 
 const DUE_COLUMNS: ColumnDef[] = [
   { key: 'vendor', label: 'Vendor', locked: true },
-  { key: 'stallFee', label: 'Stall fee' },
+  { key: 'stallFee', label: 'Stall Fee' },
   { key: 'plugs', label: 'Plugs' },
   { key: 'equipment', label: 'Chairs/tables' },
   { key: 'gst', label: 'GST' },
-  { key: 'total', label: 'Total due' },
-  { key: 'bank', label: 'Bank details' },
-  { key: 'email', label: 'Payment email' },
+  { key: 'total', label: 'Total Due' },
+  { key: 'bank', label: 'Bank Details' },
+  { key: 'email', label: 'Payment Email' },
 ];
 
 function DuePanel() {
@@ -177,10 +177,10 @@ function DuePanel() {
           onChange={(e) => setOutstanding(e.target.value)}
           style={{ width: 'auto', minWidth: 200 }}
         >
-          <option value=''>Everyone who owes</option>
-          <option value='bank'>Waiting on bank details</option>
-          <option value='ready'>Ready to be told what to pay</option>
-          <option value='email'>Not yet told what to pay</option>
+          <option value=''>Everyone Who Owes</option>
+          <option value='bank'>Waiting on Bank Details</option>
+          <option value='ready'>Ready to Be Told What to Pay</option>
+          <option value='email'>Not Yet Told What to Pay</option>
         </Select>
         <div style={{ flex: 1 }} />
         {!mobile && <ColumnsButton state={columns} />}
@@ -197,7 +197,7 @@ function DuePanel() {
               {can('comms.write') && !r.paymentEmailSentAt && (
                 <Btn kind='primary' onClick={() => sendPayment(r)} disabled={busy === r.requestId}>
                   <Icon name='send' size={14} />
-                  Send payment email
+                  Send Payment Email
                 </Btn>
               )}
             </Card>
@@ -209,13 +209,13 @@ function DuePanel() {
             <THead>
               <TR>
                 <TH>Vendor</TH>
-                {columns.shown('stallFee') && <TH align='right'>Stall fee</TH>}
+                {columns.shown('stallFee') && <TH align='right'>Stall Fee</TH>}
                 {columns.shown('plugs') && <TH align='right'>Plugs</TH>}
                 {columns.shown('equipment') && <TH align='right'>Chairs/tables</TH>}
                 {columns.shown('gst') && <TH align='right'>GST</TH>}
-                {columns.shown('total') && <TH align='right'>Total due</TH>}
-                {columns.shown('bank') && <TH>Bank details</TH>}
-                {columns.shown('email') && <TH>Payment email</TH>}
+                {columns.shown('total') && <TH align='right'>Total Due</TH>}
+                {columns.shown('bank') && <TH>Bank Details</TH>}
+                {columns.shown('email') && <TH>Payment Email</TH>}
                 <TH> </TH>
               </TR>
             </THead>
@@ -287,7 +287,7 @@ function DuePanel() {
                         </Tag>
                       ) : (
                         <Tag tone='neutral' size='sm'>
-                          Not sent
+                          Not Sent
                         </Tag>
                       )}
                     </TD>
@@ -364,10 +364,10 @@ function ConfirmPanel() {
             <THead>
               <TR>
                 <TH>Vendor</TH>
-                <TH align='right'>Fee due</TH>
-                <TH align='right'>Deposit due</TH>
-                <TH align='right'>Rent received</TH>
-                <TH align='right'>Deposit received</TH>
+                <TH align='right'>Fee Due</TH>
+                <TH align='right'>Deposit Due</TH>
+                <TH align='right'>Rent Received</TH>
+                <TH align='right'>Deposit Received</TH>
                 <TH>Credits</TH>
                 <TH> </TH>
               </TR>
@@ -397,7 +397,7 @@ function ConfirmPanel() {
                   <TD align='right'>
                     <Btn onClick={() => setOpen(r)}>
                       <Icon name='rupee' size={14} />
-                      {canWrite ? 'Record credit' : 'View'}
+                      {canWrite ? 'Record Credit' : 'View'}
                     </Btn>
                   </TD>
                 </TR>
@@ -486,7 +486,7 @@ function Concession({
       ) : (
         <Btn onClick={() => setEditing(true)}>
           <Icon name='pencil' size={14} />
-          Agree a different fee for this stall…
+          Agree a Different Fee for This Stall…
         </Btn>
       )}
       {editing && (
@@ -548,7 +548,7 @@ function ConcessionDialog({
 
   return (
     <Dialog
-      title='Fee agreed for this stall'
+      title='Fee Agreed for This Stall'
       note={`Quoted ${formatInr(row.quote.feeTotalPaise)} incl. GST. Recording a different figure leaves the quote untouched — both are kept.`}
       onClose={onClose}
       width={460}
@@ -560,19 +560,19 @@ function ConcessionDialog({
           {set && (
             <Btn disabled={busy} onClick={() => save(true)}>
               <Icon name='undo' size={14} />
-              Back to the quoted fee
+              Back to the Quoted Fee
             </Btn>
           )}
           <Btn onClick={onClose}>Cancel</Btn>
           <Btn kind='primary' disabled={busy} onClick={() => save(false)}>
             <Icon name='check' size={14} />
-            Save agreed fee
+            Save Agreed Fee
           </Btn>
         </>
       }
     >
       <div style={{ display: 'grid', gap: 12 }}>
-        <FormField id='concession-fee' label='Fee agreed (₹)'>
+        <FormField id='concession-fee' label='Fee Agreed (₹)'>
           <Input
             id='concession-fee'
             type='number'
@@ -654,7 +654,7 @@ function ConfirmDialog({
         canWrite ? (
           <Btn kind='primary' onClick={save} disabled={busy || referenceNo.trim().length === 0}>
             <Icon name='rupee' size={14} />
-            Record credit
+            Record Credit
           </Btn>
         ) : undefined
       }
@@ -713,17 +713,17 @@ function ConfirmDialog({
 
         {canWrite && (
           <>
-            <FormField id='credit-purpose' label='What this credit is for'>
+            <FormField id='credit-purpose' label='What This Credit Is For'>
               <Select
                 id='credit-purpose'
                 value={purpose}
                 onChange={(e) => setPurpose(e.target.value as 'RENT' | 'DEPOSIT')}
               >
-                <option value='RENT'>Rent (fee incl. GST)</option>
-                <option value='DEPOSIT'>Refundable deposit</option>
+                <option value='RENT'>Rent (Fee Incl. GST)</option>
+                <option value='DEPOSIT'>Refundable Deposit</option>
               </Select>
             </FormField>
-            <FormField id='credit-reference' label='Reference number'>
+            <FormField id='credit-reference' label='Reference Number'>
               <Input
                 id='credit-reference'
                 value={referenceNo}
@@ -731,14 +731,14 @@ function ConfirmDialog({
                 placeholder='e.g. YESBN12025022406216143'
               />
             </FormField>
-            <FormField id='credit-ecollect' label='E-collect code (optional)'>
+            <FormField id='credit-ecollect' label='E-Collect Code (Optional)'>
               <Input
                 id='credit-ecollect'
                 value={eCollectCode}
                 onChange={(e) => setECollect(e.target.value)}
               />
             </FormField>
-            <FormField id='credit-amount' label='Amount received (₹)'>
+            <FormField id='credit-amount' label='Amount Received (₹)'>
               <Input
                 id='credit-amount'
                 type='number'
@@ -747,7 +747,7 @@ function ConfirmDialog({
                 onChange={(e) => setAmount(e.target.value)}
               />
             </FormField>
-            <FormField id='credit-date' label='Credit date'>
+            <FormField id='credit-date' label='Credit Date'>
               <Input
                 id='credit-date'
                 type='date'
@@ -755,7 +755,7 @@ function ConfirmDialog({
                 onChange={(e) => setReceivedOn(e.target.value)}
               />
             </FormField>
-            <FormField id='credit-remitter' label='Remitter name (optional)'>
+            <FormField id='credit-remitter' label='Remitter Name (Optional)'>
               <Input
                 id='credit-remitter'
                 value={remitterName}
@@ -816,10 +816,10 @@ function RefundPanel() {
             <THead>
               <TR>
                 <TH>Vendor</TH>
-                <TH align='right'>Deposit held</TH>
+                <TH align='right'>Deposit Held</TH>
                 <TH align='right'>Chairs/tables</TH>
                 <TH align='right'>Penalties</TH>
-                <TH align='right'>Refund due</TH>
+                <TH align='right'>Refund Due</TH>
                 <TH>Voucher</TH>
                 <TH> </TH>
               </TR>
@@ -861,7 +861,7 @@ function RefundPanel() {
                       </Tag>
                     ) : (
                       <Tag tone='neutral' size='sm'>
-                        Not sent
+                        Not Sent
                       </Tag>
                     )}
                   </TD>
@@ -957,7 +957,7 @@ function RefundDialog({
               }}
             >
               <Icon name='check' size={14} />
-              Save voucher number
+              Save Voucher Number
             </Btn>
           ) : (
             <Btn
@@ -997,15 +997,15 @@ function RefundDialog({
             {/* Two deposits, each shown with what came off it — a single
                 "deposit held" line cannot explain a refund where one bucket
                 over-ran and the other came back whole. */}
-            <Line label='Chairs and tables deposit' value={formatInr(row.equipmentDepositPaise)} />
-            <Line label='Chairs and tables' value={`− ${formatInr(row.equipmentDeductionPaise)}`} />
+            <Line label='Chairs and Tables Deposit' value={formatInr(row.equipmentDepositPaise)} />
+            <Line label='Chairs and Tables' value={`− ${formatInr(row.equipmentDeductionPaise)}`} />
             {row.equipmentShortfallPaise > 0 && (
               <Line
-                label='Beyond that deposit'
+                label='Beyond That Deposit'
                 value={`${formatInr(row.equipmentShortfallPaise)} to recover`}
               />
             )}
-            <Line label='Stall deposit' value={formatInr(row.stallDepositPaise)} />
+            <Line label='Stall Deposit' value={formatInr(row.stallDepositPaise)} />
             <Line label='Penalties' value={`− ${formatInr(row.fineDeductionPaise)}`} />
             {row.fines.map((f) => (
               <div key={f.reason} style={{ fontSize: 11.5, color: 'var(--mfg)', paddingLeft: 12 }}>
@@ -1014,17 +1014,17 @@ function RefundDialog({
             ))}
             {row.stallShortfallPaise > 0 && (
               <Line
-                label='Beyond that deposit'
+                label='Beyond That Deposit'
                 value={`${formatInr(row.stallShortfallPaise)} to recover`}
               />
             )}
-            <Line label='Refund due' value={formatInr(row.refundDuePaise)} bold />
+            <Line label='Refund Due' value={formatInr(row.refundDuePaise)} bold />
             {row.shortfallPaise > 0 && (
-              <Line label='Still owed by vendor' value={formatInr(row.shortfallPaise)} />
+              <Line label='Still Owed by Vendor' value={formatInr(row.shortfallPaise)} />
             )}
           </Card>
           {canWrite && (
-            <FormField id='refund-voucher' label='Voucher number'>
+            <FormField id='refund-voucher' label='Voucher Number'>
               <Input
                 id='refund-voucher'
                 value={voucher}
@@ -1035,7 +1035,7 @@ function RefundDialog({
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 12 }}>
-          <FormField id='refund-deduction' label='Chairs and tables deduction (₹)'>
+          <FormField id='refund-deduction' label='Chairs and Tables Deduction (₹)'>
             <Input
               id='refund-deduction'
               type='number'
@@ -1100,7 +1100,7 @@ function RefundDialog({
             )}
           </div>
 
-          <FormField id='refund-extra' label='Other penalty (₹)'>
+          <FormField id='refund-extra' label='Other Penalty (₹)'>
             <Input
               id='refund-extra'
               type='number'
@@ -1111,7 +1111,7 @@ function RefundDialog({
             />
           </FormField>
           {Number(extra) > 0 && (
-            <FormField id='refund-extra-reason' label='Reason for the other penalty'>
+            <FormField id='refund-extra-reason' label='Reason for the Other Penalty'>
               <Input
                 id='refund-extra-reason'
                 value={extraReason}
@@ -1122,12 +1122,12 @@ function RefundDialog({
           )}
 
           <Card pad={14} style={{ display: 'grid', gap: 6, fontSize: 13 }}>
-            <Line label='Deposit held' value={formatInr(row.depositHeldPaise)} />
+            <Line label='Deposit Held' value={formatInr(row.depositHeldPaise)} />
             <Line
               label='Deductions'
               value={`− ${formatInr(rupeesToPaise(Number(deduction) || 0) + finesTotal)}`}
             />
-            <Line label='Refund due' value={formatInr(preview)} bold />
+            <Line label='Refund Due' value={formatInr(preview)} bold />
           </Card>
         </div>
       )}

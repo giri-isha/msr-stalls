@@ -28,6 +28,7 @@ import {
   useEscape,
   useIsMobile,
   useToast,
+  titleCase,
 } from '../ui';
 import { AmendDialog } from './AmendDialog';
 import { SelectDialog } from './SelectDialog';
@@ -145,18 +146,18 @@ export function RequestDetail() {
    */
   const tabs: Array<[string, string, string]> = [['application', 'Application', 'clipboard-list']];
   if (forms && forms.bankDetails !== 'NOT_APPLICABLE')
-    tabs.push(['bank', 'Bank form', 'file-text']);
+    tabs.push(['bank', 'Bank Form', 'file-text']);
   if (forms && forms.fssai !== 'NOT_APPLICABLE') tabs.push(['fssai', 'FSSAI', 'shield']);
   if (forms && (forms.staffExpected > 0 || forms.staff.length > 0)) {
     tabs.push(['staff', 'Staff', 'users']);
   }
-  if (tabs.length > 1) tabs.push(['all', 'All details', 'list-view']);
+  if (tabs.length > 1) tabs.push(['all', 'All Details', 'list-view']);
   // A tab can vanish under the reader — the forms arrive a moment after the
   // application, and an amendment can take a stall out of the food category.
   const active = tabs.some(([k]) => k === tab) ? tab : 'application';
 
   return (
-    <section aria-label='Request detail'>
+    <section aria-label='Request Detail'>
       {/* The way back, above the record rather than an × floating over its
           corner: on a page the reader's question is "where does this return me
           to", and the answer is a named link they can see before they commit
@@ -302,7 +303,7 @@ export function RequestDetail() {
               ) : (
                 <Btn disabled={busy} onClick={() => setReasonFor('flag')}>
                   <Icon name='alert-triangle' size={14} />
-                  Flag for follow-up
+                  Flag for Follow-Up
                 </Btn>
               ))}
           </div>
@@ -316,7 +317,7 @@ export function RequestDetail() {
               look for the same idea two screens apart. */}
           <div
             role='tablist'
-            aria-label='Record sections'
+            aria-label='Record Sections'
             style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}
           >
             {tabs.map(([key, label, glyph]) => (
@@ -437,7 +438,7 @@ function Allocations({
                 {a.stallNumber}
               </span>
               <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'var(--mfg)' }}>
-                {a.category.replace(/_/g, ' ').toLowerCase()} · {formatDateTime(a.allocatedAt)}
+                {titleCase(a.category)} · {formatDateTime(a.allocatedAt)}
               </span>
               {canSelect && (
                 <Btn
@@ -473,13 +474,13 @@ function ApplicationPanel({ r }: { r: Detail }) {
             ['Email', r.email],
             ['Contact', r.contactNumber],
             ['Address', r.address],
-            ['Stall type', r.stallType === 'FOOD' ? 'Food' : 'Non-food'],
-            ['Bay requested', r.preferredZoneCode],
+            ['Stall Type', r.stallType === 'FOOD' ? 'Food' : 'Non-Food'],
+            ['Bay Requested', r.preferredZoneCode],
             // 🔴 What the stall is PRICED at once the team and the requester
             // have settled it — routinely not the bay that was asked for, and
             // settled before any stall number exists.
             [
-              'Bay agreed',
+              'Bay Agreed',
               r.agreedZoneCode ? (
                 <>
                   {r.agreedZoneCode}
@@ -491,11 +492,11 @@ function ApplicationPanel({ r }: { r: Detail }) {
                 </>
               ) : null,
             ],
-            ['Stalls requested', r.numStallsRequested],
+            ['Stalls Requested', r.numStallsRequested],
             ['Items', r.itemsSelling],
             ['Remarks', r.remarks],
             ['Submitted', formatDateTime(r.submittedAt)],
-            ['Deposit acknowledged', r.depositAcknowledgedAt ? 'Yes' : null],
+            ['Deposit Acknowledged', r.depositAcknowledgedAt ? 'Yes' : null],
           ])}
         />
       </Section>
@@ -505,13 +506,13 @@ function ApplicationPanel({ r }: { r: Detail }) {
           <Facts
             items={facts([
               ['Department', r.ashram.department],
-              ['Department head', `${r.ashram.departmentHead} · ${r.ashram.departmentHeadContact}`],
-              ['Requested by', `${r.ashram.requestedBy} · ${r.ashram.requesterContact}`],
+              ['Department Head', `${r.ashram.departmentHead} · ${r.ashram.departmentHeadContact}`],
+              ['Requested By', `${r.ashram.requestedBy} · ${r.ashram.requesterContact}`],
               ['Usage', USAGE[r.ashram.usage] ?? r.ashram.usage],
-              ['Credit card facility', r.ashram.creditCardNeeded ? 'Yes' : 'No'],
-              ['Tamil Thembu (11 days)', r.ashram.wantsThembu ? 'Yes' : 'No'],
+              ['Credit Card Facility', r.ashram.creditCardNeeded ? 'Yes' : 'No'],
+              ['Tamil Thembu (11 Days)', r.ashram.wantsThembu ? 'Yes' : 'No'],
               [
-                'FSSAI expected',
+                'FSSAI Expected',
                 r.ashram.fssaiExpected === null ? null : r.ashram.fssaiExpected ? 'Yes' : 'No',
               ],
             ])}
@@ -523,9 +524,9 @@ function ApplicationPanel({ r }: { r: Detail }) {
         <Section icon='sliders' title='Electrical'>
           <Facts
             items={facts([
-              ['5 A plug points', r.plugs5a],
-              ['15 A plug points', r.plugs15a],
-              ['Gas stoves', r.gasStoves],
+              ['5 A Plug Points', r.plugs5a],
+              ['15 A Plug Points', r.plugs15a],
+              ['Gas Stoves', r.gasStoves],
               r.appliances.length > 0 && [
                 'Appliances',
                 <ul key='ap' style={{ margin: 0, paddingLeft: 0, listStyle: 'none' }}>
@@ -553,9 +554,9 @@ function ApplicationPanel({ r }: { r: Detail }) {
             items={facts([
               ['Tables', r.tablesNeeded],
               ['Chairs', r.chairsNeeded],
-              ['2-wheeler passes', r.passes2w],
-              ['4-wheeler passes', r.passes4w],
-              ['Staff passes', r.passesStaff],
+              ['2-Wheeler Passes', r.passes2w],
+              ['4-Wheeler Passes', r.passes4w],
+              ['Staff Passes', r.passesStaff],
             ])}
           />
         </Section>
@@ -609,16 +610,16 @@ function NotYet({ what }: { what: string }) {
 function BankPanel({ forms }: { forms: OnboardingDetail | null }) {
   const bank = forms?.bank;
   return (
-    <Section icon='file-text' title='Bank form' note='Submitted by the vendor for payment.' last>
+    <Section icon='file-text' title='Bank Form' note='Submitted by the vendor for payment.' last>
       {bank ? (
         <div style={{ display: 'grid', gap: 14 }}>
           <Facts
             items={facts([
-              ['Invoice name', bank.invoiceName],
-              ['Account holder', bank.accountHolder],
+              ['Invoice Name', bank.invoiceName],
+              ['Account Holder', bank.accountHolder],
               ['Bank', bank.bankName],
               ['Branch', bank.branch],
-              ['Account number', bank.accountNumber],
+              ['Account Number', bank.accountNumber],
               ['IFSC', bank.ifsc],
               ['MICR', bank.micr],
               ['PAN', bank.panNumber],
@@ -641,8 +642,8 @@ function BankPanel({ forms }: { forms: OnboardingDetail | null }) {
 const FSSAI_TONE = { VERIFIED: 'ok', UPLOADED: 'info', PENDING: 'warn' } as const;
 const FSSAI_LABEL = {
   VERIFIED: 'Verified',
-  UPLOADED: 'Uploaded, not yet verified',
-  PENDING: 'Not uploaded',
+  UPLOADED: 'Uploaded, Not Yet Verified',
+  PENDING: 'Not Uploaded',
 } as const;
 
 function FssaiPanel({ forms }: { forms: OnboardingDetail | null }) {

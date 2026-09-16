@@ -58,7 +58,7 @@ export function StatusPage() {
         </p>
         {notFound && (
           <p style={{ fontSize: 12.5, marginTop: 10 }}>
-            <Link to='/stalls/status'>Email me a new link</Link>
+            <Link to='/stalls/status'>Email Me a New Link</Link>
           </p>
         )}
       </Card>
@@ -67,7 +67,7 @@ export function StatusPage() {
 
   return (
     <div>
-      <H1 sub={data.displayName}>Your stall requests</H1>
+      <H1 sub={data.displayName}>Your Stall Requests</H1>
 
       <RequestCards
         requests={data.requests}

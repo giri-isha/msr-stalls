@@ -181,7 +181,7 @@ export function Requests() {
           onChange={(e) => setParam('requestType', e.target.value)}
           style={{ width: 'auto', minWidth: 150 }}
         >
-          <option value=''>All types</option>
+          <option value=''>All Types</option>
           {Object.entries(TYPE_LABEL).map(([k, v]) => (
             <option key={k} value={k}>
               {v}
@@ -194,7 +194,7 @@ export function Requests() {
           onChange={(e) => setParam('status', e.target.value)}
           style={{ width: 'auto', minWidth: 140 }}
         >
-          <option value=''>All statuses</option>
+          <option value=''>All Statuses</option>
           {Object.entries(STATUS_LABEL).map(([k, v]) => (
             <option key={k} value={k}>
               {v}
@@ -212,7 +212,7 @@ export function Requests() {
           onChange={(e) => setParam('stage', e.target.value)}
           style={{ width: 'auto', minWidth: 170 }}
         >
-          <option value=''>All stages</option>
+          <option value=''>All Stages</option>
           {Object.entries(STAGE_LABEL).map(([k, v]) => (
             <option key={k} value={k}>
               {v}
@@ -225,7 +225,7 @@ export function Requests() {
           onChange={(e) => setParam('zoneCode', e.target.value)}
           style={{ width: 'auto', minWidth: 120 }}
         >
-          <option value=''>All zones</option>
+          <option value=''>All Zones</option>
           {(zones ?? []).map((z) => (
             <option key={z.code} value={z.code}>
               {z.code}
@@ -362,7 +362,7 @@ export function Requests() {
         {cursor && (
           <Btn onClick={() => load(true)} disabled={loading}>
             <Icon name='chevron-down' size={14} />
-            Load more
+            Load More
           </Btn>
         )}
       </div>

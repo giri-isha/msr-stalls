@@ -158,7 +158,7 @@ describe('the portal half of the status page', () => {
     installFetch([['GET', /\/public\/status\//, () => [404, { error: 'this link is not valid' }]]]);
     renderAt('/stalls/status/wrong-token-wrong-token', routes);
     expect(await screen.findByText('This link is not valid')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Email me a new link/ })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /Email Me a New Link/ })).toHaveAttribute(
       'href',
       '/stalls/status',
     );

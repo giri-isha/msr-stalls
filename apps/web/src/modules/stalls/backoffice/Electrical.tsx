@@ -17,6 +17,7 @@ import {
   TR,
   Table,
   toolBtnStyle,
+  titleCase,
 } from '../ui';
 
 /**
@@ -81,7 +82,7 @@ export function Electrical() {
             onClick={() => setZone('')}
             style={toolBtnStyle(zone === '')}
           >
-            All clusters
+            All Clusters
           </button>
           {zones.map((z) => (
             <button
@@ -126,10 +127,10 @@ export function Electrical() {
                     <TH>Stall No</TH>
                     <TH>Stall Name</TH>
                     <TH>Category</TH>
-                    <TH align='right'>5A (incl. 1 default)</TH>
+                    <TH align='right'>5A (Incl. 1 Default)</TH>
                     <TH align='right'>15A</TH>
                     <TH align='right'>Gas</TH>
-                    <TH>Appliances &amp; wattage</TH>
+                    <TH>Appliances &amp; Wattage</TH>
                     <TH align='right'>Total W</TH>
                   </TR>
                 </THead>
@@ -141,7 +142,7 @@ export function Electrical() {
                       </TD>
                       <TD style={{ fontSize: 12.5 }}>{r.stallName}</TD>
                       <TD muted style={{ fontSize: 11.5 }}>
-                        {r.category.replace(/_/g, ' ').toLowerCase()}
+                        {titleCase(r.category)}
                       </TD>
                       <TD align='right'>{r.plugs5aTotal}</TD>
                       <TD align='right'>{r.plugs15a}</TD>

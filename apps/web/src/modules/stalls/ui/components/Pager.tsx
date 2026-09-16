@@ -58,7 +58,7 @@ export function Pager({
           Rows
           <select
             id='msrs-rows-per-page'
-            aria-label='Rows per page'
+            aria-label='Rows per Page'
             value={size}
             onChange={(e) => {
               onSize(Number(e.target.value));
@@ -90,7 +90,7 @@ export function Pager({
             at={page}
             last={pages - 1}
             icon='chevrons-left'
-            label='First page'
+            label='First Page'
             onPage={onPage}
           />
           <Jump
@@ -98,7 +98,7 @@ export function Pager({
             at={page}
             last={pages - 1}
             icon='chevron-left'
-            label='Previous page'
+            label='Previous Page'
             onPage={onPage}
           />
           <span style={{ flex: 'none' }}>
@@ -109,7 +109,7 @@ export function Pager({
             at={page}
             last={pages - 1}
             icon='chevron-right'
-            label='Next page'
+            label='Next Page'
             onPage={onPage}
           />
           <Jump
@@ -117,7 +117,7 @@ export function Pager({
             at={page}
             last={pages - 1}
             icon='chevrons-right'
-            label='Last page'
+            label='Last Page'
             onPage={onPage}
           />
         </>

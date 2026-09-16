@@ -93,14 +93,14 @@ export function FssaiForm() {
           </Card>
 
           <Card pad={18} style={{ display: 'grid', gap: 14 }}>
-            <FormField id='fssai-owner' label='Owner name'>
+            <FormField id='fssai-owner' label='Owner Name'>
               <Input
                 id='fssai-owner'
                 value={ownerName}
                 onChange={(e) => setOwnerName(e.target.value)}
               />
             </FormField>
-            <FormField id='fssai-mobile' label='Mobile number'>
+            <FormField id='fssai-mobile' label='Mobile Number'>
               <Input
                 id='fssai-mobile'
                 type='tel'

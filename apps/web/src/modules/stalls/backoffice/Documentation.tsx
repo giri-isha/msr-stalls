@@ -353,7 +353,7 @@ const SCREENS: ScreenDoc[] = [
     ],
   },
   {
-    label: 'Check-in',
+    label: 'Check-In',
     to: '/m/stalls/checkin',
     glyph: 'circle-check',
     requires: 'checkin.read',
@@ -408,7 +408,7 @@ const SCREENS: ScreenDoc[] = [
       'Staff registration has no switch. An unregistered person cannot be let onto the venue, so that step is never skipped.',
       'Editing a form changes THIS edition only. The four 2025 forms are written into each new edition when it is created, so next year starts from the printed originals again rather than from whatever this year was edited into.',
       'A declaration is never edited in place once the wording changes, and never deleted once somebody has agreed to it — a consent is worth exactly what the person saw when they gave it. Retire it with the Active switch instead. The old versions stay on screen because "what did this say in January?" is the question the history exists to answer.',
-      'The four base forms are coded from the 2025 PDFs and cannot be rebuilt here — a question added in the Form builder appends to them.',
+      'The four base forms are coded from the 2025 PDFs and cannot be rebuilt here — a question added in the Form Builder appends to them.',
     ],
   },
 ];
@@ -489,11 +489,11 @@ type Actor = 'requester' | 'backoffice' | 'system' | 'finance' | 'volunteer' | '
  *  because half the questions about this pipeline are "why did it not let me". */
 const ACTOR: Record<Actor, { label: string; tone: Tone }> = {
   requester: { label: 'Requester', tone: 'violet' },
-  backoffice: { label: 'Stall team', tone: 'info' },
+  backoffice: { label: 'Stall Team', tone: 'info' },
   system: { label: 'Automatic', tone: 'teal' },
   finance: { label: 'Finance', tone: 'ok' },
-  volunteer: { label: 'At the counter', tone: 'warn' },
-  guard: { label: 'The system refuses', tone: 'des' },
+  volunteer: { label: 'At the Counter', tone: 'warn' },
+  guard: { label: 'The System Refuses', tone: 'des' },
 };
 
 interface FlowNode {
@@ -732,7 +732,7 @@ const INTAKE: FlowItem[] = [
     fork: 'What does the coordinator decide?',
     branches: [
       {
-        label: 'Needs a call first',
+        label: 'Needs a Call First',
         nodes: [
           {
             actor: 'backoffice',
@@ -744,7 +744,7 @@ const INTAKE: FlowItem[] = [
         outcome: 'Back to triage',
       },
       {
-        label: 'Worth a stall',
+        label: 'Worth a Stall',
         nodes: [
           { actor: 'backoffice', glyph: 'check', title: 'Shortlisted' },
           {
@@ -763,7 +763,7 @@ const INTAKE: FlowItem[] = [
         outcome: 'Status: Selected',
       },
       {
-        label: 'No room',
+        label: 'No Room',
         nodes: [
           {
             actor: 'backoffice',
@@ -796,7 +796,7 @@ const LETTERS: FlowItem[] = [
     fork: 'Who is the requester?',
     branches: [
       {
-        label: 'External vendor',
+        label: 'External Vendor',
         nodes: [
           {
             actor: 'requester',
@@ -814,7 +814,7 @@ const LETTERS: FlowItem[] = [
         outcome: 'Stage: Bank form filled',
       },
       {
-        label: 'Local welfare',
+        label: 'Local Welfare',
         nodes: [
           {
             actor: 'system',
@@ -826,7 +826,7 @@ const LETTERS: FlowItem[] = [
         outcome: 'Straight to payment',
       },
       {
-        label: 'Ashram department',
+        label: 'Ashram Department',
         nodes: [
           {
             actor: 'system',
@@ -928,7 +928,7 @@ const EVENT: FlowItem[] = [
     fork: 'What does this stall still owe?',
     branches: [
       {
-        label: 'It sells food',
+        label: 'It Sells Food',
         nodes: [
           {
             actor: 'requester',
@@ -945,7 +945,7 @@ const EVENT: FlowItem[] = [
         ],
       },
       {
-        label: 'Every stall',
+        label: 'Every Stall',
         nodes: [
           {
             actor: 'requester',
@@ -1083,7 +1083,7 @@ const APPLIES: FlowItem[] = [
         nodes: [{ actor: 'finance', glyph: 'bar-chart', title: 'Money is collected from them' }],
       },
       {
-        label: 'No — an ashram department',
+        label: 'No — an Ashram Department',
         nodes: [{ actor: 'system', glyph: 'heart-handshake', title: 'Billed internally' }],
       },
     ],
@@ -1131,11 +1131,11 @@ const STAGE_FLOW: FlowItem[] = [
     fork: 'Are bank details still outstanding?',
     branches: [
       {
-        label: 'Yes, and the letter has gone',
+        label: 'Yes, and the Letter Has Gone',
         nodes: [{ actor: 'system', glyph: 'circle-dot', title: 'Stage: Bank form sent' }],
       },
       {
-        label: 'Yes, no letter yet',
+        label: 'Yes, No Letter Yet',
         nodes: [{ actor: 'system', glyph: 'circle-dot', title: 'Stage: New' }],
       },
     ],
@@ -1144,11 +1144,11 @@ const STAGE_FLOW: FlowItem[] = [
     fork: 'Otherwise — is payment still outstanding?',
     branches: [
       {
-        label: 'Yes, and the letter has gone',
+        label: 'Yes, and the Letter Has Gone',
         nodes: [{ actor: 'system', glyph: 'circle-dot', title: 'Stage: Payment sent' }],
       },
       {
-        label: 'Yes, no letter yet',
+        label: 'Yes, No Letter Yet',
         nodes: [{ actor: 'system', glyph: 'circle-dot', title: 'Stage: Bank form filled' }],
       },
     ],
@@ -1157,11 +1157,11 @@ const STAGE_FLOW: FlowItem[] = [
     fork: 'Otherwise — is the certificate or the staff count short?',
     branches: [
       {
-        label: 'No certificate',
+        label: 'No Certificate',
         nodes: [{ actor: 'system', glyph: 'circle-dot', title: 'Stage: FSSAI pending' }],
       },
       {
-        label: 'Staff still registering',
+        label: 'Staff Still Registering',
         nodes: [
           {
             actor: 'system',
@@ -1494,13 +1494,13 @@ function ScreenBlock({ doc, allowed }: { doc: ScreenDoc; allowed: boolean }) {
           </Link>
         ) : (
           <Tag size='sm' tone='warn'>
-            No access
+            No Access
           </Tag>
         )}
       </div>
 
       <div style={{ padding: mobile ? '13px' : '14px 16px' }}>
-        <SubHead>Using it</SubHead>
+        <SubHead>Using It</SubHead>
         <ol style={olReset}>
           {doc.steps.map((text, i) => (
             <li key={text} style={{ display: 'flex', gap: 10, marginBottom: 7 }}>
@@ -1512,7 +1512,7 @@ function ScreenBlock({ doc, allowed }: { doc: ScreenDoc; allowed: boolean }) {
 
         {doc.notes && (
           <>
-            <SubHead>Worth knowing</SubHead>
+            <SubHead>Worth Knowing</SubHead>
             <Bullets items={doc.notes} />
           </>
         )}
@@ -1534,7 +1534,7 @@ function ReferencePanel() {
           <THead>
             <TR>
               <TH>Status</TH>
-              <TH>What it means</TH>
+              <TH>What It Means</TH>
             </TR>
           </THead>
           <TBody>
@@ -1558,7 +1558,7 @@ function ReferencePanel() {
           <THead>
             <TR>
               <TH>Stage</TH>
-              <TH>What it means</TH>
+              <TH>What It Means</TH>
             </TR>
           </THead>
           <TBody>

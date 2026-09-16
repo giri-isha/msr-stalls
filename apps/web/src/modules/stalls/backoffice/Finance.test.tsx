@@ -117,11 +117,11 @@ describe('confirming a credit', () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole('button', { name: 'Payment confirmation' }));
-    await user.click(await screen.findByRole('button', { name: 'Record credit' }));
+    await user.click(await screen.findByRole('button', { name: 'Record Credit' }));
 
     const dialog = await screen.findByRole('dialog');
-    await user.type(within(dialog).getByLabelText('Reference number'), 'NEFT12345');
-    await user.click(within(dialog).getByRole('button', { name: 'Record credit' }));
+    await user.type(within(dialog).getByLabelText('Reference Number'), 'NEFT12345');
+    await user.click(within(dialog).getByRole('button', { name: 'Record Credit' }));
 
     await waitFor(() => {
       const post = fetch.calls.find((c) => c.method === 'POST');
@@ -142,15 +142,15 @@ describe('confirming a credit', () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole('button', { name: 'Payment confirmation' }));
-    await user.click(await screen.findByRole('button', { name: 'Record credit' }));
+    await user.click(await screen.findByRole('button', { name: 'Record Credit' }));
 
     const dialog = await screen.findByRole('dialog');
     await user.click(
-      within(dialog).getByRole('button', { name: 'Agree a different fee for this stall…' }),
+      within(dialog).getByRole('button', { name: 'Agree a Different Fee for This Stall…' }),
     );
-    await user.type(within(dialog).getByLabelText('Fee agreed (₹)'), '5000');
+    await user.type(within(dialog).getByLabelText('Fee Agreed (₹)'), '5000');
     await user.type(within(dialog).getByLabelText('Why'), 'Local welfare — agreed by the dept');
-    await user.click(within(dialog).getByRole('button', { name: 'Save agreed fee' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Save Agreed Fee' }));
 
     await waitFor(() => {
       const put = fetch.calls.find((c) => c.method === 'PUT');
@@ -168,13 +168,13 @@ describe('confirming a credit', () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole('button', { name: 'Payment confirmation' }));
-    await user.click(await screen.findByRole('button', { name: 'Record credit' }));
+    await user.click(await screen.findByRole('button', { name: 'Record Credit' }));
     const dialog = await screen.findByRole('dialog');
     await user.click(
-      within(dialog).getByRole('button', { name: 'Agree a different fee for this stall…' }),
+      within(dialog).getByRole('button', { name: 'Agree a Different Fee for This Stall…' }),
     );
-    await user.type(within(dialog).getByLabelText('Fee agreed (₹)'), '5000');
-    await user.click(within(dialog).getByRole('button', { name: 'Save agreed fee' }));
+    await user.type(within(dialog).getByLabelText('Fee Agreed (₹)'), '5000');
+    await user.click(within(dialog).getByRole('button', { name: 'Save Agreed Fee' }));
 
     expect(await screen.findByText('Say why the amount was reduced.')).toBeInTheDocument();
     expect(fetch.calls.some((c) => c.method === 'PUT')).toBe(false);
@@ -185,7 +185,7 @@ describe('confirming a credit', () => {
       paymentRow({
         quote: quote({
           discretionaryFeePaise: 500_000,
-          discretionaryReason: 'Local welfare',
+          discretionaryReason: 'Local Welfare',
           payableFeePaise: 500_000,
           grandTotalPaise: 900_000,
         }),
@@ -196,7 +196,7 @@ describe('confirming a credit', () => {
 
     await screen.findByText('Green Leaf Organics');
     expect(screen.getByText(/Agreed fee/)).toBeInTheDocument();
-    expect(screen.getByText(/Local welfare/)).toBeInTheDocument();
+    expect(screen.getByText(/Local Welfare/)).toBeInTheDocument();
   });
 
   test('the dialog will not submit without a reference number', async () => {
@@ -205,10 +205,10 @@ describe('confirming a credit', () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole('button', { name: 'Payment confirmation' }));
-    await user.click(await screen.findByRole('button', { name: 'Record credit' }));
+    await user.click(await screen.findByRole('button', { name: 'Record Credit' }));
 
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Record credit' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Record Credit' })).toBeDisabled();
   });
 
   test('shows what has already been received', async () => {
@@ -252,7 +252,7 @@ describe('refunds', () => {
     await user.click(await screen.findByRole('button', { name: 'Prepare' }));
 
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByLabelText(/Chairs and tables deduction/)).toHaveValue(1950);
+    expect(within(dialog).getByLabelText(/Chairs and Tables Deduction/)).toHaveValue(1950);
     expect(within(dialog).getByText('₹6,050')).toBeInTheDocument();
   });
 
@@ -295,8 +295,8 @@ describe('refunds', () => {
     expect(within(dialog).getByText('₹2,000 to recover')).toBeInTheDocument();
     // Both deposits are named, so the refund can be read line by line rather
     // than inferred from one pooled figure.
-    expect(within(dialog).getByText('Stall deposit')).toBeInTheDocument();
-    expect(within(dialog).getByText('Chairs and tables deposit')).toBeInTheDocument();
+    expect(within(dialog).getByText('Stall Deposit')).toBeInTheDocument();
+    expect(within(dialog).getByText('Chairs and Tables Deposit')).toBeInTheDocument();
     // The chairs-and-tables deposit, the stall deposit and the refund due all
     // read ₹4,000: the furniture deposit was consumed entirely, and the stall
     // deposit came back whole, which is the whole point.
@@ -354,8 +354,8 @@ describe('refunds', () => {
 
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText(/frozen/)).toBeInTheDocument();
-    expect(within(dialog).queryByLabelText(/Chairs and tables deduction/)).not.toBeInTheDocument();
-    expect(within(dialog).getByLabelText('Voucher number')).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText(/Chairs and Tables Deduction/)).not.toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Voucher Number')).toBeInTheDocument();
   });
 
   test('a shortfall is shown rather than rounded into a zero refund', async () => {
@@ -398,6 +398,6 @@ describe('access', () => {
     await user.click(await screen.findByRole('button', { name: 'View' }));
 
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).queryByLabelText('Reference number')).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('Reference Number')).not.toBeInTheDocument();
   });
 });

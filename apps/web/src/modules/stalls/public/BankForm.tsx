@@ -47,33 +47,33 @@ const FIELDS: TextField[] = [
   { name: 'email', label: 'Email', labelTa: null, required: true, type: 'email' },
   {
     name: 'invoiceName',
-    label: 'Name as required on invoice',
+    label: 'Name as Required on Invoice',
     labelTa: 'விலைப்பட்டியலில் குறிப்பிடப்பட வேண்டிய பெயர்',
     required: true,
   },
   {
     name: 'accountHolder',
-    label: 'Name of the bank account holder',
+    label: 'Name of the Bank Account Holder',
     labelTa: 'வங்கி கணக்கு வைத்திருப்பவரின் பெயர்',
     required: true,
   },
-  { name: 'mobile', label: 'Mobile number', labelTa: 'கைபேசி எண்', required: true, type: 'tel' },
+  { name: 'mobile', label: 'Mobile Number', labelTa: 'கைபேசி எண்', required: true, type: 'tel' },
   { name: 'address', label: 'Address', labelTa: 'முகவரி', required: true },
   { name: 'pincode', label: 'Pincode', labelTa: 'பின்கோடு', required: true },
-  { name: 'bankName', label: 'Bank name', labelTa: 'வங்கி பெயர்', required: true },
-  { name: 'branch', label: 'Bank branch', labelTa: 'வங்கிக்கிளை', required: true },
+  { name: 'bankName', label: 'Bank Name', labelTa: 'வங்கி பெயர்', required: true },
+  { name: 'branch', label: 'Bank Branch', labelTa: 'வங்கிக்கிளை', required: true },
   {
     name: 'accountNumber',
-    label: 'Account number',
+    label: 'Account Number',
     labelTa: 'வங்கி கணக்கு எண்',
     required: true,
   },
-  { name: 'ifsc', label: 'IFSC code', labelTa: null, required: true },
-  { name: 'micr', label: 'MICR code', labelTa: null },
-  { name: 'panNumber', label: 'PAN card number', labelTa: 'பான் கார்டு எண்', required: true },
+  { name: 'ifsc', label: 'IFSC Code', labelTa: null, required: true },
+  { name: 'micr', label: 'MICR Code', labelTa: null },
+  { name: 'panNumber', label: 'PAN Card Number', labelTa: 'பான் கார்டு எண்', required: true },
   {
     name: 'gstNumber',
-    label: 'GST number',
+    label: 'GST Number',
     labelTa: 'ஜிஎஸ்டி எண்',
     required: true,
     help: "Enter 'None' if not applicable.",
@@ -82,14 +82,14 @@ const FIELDS: TextField[] = [
 
 const COUNTS: Array<{ name: keyof SubmitBankDetailsInput; label: string; labelTa: string | null }> =
   [
-    { name: 'plugs5a', label: '5 Amp plug points needed', labelTa: null },
-    { name: 'plugs15a', label: '15 Amp plug points needed', labelTa: null },
-    { name: 'gasStoves', label: 'Number of gas stoves', labelTa: null },
-    { name: 'tablesNeeded', label: 'Tables needed', labelTa: null },
-    { name: 'chairsNeeded', label: 'Chairs needed', labelTa: null },
-    { name: 'passes2w', label: '2-wheeler passes', labelTa: null },
-    { name: 'passes4w', label: '4-wheeler passes', labelTa: null },
-    { name: 'passesStaff', label: 'Staff passes', labelTa: null },
+    { name: 'plugs5a', label: '5 Amp Plug Points Needed', labelTa: null },
+    { name: 'plugs15a', label: '15 Amp Plug Points Needed', labelTa: null },
+    { name: 'gasStoves', label: 'Number of Gas Stoves', labelTa: null },
+    { name: 'tablesNeeded', label: 'Tables Needed', labelTa: null },
+    { name: 'chairsNeeded', label: 'Chairs Needed', labelTa: null },
+    { name: 'passes2w', label: '2-Wheeler Passes', labelTa: null },
+    { name: 'passes4w', label: '4-Wheeler Passes', labelTa: null },
+    { name: 'passesStaff', label: 'Staff Passes', labelTa: null },
   ];
 
 type Values = Record<string, string>;
@@ -273,19 +273,19 @@ export function BankForm() {
       <Card pad={18} style={{ display: 'grid', gap: 14 }}>
         <div style={{ fontSize: 14, fontWeight: 700 }}>Documents</div>
         <FileField
-          label='Cancelled cheque or bank passbook front page *'
+          label='Cancelled Cheque or Bank Passbook Front Page *'
           labelTa='ரத்து செய்யப்பட்ட காசோலை அல்லது வங்கி பாஸ்புக் முதல் பக்கம்'
           chosen={files.BANK_CHEQUE?.name}
           onPick={(file) => pick('BANK_CHEQUE', file)}
         />
         <FileField
-          label='PAN card *'
+          label='PAN Card *'
           labelTa='பான் கார்டு'
           chosen={files.BANK_PAN?.name}
           onPick={(file) => pick('BANK_PAN', file)}
         />
         <FileField
-          label='GST certificate (if applicable)'
+          label='GST Certificate (If Applicable)'
           labelTa={null}
           chosen={files.BANK_GST?.name}
           onPick={(file) => pick('BANK_GST', file)}
@@ -332,7 +332,7 @@ export function BankForm() {
           </div>
           <ApplianceRows id='bank-appliances' value={appliances} onChange={setAppliances} />
         </div>
-        <FormField id='bank-remarks' label='Additional remarks' error={errors.remarks}>
+        <FormField id='bank-remarks' label='Additional Remarks' error={errors.remarks}>
           <Textarea
             id='bank-remarks'
             rows={3}

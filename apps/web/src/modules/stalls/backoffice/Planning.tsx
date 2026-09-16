@@ -108,7 +108,7 @@ function ZonePlanDialog({
           htmlFor='zp-crowd'
           style={{ display: 'grid', gap: 5, fontSize: 12.5, fontWeight: 600 }}
         >
-          Expected crowd
+          Expected Crowd
           <Input
             id='zp-crowd'
             type='number'
@@ -147,14 +147,14 @@ function ZonePlanDialog({
             counts are being typed — otherwise the suggestion is behind the
             dialog at exactly the moment it is wanted. */}
         <Card pad={12} style={{ display: 'grid', gap: 6, fontSize: 12.5 }}>
-          <Line label='Suggested from the crowd' value={String(suggested)} />
+          <Line label='Suggested from the Crowd' value={String(suggested)} />
           <Line
-            label='Planned here'
+            label='Planned Here'
             value={String(total)}
             tone={total < suggested ? 'var(--warn-fg)' : undefined}
           />
           <Line
-            label='Stalls standing today'
+            label='Stalls Standing Today'
             value={String(existing)}
             tone={total < existing ? 'var(--warn-fg)' : undefined}
           />
@@ -292,7 +292,7 @@ export function Planning() {
               onClick={() => setConfirmApply(true)}
             >
               <Icon name='check' size={14} />
-              Apply plan
+              Apply Plan
             </Btn>
           </>
         }
@@ -412,7 +412,7 @@ export function Planning() {
 
       {confirmApply && (
         <Dialog
-          title='Apply this plan?'
+          title='Apply This Plan?'
           note='Stall numbers are generated to match the counts above. Stalls holding a live allocation are never removed.'
           onClose={() => setConfirmApply(false)}
           footer={

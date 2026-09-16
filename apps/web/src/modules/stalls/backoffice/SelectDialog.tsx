@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { ApiError } from '../api-client';
 import { availableStalls, listZones, select } from '../api';
 import { useLoad } from '../hooks';
-import { Btn, Dialog, Empty, Icon, Loading, Select, useToast } from '../ui';
+import { Btn, Dialog, Empty, Icon, Loading, Select, titleCase, useToast } from '../ui';
 
 /** Pick free stalls for a request. Shows only AVAILABLE stalls, opens on the
  *  vendor's preferred zone, and caps the pick at what the request asked for
@@ -107,7 +107,7 @@ export function SelectDialog({
         }}
       >
         <label htmlFor='agreed-bay' style={{ fontSize: 11, fontWeight: 700, color: 'var(--mfg)' }}>
-          Bay agreed with the requester
+          Bay Agreed with the Requester
         </label>
         <Select
           id='agreed-bay'
@@ -115,7 +115,7 @@ export function SelectDialog({
           onChange={(e) => setAgreedZone(e.target.value)}
           style={{ width: 'auto', minWidth: 220 }}
         >
-          <option value=''>Not agreed yet</option>
+          <option value=''>Not Agreed Yet</option>
           {bays.map((z) => (
             <option key={z.code} value={z.code}>
               {z.code} — {z.name}
@@ -134,7 +134,7 @@ export function SelectDialog({
           onChange={(e) => setZone(e.target.value)}
           style={{ width: 'auto', minWidth: 150 }}
         >
-          <option value=''>All zones</option>
+          <option value=''>All Zones</option>
           {bays.map((z) => (
             <option key={z.code} value={z.code}>
               {z.code}
@@ -180,7 +180,7 @@ export function SelectDialog({
                       onClick={() => toggle(s.number)}
                       aria-pressed={on}
                       disabled={full}
-                      title={s.category.replace(/_/g, ' ').toLowerCase()}
+                      title={titleCase(s.category)}
                       style={{
                         // ⚠️ 34px tall, not the 26px a dense chip wants. These
                         // are the tap targets on the one screen that assigns a

@@ -126,10 +126,10 @@ export function Tabs({
 // ── Send ────────────────────────────────────────────────────────────────────
 
 const TEMPLATE_LABEL: Record<string, string> = {
-  SELECTION_VENDOR: 'Vendor selection confirmation',
-  SELECTION_ASHRAM: 'Ashram selection confirmation',
-  PAYMENT_DETAILS: 'Payment details',
-  ONBOARDING_FSSAI_STAFF: 'FSSAI and staff registration',
+  SELECTION_VENDOR: 'Vendor Selection Confirmation',
+  SELECTION_ASHRAM: 'Ashram Selection Confirmation',
+  PAYMENT_DETAILS: 'Payment Details',
+  ONBOARDING_FSSAI_STAFF: 'FSSAI and Staff Registration',
 };
 
 function SendPanel() {
@@ -246,9 +246,9 @@ function SendPanel() {
           onChange={(e) => setSentFilter(e.target.value as typeof sentFilter)}
           style={{ width: 'auto', minWidth: 150 }}
         >
-          <option value='all'>All vendors</option>
-          <option value='unsent'>Not sent yet</option>
-          <option value='sent'>Already sent</option>
+          <option value='all'>All Vendors</option>
+          <option value='unsent'>Not Sent Yet</option>
+          <option value='sent'>Already Sent</option>
         </Select>
         <div style={{ flex: 1 }} />
         {/* ⚠️ Both of these are hidden rather than disabled for a reader who
@@ -261,7 +261,7 @@ function SendPanel() {
             disabled={sendable.length === 0}
           >
             <Icon name='check-square' size={14} />
-            Select all {sendable.length > 0 ? `(${sendable.length})` : ''}
+            Select All {sendable.length > 0 ? `(${sendable.length})` : ''}
           </Btn>
         )}
         {/* Named "Send selected", not "Send": the row buttons are also called
@@ -304,7 +304,7 @@ function SendPanel() {
                 <TH>Vendor</TH>
                 <TH>Type</TH>
                 <TH>Stall</TH>
-                <TH>Email status</TH>
+                <TH>Email Status</TH>
                 <TH> </TH>
               </TR>
             </THead>
@@ -338,7 +338,7 @@ function SendPanel() {
                         </Tag>
                       ) : (
                         <Tag tone='warn' size='sm'>
-                          Not sent
+                          Not Sent
                         </Tag>
                       )}
                     </TD>
@@ -401,7 +401,7 @@ function ResendButton({
   ) : (
     <Btn onClick={() => setArmed(true)}>
       <Icon name='refresh' size={14} />
-      Allow re-send
+      Allow Re-Send
     </Btn>
   );
 }
@@ -585,7 +585,7 @@ function TemplatePanel() {
               is the point of the tab — and only committing a change is gated. */}
           <Btn kind='primary' onClick={save} disabled={!dirty || !canWrite}>
             <Icon name='check' size={14} />
-            Save template
+            Save Template
           </Btn>
           <span style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
             {current.updatedAt ? `Edited ${formatDateTime(current.updatedAt)}` : 'Default wording'}
@@ -596,7 +596,7 @@ function TemplatePanel() {
 
         <details>
           <summary style={{ fontSize: 12.5, cursor: 'pointer', color: 'var(--mfg)' }}>
-            Placeholders you can use
+            Placeholders You Can Use
           </summary>
           <div
             style={{
@@ -701,8 +701,8 @@ function ReminderPanel() {
     <div style={{ display: 'grid', gap: 12 }}>
       <Tabs
         tabs={[
-          ['BANK', 'Pending bank details'],
-          ['PAYMENT', 'Pending payment'],
+          ['BANK', 'Pending Bank Details'],
+          ['PAYMENT', 'Pending Payment'],
         ]}
         active={kind}
         onPick={(k) => setKind(k as ReminderKind)}
@@ -729,8 +729,8 @@ function ReminderPanel() {
               <TR>
                 <TH>Vendor</TH>
                 <TH>Contact</TH>
-                <TH align='right'>Calls logged</TH>
-                <TH>Last call</TH>
+                <TH align='right'>Calls Logged</TH>
+                <TH>Last Call</TH>
                 <TH> </TH>
               </TR>
             </THead>
@@ -762,7 +762,7 @@ function ReminderPanel() {
                         }}
                       >
                         <Icon name='phone-call' size={13} />
-                        Log call
+                        Log Call
                       </Btn>
                     )}
                   </TD>

@@ -51,8 +51,8 @@ describe('the bank details form', () => {
     render();
 
     expect(await screen.findByText(/VEN-2026-0001/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Chairs needed/)).toHaveValue(6);
-    expect(screen.getByLabelText(/Staff passes/)).toHaveValue(3);
+    expect(screen.getByLabelText(/Chairs Needed/)).toHaveValue(6);
+    expect(screen.getByLabelText(/Staff Passes/)).toHaveValue(3);
     expect(screen.getByDisplayValue('Deep fryer')).toBeInTheDocument();
   });
 
@@ -171,7 +171,7 @@ describe('the FSSAI upload', () => {
   });
 });
 
-describe('staff registration', () => {
+describe('Staff Registration', () => {
   const COUPON = {
     stallName: 'Green Leaf Organics',
     reference: 'VEN-2026-0001',
@@ -210,9 +210,9 @@ describe('staff registration', () => {
     renderWithCode('GRE-2026-K7Q4M2X9');
     const user = userEvent.setup();
 
-    await user.type(await screen.findByLabelText(/Full name/), 'Meena S');
-    await user.type(screen.getByLabelText(/Mobile number/), '9840066666');
-    await user.type(screen.getByLabelText(/ID number/), '123456789012');
+    await user.type(await screen.findByLabelText(/Full Name/), 'Meena S');
+    await user.type(screen.getByLabelText(/Mobile Number/), '9840066666');
+    await user.type(screen.getByLabelText(/ID Number/), '123456789012');
     await user.click(screen.getByRole('button', { name: 'Register' }));
 
     await waitFor(() => {
@@ -225,7 +225,7 @@ describe('staff registration', () => {
       });
     });
     expect(await screen.findByText('2 of 3 registered')).toBeInTheDocument();
-    expect(screen.getByLabelText(/Full name/)).toHaveValue('');
+    expect(screen.getByLabelText(/Full Name/)).toHaveValue('');
   });
 
   test('says only the last four Aadhaar digits are kept', async () => {
@@ -252,7 +252,7 @@ describe('staff registration', () => {
     renderAt('/stalls/staff', [{ path: '/stalls/staff', element: <StaffRegistration /> }]);
     const user = userEvent.setup();
 
-    await user.type(await screen.findByLabelText('Stall coupon'), 'GRE-2026-ZZZZZZZZ');
+    await user.type(await screen.findByLabelText('Stall Coupon'), 'GRE-2026-ZZZZZZZZ');
     await user.click(screen.getByRole('button', { name: 'Continue' }));
 
     expect(await screen.findByText(/That coupon is not valid/)).toBeInTheDocument();

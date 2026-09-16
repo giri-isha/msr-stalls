@@ -11,6 +11,7 @@
  * merge into a shared platform package is one path to change.
  */
 export { Frame } from './frame';
+export { titleCase } from './titleCase';
 export { Icon, ICON_NAMES } from './icons';
 export {
   Avatar,

@@ -76,7 +76,7 @@ describe('sending the selection letter', () => {
 
     expect(await screen.findByLabelText('Select Green Leaf Organics')).toBeDisabled();
     expect(screen.getByText(/^Sent /)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Allow re-send' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Allow Re-Send' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Send' })).not.toBeInTheDocument();
   });
 
@@ -94,7 +94,7 @@ describe('sending the selection letter', () => {
     const user = userEvent.setup();
 
     await screen.findByText('Coastal Spice');
-    await user.click(screen.getByRole('button', { name: /Select all \(1\)/ }));
+    await user.click(screen.getByRole('button', { name: /Select All \(1\)/ }));
     await user.click(screen.getByRole('button', { name: 'Send 1 selected' }));
 
     await waitFor(() => {
@@ -144,7 +144,7 @@ describe('the template editor', () => {
     const subject = await screen.findByLabelText('Subject');
     await user.clear(subject);
     await user.type(subject, 'Confirmed');
-    await user.click(screen.getByRole('button', { name: 'Save template' }));
+    await user.click(screen.getByRole('button', { name: 'Save Template' }));
 
     await waitFor(() => {
       const put = fetch.calls.find((c) => c.method === 'PUT');
@@ -165,7 +165,7 @@ describe('the template editor', () => {
     const subject = await screen.findByLabelText('Subject');
     await user.clear(subject);
     await user.type(subject, 'Confirmed');
-    await user.click(screen.getByRole('button', { name: 'Save template' }));
+    await user.click(screen.getByRole('button', { name: 'Save Template' }));
 
     await waitFor(() => {
       const put = fetch.calls.find((c) => c.method === 'PUT');
@@ -182,7 +182,7 @@ describe('the template editor', () => {
     const wa = await screen.findByLabelText('WhatsApp message');
     await user.clear(wa);
     await user.type(wa, 'You have been selected. Details by email.');
-    await user.click(screen.getByRole('button', { name: 'Save template' }));
+    await user.click(screen.getByRole('button', { name: 'Save Template' }));
 
     await waitFor(() => {
       const put = fetch.calls.find((c) => c.method === 'PUT');
@@ -213,7 +213,7 @@ describe('the template editor', () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole('button', { name: 'Templates' }));
-    expect(await screen.findByRole('button', { name: 'Save template' })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: 'Save Template' })).toBeDisabled();
   });
 });
 
@@ -246,7 +246,7 @@ describe('reminder calls', () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole('button', { name: 'Reminder calls' }));
-    await user.click(await screen.findByRole('button', { name: /Log call/ }));
+    await user.click(await screen.findByRole('button', { name: /Log Call/ }));
 
     await waitFor(() => {
       const post = fetch.calls.find((c) => c.method === 'POST' && c.url.includes('/reminders'));

@@ -90,7 +90,7 @@ export function FormBuilder({
 
   return (
     <Panel
-      title='Form builder'
+      title='Form Builder'
       note='What each request form asks, in the order it asks. A question whose answer goes into a record of its own can be reworded, moved and switched off, but not retyped or removed — switch it off instead.'
       actions={
         form && (
@@ -254,7 +254,7 @@ function FormOutline({
                 )}
               </>
             ) : (
-              <span style={{ color: 'var(--mfg)', fontWeight: 600 }}>No heading</span>
+              <span style={{ color: 'var(--mfg)', fontWeight: 600 }}>No Heading</span>
             )}
           </div>
 
@@ -327,10 +327,10 @@ function FieldRow({
           is asked. */}
       {field.isBuiltIn && (
         <Tag tone='info' size='sm'>
-          Built in
+          Built In
         </Tag>
       )}
-      {!field.isActive && <Tag size='sm'>Not asked</Tag>}
+      {!field.isActive && <Tag size='sm'>Not Asked</Tag>}
 
       {writable && (
         <span style={{ display: 'inline-flex', gap: 4, flex: 'none' }}>
@@ -437,7 +437,7 @@ function FieldDialog({
           />
         </FormField>
 
-        <FormField id='fb-label-ta' label='Tamil (optional)'>
+        <FormField id='fb-label-ta' label='Tamil (Optional)'>
           <Input
             id='fb-label-ta'
             className='msrs-tamil'
@@ -447,7 +447,7 @@ function FieldDialog({
           />
         </FormField>
 
-        <FormField id='fb-help' label='Help text (optional)'>
+        <FormField id='fb-help' label='Help Text (Optional)'>
           <Textarea
             id='fb-help'
             rows={2}
@@ -458,7 +458,7 @@ function FieldDialog({
 
         <FormField
           id='fb-type'
-          label='Answer type'
+          label='Answer Type'
           error={typeLocked ? 'Built in — its answer has a record of its own.' : undefined}
         >
           <Select
@@ -512,13 +512,13 @@ function FieldDialog({
           </FormField>
         )}
 
-        <FormField id='fb-section' label='Under which heading'>
+        <FormField id='fb-section' label='Under Which Heading'>
           <Select
             id='fb-section'
             value={v.sectionId ?? ''}
             onChange={(e) => setV({ ...v, sectionId: e.target.value || null })}
           >
-            <option value=''>No heading</option>
+            <option value=''>No Heading</option>
             {sections.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.heading}
@@ -564,7 +564,7 @@ function SectionDialog({
 
   return (
     <Dialog
-      title='Add a heading'
+      title='Add a Heading'
       note='Questions are put under a heading by moving them beneath it. Removing a heading later leaves its questions on the form.'
       onClose={onClose}
       footer={
@@ -591,7 +591,7 @@ function SectionDialog({
             onChange={(e) => setHeading(e.target.value)}
           />
         </FormField>
-        <FormField id='sec-heading-ta' label='Tamil (optional)'>
+        <FormField id='sec-heading-ta' label='Tamil (Optional)'>
           <Input
             id='sec-heading-ta'
             className='msrs-tamil'
@@ -600,7 +600,7 @@ function SectionDialog({
             onChange={(e) => setHeadingTa(e.target.value)}
           />
         </FormField>
-        <FormField id='sec-help' label='Note under the heading (optional)'>
+        <FormField id='sec-help' label='Note Under the Heading (Optional)'>
           <Textarea id='sec-help' rows={2} value={help} onChange={(e) => setHelp(e.target.value)} />
         </FormField>
       </div>

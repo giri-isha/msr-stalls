@@ -1,5 +1,5 @@
 import { type PrivilegeCatalogEntry, privilegeCategoryName } from '@msr/stalls';
-import type { Tone } from '../../ui';
+import { type Tone, titleCase } from '../../ui';
 
 /**
  * The privilege vocabulary, shaped for the two screens that read it.
@@ -49,15 +49,12 @@ export const KIND_TONE: Record<string, Tone> = {
 };
 
 /**
- * A requester type as a reader says it: `LOCAL_WELFARE` → `Local welfare`.
+ * A requester type as a reader says it: `LOCAL_WELFARE` → `Local Welfare`.
  *
  * Derived rather than mapped. A type added to the enum should appear on the
  * badge the day it is added, not the day somebody remembers a lookup table.
  */
-export const requestTypeLabel = (type: string): string => {
-  const words = type.replace(/_/g, ' ').toLowerCase();
-  return words.charAt(0).toUpperCase() + words.slice(1);
-};
+export const requestTypeLabel = (type: string): string => titleCase(type);
 
 /**
  * What a role's requester-type scope says on its card.
@@ -68,5 +65,5 @@ export const requestTypeLabel = (type: string): string => {
  */
 export const scopeLabel = (requestTypeScope: readonly string[]): string =>
   requestTypeScope.length === 0
-    ? 'All requester types'
+    ? 'All Requester Types'
     : requestTypeScope.map(requestTypeLabel).join(', ');

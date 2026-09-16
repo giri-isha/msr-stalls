@@ -44,6 +44,7 @@ import {
   type Tone,
   useIsMobile,
   useToast,
+  titleCase,
 } from '../ui';
 
 /**
@@ -80,10 +81,10 @@ const COLUMNS: ColumnDef[] = [
  *  hand-written list here would offer "waiting on GST", match nothing ever, and
  *  read as an empty queue rather than as a filter that cannot work. */
 const STEP_FILTER_LABEL: Record<(typeof ONBOARDING_STEPS)[number], string> = {
-  BANK_FORM: 'bank details',
-  PAYMENT: 'payment',
+  BANK_FORM: 'Bank Details',
+  PAYMENT: 'Payment',
   FSSAI: 'FSSAI',
-  STAFF_REGISTRATION: 'staff registration',
+  STAFF_REGISTRATION: 'Staff Registration',
 };
 
 export function Onboarding() {
@@ -135,7 +136,7 @@ export function Onboarding() {
           onChange={(e) => setOutstanding(e.target.value)}
           style={{ width: 'auto', minWidth: 170 }}
         >
-          <option value=''>Anything outstanding</option>
+          <option value=''>Anything Outstanding</option>
           {ONBOARDING_STEPS.map((step) => (
             <option key={step} value={step}>
               Waiting on {STEP_FILTER_LABEL[step]}
@@ -148,7 +149,7 @@ export function Onboarding() {
           onChange={(e) => setRequestType(e.target.value)}
           style={{ width: 'auto', minWidth: 150 }}
         >
-          <option value=''>All types</option>
+          <option value=''>All Types</option>
           {Object.entries(TYPE_LABEL).map(([k, v]) => (
             <option key={k} value={k}>
               {v}
@@ -308,7 +309,7 @@ function PendingChips({ row }: { row: OnboardingRow }) {
   if (row.pending.length === 0) {
     return (
       <Tag tone='ok' size='sm'>
-        All clear
+        All Clear
       </Tag>
     );
   }
@@ -367,23 +368,23 @@ function OnboardingDetailDialog({
             <Section title='Amount'>
               <Facts
                 items={[
-                  ['Fee, incl. GST', formatInr(data.quote.feeTotalPaise)],
-                  ['Refundable deposit', formatInr(data.quote.depositTotalPaise)],
+                  ['Fee, Incl. GST', formatInr(data.quote.feeTotalPaise)],
+                  ['Refundable Deposit', formatInr(data.quote.depositTotalPaise)],
                   ['Total', formatInr(data.quote.grandTotalPaise)],
                 ]}
               />
             </Section>
           )}
 
-          <Section title='Bank details'>
+          <Section title='Bank Details'>
             {data.bank ? (
               <div style={{ display: 'grid', gap: 10 }}>
                 <Facts
                   items={[
-                    ['Invoice name', data.bank.invoiceName],
-                    ['Account holder', data.bank.accountHolder],
+                    ['Invoice Name', data.bank.invoiceName],
+                    ['Account Holder', data.bank.accountHolder],
                     ['Bank', `${data.bank.bankName} — ${data.bank.branch}`],
-                    ['Account number', data.bank.accountNumber],
+                    ['Account Number', data.bank.accountNumber],
                     ['IFSC', data.bank.ifsc],
                     ['MICR', data.bank.micr ?? '—'],
                     ['PAN', data.bank.panNumber],
@@ -424,7 +425,7 @@ function OnboardingDetailDialog({
             )}
           </Section>
 
-          <Section title='FSSAI certificate'>
+          <Section title='FSSAI Certificate'>
             {data.fssaiFiles.length > 0 ? (
               <div style={{ display: 'grid', gap: 10 }}>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -481,7 +482,7 @@ function OnboardingDetailDialog({
             )}
           </Section>
 
-          <Section title='Staff registration' count={data.staff.length}>
+          <Section title='Staff Registration' count={data.staff.length}>
             <div style={{ display: 'grid', gap: 10 }}>
               <div
                 style={{
@@ -520,7 +521,7 @@ function OnboardingDetailDialog({
                     }}
                   >
                     <Icon name='key' size={13} />
-                    Issue coupon
+                    Issue Coupon
                   </Btn>
                 )}
                 {data.couponCode && (
@@ -554,7 +555,7 @@ function OnboardingDetailDialog({
                           {s.mobile}
                         </TD>
                         <TD muted style={{ fontSize: 11.5 }}>
-                          {s.idType.replace('_', ' ').toLowerCase()} ···{s.idNumber}
+                          {titleCase(s.idType)} ···{s.idNumber}
                         </TD>
                         <TD muted style={{ fontSize: 11.5 }}>
                           {formatDate(s.registeredAt)}
@@ -692,7 +693,7 @@ function CouponCapacityDialog({
 
   return (
     <Dialog
-      title='Coupon capacity'
+      title='Coupon Capacity'
       note={`How many of the stall's own team the coupon will register. ${registered} ${registered === 1 ? 'person has' : 'people have'} registered so far.`}
       onClose={onClose}
       width={420}
@@ -704,7 +705,7 @@ function CouponCapacityDialog({
         />
       }
     >
-      <FormField id='coupon-capacity' label='Admits (people)'>
+      <FormField id='coupon-capacity' label='Admits (People)'>
         <Input
           id='coupon-capacity'
           type='number'

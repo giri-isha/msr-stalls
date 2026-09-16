@@ -104,7 +104,7 @@ describe('MyRequests', () => {
     render();
 
     expect(await screen.findByText(/have not requested a stall/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Request a stall/ })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /Request a Stall/ })).toHaveAttribute(
       'href',
       '/stalls/apply',
     );

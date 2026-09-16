@@ -176,11 +176,11 @@ describe('the onboarding filters', () => {
 
     const options = within(screen.getByLabelText('Outstanding')).getAllByRole('option');
     expect(options.map((o) => o.textContent)).toEqual([
-      'Anything outstanding',
-      'Waiting on bank details',
-      'Waiting on payment',
+      'Anything Outstanding',
+      'Waiting on Bank Details',
+      'Waiting on Payment',
       'Waiting on FSSAI',
-      'Waiting on staff registration',
+      'Waiting on Staff Registration',
     ]);
   });
 });
@@ -273,7 +273,7 @@ describe('the vendor detail', () => {
 
     await user.click(await screen.findByText('Green Leaf Organics'));
     const dialog = await screen.findByRole('dialog');
-    await user.click(within(dialog).getByRole('button', { name: /Issue coupon/ }));
+    await user.click(within(dialog).getByRole('button', { name: /Issue Coupon/ }));
 
     await waitFor(() =>
       expect(fetch.calls.some((c) => c.method === 'POST' && c.url.endsWith('/coupon'))).toBe(true),
@@ -292,7 +292,7 @@ describe('the vendor detail', () => {
     await user.click(await screen.findByText('Green Leaf Organics'));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('GRE-2026-K7Q4M2X9')).toBeInTheDocument();
-    expect(within(dialog).queryByRole('button', { name: /Issue coupon/ })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: /Issue Coupon/ })).not.toBeInTheDocument();
   });
 
   // 🔴 "If they want more staff members, in the back end we raise that capacity
@@ -320,8 +320,8 @@ describe('the vendor detail', () => {
 
     // ⚠️ A box over a box: the record is a dialog too, so the query names the
     // one it means rather than taking whichever comes first.
-    const box = within(await screen.findByRole('dialog', { name: 'Coupon capacity' }));
-    const field = box.getByLabelText('Admits (people)');
+    const box = within(await screen.findByRole('dialog', { name: 'Coupon Capacity' }));
+    const field = box.getByLabelText('Admits (People)');
     expect(field).toHaveValue(8);
 
     await user.clear(field);
@@ -353,8 +353,8 @@ describe('the vendor detail', () => {
     const record = within(await screen.findByRole('dialog', { name: 'Green Leaf Organics' }));
     await user.click(record.getByLabelText('Edit coupon capacity'));
 
-    const box = within(await screen.findByRole('dialog', { name: 'Coupon capacity' }));
-    const field = box.getByLabelText('Admits (people)');
+    const box = within(await screen.findByRole('dialog', { name: 'Coupon Capacity' }));
+    const field = box.getByLabelText('Admits (People)');
     await user.clear(field);
     await user.type(field, '2');
 
@@ -391,6 +391,6 @@ describe('the vendor detail', () => {
     await user.click(await screen.findByText('Green Leaf Organics'));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('9840055555')).toBeInTheDocument();
-    expect(within(dialog).getByText(/aadhaar ···9012/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Aadhaar ···9012/)).toBeInTheDocument();
   });
 });

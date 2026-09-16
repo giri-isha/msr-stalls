@@ -46,7 +46,7 @@ export function ApplianceRows({
             color: 'var(--mfg)',
           }}
         >
-          <span>Appliance name</span>
+          <span>Appliance Name</span>
           <span>Wattage</span>
           <span />
         </div>
@@ -82,7 +82,7 @@ export function ApplianceRows({
       <div>
         <Btn onClick={add} disabled={value.length >= max}>
           <Icon name='plus' size={14} />
-          Add appliance
+          Add Appliance
         </Btn>
       </div>
     </div>

@@ -21,7 +21,7 @@ export function ViewToggle({
   return (
     <div
       role='group'
-      aria-label='List shape'
+      aria-label='List Shape'
       style={{
         display: 'flex',
         gap: 2,
@@ -34,13 +34,13 @@ export function ViewToggle({
     >
       <ViewBtn
         on={view === 'table'}
-        label='Table view'
+        label='Table View'
         glyph='list-view'
         onClick={() => onChange('table')}
       />
       <ViewBtn
         on={view === 'cards'}
-        label='Card view'
+        label='Card View'
         glyph='layout-grid'
         onClick={() => onChange('cards')}
       />
