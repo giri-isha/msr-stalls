@@ -31,6 +31,7 @@ import {
   useToast,
 } from '../ui';
 import { Panel } from '../components/Panel';
+import { CopyAction } from './CopyFromDialog';
 import { Declarations } from './Declarations';
 import { FormBuilder } from './FormBuilder';
 
@@ -120,14 +121,26 @@ function RupeeInput({
 export function Admin() {
   const { can } = useMe();
   const toast = useToast();
-  const writable = can('config.write');
+  // ⚠️ Which edition is being LOOKED AT. Empty means the active one, which is
+  // what the screen opens on and what every write goes to regardless — see
+  // `viewing` below.
+  const [viewing, setViewing] = useState('');
   const [tab, setTab] = useState<Tab>('Bays');
-  const cfg = useLoad(api.getConfig);
+  const cfg = useLoad(() => api.getConfig(viewing || undefined), [viewing]);
+  const editions = useLoad(api.listEditions);
 
   if (cfg.loading) return <Loading />;
   if (cfg.error || !cfg.data)
     return <ErrorBox>{cfg.error?.message ?? 'Could not load the configuration.'}</ErrorBox>;
   const c = cfg.data;
+
+  // 🔴 A past edition is READ ONLY. Every write on this screen goes to the
+  // ACTIVE edition — none of them carries an edition at all — so a screen
+  // pointed at 2025 with its Save buttons live would write 2025's figures into
+  // this year under a heading saying 2025. The selector is for comparing and
+  // for copying out of; the year being edited never changes.
+  const past = !c.edition.isActive;
+  const writable = can('config.write') && !past;
 
   // ⚠️ Returns whether it went through. The dialogs below close on `true` and
   // stay open on `false` — a refused save that closed the box anyway would take
@@ -152,13 +165,51 @@ export function Admin() {
           <>
             {c.edition.name} ·{' '}
             <Tag tone={writable ? 'ok' : 'neutral'} size='sm'>
-              {writable ? 'you can edit' : 'read only'}
+              {past ? 'past edition · read only' : writable ? 'you can edit' : 'read only'}
             </Tag>
           </>
         }
       >
         Admin
       </H1>
+
+      {/* The edition being looked at. Beside the title rather than inside a
+          panel: it changes what every panel below is showing, and a control
+          that reframes a whole screen belongs at the top of it. */}
+      {(editions.data?.length ?? 0) > 1 && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            marginBottom: 14,
+            flexWrap: 'wrap',
+          }}
+        >
+          <label htmlFor='admin-edition' style={{ fontSize: 12.5, color: 'var(--mfg)' }}>
+            Showing
+          </label>
+          <Select
+            id='admin-edition'
+            value={viewing || (editions.data?.find((e) => e.isActive)?.id ?? '')}
+            onChange={(e) => setViewing(e.target.value)}
+            style={{ width: 'auto', minWidth: 190 }}
+          >
+            {editions.data?.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name}
+                {e.isActive ? ' — active' : ''}
+              </option>
+            ))}
+          </Select>
+          {past && (
+            <span style={{ fontSize: 12, color: 'var(--mfg)' }}>
+              A past edition. Nothing here can be edited — use “Copy from…” on a panel to bring its
+              settings into the active edition.
+            </span>
+          )}
+        </div>
+      )}
 
       {/* ⚠️ Tabs as toolbar buttons on the shared control skin, not an
           underlined rail. `toolBtnStyle` is the one look a chosen control wears
@@ -185,27 +236,35 @@ export function Admin() {
         ))}
       </div>
 
-      {tab === 'Bays' && <Zones c={c} writable={writable} run={run} />}
-      {tab === 'Planning columns' && <PlanCategories c={c} writable={writable} run={run} />}
-      {tab === 'Rates' && <Rates c={c} writable={writable} run={run} />}
-      {tab === 'Charges' && <Charges c={c} writable={writable} run={run} />}
-      {tab === 'Fines' && <Fines c={c} writable={writable} run={run} />}
+      {tab === 'Bays' && <Zones c={c} writable={writable} run={run} reload={cfg.reload} />}
+      {tab === 'Planning columns' && (
+        <PlanCategories c={c} writable={writable} run={run} reload={cfg.reload} />
+      )}
+      {tab === 'Rates' && <Rates c={c} writable={writable} run={run} reload={cfg.reload} />}
+      {tab === 'Charges' && <Charges c={c} writable={writable} run={run} reload={cfg.reload} />}
+      {tab === 'Fines' && <Fines c={c} writable={writable} run={run} reload={cfg.reload} />}
       {/* ⚠️ Reads its own data. `c` is the CONFIG payload, whose `customFields`
           is the appended questions only — this screen is about the whole form. */}
-      {tab === 'Form builder' && <FormBuilder writable={writable} />}
-      {tab === 'Custom fields' && <CustomFields c={c} writable={writable} run={run} />}
+      {tab === 'Form builder' && (
+        <FormBuilder writable={writable} editionId={viewing || undefined} />
+      )}
+      {tab === 'Custom fields' && (
+        <CustomFields c={c} writable={writable} run={run} reload={cfg.reload} />
+      )}
       {/* ⚠️ Reads its own data rather than taking `c`. The config payload is
           what is LIVE; this screen shows every version including the archived
           ones, which is a different question and a different query. */}
-      {tab === 'Declarations' && <Declarations writable={writable} />}
-      {tab === 'Flow' && <Flow c={c} writable={writable} run={run} />}
+      {tab === 'Declarations' && (
+        <Declarations writable={writable} editionId={viewing || undefined} />
+      )}
+      {tab === 'Flow' && <Flow c={c} writable={writable} run={run} reload={cfg.reload} />}
       {/* ⚠️ Users and Roles used to be two tabs here. They are screens of their
           own under Access now — each one a full page with its own toolbar,
           rather than a page inside a strip that had grown to ten items. */}
       {tab === 'Editions' && (
         <div style={{ display: 'grid', gap: 16 }}>
-          <EditionSettings c={c} writable={writable} run={run} />
-          <Editions writable={writable} run={run} />
+          <EditionSettings c={c} writable={writable} run={run} reload={cfg.reload} />
+          <Editions writable={can('config.write')} run={run} />
         </div>
       )}
     </div>
@@ -216,6 +275,9 @@ type PanelProps = {
   c: api.BackofficeConfig;
   writable: boolean;
   run: (l: string, f: () => Promise<unknown>) => Promise<boolean>;
+  /** Re-read the configuration. `run` already does it after a save; this is for
+   *  the copy dialog, which writes through its own call. */
+  reload: () => void;
 };
 
 /**
@@ -230,7 +292,7 @@ type PanelProps = {
  * cascading, which would take the stalls, their allocations and the record of
  * who stood where with them.
  */
-function Zones({ c, writable, run }: PanelProps) {
+function Zones({ c, writable, run, reload }: PanelProps) {
   // ⚠️ Held by the PANEL, not the row. A dialog is a <div>, and a <div> inside
   // a <tr> is invalid markup React will complain about — so the row raises the
   // intent and the box is rendered out here, beside the table.
@@ -241,7 +303,12 @@ function Zones({ c, writable, run }: PanelProps) {
     <Panel
       title='Bays'
       note='The physical areas stalls are planned into. The layout is redrawn each edition, so bays are added and removed here rather than in a migration.'
-      actions={<AddBtn what='bay' writable={writable} onClick={() => setAdding(true)} />}
+      actions={
+        <>
+          <CopyAction section='zones' writable={writable} onCopied={reload} />
+          <AddBtn what='bay' writable={writable} onClick={() => setAdding(true)} />
+        </>
+      }
     >
       <Table>
         <THead>
@@ -279,7 +346,7 @@ function Zones({ c, writable, run }: PanelProps) {
  * carries. A column already planned or allocated against cannot be removed, and
  * `inUse` is why its delete is disabled rather than refused after the fact.
  */
-function PlanCategories({ c, writable, run }: PanelProps) {
+function PlanCategories({ c, writable, run, reload }: PanelProps) {
   const [rows, setRows] = useState(c.planCategories);
   const [editing, setEditing] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
@@ -298,7 +365,12 @@ function PlanCategories({ c, writable, run }: PanelProps) {
     <Panel
       title='Planning columns'
       note='What can occupy a stall position. These are the Planning grid’s columns, in this order. A column something is already planned or allocated against cannot be removed.'
-      actions={<AddBtn what='column' writable={writable} onClick={() => setAdding(true)} />}
+      actions={
+        <>
+          <CopyAction section='planCategories' writable={writable} onCopied={reload} />
+          <AddBtn what='column' writable={writable} onClick={() => setAdding(true)} />
+        </>
+      }
       footer={
         <Btn kind='primary' disabled={!writable || !dirty} onClick={save}>
           <Icon name='check' size={14} />
@@ -654,7 +726,7 @@ function ZoneRow({
 }: {
   z: api.BackofficeConfig['zones'][number];
   onEdit: (z: api.BackofficeConfig['zones'][number]) => void;
-} & Omit<PanelProps, 'c'>) {
+} & Omit<PanelProps, 'c' | 'reload'>) {
   return (
     <TR>
       <TD mono style={{ fontWeight: 700 }}>
@@ -880,7 +952,7 @@ function ZoneDialog({
  * advance also area wise — it might be 3000, and for the free area it might be
  * only 2000". Rent and advance are edited together here and cannot drift apart.
  */
-function Rates({ c, writable, run }: PanelProps) {
+function Rates({ c, writable, run, reload }: PanelProps) {
   const [entries, setEntries] = useState<RateCardEntry[]>(c.rateCard);
   const [isFood, setIsFood] = useState(true);
   const [editing, setEditing] = useState<api.BackofficeConfig['zones'][number] | null>(null);
@@ -912,6 +984,7 @@ function Rates({ c, writable, run }: PanelProps) {
     <Panel
       title='Stall rent and advance'
       note='Per stall, before GST, for each bay. A bay left at zero is not priced at that scope and the form will not offer it. The advance is refundable and is set per bay beside the rent.'
+      actions={<CopyAction section='rates' writable={writable} onCopied={reload} />}
       footer={
         <Btn
           kind='primary'
@@ -1088,7 +1161,7 @@ function RateDialog({
   );
 }
 
-function Charges({ c, writable, run }: PanelProps) {
+function Charges({ c, writable, run, reload }: PanelProps) {
   const [v, setV] = useState(c.charges);
   useEffect(() => setV(c.charges), [c.charges]);
   const f = (k: keyof typeof v) => ({
@@ -1099,6 +1172,7 @@ function Charges({ c, writable, run }: PanelProps) {
   return (
     <Panel
       title='Charges and deposits'
+      actions={<CopyAction section='charges' writable={writable} onCopied={reload} />}
       note='The 2025 forms quoted three different chair and table rates — to ashram departments, to local welfare stalls and to vendors. All three are kept, because they are what was charged. The refundable advance is not here: it is set per bay, beside that bay’s rent.'
       footer={
         <Btn
@@ -1181,14 +1255,19 @@ function Charges({ c, writable, run }: PanelProps) {
   );
 }
 
-function Fines({ c, writable, run }: PanelProps) {
+function Fines({ c, writable, run, reload }: PanelProps) {
   const [editing, setEditing] = useState<api.BackofficeConfig['fineTypes'][number] | null>(null);
   const [adding, setAdding] = useState(false);
   return (
     <Panel
       title='Fine types'
       note='Deducted from the deposit in Phase 3. Configured here.'
-      actions={<AddBtn what='fine type' writable={writable} onClick={() => setAdding(true)} />}
+      actions={
+        <>
+          <CopyAction section='fineTypes' writable={writable} onCopied={reload} />
+          <AddBtn what='fine type' writable={writable} onClick={() => setAdding(true)} />
+        </>
+      }
     >
       {c.fineTypes.length === 0 ? (
         <Empty>No fine types yet.</Empty>
@@ -1762,7 +1841,7 @@ function Editions({ writable, run }: { writable: boolean; run: PanelProps['run']
   return (
     <Panel
       title='Editions'
-      note='One per MSR. Exactly one is active; the public forms and every backoffice screen read it. Creating a new one seeds zones, rates and charges from the 2025 defaults.'
+      note='One per MSR. Exactly one is active; the public forms and every backoffice screen read it. Creating a new one seeds zones, rates and charges from the 2025 defaults — to carry last year’s own settings across instead, use “Copy from…” on the panel you want.'
       actions={<AddBtn what='edition' writable={writable} onClick={() => setAdding(true)} />}
     >
       {eds.data === null ? (
@@ -1858,7 +1937,7 @@ function EditionAddDialog({
   return (
     <Dialog
       title='Add an edition'
-      note='Created and made active immediately — every backoffice screen reads the active edition, so this moves the module to the new year. Zones, rates and charges are seeded from the 2025 defaults.'
+      note='Created and made active immediately — every backoffice screen reads the active edition, so this moves the module to the new year. Zones, rates and charges are seeded from the 2025 defaults; “Copy from…” on a panel brings a past edition’s own settings across afterwards.'
       onClose={onClose}
       footer={
         <DialogButtons

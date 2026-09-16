@@ -15,6 +15,9 @@ import type {
   ContinueStepInput,
   ContinueStepResponse,
   ChargesInput,
+  CopyEditionInput,
+  CopyPlan,
+  CopyResult,
   CheckInRow,
   CommRecipient,
   ConfirmPaymentInput,
@@ -258,7 +261,14 @@ export interface BackofficeConfig {
   }>;
 }
 
-export const getConfig = () => apiFetch<BackofficeConfig>(`${BASE}/config`);
+/** ⚠️ `editionId` is a READ of another edition — the Admin selector, so a past
+ *  year can be compared against this one. Every write below still goes to the
+ *  active edition and takes no edition at all. */
+export const getConfig = (editionId?: string) =>
+  apiFetch<BackofficeConfig>(`${BASE}/config${editionQuery(editionId)}`);
+
+const editionQuery = (editionId?: string) =>
+  editionId ? `?editionId=${encodeURIComponent(editionId)}` : '';
 
 /** The edition's bays alone. Behind `requests:read`, so every screen that
  *  filters by bay can read the edition's own list rather than carrying a copy
@@ -270,6 +280,12 @@ export const listEditions = () =>
   );
 export const createEdition = (input: { year: number; name: string; activate: boolean }) =>
   apiFetch<{ id: string }>(`${BASE}/editions`, { method: 'POST', json: input });
+/** What copying this section from that edition would do. Writes nothing. */
+export const previewCopy = (input: CopyEditionInput) =>
+  apiFetch<CopyPlan>(`${BASE}/config/copy/preview`, { method: 'POST', json: input });
+/** Does it, into the ACTIVE edition — which is why no target is sent. */
+export const copyFromEdition = (input: CopyEditionInput) =>
+  apiFetch<CopyResult>(`${BASE}/config/copy`, { method: 'POST', json: input });
 export const activateEdition = (id: string) =>
   apiFetch<void>(`${BASE}/editions/${id}/activate`, { method: 'POST' });
 export const updateZone = (
@@ -330,7 +346,8 @@ export const deleteCustomField = (id: string) =>
 
 // ── Backoffice: the form builder ────────────────────────────────────────────
 
-export const listForms = () => apiFetch<ListFormsResponse>(`${BASE}/config/forms`);
+export const listForms = (editionId?: string) =>
+  apiFetch<ListFormsResponse>(`${BASE}/config/forms${editionQuery(editionId)}`);
 export const patchForm = (formType: string, patch: FormDefinitionPatch) =>
   apiFetch<void>(`${BASE}/config/forms/${formType}`, { method: 'PATCH', json: patch });
 export const addFormField = (definitionId: string, input: AddFormFieldInput) =>
@@ -359,8 +376,8 @@ export const deleteFormSection = (id: string) =>
 
 // ── Backoffice: declarations ────────────────────────────────────────────────
 
-export const listDeclarations = () =>
-  apiFetch<ListDeclarationsResponse>(`${BASE}/config/declarations`);
+export const listDeclarations = (editionId?: string) =>
+  apiFetch<ListDeclarationsResponse>(`${BASE}/config/declarations${editionQuery(editionId)}`);
 export const createDeclaration = (input: DeclarationInput) =>
   apiFetch<DeclarationRow>(`${BASE}/config/declarations`, { method: 'POST', json: input });
 /** ⚠️ Returns whichever version is CURRENT after the save, which is a new row

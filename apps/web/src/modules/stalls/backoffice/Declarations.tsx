@@ -9,6 +9,7 @@ import * as api from '../api';
 import { DeclarationText } from '../components/DeclarationText';
 import { TYPE_LABEL } from '../components/StatusPill';
 import { Panel } from '../components/Panel';
+import { CopyAction } from './CopyFromDialog';
 import { formatDate, useLoad } from '../hooks';
 import {
   AddBtn,
@@ -57,9 +58,19 @@ const asFormType = (v: string): FormType | null =>
  * version it replaces and the old row stays visible, because "what did this say
  * in January?" is the question the whole feature exists to answer.
  */
-export function Declarations({ writable }: { writable: boolean }) {
+export function Declarations({
+  writable,
+  editionId,
+}: {
+  writable: boolean;
+  /** Which edition's declarations to SHOW. Undefined is the active one. */
+  editionId?: string;
+}) {
   const toast = useToast();
-  const { data, error, loading, reload } = useLoad(api.listDeclarations);
+  const { data, error, loading, reload } = useLoad(
+    () => api.listDeclarations(editionId),
+    [editionId],
+  );
   const [editing, setEditing] = useState<DeclarationRow | null>(null);
   const [adding, setAdding] = useState<{ key?: string } | null>(null);
 
@@ -117,7 +128,12 @@ export function Declarations({ writable }: { writable: boolean }) {
     <Panel
       title='Consent declarations'
       note='The wording a requester ticks when they apply. A form shows its own variant if there is one, otherwise the default. Changing the text creates a new version and archives the old one; consents stay linked to the exact version agreed to.'
-      actions={<AddBtn what='declaration' writable={writable} onClick={() => setAdding({})} />}
+      actions={
+        <>
+          <CopyAction section='declarations' writable={writable} onCopied={reload} />
+          <AddBtn what='declaration' writable={writable} onClick={() => setAdding({})} />
+        </>
+      }
     >
       {groups.length === 0 ? (
         <Empty>

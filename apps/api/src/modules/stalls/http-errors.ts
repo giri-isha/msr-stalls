@@ -49,6 +49,8 @@ import {
   UnknownTemplateError,
   SignatureProviderError,
   UnknownZoneError,
+  UnknownEditionError,
+  SameEditionCopyError,
   UploadsUnavailableError,
   WrongTemplateError,
   ZoneExistsError,
@@ -86,6 +88,7 @@ function statusFor(err: unknown): number | null {
     err instanceof UnknownRequestError ||
     err instanceof UnknownStallError ||
     err instanceof UnknownZoneError ||
+    err instanceof UnknownEditionError ||
     err instanceof UnknownPersonError ||
     err instanceof UnknownRoleError ||
     err instanceof UnknownDeclarationError ||
@@ -126,7 +129,8 @@ function statusFor(err: unknown): number | null {
     // stalls planned against it" instead of showing an error page.
     err instanceof ZoneExistsError ||
     err instanceof ZoneInUseError ||
-    err instanceof CategoryInUseError
+    err instanceof CategoryInUseError ||
+    err instanceof SameEditionCopyError
   ) {
     return 409;
   }

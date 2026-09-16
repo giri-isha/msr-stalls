@@ -574,6 +574,92 @@ export interface EditionSettingsView {
   termsUrl: string | null;
 }
 
+/* ── Copying a section from another edition ──────────────────────────────── */
+
+/** The seven things the Admin screen owns, and the only things a copy moves.
+ *
+ *  🔴 Configuration only. Requests, allocations, accounts, payments, consents
+ *  and stalls are an edition's RECORD, and a record that could be copied into
+ *  another year is not a record. */
+export const COPY_SECTIONS = [
+  'zones',
+  'planCategories',
+  'rates',
+  'charges',
+  'fineTypes',
+  'forms',
+  'declarations',
+] as const;
+export type CopySection = (typeof COPY_SECTIONS)[number];
+export const CopySectionValue = z.enum(COPY_SECTIONS);
+
+/** What the section is called on screen. Here rather than in the panel so the
+ *  preview, the confirm button and the activity trail all say the same word. */
+export const COPY_SECTION_LABELS: Record<CopySection, string> = {
+  zones: 'Bays',
+  planCategories: 'Planning columns',
+  rates: 'Rates',
+  charges: 'Charges',
+  fineTypes: 'Fines',
+  forms: 'Forms',
+  declarations: 'Declarations',
+};
+
+export const CopyEditionInput = z.object({
+  /** Where the values come from. The target is always the ACTIVE edition and is
+   *  never sent — see the route, which resolves it through `activeEditionFor`. */
+  fromEditionId: z.uuid(),
+  section: CopySectionValue,
+});
+export type CopyEditionInput = z.infer<typeof CopyEditionInput>;
+
+/** One field that would change.
+ *
+ *  ⚠️ `before` and `after` are already RENDERED — rupees, not paise; `Yes`, not
+ *  `true`. The preview and the row that gets written come from one plan, and a
+ *  dialog that reformatted the plan's values could show a figure the write does
+ *  not make. */
+export interface CopyChange {
+  field: string;
+  before: string | null;
+  after: string;
+}
+
+export interface CopyRow {
+  /** The natural key, which is also what a second copy matches on. */
+  key: string;
+  /** What the dialog calls the row: `D1 · Adiyogi`, `Vendor form · Stall name`. */
+  label: string;
+  changes: CopyChange[];
+}
+
+/** Something the source has that this edition cannot take, and why. A rate for
+ *  a bay this edition does not have is the case that exists today. */
+export interface CopySkip {
+  key: string;
+  label: string;
+  reason: string;
+}
+
+/** The whole answer to "what would copying do?", and the whole instruction for
+ *  doing it. Preview returns it; apply recomputes it and writes it. */
+export interface CopyPlan {
+  section: CopySection;
+  fromEditionId: string;
+  fromEditionName: string;
+  intoEditionName: string;
+  create: CopyRow[];
+  overwrite: CopyRow[];
+  skip: CopySkip[];
+  unchanged: number;
+}
+
+export interface CopyResult {
+  created: number;
+  overwritten: number;
+  skipped: number;
+}
+
 export const ZoneInput = z.object({
   name: z.string().trim().min(1).max(100),
   expectedCrowd: z.number().int().min(0).max(10_000_000),

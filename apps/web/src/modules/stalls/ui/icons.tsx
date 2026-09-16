@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   ArrowLeftRight,
+  ArrowRight,
   Ban,
   BarChart3,
   Bell,
@@ -17,6 +18,7 @@ import {
   ChevronsRight,
   CircleDot,
   ClipboardList,
+  Copy,
   Download,
   Eye,
   FileText,
@@ -110,6 +112,7 @@ import {
 const REGISTRY: Record<string, LucideIcon> = {
   'alert-triangle': AlertTriangle,
   'arrow-left-right': ArrowLeftRight,
+  'arrow-right': ArrowRight,
   ban: Ban,
   'bar-chart': BarChart3,
   bell: Bell,
@@ -126,6 +129,7 @@ const REGISTRY: Record<string, LucideIcon> = {
   'chevrons-right': ChevronsRight,
   'circle-dot': CircleDot,
   'clipboard-list': ClipboardList,
+  copy: Copy,
   download: Download,
   eye: Eye,
   'file-text': FileText,

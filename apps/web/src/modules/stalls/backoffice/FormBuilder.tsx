@@ -11,6 +11,7 @@ import {
 import { useState } from 'react';
 import * as api from '../api';
 import { Panel } from '../components/Panel';
+import { CopyAction } from './CopyFromDialog';
 import { TYPE_LABEL } from '../components/StatusPill';
 import { useLoad } from '../hooks';
 import {
@@ -54,9 +55,17 @@ type FormType = (typeof FORM_TYPES)[number];
  * required, and whether the question is asked at all — is editable on every
  * field. A built-in that should stop being asked is switched off.
  */
-export function FormBuilder({ writable }: { writable: boolean }) {
+export function FormBuilder({
+  writable,
+  editionId,
+}: {
+  writable: boolean;
+  /** Which edition's forms to SHOW. Undefined is the active one. A past edition
+   *  arrives with `writable` already false — see the note in `Admin`. */
+  editionId?: string;
+}) {
   const toast = useToast();
-  const { data, error, loading, reload } = useLoad(api.listForms);
+  const { data, error, loading, reload } = useLoad(() => api.listForms(editionId), [editionId]);
   const [formType, setFormType] = useState<FormType>('VENDOR');
   const [editing, setEditing] = useState<BuiltFormField | null>(null);
   const [adding, setAdding] = useState(false);
@@ -86,6 +95,7 @@ export function FormBuilder({ writable }: { writable: boolean }) {
       actions={
         form && (
           <>
+            <CopyAction section='forms' writable={writable} onCopied={reload} />
             <Btn disabled={!writable} onClick={() => setAddingSection(true)}>
               <Icon name='plus' size={14} />
               Heading

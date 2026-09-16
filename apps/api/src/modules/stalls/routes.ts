@@ -5,6 +5,9 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
   ChargesInput,
+  type CopyPlan,
+  type CopyResult,
+  CopyEditionInput,
   CheckInInput,
   ConfirmPaymentInput,
   CreateEditionInput,
@@ -69,7 +72,8 @@ import * as formBuilder from './form-builder';
 // resolves the edition through `activeEditionFor`, which refuses a caller whose
 // grants do not cover it. Reaching for the unguarded one is how a route would
 // quietly opt out of edition scope.
-import { activateEdition, activeEditionFor, listEditions } from './editions';
+import { activateEdition, activeEditionFor, editionFor, listEditions } from './editions';
+import { applyCopy, planCopy } from './edition-copy';
 import type { StallsDeps } from './deps';
 import { electricalSheet } from './electrical';
 import * as equipment from './equipment';
@@ -119,6 +123,10 @@ import {
 
 const IdParams = z.object({ id: z.uuid() });
 const CodeParams = z.object({ code: ZoneCodeValue });
+
+/** Which edition a READ is about. Absent means the active one, which is what
+ *  every screen but the Admin selector asks for. */
+const EditionQuery = z.object({ editionId: z.uuid().optional() });
 const RoleParams = z.object({ personRef: z.uuid(), roleKey: z.string() });
 const PersonParams = z.object({ personRef: z.uuid() });
 const RoleKeyParams = z.object({ roleKey: z.string().min(1).max(60) });
@@ -396,10 +404,14 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
   });
 
   // ── Configuration ─────────────────────────────────────────────────────────
-  zod.get('/config', async (req) => {
+  /** ⚠️ `editionId` reads ANOTHER edition — the Admin screen's selector, so a
+   *  past year can be compared against this one and copied from. Every WRITE
+   *  below still resolves `activeEditionFor`: a write that took its edition
+   *  from the caller would let a stale selector edit a closed year. */
+  zod.get('/config', { schema: { querystring: EditionQuery } }, async (req) => {
     const caller = await requireBackoffice(req, prisma);
     requirePrivilege(caller, 'config.read');
-    const edition = await activeEditionFor(prisma, caller);
+    const edition = await editionFor(prisma, caller, req.query.editionId);
     const [zones, planCategories, rateCard, charges, flow, fineTypes, customFields] =
       await Promise.all([
         config.listZones(prisma, edition.id),
@@ -449,6 +461,39 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
       const caller = await requireBackoffice(req, prisma);
       requirePrivilege(caller, 'config.write');
       return config.updateEditionSettings(prisma, req.params.id, req.body, caller.personId);
+    },
+  );
+
+  /** What copying a section from another edition would do. Reads only.
+   *
+   *  🔴 A POST that writes nothing, because the question carries a body: the
+   *  source edition and the section. A GET with both in the query string would
+   *  be cacheable, and a cached answer to "what would change?" is the one answer
+   *  that must never be stale. */
+  zod.post(
+    '/config/copy/preview',
+    { schema: { body: CopyEditionInput } },
+    async (req): Promise<CopyPlan> => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'config.read');
+      const into = await activeEditionFor(prisma, caller);
+      const from = await editionFor(prisma, caller, req.body.fromEditionId);
+      return planCopy(prisma, from, into, req.body.section);
+    },
+  );
+
+  /** ⚠️ The target is the ACTIVE edition and is never taken from the body. The
+   *  source is resolved through `editionFor`, so a caller whose grants do not
+   *  reach it is refused before anything is read. */
+  zod.post(
+    '/config/copy',
+    { schema: { body: CopyEditionInput } },
+    async (req): Promise<CopyResult> => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'config.write');
+      const into = await activeEditionFor(prisma, caller);
+      const from = await editionFor(prisma, caller, req.body.fromEditionId);
+      return applyCopy(prisma, from, into, req.body.section, caller.personId);
     },
   );
 
@@ -556,12 +601,16 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
 
   /* ── The form builder ────────────────────────────────────────────────────*/
 
-  zod.get('/config/forms', async (req): Promise<ListFormsResponse> => {
-    const caller = await requireBackoffice(req, prisma);
-    requirePrivilege(caller, 'config.read');
-    const edition = await activeEditionFor(prisma, caller);
-    return { forms: await formBuilder.formsFor(prisma, edition.id) };
-  });
+  zod.get(
+    '/config/forms',
+    { schema: { querystring: EditionQuery } },
+    async (req): Promise<ListFormsResponse> => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'config.read');
+      const edition = await editionFor(prisma, caller, req.query.editionId);
+      return { forms: await formBuilder.formsFor(prisma, edition.id) };
+    },
+  );
 
   zod.patch(
     '/config/forms/:formType',
@@ -649,13 +698,17 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
   /** Every VERSION, not just what is live — the screen shows the history
    *  beside the current wording, because "what did this say in January?" is
    *  the question the whole feature exists to answer. */
-  zod.get('/config/declarations', async (req): Promise<ListDeclarationsResponse> => {
-    const caller = await requireBackoffice(req, prisma);
-    requirePrivilege(caller, 'config.read');
-    const edition = await activeEditionFor(prisma, caller);
-    const rows = await declarations.listDeclarations(prisma, edition.id);
-    return { declarations: rows.map(declarationRow) };
-  });
+  zod.get(
+    '/config/declarations',
+    { schema: { querystring: EditionQuery } },
+    async (req): Promise<ListDeclarationsResponse> => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'config.read');
+      const edition = await editionFor(prisma, caller, req.query.editionId);
+      const rows = await declarations.listDeclarations(prisma, edition.id);
+      return { declarations: rows.map(declarationRow) };
+    },
+  );
 
   zod.post('/config/declarations', { schema: { body: DeclarationInput } }, async (req, reply) => {
     const caller = await requireBackoffice(req, prisma);

@@ -53,6 +53,26 @@ export class UnknownStallError extends Error {
   }
 }
 
+/** Mapped to 404. Raised when a screen asks to READ an edition that is not
+ *  there — the Admin selector pointed at one that has since been removed, or a
+ *  copy naming a source that no longer exists. */
+export class UnknownEditionError extends Error {
+  constructor(readonly editionId: string) {
+    super(`no stall edition ${editionId}`);
+    this.name = 'UnknownEditionError';
+  }
+}
+
+/** Copying an edition into itself. Mapped to 409: it is not a malformed
+ *  request, it is an instruction with no meaning — every row would be its own
+ *  source, so the plan is empty and the button should never have been live. */
+export class SameEditionCopyError extends Error {
+  constructor() {
+    super('an edition cannot be copied into itself');
+    this.name = 'SameEditionCopyError';
+  }
+}
+
 export class UnknownZoneError extends Error {
   constructor(readonly zoneCode: string) {
     super(`no zone ${zoneCode} in this edition`);
