@@ -113,14 +113,15 @@ describe('getPublicConfig', () => {
     expect(byCode.get('A3')?.isClosedToVendors).toBe(true);
   });
 
-  /** ⚠️ Only the REQUEST forms. `BANK` is a `StallFormType` but not a form the
-   *  builder serves, and a row filed under it must not reach the public config
-   *  — which is why this one is written straight to the table: there is no seam
-   *  that would create it. */
-  test('exposes only active custom fields for public form types', async () => {
+  /** 🔴 EVERY public form, not the four request forms. `BANK` used to be a
+   *  `StallFormType` the builder did not serve, so a row filed under it was
+   *  filtered out of the public config. The bank details form has a definition
+   *  now, and a question an admin adds to it has to reach the page that asks
+   *  it — filtering here would be a question nobody can answer. */
+  test('exposes active custom fields for every public form, including the bank form', async () => {
     const e = await seedEdition();
     const active = await appendField(e.id, 'VENDOR', 'Instagram handle');
-    await prisma.stallFormField.create({
+    const onBank = await prisma.stallFormField.create({
       data: {
         editionId: e.id,
         formType: 'BANK',
@@ -131,7 +132,7 @@ describe('getPublicConfig', () => {
       },
     });
     const cfg = await getPublicConfig(prisma);
-    expect(cfg.customFields.map((f) => f.id)).toEqual([active.id]);
+    expect(cfg.customFields.map((f) => f.id).sort()).toEqual([active.id, onBank.id].sort());
   });
 
   test('carries nothing backoffice-only', async () => {

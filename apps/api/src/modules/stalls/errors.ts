@@ -614,6 +614,25 @@ export class UnknownFormError extends Error {
  *
  *  ⚠️ A built-in that should stop being asked is switched OFF, not deleted or
  *  retyped — `isActive` is supported on every field for exactly this. */
+/**
+ * A question that identifies the person or record it belongs to.
+ *
+ * ⚠️ Distinct from `BuiltInFieldLockedError`, whose message says "switch it off
+ * instead" — which is precisely what this field cannot do. The staff form's
+ * mobile number is half of the unique index behind "one person, one
+ * registration per stall"; without it, somebody handed two coupon codes is
+ * counted twice at the gate.
+ */
+export class StructuralFieldLockedError extends Error {
+  constructor(readonly label: string) {
+    super(
+      `"${label}" identifies the person this form registers, so it cannot be ` +
+        'made optional or switched off. Every other question on this form can be.',
+    );
+    this.name = 'StructuralFieldLockedError';
+  }
+}
+
 export class BuiltInFieldLockedError extends Error {
   constructor(
     readonly label: string,

@@ -1705,7 +1705,7 @@ export interface CouponView {
   /** The coupon's capacity: eight by default, raised case by case by the stall
    *  team. Always a real cap — never zero-meaning-unlimited. */
   maxStaff: number;
-  staff: Array<{ name: string; mobile: string; registeredAt: string }>;
+  staff: Array<{ name: string | null; mobile: string; registeredAt: string }>;
 }
 
 /** Raising (or lowering) what one coupon may register. */
@@ -1716,10 +1716,13 @@ export type SetCouponCapacityInput = z.infer<typeof SetCouponCapacityInput>;
 
 export interface VendorStaffView {
   id: string;
-  name: string;
+  name: string | null;
+  /** ⚠️ Never null. It is half of the unique index behind "one person, one
+   *  registration per stall", so this is the one question on these forms that
+   *  cannot be switched off. */
   mobile: string;
-  idType: string;
-  idNumber: string;
+  idType: string | null;
+  idNumber: string | null;
   role: string | null;
   registeredAt: string;
 }
@@ -1842,19 +1845,23 @@ export interface OnboardingRow {
 }
 
 export interface OnboardingDetail extends OnboardingRow {
+  /** ⚠️ Every answer is nullable. A question the edition stopped asking has no
+   *  answer on records submitted after it was switched off, and a screen that
+   *  assumed otherwise would print "undefined" beside a label. Which questions
+   *  are actually asked is `is_required` on the form's field rows. */
   bank: {
-    invoiceName: string;
-    accountHolder: string;
-    bankName: string;
-    branch: string;
-    accountNumber: string;
-    ifsc: string;
+    invoiceName: string | null;
+    accountHolder: string | null;
+    bankName: string | null;
+    branch: string | null;
+    accountNumber: string | null;
+    ifsc: string | null;
     micr: string | null;
-    panNumber: string;
-    gstNumber: string;
-    address: string;
-    pincode: string;
-    mobile: string;
+    panNumber: string | null;
+    gstNumber: string | null;
+    address: string | null;
+    pincode: string | null;
+    mobile: string | null;
     submittedAt: string;
     files: Array<{ label: string; name: string; url: string | null }>;
   } | null;

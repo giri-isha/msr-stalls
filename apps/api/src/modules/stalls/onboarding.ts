@@ -389,7 +389,12 @@ function bankStatus(r: RequestWithFacts): Status3 {
 function gstStatus(r: RequestWithFacts): Status3 {
   if (!needsBankStep(r.requestType)) return 'NOT_APPLICABLE';
   if (!r.bankDetail) return 'PENDING';
-  return r.bankDetail.gstNumber.toUpperCase() === 'NONE' ? 'NOT_APPLICABLE' : 'RECEIVED';
+  // ⚠️ A GST number that was never ASKED FOR is not applicable either — the
+  // edition can switch that question off, and a missing answer then means the
+  // same thing the literal "NONE" means: there is no GST registration to chase.
+  const gst = r.bankDetail.gstNumber;
+  if (!gst) return 'NOT_APPLICABLE';
+  return gst.toUpperCase() === 'NONE' ? 'NOT_APPLICABLE' : 'RECEIVED';
 }
 
 function paymentStatus(r: RequestWithFacts): 'CONFIRMED' | 'PENDING' | 'NOT_APPLICABLE' {

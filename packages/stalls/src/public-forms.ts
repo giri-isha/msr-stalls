@@ -230,6 +230,29 @@ export const PUBLIC_FORM_TYPES = [
   'STAFF',
 ] as const satisfies readonly PublicFormType[];
 
+/**
+ * Questions that cannot be switched off or made optional.
+ *
+ * 🔴 `mobile` on the staff form is half of the unique index behind "one person,
+ * one registration per stall" — the thing that stops somebody handed two coupon
+ * codes appearing twice and being counted twice at the gate. A nullable mobile
+ * makes that index toothless, because NULLs compare as DISTINCT and every
+ * registration without one reads as a new person.
+ *
+ * ⚠️ Every OTHER question on these three forms can be switched off. This is the
+ * one place that is structural rather than a preference, and it is read by both
+ * the Form Builder (to disable the controls) and the API (to refuse the write).
+ * A screen that merely hides a control is a suggestion.
+ */
+export const LOCKED_REQUIRED: Partial<Record<PublicFormType, readonly string[]>> = {
+  STAFF: ['mobile'],
+};
+
+export function isLockedRequired(formType: string, name: string | null): boolean {
+  if (name === null) return false;
+  return (LOCKED_REQUIRED[formType as PublicFormType] ?? []).includes(name);
+}
+
 /** The built-in names each of these forms already spends, so the builder can
  *  refuse an appended question that would shadow one. */
 export function builtInNames(formType: PublicFormType): string[] {

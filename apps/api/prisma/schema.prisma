@@ -1035,10 +1035,22 @@ model StallCustomFieldValue {
   customFieldId String @map("custom_field_id") @db.Uuid
   value         String
 
-  request StallRequest   @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  field   StallFormField @relation(fields: [customFieldId], references: [id])
+  /// Set when the answer is one STAFF MEMBER'S rather than the stall's. Eight
+  /// people register against one coupon and share a request; without this,
+  /// seven of their answers collapse into the first person's row.
+  staffId String? @map("staff_id") @db.Uuid
 
-  @@unique([requestId, customFieldId])
+  request StallRequest      @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  field   StallFormField    @relation(fields: [customFieldId], references: [id])
+  staff   StallVendorStaff? @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  /// ⚠️ The two real constraints are PARTIAL unique indexes Prisma cannot
+  /// express — `_by_request` (staff_id IS NULL) and `_by_staff`. They live in
+  /// the migration, like the pairs on `stall_declaration` and its consent log.
+  /// No plain index on (request_id, custom_field_id) is declared: `_by_request`
+  /// already covers that lookup for every row a request owns, and a duplicate
+  /// would cost a write on each insert to buy nothing.
+  @@index([staffId])
   @@map("stall_custom_field_value")
   @@schema("stalls")
 }
@@ -1221,24 +1233,30 @@ model StallContractSignature {
 /// member opens one, so the objects are never public and never in a backup of
 /// this database.
 model StallBankDetail {
-  requestId     String  @id @map("request_id") @db.Uuid
-  email         String
-  invoiceName   String  @map("invoice_name")
-  accountHolder String  @map("account_holder")
-  mobile        String
-  address       String
-  pincode       String
-  bankName      String  @map("bank_name")
-  branch        String
-  accountNumber String  @map("account_number")
-  ifsc          String
-  micr          String?
-  panNumber     String  @map("pan_number")
-  /// Stored as typed, including the literal "NONE" the 2025 form asks for.
-  gstNumber     String  @map("gst_number")
+  requestId String @id @map("request_id") @db.Uuid
 
-  chequeKey String  @map("cheque_key")
-  panKey    String  @map("pan_key")
+  /// ⚠️ EVERY answer below is optional at the database level, and none of them
+  /// is optional on the form by default. What this form insists on is
+  /// `is_required` on its field rows — an admin may mark a question optional or
+  /// stop asking it, and a NOT NULL here would turn that configuration choice
+  /// into a 500 at submit time. Nullability is the floor, not the policy.
+  email         String?
+  invoiceName   String? @map("invoice_name")
+  accountHolder String? @map("account_holder")
+  mobile        String?
+  address       String?
+  pincode       String?
+  bankName      String? @map("bank_name")
+  branch        String?
+  accountNumber String? @map("account_number")
+  ifsc          String?
+  micr          String?
+  panNumber     String? @map("pan_number")
+  /// Stored as typed, including the literal "NONE" the 2025 form asks for.
+  gstNumber     String? @map("gst_number")
+
+  chequeKey String? @map("cheque_key")
+  panKey    String? @map("pan_key")
   gstKey    String? @map("gst_key")
 
   agreedNeftAt  DateTime @map("agreed_neft_at") @db.Timestamptz
@@ -1388,14 +1406,26 @@ model StallStaffCoupon {
 /// one: they are a visitor for one event, recorded by the vendor, and the
 /// directory is for people the organisation has a relationship with.
 model StallVendorStaff {
-  id           String      @id @default(uuid()) @db.Uuid
-  requestId    String      @map("request_id") @db.Uuid
-  name         String
-  mobile       String
-  idType       StallIdType @map("id_type")
+  id        String @id @default(uuid()) @db.Uuid
+  requestId String @map("request_id") @db.Uuid
+
+  name String?
+
+  /// 🔴 The ONE question on these three forms that cannot be switched off or
+  /// made optional. It is half of the unique index behind "one person, one
+  /// registration per stall", which is what stops somebody handed two coupon
+  /// codes appearing twice and being counted twice at the gate. A nullable
+  /// mobile makes that index toothless, because NULLs compare as DISTINCT and
+  /// every registration without one would read as a new person.
+  ///
+  /// `LOCKED_REQUIRED` in `public-forms.ts` is where the Form Builder and the
+  /// API both read that. Structural, not a preference.
+  mobile String
+
+  idType       StallIdType? @map("id_type")
   /// For an Aadhaar this is the last four digits only — enough to match the
   /// card at the gate, not enough to be a copy of it.
-  idNumber     String      @map("id_number")
+  idNumber     String?     @map("id_number")
   role         String?
   registeredAt DateTime    @default(now()) @map("registered_at") @db.Timestamptz
   /// WHICH coupon this person came in on, so a stall holding two codes can be
@@ -1404,8 +1434,9 @@ model StallVendorStaff {
   couponId     String?     @map("coupon_id") @db.Uuid
 
   request  StallRequest              @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  coupon   StallStaffCoupon?         @relation(fields: [couponId], references: [id], onDelete: SetNull)
-  consents StallDeclarationConsent[]
+  coupon       StallStaffCoupon?         @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  consents     StallDeclarationConsent[]
+  customValues StallCustomFieldValue[]
 
   /// One phone number, one registration per stall. Re-submitting the same
   /// person — the common case when a form is refreshed — must not inflate the

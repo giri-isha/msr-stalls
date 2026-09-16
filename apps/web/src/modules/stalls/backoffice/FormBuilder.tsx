@@ -5,8 +5,11 @@ import {
   canDeleteField,
   canEditFieldType,
   type FieldOption,
+  isLockedRequired,
   needsOptions,
   renderForm,
+  STALL_FORM_TYPES,
+  type StallFormType,
 } from '@msr/stalls';
 import { useState } from 'react';
 import * as api from '../api';
@@ -36,8 +39,11 @@ import {
   useToast,
 } from '../ui';
 
-const FORM_TYPES = ['VENDOR', 'LOCAL_WELFARE', 'ASHRAM', 'ASHRAM_FOOD'] as const;
-type FormType = (typeof FORM_TYPES)[number];
+/** 🔴 All seven, not the four application forms. The bank details form, the
+ *  FSSAI upload and staff registration are rows now too — their questions used
+ *  to live in JSX, so rewording a label or ceasing to ask one was a redeploy. */
+const FORM_TYPES = STALL_FORM_TYPES;
+type FormType = StallFormType;
 
 /**
  * What each of the four request forms asks.
@@ -140,6 +146,7 @@ export function FormBuilder({
       {editing && (
         <FieldDialog
           field={editing}
+          formType={formType}
           sections={form?.sections ?? []}
           onClose={() => setEditing(null)}
           onSave={async (patch) => {
@@ -150,6 +157,7 @@ export function FormBuilder({
       )}
       {adding && form && (
         <FieldDialog
+          formType={formType}
           sections={form.sections}
           onClose={() => setAdding(false)}
           onSave={async (patch) => {
@@ -372,15 +380,21 @@ interface FieldValues {
 
 function FieldDialog({
   field,
+  formType,
   sections,
   onClose,
   onSave,
 }: {
   field?: BuiltFormField;
+  formType: FormType;
   sections: BuilderForm['sections'];
   onClose: () => void;
   onSave: (patch: Partial<FieldValues>) => void;
 }) {
+  // ⚠️ Read from the same rule the API refuses the write with. Two spellings of
+  // "which questions are structural" is how one gets switched off through an
+  // API the screen would have stopped.
+  const locked = isLockedRequired(formType, field?.name ?? null);
   const [v, setV] = useState<FieldValues>({
     label: field?.label ?? '',
     labelTa: field?.labelTa ?? '',
@@ -533,15 +547,29 @@ function FieldDialog({
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
           <Checkbox
             checked={v.isRequired}
+            disabled={locked}
             onChange={(e) => setV({ ...v, isRequired: e.target.checked })}
           />
           Required — the form will not submit without an answer
         </label>
 
+        {/* 🔴 One question cannot be switched off: the staff form's mobile
+            number. It is half of the unique index behind "one person, one
+            registration per stall", so without it somebody handed two coupon
+            codes would appear twice and be counted twice at the gate. The API
+            refuses the write too — a screen that only hides a control is a
+            suggestion. */}
+        {locked && (
+          <div style={{ fontSize: 12, color: 'var(--mfg)', marginTop: -4 }}>
+            This question identifies the person and cannot be switched off or made optional.
+          </div>
+        )}
+
         {/* biome-ignore lint/a11y/noLabelWithoutControl: as above */}
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
           <Checkbox
             checked={v.isActive}
+            disabled={locked}
             onChange={(e) => setV({ ...v, isActive: e.target.checked })}
           />
           Asked — untick to take the question off the form without losing the answers already given
