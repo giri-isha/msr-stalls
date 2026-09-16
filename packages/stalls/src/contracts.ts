@@ -1867,10 +1867,14 @@ export const SubmitFssaiInput = z.object({
   customFields: z.record(z.uuid(), z.string().trim().max(2000)).optional(),
   ownerName: z.string().trim().max(200).optional(),
   mobile: IndianMobile.optional(),
+  /** ⚠️ No `.min(1)` and a generous ceiling. Whether the certificate is
+   *  required, and how many pages are allowed, are the definition's call — this
+   *  form is nothing BUT an upload, so a hardcoded minimum here is the one that
+   *  would make switching the question off impossible. `validateAgainstForm`
+   *  enforces both against the field's own `required` and `max`. */
   files: z
     .array(z.object({ key: z.string().trim().min(1).max(400), name: z.string().trim().max(300) }))
-    .min(1)
-    .max(5),
+    .max(50),
   declarationIds: DeclarationIds,
 });
 export type SubmitFssaiInput = z.infer<typeof SubmitFssaiInput>;

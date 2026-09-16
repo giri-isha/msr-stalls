@@ -246,6 +246,23 @@ export function validateAgainstForm(
 ): FormViolation[] {
   const out: FormViolation[] = [];
   for (const field of formFields(form)) {
+    // ⚠️ Checked BEFORE the required test, because a `files` answer can be too
+    // long while being present. The page caps the picker, but a cap only the
+    // page applies is one a hand-built post ignores.
+    if (field.type === 'files' && field.max !== null) {
+      const given = field.isBuiltIn
+        ? field.name === null
+          ? undefined
+          : values.builtIn[field.name]
+        : values.custom[field.id];
+      if (Array.isArray(given) && given.length > field.max) {
+        out.push({
+          fieldKey: field.isBuiltIn ? (field.name ?? field.id) : `customFields.${field.id}`,
+          message: `${field.label} takes at most ${field.max} file${field.max === 1 ? '' : 's'}`,
+        });
+        continue;
+      }
+    }
     if (!field.required) continue;
     // ⚠️ A built-in reads by NAME and an appended field by ID — they are
     // different key spaces, and the value arriving under the wrong one is not
