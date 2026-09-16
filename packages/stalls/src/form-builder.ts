@@ -1,11 +1,11 @@
-import type { FieldOption, FieldType, FormField } from './forms';
+import { type FieldOption, type FieldType, type FormField, isFoodOnlyField } from './forms';
 import type { StallFormType } from './reference';
 
 /**
  * A form, as rows rather than as a constant.
  *
  * ── What changed ────────────────────────────────────────────────────────────
- * 🔴 `forms.ts` was the four 2025 forms AND the thing that rendered them AND
+ * 🔴 `forms.ts` was the 2025 forms AND the thing that rendered them AND
  * the thing the API validated against. The Form Builder could only APPEND, so
  * reordering a field or fixing a label was a code change and a redeploy — the
  * same problem the bay list had before zones became rows. Those constants are
@@ -117,6 +117,39 @@ export function formFields(form: BuiltForm): BuiltFormField[] {
 }
 
 /**
+ * What the reader has answered so far, where a LATER question depends on it.
+ *
+ * 🔴 One entry, and it earns its place: the ashram form asks whether the stall
+ * sells food, and `fssaiExpected` is asked only when the answer is yes. That
+ * used to be the difference between two forms, so nothing had to look at an
+ * answer to know which questions existed.
+ *
+ * ⚠️ `undefined` means NOT YET ANSWERED, and it is not the same as false. A
+ * form drawn before the reader has picked shows the food-only questions rather
+ * than hiding them, because a question that appears when you tick a box above
+ * it reads as a form that grew; one that was always there and is now required
+ * reads as a form you have not finished.
+ */
+export interface FormAnswerContext {
+  isFood?: boolean;
+}
+
+/**
+ * Whether a question is asked at all, given what has been answered above it.
+ *
+ * ⚠️ Read by the page (which draws nothing for a hidden field) and by
+ * `validateAgainstForm` (which asks nothing of one). A page that merely hid the
+ * control would leave the API insisting on an answer to a question that was
+ * never on screen — and the error would point at a field the reader cannot see.
+ */
+export function fieldIsAsked(
+  field: Pick<BuiltFormField, 'name'>,
+  ctx: FormAnswerContext = {},
+): boolean {
+  return !(isFoodOnlyField(field.name) && ctx.isFood === false);
+}
+
+/**
  * What a built-in field may have changed.
  *
  * ⚠️ Used by BOTH the screen (to disable the inputs) and the API (to refuse the
@@ -223,7 +256,7 @@ export interface FormViolation {
  *
  * 🔴 The second half of "the whole form is data". `SubmitRequestInput` is a
  * constant, so it can only say what a field's TYPE is — and it has to accept
- * everything any of the four forms might send, which means almost everything is
+ * everything any of the forms might send, which means almost everything is
  * optional in it. Which questions must be answered is now a property of the
  * edition's rows, and only this function can see it.
  *
@@ -243,10 +276,13 @@ export function validateAgainstForm(
     /** Appended answers, keyed by field id. */
     custom: Record<string, string>;
   },
+  ctx: FormAnswerContext = {},
 ): FormViolation[] {
   const out: FormViolation[] = [];
   for (const field of formFields(form)) {
     if (!field.required) continue;
+    // A question this submission was never asked — see `fieldIsAsked`.
+    if (!fieldIsAsked(field, ctx)) continue;
     // ⚠️ A built-in reads by NAME and an appended field by ID — they are
     // different key spaces, and the value arriving under the wrong one is not
     // an answer to this question.

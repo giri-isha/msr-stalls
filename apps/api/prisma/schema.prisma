@@ -74,9 +74,21 @@ model ActivityTrail {
 
 // ── Enums ───────────────────────────────────────────────────────────────────
 
+/// What somebody APPLIED as.
+///
+/// 🔴 `ASHRAM_FOOD` was a member and is not one now. The two ashram forms were
+/// the same twenty-odd questions differing by whether the stall sells food —
+/// which is `stall_type`, a column this table has always had, and the column
+/// the FSSAI step, the rate card's food column and the planning grid already
+/// read. Two request types for one fact meant a department declared it by
+/// picking a form before being asked a question, and picking wrong was
+/// unrecoverable.
+///
+/// ⚠️ The `AFD-` references those requests carry were NOT rewritten. They are
+/// printed on challans; `RETIRED_PREFIX` in `reference.ts` is what still
+/// parses them.
 enum StallRequestType {
   ASHRAM
-  ASHRAM_FOOD
   LOCAL_WELFARE
   VENDOR
 
@@ -160,7 +172,6 @@ enum StallSignatureStatus {
 
 enum StallFormType {
   ASHRAM
-  ASHRAM_FOOD
   LOCAL_WELFARE
   VENDOR
   BANK
@@ -460,8 +471,8 @@ model StallDeclaration {
   ///
   /// ⚠️ A FORM type, not a request type. The bank details form, the FSSAI
   /// upload and staff registration all ask somebody to agree to something, and
-  /// none of them is an application. The four shared names are deliberately the
-  /// same strings, which is what let the widening migration leave every row
+  /// none of them is an application. The three shared names are deliberately
+  /// the same strings, which is what let the widening migration leave every row
   /// where it was.
   formType StallFormType? @map("form_type")
 
@@ -473,7 +484,7 @@ model StallDeclaration {
   /// paste — see `packages/stalls/src/declarations.ts` for what survives.
   body   String
   /// The Tamil beside the English. Null where the form has none, exactly as
-  /// `label_ta` is null on the two ashram forms.
+  /// `label_ta` is null on the ashram form.
   bodyTa String? @map("body_ta")
 
   /// Whether a form still shows it. Retiring a declaration must not orphan the
@@ -910,7 +921,7 @@ model StallReferenceSequence {
   @@schema("stalls")
 }
 
-/// One table for all four forms. They overlap by ~70%, and the pipeline,
+/// One table for every request form. They overlap by ~70%, and the pipeline,
 /// search and export screens all read one list.
 model StallRequest {
   id        String @id @default(uuid()) @db.Uuid

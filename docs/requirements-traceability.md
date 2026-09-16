@@ -16,11 +16,12 @@ package both sides share.
 
 ---
 
-## 1. Registration and the four request forms
+## 1. Registration and the request forms
 
 | Requirement | Where | Status |
 |---|---|---|
-| Ashram, Ashram Food, Local Welfare and Vendor request forms | `packages/stalls/src/forms.ts`, `/stalls/apply/:type` | Built |
+| Ashram, Local Welfare and Vendor request forms, one route each | `packages/stalls/src/forms.ts`, `apps/web/src/modules/stalls/public/request-forms.tsx`, `/stalls/apply/vendor`, `/local-welfare`, `/ashram` | Built |
+| Ashram Food request form | Merged into the ashram form, which asks `stallType` — the same question the other two forms ask, landing in the column FSSAI, the rate card and the planning grid already read. `/stalls/apply/ashram-food` redirects; `AFD-` references still parse. | Built |
 | The 2025 field lists, with their Tamil | `forms.ts` (transcribed from the 2025 PDFs) | Built |
 | Anyone with the link can register | `POST /public/register` is open and rate-limited per IP; `POST /public/requests` now needs a session | Built |
 | Register and log in with email or phone number | `POST /public/register` with an email **or** a mobile and a password, confirmed by a link sent to that contact; `POST /public/login` returns a session cookie. `/stalls/status` still emails a signed link to anyone who never registered. A logged-in requester reads the same portal at `GET /public/requests` — the session and the signed link are two credentials onto one view. | Built — see [Vendor identity](#vendor-identity) below. The password is a stopgap until the host's Isha OIDC. |

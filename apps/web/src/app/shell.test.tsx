@@ -21,7 +21,7 @@ const DASH = [
   /\/m\/stalls\/dashboard$/,
   () => ({
     total: 3,
-    byType: { VENDOR: 2, LOCAL_WELFARE: 1, ASHRAM: 0, ASHRAM_FOOD: 0 },
+    byType: { VENDOR: 2, LOCAL_WELFARE: 1, ASHRAM: 0 },
     byStatus: { SUBMITTED: 3 },
     stallsPlanned: 10,
     stallsAllocated: 1,

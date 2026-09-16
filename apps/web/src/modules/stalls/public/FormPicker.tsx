@@ -2,16 +2,7 @@ import { FORM_DEFINITIONS, type StallRequestType } from '@msr/stalls';
 import { Link } from 'react-router';
 import { useRequester } from '../requester';
 import { Btn, card, Card, H1, Icon, Loading } from '../ui';
-
-export const TYPE_SLUG: Record<StallRequestType, string> = {
-  VENDOR: 'vendor',
-  LOCAL_WELFARE: 'local-welfare',
-  ASHRAM: 'ashram',
-  ASHRAM_FOOD: 'ashram-food',
-};
-export const SLUG_TYPE: Record<string, StallRequestType> = Object.fromEntries(
-  Object.entries(TYPE_SLUG).map(([t, s]) => [s, t as StallRequestType]),
-);
+import { REQUEST_FORMS, TYPE_SLUG } from './request-forms';
 
 /**
  * Who each form is for, and the glyph that says it at a glance.
@@ -37,26 +28,24 @@ const BLURB: Record<
     glyph: 'users',
     tint: 'var(--teal-t)',
   },
+  // 🔴 ONE ashram tile, where there were two — "display and sales" and "food
+  // stalls". A department had to know which of them it was before being asked a
+  // question, and picking wrong meant a request of the wrong type. The form
+  // asks it instead.
   ASHRAM: {
-    who: 'Ashram departments — display and sales',
+    who: 'Ashram departments — display, sales and food',
     whoTa: null,
     glyph: 'layout-grid',
     tint: 'var(--violet-t)',
   },
-  ASHRAM_FOOD: {
-    who: 'Ashram departments — food stalls',
-    whoTa: null,
-    glyph: 'layers',
-    tint: 'var(--gold-t)',
-  },
 };
 
 /**
- * The four forms — behind an account.
+ * The forms — behind an account.
  *
  * ⚠️ Signed out, the tiles are still DRAWN, just not links. An applicant
  * deciding whether to sign up needs to see what they would be signing up for;
- * a bare login wall in front of four unnamed forms asks them to take it on
+ * a bare login wall in front of unnamed forms asks them to take it on
  * trust. The gate sits above them, not instead of them.
  *
  * The account requirement is TEMPORARY in mechanism only — a password now, the
@@ -64,7 +53,10 @@ const BLURB: Record<
  * session rather than to an address typed into the form.
  */
 export function FormPicker() {
-  const order: StallRequestType[] = ['VENDOR', 'LOCAL_WELFARE', 'ASHRAM', 'ASHRAM_FOOD'];
+  // ⚠️ The ROUTE table's order, not a second list. A tile with no route behind
+  // it, or a route with no tile, is the kind of drift two hand-kept lists
+  // always eventually have.
+  const order = REQUEST_FORMS.map((f) => f.type);
   const { requester, status } = useRequester();
 
   if (status === 'loading') return <Loading />;
@@ -128,7 +120,7 @@ export function FormPicker() {
           ) : (
             // ⚠️ Not a disabled link — no link at all. An anchor that goes
             // nowhere is still announced as one, and a reader on a screen
-            // reader would be told there are four destinations here when there
+            // reader would be told there are destinations here when there
             // are none.
             <div key={t} style={{ opacity: 0.55 }} aria-hidden='true'>
               <Tile type={t} />

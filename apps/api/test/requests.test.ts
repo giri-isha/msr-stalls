@@ -204,7 +204,7 @@ describe('pagination', () => {
 describe('detail', () => {
   test('carries every submitted field, appliances and the ashram block', async () => {
     const r = await submit({
-      requestType: 'ASHRAM_FOOD',
+      requestType: 'ASHRAM',
       appliances: [{ name: 'Deep freezer', watts: 900 }],
       plugs15a: 2,
       ashram: {

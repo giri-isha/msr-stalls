@@ -12,10 +12,10 @@ beforeEach(async () => {
 });
 
 describe('every public form is seeded', () => {
-  test('all seven forms have a definition, not just the four applications', async () => {
+  test('all six forms have a definition, not just the three applications', async () => {
     const forms = await formsFor(prisma, editionId);
     expect(forms.map((f) => f.formType).sort()).toEqual(
-      ['ASHRAM', 'ASHRAM_FOOD', 'BANK', 'FSSAI', 'LOCAL_WELFARE', 'STAFF', 'VENDOR'].sort(),
+      ['ASHRAM', 'BANK', 'FSSAI', 'LOCAL_WELFARE', 'STAFF', 'VENDOR'].sort(),
     );
   });
 

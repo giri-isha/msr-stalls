@@ -151,8 +151,12 @@ const lw = (o: Record<string, unknown>) => ({
   passes4w: 0,
   ...o,
 });
-/** The ashram forms have no vendor name or contact of their own; like the web
- *  form, the requester is the person named in the department block. */
+/** The ashram form has no vendor name or contact of its own; like the web
+ *  form, the requester is the person named in the department block.
+ *
+ *  ⚠️ `stallType` is the default, and a food stall overrides it. It used to be
+ *  implied by `ASHRAM_FOOD` being its own request type; the one ashram form
+ *  asks it. */
 const ashram = (o: Record<string, unknown>, block: Record<string, unknown>) => ({
   requestType: 'ASHRAM',
   stallType: 'NON_FOOD',
@@ -355,7 +359,6 @@ const REQUESTS: Array<Record<string, unknown>> = [
         fssaiExpected: true,
       },
     ),
-    requestType: 'ASHRAM_FOOD',
     stallType: 'FOOD',
   },
 ];

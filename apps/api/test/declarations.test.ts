@@ -61,14 +61,14 @@ describe('seeded with the edition', () => {
   /** ⚠️ Read out of `FORM_DEFINITIONS`, not retyped — those strings were
    *  transcribed character-for-character from the printed 2025 forms. */
   test('every form opens with the disclaimer that was printed on it', async () => {
-    for (const type of ['VENDOR', 'LOCAL_WELFARE', 'ASHRAM', 'ASHRAM_FOOD'] as const) {
+    for (const type of ['VENDOR', 'LOCAL_WELFARE', 'ASHRAM'] as const) {
       const shown = await declarationsForForm(prisma, editionId, type);
       expect(shown).toHaveLength(1);
       expect(shown[0]?.body.length).toBeGreaterThan(20);
     }
   });
 
-  test('the two public forms carry the Tamil, the two ashram ones do not', async () => {
+  test('the two public forms carry the Tamil, the ashram one does not', async () => {
     const vendor = await declarationsForForm(prisma, editionId, 'VENDOR');
     const ashram = await declarationsForForm(prisma, editionId, 'ASHRAM');
     expect(vendor[0]?.bodyTa).not.toBeNull();

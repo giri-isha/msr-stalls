@@ -1,4 +1,4 @@
-import type { ListRequestsQuery, RequestSummary } from '@msr/stalls';
+import { type ListRequestsQuery, type RequestSummary, STALL_REQUEST_TYPES } from '@msr/stalls';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { listRequests, listZones } from '../api';
@@ -182,9 +182,14 @@ export function Requests() {
           style={{ width: 'auto', minWidth: 150 }}
         >
           <option value=''>All Types</option>
-          {Object.entries(TYPE_LABEL).map(([k, v]) => (
-            <option key={k} value={k}>
-              {v}
+          {/* ⚠️ `STALL_REQUEST_TYPES`, not every key in `TYPE_LABEL`. That map
+              also labels BANK, FSSAI and STAFF — which are FORM types, there
+              because the Declarations screen names a consent's variant — and no
+              request is ever one of them. Iterating it put three filters in
+              this list that could only ever return nothing. */}
+          {STALL_REQUEST_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {TYPE_LABEL[t]}
             </option>
           ))}
         </Select>

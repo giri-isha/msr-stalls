@@ -125,6 +125,9 @@ describe('submitRequest', () => {
     await seedEdition();
     const r = await submit({
       requestType: 'ASHRAM',
+      // ⚠️ The body's default is FOOD, and a food ashram stall is asked
+      // `fssaiExpected`. This department sells books.
+      stallType: 'NON_FOOD',
       ashram: {
         departmentHead: 'Ravi Shankar',
         departmentHeadContact: '9840012345',

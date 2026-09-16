@@ -15,9 +15,11 @@ The whole requirement, from stall request to check-in and refund.
 
 **Intake & selection**
 
-- **Four public request forms** (Vendor, Local Welfare, Ashram, Ashram Food),
-  transcribed from the 2025 PDFs with the Tamil labels intact, plus
-  admin-appended custom fields.
+- **Three public request forms** (Vendor, Local Welfare, Ashram), one route
+  each, transcribed from the 2025 PDFs with the Tamil labels intact, plus
+  admin-appended custom fields. The 2025 sheets had a fourth, Ashram Food: it is
+  the ashram form answered "Food", so a department is asked whether its stall
+  sells food rather than made to declare it by choosing a page.
 - **Vendor capture**: a submission creates an account keyed on email, mints a
   private status link, and emails a receipt. No password, no OTP.
 - **Getting back in**: the status page is the vendor's portal — what is

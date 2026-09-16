@@ -51,7 +51,7 @@ describe('what is owed', () => {
   test('ashram departments are absent, not present with a row of zeros', async () => {
     await selected(['C1-1']);
     const { requestId } = await selected(['C1-2'], {
-      requestType: 'ASHRAM_FOOD',
+      requestType: 'ASHRAM',
       email: 'dept@ashram.example',
       ashram: {
         departmentHead: 'R Iyer',

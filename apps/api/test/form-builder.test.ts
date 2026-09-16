@@ -68,14 +68,13 @@ const submit = async (body: Record<string, unknown> = {}) =>
   );
 
 describe('seeded from the printed forms', () => {
-  /** 🔴 SEVEN, not four. The bank details form, the FSSAI upload and staff
+  /** 🔴 SIX, not three. The bank details form, the FSSAI upload and staff
    *  registration used to be JSX — rewording a label or ceasing to ask one of
    *  their questions was a redeploy. They are definitions like the rest now. */
-  test('all seven exist, with their own titles', async () => {
+  test('all six exist, with their own titles', async () => {
     const forms = await formsFor(prisma, editionId);
     expect(forms.map((f) => f.formType).sort()).toEqual([
       'ASHRAM',
-      'ASHRAM_FOOD',
       'BANK',
       'FSSAI',
       'LOCAL_WELFARE',
@@ -328,7 +327,7 @@ describe('over HTTP', () => {
       headers: admin.headers,
     });
     expect(list.statusCode).toBe(200);
-    expect(list.json().forms).toHaveLength(7);
+    expect(list.json().forms).toHaveLength(6);
 
     const patched = await app.inject({
       method: 'PATCH',

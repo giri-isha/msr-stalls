@@ -11,7 +11,7 @@ import { FssaiForm } from './public/FssaiForm';
 import { Login } from './public/Login';
 import { MyRequests } from './public/MyRequests';
 import { Register } from './public/Register';
-import { RequestForm } from './public/RequestForm';
+import { REQUEST_FORM_ROUTES } from './public/request-forms';
 import { ResetPassword } from './public/ResetPassword';
 import { StaffRegistration } from './public/StaffRegistration';
 import { StatusPage } from './public/StatusPage';
@@ -36,7 +36,20 @@ import { Requests } from './backoffice/Requests';
 export const stallsPublicRoutes: RouteObject[] = [
   { index: true, element: <Navigate to='apply' replace /> },
   { path: 'apply', element: <FormPicker /> },
-  { path: 'apply/:type', element: <RequestForm /> },
+  // 🔴 ONE ROUTE PER FORM, where there was a single `apply/:type` that looked a
+  // slug up in a table. The URLs are the same ones; what changed is that this
+  // list now SAYS which forms exist, so a form is added or retired here rather
+  // than by editing a record two files away — and a slug with no form behind it
+  // is a 404 the router can see, not a component that renders and redirects.
+  //
+  // ⚠️ Each element names its own type. `RequestForm` no longer reads the URL:
+  // a page that takes its subject from `useParams` cannot be mounted twice, and
+  // the host router is free to hang these wherever it serves public pages.
+  ...REQUEST_FORM_ROUTES,
+  // The ashram food form's own URL, kept alive. It was the fourth application
+  // form until the two ashram forms became one; the link is in inboxes and on
+  // at least one printed sheet, and it now means the ashram form.
+  { path: 'apply/ashram-food', element: <Navigate to='/stalls/apply/ashram' replace /> },
   { path: 'submitted', element: <Submitted /> },
   // Behind the session: the requester's own requests. ⚠️ This one does NOT go
   // when SSO lands — the OIDC callback mints the same session the password

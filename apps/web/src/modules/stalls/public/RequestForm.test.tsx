@@ -2,12 +2,16 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { installFetch, publicConfigFor, renderAt } from '../test-utils';
-import { RequestForm } from './RequestForm';
+import { REQUEST_FORM_ROUTES } from './request-forms';
 
 afterEach(() => vi.unstubAllGlobals());
 
+/** ⚠️ The module's OWN route table, under the path the shell mounts it at —
+ *  not a `:type` pattern written out again here. Each form has its own route
+ *  now, and a test that declared its own would go on passing after one was
+ *  renamed or dropped. */
 const routes = [
-  { path: '/stalls/apply/:type', element: <RequestForm /> },
+  ...REQUEST_FORM_ROUTES.map((r) => ({ ...r, path: `/stalls/${r.path}` })),
   { path: '/stalls/submitted', element: <div>submitted-page</div> },
 ];
 
@@ -243,6 +247,9 @@ describe('RequestForm — ashram', () => {
     await retype(user, screen.getByLabelText(/Requested By/), 'Meera Iyer');
     await retype(user, screen.getByLabelText(/Requester Contact/), '9840023456');
     await user.type(screen.getByLabelText(/Stall Name/), 'Publications Stall');
+    // 🔴 The question that replaced the second ashram form. It used to be
+    // implied by which of two pages the department had opened.
+    await user.selectOptions(screen.getByLabelText(/Type of stall/), 'NON_FOOD');
     await user.selectOptions(screen.getByLabelText(/Credit card/), 'NO');
     await user.click(screen.getByLabelText(/Used by Department for Sales/));
     await user.type(screen.getByLabelText(/displaying\/Selling/), 'Books');
@@ -279,5 +286,28 @@ describe('RequestForm — ashram', () => {
         wantsThembu: false,
       },
     });
+    // ⚠️ Not asked of a non-food stall, so not posted for one. The API applies
+    // the same rule, which is what stops a hidden question being refused.
+    expect(post?.body).not.toHaveProperty('ashram.fssaiExpected');
+  });
+
+  /** 🔴 The whole of what the merge cost the form: one question, answered on
+   *  the page instead of at the picker. FSSAI follows from the answer rather
+   *  than from which of two forms somebody happened to open. */
+  test('asks about FSSAI only once the stall is said to sell food', async () => {
+    installFetch([config(), session()]);
+    renderAt('/stalls/apply/ashram', routes, { requester: true });
+    const user = userEvent.setup();
+    const stallType = await screen.findByLabelText(/Type of stall/);
+
+    // Unanswered, the question is drawn: one that appears when you tick a box
+    // above it reads as a form that grew.
+    expect(screen.getByLabelText(/hold an FSSAI certificate/)).toBeInTheDocument();
+
+    await user.selectOptions(stallType, 'NON_FOOD');
+    expect(screen.queryByLabelText(/hold an FSSAI certificate/)).not.toBeInTheDocument();
+
+    await user.selectOptions(stallType, 'FOOD');
+    expect(screen.getByLabelText(/hold an FSSAI certificate/)).toBeInTheDocument();
   });
 });

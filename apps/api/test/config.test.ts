@@ -80,15 +80,10 @@ describe('seeded defaults', () => {
     }
   });
 
-  test('creates a reference counter for each of the four request types', async () => {
+  test('creates a reference counter for each request type', async () => {
     const e = await seedEdition();
     const seqs = await prisma.stallReferenceSequence.findMany({ where: { editionId: e.id } });
-    expect(seqs.map((s) => s.requestType).sort()).toEqual([
-      'ASHRAM',
-      'ASHRAM_FOOD',
-      'LOCAL_WELFARE',
-      'VENDOR',
-    ]);
+    expect(seqs.map((s) => s.requestType).sort()).toEqual(['ASHRAM', 'LOCAL_WELFARE', 'VENDOR']);
   });
 
   test('is idempotent — creating twice does not duplicate anything', async () => {

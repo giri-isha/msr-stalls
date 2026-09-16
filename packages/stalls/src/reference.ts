@@ -1,25 +1,43 @@
 /** A request's human-facing handle. Backoffice read these aloud on the phone and
  *  write them on paper challans, so the prefix has to say what kind of request
  *  it is without a lookup. */
-export type StallRequestType = 'ASHRAM' | 'ASHRAM_FOOD' | 'LOCAL_WELFARE' | 'VENDOR';
+export type StallRequestType = 'ASHRAM' | 'LOCAL_WELFARE' | 'VENDOR';
 
 export const STALL_REQUEST_TYPES: readonly StallRequestType[] = [
   'ASHRAM',
-  'ASHRAM_FOOD',
   'LOCAL_WELFARE',
   'VENDOR',
 ];
 
 const PREFIX: Record<StallRequestType, string> = {
   ASHRAM: 'ASH',
-  ASHRAM_FOOD: 'AFD',
   LOCAL_WELFARE: 'LWS',
   VENDOR: 'VEN',
 };
 
-const BY_PREFIX = new Map<string, StallRequestType>(
-  Object.entries(PREFIX).map(([type, prefix]) => [prefix, type as StallRequestType]),
-);
+/**
+ * Prefixes no form issues any more, and what they meant.
+ *
+ * 🔴 `AFD` was `ASHRAM_FOOD`, which is not a request type since the two ashram
+ * forms became one and the stall's food-ness became a question on it. The
+ * references it already handed out did not change — they are printed on
+ * challans and read down the phone — so a coordinator pasting `AFD-2026-0007`
+ * into a search box has to land on that request rather than on "no match".
+ *
+ * ⚠️ Read by `parseReference` only. `formatReference` cannot reach it, which is
+ * the point: an old prefix is understood, never minted again.
+ */
+const RETIRED_PREFIX: Record<string, StallRequestType> = {
+  AFD: 'ASHRAM',
+};
+
+const BY_PREFIX = new Map<string, StallRequestType>([
+  ...Object.entries(RETIRED_PREFIX),
+  ...Object.entries(PREFIX).map(([type, prefix]): [string, StallRequestType] => [
+    prefix,
+    type as StallRequestType,
+  ]),
+]);
 
 /** `padStart` rather than a fixed-width slice: truncating at four digits would
  *  silently hand a 10,000th request another request's reference, and 2025
@@ -47,11 +65,11 @@ export function parseReference(
  *
  * 🔴 A superset of `StallRequestType`, and the distinction is real: a request
  * type is what somebody APPLIED as, and it names a row in `stall_request`. A
- * form type is a page that asks questions — the four application forms plus the
- * bank details form, the FSSAI upload and staff registration, none of which is
- * an application and all of which ask somebody to agree to something.
+ * form type is a page that asks questions — the three application forms plus
+ * the bank details form, the FSSAI upload and staff registration, none of which
+ * is an application and all of which ask somebody to agree to something.
  *
- * ⚠️ The four shared names are deliberately identical strings. A declaration
+ * ⚠️ The three shared names are deliberately identical strings. A declaration
  * scoped to `VENDOR` means the vendor application form, and the migration that
  * widened `stall_declaration` relies on every existing value mapping to itself.
  */

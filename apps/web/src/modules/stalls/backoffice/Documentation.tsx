@@ -168,12 +168,12 @@ const JOURNEY: JourneyStep[] = [
   {
     title: 'Choose a form',
     where: '/stalls/apply',
-    body: 'Four forms — Vendor, Local Welfare, Ashram and Ashram Food — each transcribed from the 2025 Google Form with its Tamil labels intact, plus any extra questions an admin has appended.',
+    body: 'Three forms — Vendor, Local Welfare and Ashram — each transcribed from the 2025 Google Form with its Tamil labels intact, plus any extra questions an admin has appended. The 2025 sheets had a fourth, Ashram Food; it is the ashram form answered "Food", so a department is asked rather than made to choose a page.',
     note: 'Which form they pick decides the reference prefix, the questions they are asked, and which of the later steps will ever apply to them.',
   },
   {
     title: 'Fill it in and submit',
-    where: '/stalls/apply/:type',
+    where: '/stalls/apply/vendor, /local-welfare, /ashram',
     body: 'Who they are, what they sell, the zone they would like, plug points and appliances, gas stoves, chairs, tables and passes, and the two consent lines. No password and no OTP: submitting is the signup.',
     note: 'Appliances are rows, not four fixed boxes — the electrical sheet sums whatever is listed.',
   },

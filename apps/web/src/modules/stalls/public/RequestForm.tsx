@@ -1,6 +1,7 @@
 import {
   type BuiltFormField,
   declarationsFor,
+  fieldIsAsked,
   FORM_DEFINITIONS,
   type FormField,
   renderForm,
@@ -11,7 +12,7 @@ import {
   SubmitRequestInput,
 } from '@msr/stalls';
 import { useMemo, useState } from 'react';
-import { Navigate, useNavigate, useParams } from 'react-router';
+import { Navigate, useNavigate } from 'react-router';
 import { ApiError, fieldErrorsFrom } from '../api-client';
 import { getPublicConfig, submitRequest } from '../api';
 import type { ApplianceRow } from '../components/ApplianceRows';
@@ -20,14 +21,16 @@ import { FieldControl } from '../components/FormFields';
 import { useLoad } from '../hooks';
 import { useRequester } from '../requester';
 import { Card, FieldStack, Icon, Loading } from '../ui';
-import { SLUG_TYPE } from './FormPicker';
 
 /** ⚠️ Includes `string[]`, for a `file`/`files` answer — a list of media-store
  *  keys. A request form has no built-in file question, but an admin can append
  *  one, and the value type has to admit what the control produces. */
 type Values = Record<string, string | boolean | ApplianceRow[] | string[]>;
 
-const ASHRAM_TYPES = new Set<StallRequestType>(['ASHRAM', 'ASHRAM_FOOD']);
+/** ⚠️ ONE type now, where this was a set of two. The ashram forms merged, and
+ *  what used to distinguish them — whether the stall sells food — is the
+ *  `stallType` answer, exactly as it is on the other two forms. */
+const isAshram = (type: StallRequestType) => type === 'ASHRAM';
 const NUMERIC = new Set([
   'numStallsRequested',
   'plugs5a',
@@ -55,7 +58,7 @@ function buildInput(
   declarationIds: string[],
   consented: boolean,
 ): Record<string, unknown> {
-  const ashram = ASHRAM_TYPES.has(type);
+  const ashram = isAshram(type);
   // ⚠️ `isApplianceRows`, not `Array.isArray`. A `files` answer is also an
   // array — of upload keys — and treating one as an appliance list would read
   // `.name` off a string.
@@ -80,7 +83,11 @@ function buildInput(
     email: str(values.email),
     contactNumber: ashram ? str(values.requesterContact) : str(values.contactNumber),
     address: str(values.address) || undefined,
-    stallType: ashram ? (type === 'ASHRAM_FOOD' ? 'FOOD' : 'NON_FOOD') : str(values.stallType),
+    // 🔴 Asked on every form. It used to be INFERRED on the ashram ones — the
+    // request type said which of the two forms had been opened — so a
+    // department that opened the wrong one declared the wrong thing about its
+    // stall without ever being asked.
+    stallType: str(values.stallType),
     preferredZoneCode: str(values.preferredZoneCode),
     itemsSelling: str(values.itemsSelling),
     numStallsRequested: num(values.numStallsRequested),
@@ -110,7 +117,14 @@ function buildInput(
       creditCardNeeded: yes(values.creditCardNeeded),
       usage: str(values.usage),
       wantsThembu: yes(values.wantsThembu),
-      fssaiExpected: values.fssaiExpected === undefined ? undefined : yes(values.fssaiExpected),
+      // ⚠️ Undefined for a non-food stall, whatever is sitting in `values`. The
+      // question is hidden once the answer above changes to Non Food, and
+      // posting the stale reply would record an answer to a question that is
+      // not on screen. The API applies the same rule — see `submit.ts`.
+      fssaiExpected:
+        values.stallType !== 'FOOD' || values.fssaiExpected === undefined
+          ? undefined
+          : yes(values.fssaiExpected),
     };
   }
   return base;
@@ -119,7 +133,7 @@ function buildInput(
 /** The inverse of the renames above, for putting a server or Zod error back on
  *  the input that caused it. */
 function fieldNameFor(path: string, type: StallRequestType): string {
-  const ashram = ASHRAM_TYPES.has(type);
+  const ashram = isAshram(type);
   if (path.startsWith('ashram.')) return path.slice('ashram.'.length);
   if (path === 'ashram') return 'departmentHead';
   if (path === 'requesterName' && ashram) return 'requestedBy';
@@ -237,11 +251,17 @@ function isEmpty(v: unknown): boolean {
   return false;
 }
 
-export function RequestForm() {
-  const { type: slug } = useParams();
+/**
+ * One application form, for the type its ROUTE names.
+ *
+ * ⚠️ `type` is a prop, not a URL segment. It used to read `:type` out of
+ * `useParams` and look the slug up, which meant the component could only ever
+ * be mounted at one path and a bad slug rendered a page that then redirected.
+ * Each form has its own route now — see `request-forms.tsx` — so an unknown
+ * slug never reaches here at all.
+ */
+export function RequestForm({ type }: { type: StallRequestType }) {
   const { requester, status } = useRequester();
-  const type = slug ? SLUG_TYPE[slug] : undefined;
-  if (!type) return <Navigate to='/stalls/apply' replace />;
   // ⚠️ The API refuses an unauthenticated submission regardless — this only
   // saves a vendor filling in two pages of form before being told. Wait for the
   // session to land first, or a signed-in reader is bounced on every refresh.
@@ -326,7 +346,7 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
    */
   const built = (config.data?.forms ?? []).find((f) => f.formType === type) ?? null;
 
-  const groups: RenderedGroup[] = built
+  const defined: RenderedGroup[] = built
     ? renderForm(built)
     : [
         {
@@ -339,6 +359,27 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
           ],
         },
       ];
+
+  /**
+   * Whether this stall sells food — the answer the ashram form used to make by
+   * being two forms.
+   *
+   * ⚠️ `undefined` until it is picked, and that is not the same as false. The
+   * food-only questions are DRAWN on a form nobody has answered yet: one that
+   * appears when you tick a box above it reads as a form that grew, while one
+   * that was always there and is now required reads as a form you have not
+   * finished.
+   */
+  const stallType = str(values.stallType);
+  const answers = { isFood: stallType === '' ? undefined : stallType === 'FOOD' };
+
+  // A question the reader's own answers have taken off the form — see
+  // `fieldIsAsked`, which the API's validator reads too, so the page and the
+  // refusal cannot disagree about what was asked.
+  const groups: RenderedGroup[] = defined
+    .map((g) => ({ ...g, fields: g.fields.filter((f) => fieldIsAsked(f, answers)) }))
+    // A heading whose every question is hidden is a heading for nothing.
+    .filter((g) => g.fields.length > 0);
   const allFields = groups.flatMap((g) => g.fields);
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -399,7 +440,7 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
     }
   };
 
-  const isFood = ASHRAM_TYPES.has(type) ? type === 'ASHRAM_FOOD' : values.stallType === 'FOOD';
+  const isFood = answers.isFood === true;
 
   return (
     <form onSubmit={onSubmit} noValidate>

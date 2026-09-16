@@ -32,10 +32,10 @@ import {
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
-/** The four APPLICATION forms. Kept separate from the three below because their
+/** The APPLICATION forms. Kept separate from the three below because their
  *  built-ins all write to `stall_request`, while the others write to three
  *  different tables — see `PublicFormDefinition.target`. */
-const REQUEST_FORMS = ['VENDOR', 'LOCAL_WELFARE', 'ASHRAM', 'ASHRAM_FOOD'] as const;
+const REQUEST_FORMS = ['VENDOR', 'LOCAL_WELFARE', 'ASHRAM'] as const;
 type RequestForm = (typeof REQUEST_FORMS)[number];
 
 /** Every form an edition serves, application or not. */

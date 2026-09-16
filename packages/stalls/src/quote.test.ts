@@ -148,7 +148,7 @@ describe('quoteRequest', () => {
 
   it('exempts ashram departments, and says so', () => {
     const q = quoteRequest(
-      { ...base, requestType: 'ASHRAM_FOOD', chairs: 10 },
+      { ...base, requestType: 'ASHRAM', chairs: 10 },
       DEFAULT_RATE_CARD_2025,
       RATES,
     );

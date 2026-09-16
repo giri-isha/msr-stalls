@@ -47,9 +47,12 @@ export function StatusPill({ status }: { status: RequestStatus }) {
 
 export const TYPE_LABEL: Record<string, string> = {
   ASHRAM: 'Ashram',
-  ASHRAM_FOOD: 'Ashram Food',
   LOCAL_WELFARE: 'Local Welfare',
   VENDOR: 'Vendor',
+  // ⚠️ `ASHRAM_FOOD` is deliberately absent. It stopped being a request type
+  // when the two ashram forms merged; a label for it here would put "Ashram
+  // Food" back on a screen for a value nothing can be.
+  //
   // ⚠️ The three below are FORM types, not request types — a request is never
   // one of them. They are here because the Declarations screen labels a
   // consent's variant, and a consent can belong to any public form.

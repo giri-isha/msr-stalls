@@ -16,7 +16,7 @@ import { SIGNATURE_STATUSES } from './signing';
 
 // ── Enums as wire values ────────────────────────────────────────────────────
 
-export const RequestType = z.enum(['ASHRAM', 'ASHRAM_FOOD', 'LOCAL_WELFARE', 'VENDOR']);
+export const RequestType = z.enum(['ASHRAM', 'LOCAL_WELFARE', 'VENDOR']);
 export const StallTypeValue = z.enum(['FOOD', 'NON_FOOD']);
 export const RequestStatus = z.enum([
   'SUBMITTED',
@@ -36,15 +36,7 @@ export const RequestStage = z.enum([
   'READY',
   'CHECKED_IN',
 ]);
-export const FormType = z.enum([
-  'ASHRAM',
-  'ASHRAM_FOOD',
-  'LOCAL_WELFARE',
-  'VENDOR',
-  'BANK',
-  'FSSAI',
-  'STAFF',
-]);
+export const FormType = z.enum(['ASHRAM', 'LOCAL_WELFARE', 'VENDOR', 'BANK', 'FSSAI', 'STAFF']);
 export const RateScopeValue = z.enum(RATE_SCOPES);
 export const AshramUsage = z.enum([
   'DEPT_DISPLAY',
@@ -172,7 +164,7 @@ export const SubmitRequestInput = z
         message: 'the refundable caution deposit must be acknowledged',
       });
     }
-    if ((v.requestType === 'ASHRAM' || v.requestType === 'ASHRAM_FOOD') && !v.ashram) {
+    if (v.requestType === 'ASHRAM' && !v.ashram) {
       ctx.addIssue({
         code: 'custom',
         path: ['ashram'],
