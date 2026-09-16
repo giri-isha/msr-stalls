@@ -281,6 +281,7 @@ git commit -m "feat(stalls): every public form submission carries the declaratio
 ### Task 3: The migration
 
 **Files:**
+- Create: `apps/api/prisma/migrations/20260916115900_staff_form_type/migration.sql`
 - Create: `apps/api/prisma/migrations/20260916120000_declarations_per_form/migration.sql`
 - Modify: `apps/api/prisma/schema.prisma:161-170` (`StallFormType`), `:448-499` (`StallDeclaration`), `:505-518` (`StallDeclarationConsent`), `StallVendorStaff` (add the back-relation)
 
@@ -288,7 +289,29 @@ git commit -m "feat(stalls): every public form submission carries the declaratio
 - Consumes: nothing.
 - Produces: `stall_declaration.form_type`; `stall_declaration_consent.form_type` and `.staff_id`; `StallVendorStaff.consents`; every `stall_form_field` row named `agreed` set inactive.
 
-- [ ] **Step 1: Write the migration**
+- [ ] **Step 1: Add the enum value in its own migration**
+
+🔴 `ALTER TYPE … ADD VALUE` must be the only thing its migration does. Prisma
+wraps each migration in a transaction, and Postgres refuses to let a newly added
+enum value be *used* in the same transaction that added it. Nothing in the next
+migration writes the literal `'STAFF'` today, so one file would probably work —
+but "probably" is not what you want from the migration that has to run against
+production, and the moment somebody adds a `WHERE form_type = 'STAFF'` to it, it
+fails on their machine and nowhere else.
+
+Create `apps/api/prisma/migrations/20260916115900_staff_form_type/migration.sql`:
+
+```sql
+-- Staff registration is a form. It asks questions and it asks somebody to agree
+-- to something, which is all a form type has ever meant here — `BANK` and
+-- `FSSAI` were already in this enum for the same reason.
+--
+-- ⚠️ ALONE in its own migration. Postgres will not let a new enum value be used
+-- in the transaction that added it, and Prisma runs each migration in one.
+ALTER TYPE "stalls"."StallFormType" ADD VALUE IF NOT EXISTS 'STAFF';
+```
+
+- [ ] **Step 2: Write the main migration**
 
 Create `apps/api/prisma/migrations/20260916120000_declarations_per_form/migration.sql`:
 
@@ -300,8 +323,6 @@ Create `apps/api/prisma/migrations/20260916120000_declarations_per_form/migratio
 -- and conditions — had its consent text typed into JSX and recorded agreement
 -- as two bare timestamps. That records THAT somebody agreed and never WHAT,
 -- which is the exact failure this table was created to end.
-
-ALTER TYPE "stalls"."StallFormType" ADD VALUE IF NOT EXISTS 'STAFF';
 
 -- ── The declaration's variant ───────────────────────────────────────────────
 --
@@ -398,7 +419,7 @@ CREATE INDEX "stall_declaration_consent_staff_id_idx"
 UPDATE "stalls"."stall_form_field" SET "is_active" = false WHERE "name" = 'agreed';
 ```
 
-- [ ] **Step 2: Update the Prisma schema to match**
+- [ ] **Step 3: Update the Prisma schema to match**
 
 In `apps/api/prisma/schema.prisma`, add `STAFF` to `enum StallFormType`. In `StallDeclaration`, replace the `requestType` field with:
 
@@ -430,12 +451,12 @@ and update the `@@unique` map to `[editionId, key, formType, version]`. In `Stal
 
 Replace its `@@unique([requestId, declarationId])` with `@@index([requestId, formType])` — the two real constraints are partial indexes Prisma cannot express, exactly as `StallDeclaration`'s already are. Add a comment saying so. Add `consents StallDeclarationConsent[]` to `StallVendorStaff`.
 
-- [ ] **Step 3: Apply and verify**
+- [ ] **Step 4: Apply and verify**
 
 Run: `npm run db:migrate --workspace=apps/api`
 Expected: the migration applies, and `npx prisma migrate diff --from-schema-datamodel prisma/schema.prisma --to-schema-datasource prisma/schema.prisma --exit-code` reports no drift.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add apps/api/prisma/migrations apps/api/prisma/schema.prisma
