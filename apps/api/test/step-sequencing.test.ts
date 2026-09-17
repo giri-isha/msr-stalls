@@ -122,6 +122,28 @@ describe('what the requester is told', () => {
     expect(byStep.get('PAYMENT')).toMatchObject({ open: true });
     expect(byStep.get('FSSAI')).toMatchObject({ open: false, blockedBy: ['PAYMENT'] });
   });
+
+  test('the staff block says the step is shut, which is what the portal draws off', async () => {
+    const { cookies } = await priyaWithAStall();
+    await order(ONE_AT_A_TIME);
+
+    const { pending, staff } = await firstRequest(cookies);
+    // 🔴 `pending` cannot answer this one. STAFF_REGISTRATION is silent there
+    // until a coupon exists, so a portal reading only the pending list drew the
+    // Staff tab — and its Get Your Coupon button — for a step `couponFor` was
+    // about to refuse. The staff block carries the same two questions
+    // `assertStepAvailable` asks.
+    expect(pending.some((p: { step: string }) => p.step === 'STAFF_REGISTRATION')).toBe(false);
+    expect(staff).toMatchObject({ open: false, blockedBy: ['BANK_FORM'] });
+  });
+
+  test('the staff block opens when the ordering reaches it', async () => {
+    const { cookies } = await priyaWithAStall();
+    await order(ALL_AT_ONCE);
+
+    const { staff } = await firstRequest(cookies);
+    expect(staff).toMatchObject({ open: true, blockedBy: [] });
+  });
 });
 
 describe('hiding a step is never the whole of it', () => {

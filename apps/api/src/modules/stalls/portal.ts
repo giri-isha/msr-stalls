@@ -1,6 +1,7 @@
 import type { PrismaClient, StallAccount } from '@prisma/client';
 import {
   type ContinueStepInput,
+  type FlowConfig,
   type PublicPaymentDue,
   type QuoteView,
   type PublicStaffCoupon,
@@ -262,7 +263,7 @@ export async function statusView(db: Db, account: StallAccount): Promise<PublicS
         // reason is the only thing telling them what to correct, and a
         // rejection they never see returns them to the mailbox this replaced.
         paymentClaims: r.status === 'SELECTED' ? await claimsFor(db, r.id) : [],
-        staff: r.status === 'SELECTED' ? staffView(r) : null,
+        staff: r.status === 'SELECTED' ? staffView(r, await flowOf(r.editionId)) : null,
         // 🔴 Whatever the status. The answers are the requester's own from the
         // moment they pressed Submit, and a request still under review is
         // exactly the one whose answers they come back to check — which they
@@ -366,8 +367,22 @@ function paymentDue(r: PortalRequest, quote: QuoteView): PublicPaymentDue | null
  *  ⚠️ The vendor sees EVERY live code, including one the team issued to a
  *  caterer against this stall. That is deliberate: the registrations land on
  *  their stall and are counted against their roster at the gate, so a code they
- *  cannot see would be a number they are answerable for and cannot check. */
-function staffView(r: PortalRequest): PublicStaffCoupon {
+ *  cannot see would be a number they are answerable for and cannot check.
+ *
+ *  🔴 And whether the step may be started at all, which the pending list cannot
+ *  say. `pendingSteps` is silent about STAFF_REGISTRATION until a coupon
+ *  exists, so a portal reading only `pending` drew the tab and its Get Your
+ *  Coupon button for a step `couponFor` was about to refuse — a vendor pressing
+ *  a button and getting "opens once BANK_FORM is complete" thrown back at them.
+ *  The two questions asked here are the two `assertStepAvailable` asks, in the
+ *  same order, so the tab cannot offer what the mint would refuse. */
+function staffView(r: PortalRequest, flow: FlowConfig): PublicStaffCoupon {
+  // ⚠️ `stepLockedFor`, not a lookup in the gated list — same reason as in
+  // `couponFor`: the question is about the step's STAGE, and the gated list
+  // has nothing to say about a step whose starting move is what makes it
+  // outstanding.
+  const asked = isStepAsked(flow, r.requestType, 'STAFF_REGISTRATION');
+  const locked = asked && stepLockedFor(r, flow, 'STAFF_REGISTRATION');
   return {
     coupons: r.coupons.map((c) => ({
       id: c.id,
@@ -377,6 +392,11 @@ function staffView(r: PortalRequest): PublicStaffCoupon {
     })),
     registered: r.staff.length,
     capacity: staffExpected(r),
+    open: asked && !locked,
+    // Empty for a step that is not asked: `blockedByFor` names what the OPEN
+    // stage is waiting on, which would read as "staff opens after this" for a
+    // step that is never opening.
+    blockedBy: locked ? blockedByFor(r, flow) : [],
   };
 }
 
