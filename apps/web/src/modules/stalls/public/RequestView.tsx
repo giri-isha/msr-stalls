@@ -7,7 +7,7 @@ import {
 } from '@stalls/core';
 import { type ReactNode, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { StatusPill, TYPE_LABEL } from '../components/StatusPill';
+import { TYPE_LABEL } from '../components/StatusPill';
 import { formatDate } from '../hooks';
 import { Btn, Card, Icon, Tabs, type TabDef, Tag, useIsMobile, useToast } from '../ui';
 import { PaymentTab } from './PaymentTab';
@@ -49,14 +49,36 @@ export interface RequestViewProps {
 
 export type PortalTab = 'overview' | 'bank' | 'payment' | 'fssai' | 'staff' | 'submitted';
 
+/**
+ * What a request SAYS to the person who filed it.
+ *
+ * 🔴 Three of the six statuses say the same sentence, and that is the point.
+ * SUBMITTED, SHORTLISTED and BACKUP are the team's working notes on a decision
+ * it has not taken — a shortlisting is not a promise and a backup place is not
+ * a refusal — and a requester reading "Shortlisted" on their own page hears one
+ * or the other. Until a request is SELECTED there is nothing for them to do and
+ * nothing they can act on, so there is one thing to say.
+ *
+ * ⚠️ REJECTED and CANCELLED still say so. A decision not to take somebody is a
+ * decision they are owed: a requester never told simply waits, and finds out by
+ * ringing the team the week of the event.
+ *
+ * ⚠️ There is no status PILL anywhere on this page — see `RequestPanel`. This
+ * is the only place a requester is told anything about where their request
+ * stands, which is what keeps the working notes off it.
+ */
+const PENDING_COPY =
+  'Thanks for expressing interest. We have received your request — our team will check and get ' +
+  'back to you.';
+
 const STATUS_COPY: Record<string, string> = {
-  SUBMITTED: 'Received. The stall team will review it.',
-  SHORTLISTED: 'Under consideration.',
+  SUBMITTED: PENDING_COPY,
+  SHORTLISTED: PENDING_COPY,
+  BACKUP: PENDING_COPY,
   // 🔴 This used to end "Further instructions will follow by email", which was
   // both the plan and the problem: it pointed at an inbox as the only way
   // forward. What happens next is the list underneath, which they can act on.
   SELECTED: 'Selected. Anything still outstanding is listed below.',
-  BACKUP: 'On the backup list — you will be contacted if a stall frees up.',
   REJECTED: 'Not selected this year.',
   CANCELLED: 'Cancelled.',
 };
@@ -343,7 +365,14 @@ function RequestPanel({
             </span>
           </div>
         )}
-        <StatusPill status={r.status} />
+        {/* 🔴 No status pill. It read SHORTLISTED and BACKUP out to the person
+            who filed the request, and those are the team's working notes on a
+            decision it has not taken — a shortlisting is not a promise, a
+            backup place is not a refusal, and a pill has no room to say which.
+            What the requester is told is the sentence on the Overview, and it
+            is the same sentence for every state before a selection. The
+            backoffice keeps its pill: `StatusPill` is still what the request
+            list and the detail screen draw. */}
       </header>
 
       <Tabs

@@ -185,7 +185,9 @@ describe('MyRequests', () => {
     signedIn(TWO);
     render();
 
-    expect(await screen.findByText(/Received. The stall team will review it./)).toBeInTheDocument();
+    // 🔴 One sentence for every request still awaiting a decision — submitted,
+    // shortlisted or on the backup list. See `STATUS_COPY`.
+    expect(await screen.findByText(/Thanks for expressing interest/)).toBeInTheDocument();
     // The reference is in the band and again on its own pill in the switcher.
     expect(screen.getAllByText('VEN-2026-0002')).toHaveLength(2);
     // The other request is in the switcher, not on the page.
@@ -219,7 +221,7 @@ describe('MyRequests', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Green Leaf Organics/ }));
 
     expect(await screen.findByText('C1-4')).toBeInTheDocument();
-    expect(screen.getByText('Selected')).toBeInTheDocument();
+    expect(screen.getByText(/^Selected\./)).toBeInTheDocument();
     expect(router.state.location.search).toBe('?ref=VEN-2026-0001');
   });
 
@@ -228,7 +230,7 @@ describe('MyRequests', () => {
     render('/stalls/requests?ref=VEN-2026-0001');
 
     expect(await screen.findByText('C1-4')).toBeInTheDocument();
-    expect(screen.queryByText(/Received. The stall team/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Thanks for expressing interest/)).not.toBeInTheDocument();
   });
 
   test('carries no token in the URL it asks on — the cookie is the credential', async () => {

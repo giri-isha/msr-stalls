@@ -1,5 +1,5 @@
 import type { FieldRuleValues, FormField, PublicConfig, StallRequestType } from '@stalls/core';
-import { resolveWindow, ruleHintFor, ruleKindOf, todayISO, zoneOptions } from '@stalls/core';
+import { resolveWindow, ruleHintFor, ruleKindOf, todayISO, zoneChoices } from '@stalls/core';
 import { formImageUrl } from '../api';
 import { useState } from 'react';
 import { type ApplianceRow, ApplianceRows } from './ApplianceRows';
@@ -202,24 +202,30 @@ export function FieldControl({
           max={f.max}
         />
       ) : f.type === 'zone' ? (
-        // ⚠️ The choices are the edition's own bays, resolved here rather than
-        // baked into the field, so a bay added for a redrawn layout appears on
-        // the form without a code change. The vendor form drops the bays closed
-        // to trade; the local welfare form keeps them, because those are the
-        // ones a village trader is most likely to want.
+        // ⚠️ The choices are the edition's own bays unless the edition has
+        // AUTHORED a list on the question — see `zoneChoices`. Resolved here
+        // rather than baked into the field, so a bay added for a redrawn layout
+        // appears on the form without a code change. The vendor form drops the
+        // bays closed to trade; the local welfare form keeps them, because
+        // those are the ones a village trader is most likely to want.
+        //
+        // ⚠️ `zones` is passed WHATEVER the list is: a bay the asking scope has
+        // no rate for is dropped from the dropdown, and that is decided by
+        // looking each choice's value up as a bay code.
         //
         // Local welfare is quoted a rent too — a lower one for the same ground,
         // not no rent at all. Only the ashram forms, which are billed
-        // internally and never quoted, hide the figures.
+        // internally and never quoted, are offered every bay.
         <ZoneSelect
-          name={id}
+          id={id}
           value={str(value)}
           onChange={onChange}
-          options={zoneOptions(config?.zones ?? [], type === 'VENDOR')}
+          options={zoneChoices(f.options, config?.zones ?? [], type === 'VENDOR')}
           zones={config?.zones ?? null}
           showRent={type === 'VENDOR' || type === 'LOCAL_WELFARE'}
           isFood={isFood ?? false}
           invalid={invalid}
+          describedBy={common['aria-describedby']}
         />
       ) : f.type === 'radio' && f.options ? (
         <div style={{ display: 'grid', gap: 8 }} role='radiogroup'>

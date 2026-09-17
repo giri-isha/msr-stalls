@@ -1,5 +1,6 @@
 import {
   asFormField,
+  canFileMore,
   type BuiltFormField,
   declarationsFor,
   type FieldRuleValues,
@@ -334,6 +335,14 @@ export function RequestForm({ type }: { type: StallRequestType }) {
   // (see `WrongRequesterTypeError`), which is a page of form too late to find
   // out. The picker says which form is theirs and how to have it changed.
   if (requester.requesterType && requester.requesterType !== type) {
+    return <Navigate to='/stalls/apply' replace />;
+  }
+  // 🔴 And the same for the edition's cap, for the same reason: the picker
+  // stops offering a form once the account has spent it, so arriving here is a
+  // bookmark or a pasted URL. `TooManyOpenRequestsError` would refuse the post
+  // — again, a page of form too late. The picker is where the figures and the
+  // way forward are.
+  if (!canFileMore(requester.allowance ?? null)) {
     return <Navigate to='/stalls/apply' replace />;
   }
   return (

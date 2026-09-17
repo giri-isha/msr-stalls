@@ -5,6 +5,7 @@ import {
   REQUEST_CAP_SCOPE_LABEL,
   REQUEST_CAP_STATUSES,
   type RequestCapScope,
+  type RequesterAllowance,
   type SubmitRequestInput,
   validateAgainstForm,
 } from '@stalls/core';
@@ -65,6 +66,52 @@ async function nextSequence(
     data: { next: { increment: 1 } },
   });
   return bumped.next - 1;
+}
+
+/**
+ * How many of an account's requests count against this edition's cap.
+ *
+ * ⚠️ ONE counter, read by the write that ENFORCES the cap and by the session
+ * that reports what is left of it. Two would be a header still offering a New
+ * Request button for a request the post refuses — the cap and the page
+ * disagreeing about the same account, which is worse than no page at all.
+ *
+ * Counted against THIS edition only: last year's requests are last year's, not
+ * an allowance spent against this year. Which statuses count is the edition's
+ * own setting — see `REQUEST_CAP_STATUSES`.
+ */
+export async function countAgainstCap(
+  db: Db,
+  editionId: string,
+  accountId: string,
+  scope: RequestCapScope,
+): Promise<number> {
+  return db.stallRequest.count({
+    where: { editionId, accountId, status: { in: [...REQUEST_CAP_STATUSES[scope]] } },
+  });
+}
+
+/**
+ * What one account has left of the edition's cap, for a page that has to decide
+ * whether to offer a form at all.
+ *
+ * ⚠️ `null` when no edition is active, rather than a throw. `/public/session`
+ * answers on every render of a public page, and an account that cannot be
+ * capped by an edition that does not exist must not be an error on the way in.
+ */
+export async function requestAllowance(
+  db: Db,
+  accountId: string,
+): Promise<RequesterAllowance | null> {
+  const edition = await db.stallEdition.findFirst({ where: { isActive: true } });
+  if (!edition) return null;
+  const scope = edition.requestCapScope as RequestCapScope;
+  return {
+    used: await countAgainstCap(db, edition.id, accountId, scope),
+    max: edition.maxOpenRequests,
+    // The wording the refusal uses, resolved here — see `RequesterAllowance`.
+    countedAs: REQUEST_CAP_SCOPE_LABEL[scope],
+  };
 }
 
 /** The ONE write the public can reach. Everything it touches lands in a single
@@ -147,13 +194,7 @@ export async function submitRequest(
     // `REQUEST_CAP_STATUSES`. A rejection frees a slot under OPEN and does not
     // under ALL, and that is the team's call to make per edition, not ours.
     const scope = edition.requestCapScope as RequestCapScope;
-    const open = await tx.stallRequest.count({
-      where: {
-        editionId: edition.id,
-        accountId: account.id,
-        status: { in: [...REQUEST_CAP_STATUSES[scope]] },
-      },
-    });
+    const open = await countAgainstCap(tx, edition.id, account.id, scope);
     if (open >= edition.maxOpenRequests) {
       throw new TooManyOpenRequestsError(
         open,

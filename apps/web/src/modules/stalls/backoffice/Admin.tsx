@@ -152,7 +152,13 @@ export function AdminPanels({ tab }: { tab: AdminTab }) {
           appended rows — the same `stall_form_field` records, minus the context
           that says where on the form they are asked. Two screens editing one
           table, and the shorter one could not reorder. */}
-      {tab === 'forms' && <FormBuilder writable={writable} editionId={viewing || undefined} />}
+      {/* ⚠️ `c.zones` is handed down for the preferred-location question's
+          choice editor — the bays a choice's code has to name for the quote to
+          find a rent behind it. This screen already holds them; the builder
+          fetching its own would be a second request and a second privilege. */}
+      {tab === 'forms' && (
+        <FormBuilder writable={writable} editionId={viewing || undefined} zones={c.zones} />
+      )}
       {/* ⚠️ Reads its own data rather than taking `c`. The config payload is
           what is LIVE; this screen shows every version including the archived
           ones, which is a different question and a different query. */}

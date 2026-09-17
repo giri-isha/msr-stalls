@@ -1,21 +1,34 @@
 import type { FieldOption, PublicZone } from '@stalls/core';
-import { formatInr } from '@stalls/core';
-import { ChoicePlate, Radio } from '../ui';
+import { Select } from '../ui';
 
-/** The preferred-location radio list, quoting each bay at the asking form's
- *  own scope.
+/**
+ * The preferred-location question: a dropdown of the bays this form may offer.
  *
- *  The rent AND the refundable advance are both per bay, so both belong here
- *  rather than once in the form header: "keep the advance also area wise — it
- *  might be 3000, and for the free area it might be only 2000". A single figure
- *  at the top of the form would have been the wrong figure for most of the
- *  bays under it.
+ * 🔴 It was a grid of radio plates, each quoting its own rent and refundable
+ * advance. Seven plates is a third of the form's height for one question, and
+ * the figures on them were the form answering a question nobody had asked yet —
+ * a rent is what you are told once a bay is agreed, and the bay a requester
+ * ASKED for is not the bay they will be priced at (see `agreedZoneCode`). The
+ * quote, the payment letter and the vendor's own payment page are where money
+ * is said. This is a list of places.
  *
- *  A bay the asking scope does not price reads as unavailable rather than free.
- *  The ashram forms pass `showRent` false — those stalls are billed internally
- *  and never quoted at all. */
+ * 🔴 A bay this form cannot offer is not drawn at all, where it used to sit
+ * there greyed out saying "Not available this year". A choice that cannot be
+ * chosen is not a choice, and in a dropdown it is worse than on a plate: the
+ * list is read one row at a time, so a dead row is a row somebody arrows onto
+ * and has to work out.
+ *
+ * ⚠️ `showRent` is now the FILTER rather than a figure — whether this asking
+ * scope is priced for the bay at all. The ashram forms pass it false and are
+ * offered everything: those stalls are billed internally and never quoted, so
+ * "no rate for this scope" says nothing about whether the bay is available.
+ *
+ * ⚠️ `rent === null` is the test, not `isClosedToVendors`. A bay closed to
+ * trade is priced for local welfare, and reading the flag instead would hide
+ * from a village trader exactly the bays they may have.
+ */
 export function ZoneSelect({
-  name,
+  id,
   value,
   onChange,
   options,
@@ -23,89 +36,47 @@ export function ZoneSelect({
   showRent,
   isFood,
   invalid,
+  describedBy,
 }: {
-  name: string;
+  id: string;
   value: string;
   onChange: (v: string) => void;
   options: FieldOption[];
   zones: PublicZone[] | null;
+  /** Whether this form's scope is quoted a rent — which is what decides
+   *  availability. Named for what it used to draw; see the note above. */
   showRent: boolean;
   isFood: boolean;
   invalid?: boolean;
+  describedBy?: string;
 }) {
   const byCode = new Map((zones ?? []).map((z) => [z.code, z]));
+  const offered = options.filter((o) => {
+    if (!showRent) return true;
+    const z = byCode.get(o.value);
+    // ⚠️ A choice naming no bay at all is still offered. The edition may author
+    // this list itself — see `zoneChoices` — and a choice the rate card has
+    // never heard of is the admin's to explain, not this control's to swallow.
+    if (z === undefined) return true;
+    return (isFood ? z.rentFoodPaise : z.rentNonFoodPaise) !== null;
+  });
+
   return (
-    // 🔴 A RESPONSIVE grid, not a single stack. Each plate is a bay name and a
-    // rent — two short lines — and on the wide public form a stack of them drew
-    // seven 1000px-long plates holding a sentence each, which is the one
-    // question on the form a requester has to compare options to answer. Two
-    // columns put the bays and their rents beside each other; a phone gets one,
-    // because `minmax(320px,1fr)` cannot fit two.
-    //
-    // ⚠️ The DOM order is the order of the options, so arrow-key navigation
-    // inside the radiogroup still follows the list the edition set.
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))',
-        gap: 8,
-      }}
-      role='radiogroup'
-      aria-invalid={invalid || undefined}
+    <Select
+      id={id}
+      value={value}
+      onChange={onChange}
+      invalid={invalid}
+      aria-invalid={invalid}
+      aria-describedby={describedBy}
     >
-      {options.map((o) => {
-        const z = byCode.get(o.value);
-        const rent = z ? (isFood ? z.rentFoodPaise : z.rentNonFoodPaise) : null;
-        // ⚠️ `rent === null` is the test, not `isClosedToVendors`. A bay closed
-        // to trade is priced for local welfare, and reading the flag instead
-        // would hide from a village trader exactly the bays they may have.
-        const unavailable = showRent && z !== undefined && rent === null;
-        const id = `${name}-${o.value}`;
-        return (
-          <ChoicePlate
-            key={o.value}
-            htmlFor={id}
-            selected={value === o.value}
-            disabled={unavailable}
-          >
-            <Radio
-              id={id}
-              name={name}
-              value={o.value}
-              checked={value === o.value}
-              disabled={unavailable}
-              onChange={() => onChange(o.value)}
-              style={{ marginTop: 2 }}
-            />
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ fontWeight: 600 }}>{o.label}</span>
-              {showRent && (
-                <span
-                  style={{
-                    display: 'block',
-                    fontSize: 11.5,
-                    // ⚠️ `--mfg`, not `--des` — a zone the vendor cannot have is
-                    // an absence, not an error they made. Red here would read as
-                    // "you picked wrong" on a plate they are not allowed to pick.
-                    color: 'var(--mfg)',
-                    marginTop: 2,
-                  }}
-                >
-                  {unavailable
-                    ? 'Not available this year'
-                    : rent !== null
-                      ? `${formatInr(rent)} + GST${
-                          z?.depositPaise
-                            ? ` · ${formatInr(z.depositPaise)} refundable advance`
-                            : ''
-                        }`
-                      : ''}
-                </span>
-              )}
-            </span>
-          </ChoicePlate>
-        );
-      })}
-    </div>
+      <option value=''>Choose…</option>
+      {offered.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+          {o.labelTa ? ` / ${o.labelTa}` : ''}
+        </option>
+      ))}
+    </Select>
   );
 }

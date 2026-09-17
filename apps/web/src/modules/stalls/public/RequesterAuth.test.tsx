@@ -224,17 +224,58 @@ describe('the apply gate', () => {
     expect(screen.queryByRole('link', { name: /local welfare/i })).not.toBeInTheDocument();
   });
 
-  /** ⚠️ Drawn, and locked, rather than hidden. A department that registered as
-   *  a vendor by mistake has to see that the form they want exists and that the
-   *  fix is a phone call — a tile that silently vanished says neither. */
-  test('the other two forms stay on screen, and say whose account this is', async () => {
+  /** 🔴 The other two are GONE, not greyed out. They used to be drawn and
+   *  locked so a department registered as a vendor by mistake could see that
+   *  the form it wants exists; the sentence says that now, which is why this
+   *  test asserts the sentence in the same breath as their absence. Losing the
+   *  sentence would leave nothing on the page saying how to be moved. */
+  test('only the account’s own form is on the page, and it says whose account this is', async () => {
     installFetch([SIGNED_IN, CONFIG]);
     renderAt('/apply', [{ path: '/apply', element: <FormPicker /> }], { requester: true });
 
-    expect(await screen.findByText('Ashram Stall Request Form')).toBeInTheDocument();
-    expect(screen.getByText('Local Welfare Stall Request Form')).toBeInTheDocument();
+    expect(await screen.findByText('Vendor Stall Request Form')).toBeInTheDocument();
+    expect(screen.queryByText('Ashram Stall Request Form')).not.toBeInTheDocument();
+    expect(screen.queryByText('Local Welfare Stall Request Form')).not.toBeInTheDocument();
     expect(screen.getByText(/registered for/i)).toBeInTheDocument();
     expect(screen.getByText(/contact the stall team/i)).toBeInTheDocument();
+  });
+
+  /** 🔴 The cap, read on the page that OFFERS the form rather than only on the
+   *  post that refuses it. An account at its limit used to fill in two pages
+   *  before being told. */
+  test('an account that has spent the edition’s cap is offered no form at all', async () => {
+    installFetch([
+      [
+        'GET',
+        /\/public\/session$/,
+        () => ({ ...SESSION, allowance: { used: 2, max: 2, countedAs: 'still open' } }),
+      ],
+      CONFIG,
+    ]);
+    renderAt('/apply', [{ path: '/apply', element: <FormPicker /> }], { requester: true });
+
+    expect(await screen.findByText(/as many requests as this year allows/i)).toBeInTheDocument();
+    // The figures and the wording the refusal uses, so the page and the post
+    // describe the same rule.
+    expect(screen.getByText(/2 of 2 still open/)).toBeInTheDocument();
+    expect(screen.queryByText('Vendor Stall Request Form')).not.toBeInTheDocument();
+  });
+
+  /** ⚠️ Under the cap, nothing changes. The allowance is a reason to STOP
+   *  offering the form, never a reason to decorate the page that offers it. */
+  test('an account with room left is offered its form as before', async () => {
+    installFetch([
+      [
+        'GET',
+        /\/public\/session$/,
+        () => ({ ...SESSION, allowance: { used: 1, max: 2, countedAs: 'still open' } }),
+      ],
+      CONFIG,
+    ]);
+    renderAt('/apply', [{ path: '/apply', element: <FormPicker /> }], { requester: true });
+
+    expect(await screen.findByRole('link', { name: /vendor/i })).toBeInTheDocument();
+    expect(screen.queryByText(/as many requests as this year allows/i)).not.toBeInTheDocument();
   });
 
   /** An account that has never applied and pre-dates the question: nothing has

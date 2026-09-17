@@ -22,11 +22,18 @@ The whole requirement, from stall request to check-in and refund.
   sells food rather than made to declare it by choosing a page.
 - **One form per account**: registration asks which of the three the account is
   for, and that is the only form it may fill — enforced on the write, not just
-  on the page that offers the tiles. The other two are drawn and locked, because
-  a department that registered as a vendor by mistake needs to see that the form
-  they want exists and that the fix is a phone call.
+  on the page that offers the tiles. It is the only one on the page, too: a
+  department that registered as a vendor by mistake is told in words what its
+  account is registered for and that the team can move it, rather than shown two
+  greyed-out cards it cannot click.
 - **Vendor capture**: a submission creates an account keyed on email, mints a
   private status link, and emails a receipt. No password, no OTP.
+- **The requester is never shown a status.** Until a request is selected it says
+  one thing — thank you for expressing interest, the team will get back to you —
+  whether it is submitted, shortlisted or on the backup list. Those three are the
+  team's working notes on a decision it has not taken, and a shortlisting read as
+  a promise is a vendor who has already bought stock. A rejection still says so:
+  somebody never told simply waits.
 - **Getting back in**: the status page is the vendor's portal — what is
   outstanding, the bank form or FSSAI upload opened straight from it, and what
   they themselves submitted, read back to them. Lost the email? An address or a
@@ -151,6 +158,19 @@ docs/                         specs, plans, migration checklist
   is redrawn every edition and the planning sheet's columns are a judgement the
   team makes each year, so both are added and removed from Admin. Nothing in the
   code may hold its own list of either.
+- **The preferred-location question offers the bays — unless the edition writes
+  its own list.** Left alone it is the edition's bays, which is what every form
+  does today. Filled in, each choice is `CODE | Wording`: the wording is the
+  edition's, the code is a bay. The list never becomes the source of the price —
+  rent and the refundable advance are still looked up by bay code — so a choice
+  whose code names no bay is a choice with no rent behind it, and the Form
+  Builder names those codes back while they are unknown.
+- **It is a dropdown of places, and it quotes no money.** A bay the asking scope
+  has no rate for is left out of the list rather than greyed out in it — a
+  choice that cannot be chosen is not a choice — and no rent or advance is
+  printed beside any of them. A requester is priced at the bay they AGREE to,
+  not the one they ask for, so the quote and the payment letter are where the
+  figures belong.
 - **Rent is per bay × food/non-food × requester scope**, and each rate row
   carries its own refundable advance — the advance is area-wise too, so a bay's
   rent and its deposit are edited together and cannot drift apart.
@@ -172,7 +192,11 @@ docs/                         specs, plans, migration checklist
 - **A request is capped at what one decision can cover.** Two stalls in one
   bay, by default; ground in a second bay is a second request, so the team can
   accept one and decline the other. The number is the edition's, editable in
-  Admin, and enforced on the public write.
+  Admin, and enforced on the public write. How many requests one account may have
+  going at once is a second, separate number — and it is reported on the session,
+  so the New Request button and the apply page stop offering a form the write
+  would refuse. One function counts it for both, or the page and the post would
+  disagree about the same account.
 - **A role may be scoped to a requester type.** The local welfare team files
   inside this application, on behalf of village traders who have no email
   address — which makes them backoffice members holding real `requests:write`, with no

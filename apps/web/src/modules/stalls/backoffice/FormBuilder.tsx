@@ -2,6 +2,7 @@ import {
   AUTHORABLE_FIELD_TYPES,
   type BuilderForm,
   type BuiltFormField,
+  canAuthorOptions,
   canCarryMedia,
   canDeleteField,
   checkRuleShape,
@@ -90,11 +91,19 @@ type FormType = StallFormType;
 export function FormBuilder({
   writable,
   editionId,
+  zones,
 }: {
   writable: boolean;
   /** Which edition's forms to SHOW. Undefined is the active one. A past edition
    *  arrives with `writable` already false — see the note in `Admin`. */
   editionId?: string;
+  /** The edition's bays, for the preferred-location question's choice editor.
+   *
+   *  ⚠️ Handed down rather than fetched. `Admin` already holds this edition's
+   *  config, and a second request for a list it has would also be a second
+   *  privilege — `listZones` is behind `requests:read`, which somebody who only
+   *  edits forms has no reason to hold. */
+  zones?: Array<{ code: string; name: string }>;
 }) {
   const toast = useToast();
   const { data, error, loading, reload } = useLoad(() => api.listForms(editionId), [editionId]);
@@ -174,6 +183,7 @@ export function FormBuilder({
           field={editing}
           formType={formType}
           sections={form?.sections ?? []}
+          zones={zones ?? []}
           onClose={() => setEditing(null)}
           onSave={async (patch) => {
             const ok = await run('Question saved', () => api.patchFormField(editing.id, patch));
@@ -185,6 +195,7 @@ export function FormBuilder({
         <FieldDialog
           formType={formType}
           sections={form.sections}
+          zones={zones ?? []}
           onClose={() => setAdding(false)}
           onSave={async (patch) => {
             const ok = await run('Question added', () =>
@@ -473,6 +484,122 @@ const TYPE_NAME: Record<string, { name: string; note: string }> = {
 const typeName = (t: string) => TYPE_NAME[t]?.name ?? t;
 const typeNote = (t: string) => TYPE_NAME[t]?.note ?? '';
 
+/**
+ * The preferred-location question's own choice list.
+ *
+ * 🔴 The list used to be the edition's bays and nothing else, resolved at
+ * render time, and that was right until the year the wording had to differ —
+ * a bay named for where it sits rather than for its letter, a line of Tamil
+ * beside it, a bay left off one form for a reason no flag on the zone
+ * expresses. Left EMPTY this still is the bays, which is what every form does
+ * today; filled in, it is whatever the edition wrote.
+ *
+ * 🔴 Each line is `CODE | Wording`, and the code is not decoration. The rent
+ * and the refundable advance are looked up by BAY CODE — by the quote, by the
+ * payment letter and by the plate the requester reads — so a line whose code
+ * names no bay is a choice that prices nothing. That is a real thing an admin
+ * may want (a bay being added next week, a placeholder) and a real way to break
+ * a form, so it is allowed and it is SAID: the unknown codes are listed back
+ * under the box, by name, while they are unknown.
+ *
+ * ⚠️ A textarea rather than a row editor, for the same reason the plain Choices
+ * box is one: what somebody has in front of them is a list they are pasting or
+ * retyping, not a form to fill in five times.
+ */
+function ZoneChoices({
+  options,
+  zones,
+  onChange,
+}: {
+  options: FieldOption[] | null;
+  zones: Array<{ code: string; name: string }>;
+  onChange(options: FieldOption[] | null): void;
+}) {
+  /**
+   * ⚠️ The TEXT is the state here, and the choices are derived from it — not
+   * the other way round.
+   *
+   * 🔴 Drawing the box from the parsed choices fights the typist: `CODE |
+   * Wording` does not survive a round trip half-typed, so "A" becomes a choice
+   * whose code and wording are both "A", the box redraws as "A | A", and the
+   * next keystroke lands after the wording. The plain Choices editor above can
+   * derive its text because a bare label round-trips to itself; this format
+   * cannot, so what somebody typed is kept as what somebody typed.
+   *
+   * Seeded once from the row and replaced only by the two buttons below, which
+   * are the only things other than typing that change the list.
+   */
+  const [text, setText] = useState(zoneChoiceText(options));
+  const parsed = parseZoneChoices(text);
+  const known = new Set(zones.map((z) => z.code));
+  const unknown = (parsed ?? []).map((o) => o.value).filter((v) => !known.has(v));
+
+  const put = (next: string) => {
+    setText(next);
+    onChange(parseZoneChoices(next));
+  };
+
+  return (
+    <FormField id='fb-zone-options' label='Choices'>
+      <Textarea id='fb-zone-options' rows={5} value={text} onChange={(e) => put(e.target.value)} />
+      <div style={{ fontSize: 11.5, color: 'var(--mfg)', marginTop: 6, lineHeight: 1.6 }}>
+        One per line, as <code>CODE | Wording</code> — the code is the bay, the wording is what the
+        requester reads. Leave this empty to offer the edition’s bays as they are named in Zones.
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+        <Btn
+          onClick={() => put(zones.map((z) => `${z.code} | ${z.name}`).join('\n'))}
+          disabled={zones.length === 0}
+        >
+          <Icon name='plus' size={13} />
+          Fill from the bays
+        </Btn>
+        {text.trim() !== '' && (
+          <Btn onClick={() => put('')}>
+            <Icon name='x' size={13} />
+            Back to the bays
+          </Btn>
+        )}
+      </div>
+      {unknown.length > 0 && (
+        // ⚠️ A warning, not a refusal. The admin was told what the code is for
+        // and may have a reason; what they may not do is find out at the
+        // payment letter, which is the one place nobody is looking.
+        <div style={{ fontSize: 11.5, color: 'var(--warn-fg)', marginTop: 8, lineHeight: 1.6 }}>
+          <Icon name='alert-triangle' size={12} /> {unknown.join(', ')}{' '}
+          {unknown.length > 1 ? 'are not bays' : 'is not a bay'} in this edition. A request that
+          picks {unknown.length > 1 ? 'one of them' : 'it'} has no rent and no refundable advance
+          behind it — add the bay under Zones, or correct the code.
+        </div>
+      )}
+    </FormField>
+  );
+}
+
+/** The stored list, as the box shows it. The inverse of `parseZoneChoices`. */
+function zoneChoiceText(options: FieldOption[] | null): string {
+  return (options ?? []).map((o) => `${o.value} | ${o.label}`).join('\n');
+}
+
+/** `CODE | Wording` per line. A line with no bar is the code alone, and reads
+ *  as its own wording — which is what pasting a column of bay codes gives. */
+function parseZoneChoices(raw: string): FieldOption[] | null {
+  const parsed = raw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const bar = line.indexOf('|');
+      const value = (bar === -1 ? line : line.slice(0, bar)).trim().toUpperCase();
+      const label = bar === -1 ? line.trim() : line.slice(bar + 1).trim();
+      return { value, label: label || value, labelTa: null };
+    })
+    .filter((o) => o.value !== '');
+  // ⚠️ `null`, not `[]`, once the box is empty. An empty list would be stored
+  // as "offer nothing"; null is what `zoneChoices` reads as "use the bays".
+  return parsed.length > 0 ? parsed : null;
+}
+
 interface FieldValues extends FieldRuleValues {
   label: string;
   labelTa: string | null;
@@ -489,12 +616,16 @@ function FieldDialog({
   field,
   formType,
   sections,
+  zones,
   onClose,
   onSave,
 }: {
   field?: BuiltFormField;
   formType: FormType;
   sections: BuilderForm['sections'];
+  /** The edition's bays — what a preferred-location choice's value has to name
+   *  for the quote to find a rent behind it. */
+  zones: Array<{ code: string; name: string }>;
   onClose: () => void;
   onSave: (patch: Partial<FieldValues>) => void;
 }) {
@@ -529,6 +660,12 @@ function FieldDialog({
   const choices = fieldTypeChoices(field ?? null);
   const shapeLimited = builtIn && choices.length < AUTHORABLE_FIELD_TYPES.length;
   const wantsOptions = needsOptions(v.fieldType);
+  /** 🔴 Wider than `wantsOptions`: a preferred-location question MAY carry a
+   *  list and falls back to the edition's bays without one. See
+   *  `canAuthorOptions`, which is the rule, and `zoneChoices`, which is the
+   *  fallback. */
+  const authorsOptions = canAuthorOptions(v.fieldType);
+  const zoneList = v.fieldType === 'zone';
   /** Whether this row SAYS something rather than asking it. */
   const says = isDisplayField(v.fieldType);
   /**
@@ -574,7 +711,10 @@ function FieldDialog({
               ...rules,
               labelTa: v.labelTa?.trim() || null,
               help: v.help?.trim() || null,
-              options: wantsOptions ? v.options : null,
+              // ⚠️ `authorsOptions`, not `wantsOptions`. A zone question's
+              // authored list would otherwise be dropped on every save of the
+              // question that carries it.
+              options: authorsOptions ? v.options : null,
               // ⚠️ Cleared when the row is not a display block, so a picture
               // added and then retyped away does not travel with the save. The
               // API clears it too — this is only so the screen and the row
@@ -631,6 +771,14 @@ function FieldDialog({
               : null
           }
         />
+
+        {zoneList && (
+          <ZoneChoices
+            options={v.options}
+            zones={zones}
+            onChange={(options) => setV({ ...v, options })}
+          />
+        )}
 
         {wantsOptions && (
           <FormField id='fb-options' label='Choices'>

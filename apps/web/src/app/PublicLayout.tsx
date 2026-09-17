@@ -11,6 +11,7 @@
 // first of those is an action, not a place. With the requests page as the
 // portal there is nothing left to tab between: the way to a new request is a
 // primary button at the top right, and the page takes the width it is given.
+import { canFileMore } from '@stalls/core';
 import { Link, Outlet, useNavigate } from 'react-router';
 import { RequesterProvider, useRequester } from '@/modules/stalls';
 import { logoutRequester } from '@/modules/stalls/api';
@@ -149,6 +150,12 @@ function PublicChrome() {
  * have to understand, and a button that would bounce them to a login is chrome
  * at its worst.
  *
+ * 🔴 And nothing once the account has spent the edition's cap. The button is an
+ * offer, and an offer the post would refuse is worse than no offer: it costs a
+ * requester a whole form to find out. `canFileMore` is the same reading the
+ * apply page makes of the same number, and the number is counted by the
+ * function that enforces the cap on the write.
+ *
  * ⚠️ Labelled whatever it draws. On a phone it is the glyph alone — the label
  * beside a name beside two more buttons does not fit — and an unlabelled icon
  * button is a button a screen reader cannot name.
@@ -157,17 +164,21 @@ function RequestStallButton() {
   const { requester } = useRequester();
   const mobile = useIsMobile();
   if (!requester) return null;
+  // ⚠️ `allowance` is undefined on a page served ahead of an API that does not
+  // send it yet; `canFileMore` reads null as "not capped", so deploy skew keeps
+  // the button rather than hiding it.
+  if (!canFileMore(requester.allowance ?? null)) return null;
 
   return (
     <Link
       to='/stalls/apply'
-      aria-label='Request a Stall'
-      title='Request a Stall'
+      aria-label='New Request'
+      title='New Request'
       style={{ color: 'inherit' }}
     >
       <Btn kind='primary'>
         <Icon name='plus' size={14} />
-        {mobile ? '' : 'Request a Stall'}
+        {mobile ? '' : 'New Request'}
       </Btn>
     </Link>
   );

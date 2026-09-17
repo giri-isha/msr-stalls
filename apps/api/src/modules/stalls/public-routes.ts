@@ -79,7 +79,7 @@ import {
   startSession,
 } from './session';
 import { assertStepAvailable, couponFor, sendAccessLink, statusView, stepLink } from './portal';
-import { submitRequest } from './submit';
+import { requestAllowance, submitRequest } from './submit';
 import { isOurKey, presignUpload } from './uploads';
 
 const TokenParams = z.object({ token: z.string().min(16).max(128) });
@@ -237,6 +237,11 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
       // to clear by hand.
       email: isPlaceholderEmail(account.email) ? '' : account.email,
       phone: account.phone,
+      // 🔴 What is LEFT of the edition's request cap, counted by the same
+      // function the submit path enforces it with. The header's New Request
+      // button and the apply page both read it: an account at its limit was
+      // otherwise offered a whole form and refused on the post.
+      allowance: await requestAllowance(prisma, account.id),
     };
   });
 

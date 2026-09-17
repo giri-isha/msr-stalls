@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { SELF_SERVE_STEPS, isSelfServe, parseContact } from './access';
+import { canFileMore, SELF_SERVE_STEPS, isSelfServe, parseContact } from './access';
 
 describe('parseContact', () => {
   test('normalises an email the way the account table stores it', () => {
@@ -33,5 +33,28 @@ describe('isSelfServe', () => {
     // Payment is confirmed by Finance; staff register on a forwarded coupon.
     expect(isSelfServe('PAYMENT')).toBe(false);
     expect(isSelfServe('STAFF_REGISTRATION')).toBe(false);
+  });
+});
+
+/** 🔴 One reading of the cap, for the header's button and for the apply page's
+ *  tiles. Two would be a button that has gone beside a form still offered. */
+describe('canFileMore', () => {
+  test('there is room while fewer have been counted than the edition allows', () => {
+    expect(canFileMore({ used: 0, max: 2, countedAs: 'still open' })).toBe(true);
+    expect(canFileMore({ used: 1, max: 2, countedAs: 'still open' })).toBe(true);
+  });
+
+  test('and none once the count has reached it', () => {
+    expect(canFileMore({ used: 2, max: 2, countedAs: 'still open' })).toBe(false);
+    // Over, not just at: a cap lowered in Admin leaves accounts above it, and
+    // those must read as spent rather than wrapping back round to allowed.
+    expect(canFileMore({ used: 3, max: 2, countedAs: 'still open' })).toBe(false);
+  });
+
+  /** ⚠️ `null` is "not capped", which covers two cases that must both leave the
+   *  form offered: no active edition, and a page served ahead of an API that
+   *  does not send the allowance yet. The write is still what enforces. */
+  test('no allowance at all leaves the form offered', () => {
+    expect(canFileMore(null)).toBe(true);
   });
 });

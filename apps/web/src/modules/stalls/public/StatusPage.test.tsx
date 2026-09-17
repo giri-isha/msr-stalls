@@ -43,13 +43,19 @@ describe('StatusPage', () => {
     renderAt(`/stalls/status/${'t'.repeat(43)}`, routes);
     expect(await screen.findByText('Priya Venkat')).toBeInTheDocument();
     // The newest request is on screen; the other is in the switcher.
-    expect(screen.getByText('Shortlisted')).toBeInTheDocument();
+    //
+    // 🔴 The SHORTLISTED one says what every undecided request says, and says
+    // nothing about being shortlisted — see `STATUS_COPY`. A pill reading
+    // "Shortlisted" to the person who filed it is the team's working note on a
+    // decision it has not taken.
+    expect(screen.getByText(/Thanks for expressing interest/)).toBeInTheDocument();
+    expect(screen.queryByText('Shortlisted')).not.toBeInTheDocument();
     expect(screen.queryByText('A4-5')).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: /Green Leaf Organics/ }));
 
     expect(screen.getByText('A4-5')).toBeInTheDocument();
-    expect(screen.getByText('Selected')).toBeInTheDocument();
+    expect(screen.getByText(/^Selected\./)).toBeInTheDocument();
   });
 
   test('the emailed link can ask for a coupon too, naming its own token', async () => {

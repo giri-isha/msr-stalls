@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { FORM_DEFINITIONS, fieldsFor, formDefinition, isFoodOnlyField } from './forms';
+import { FORM_DEFINITIONS, fieldsFor, formDefinition, isFoodOnlyField, zoneChoices } from './forms';
 import { STALL_REQUEST_TYPES } from './reference';
 
 describe('FORM_DEFINITIONS', () => {
@@ -72,6 +72,48 @@ describe('fieldsFor LOCAL_WELFARE', () => {
   test('takes its locations from the configured zones, not a baked-in list', () => {
     expect(byName.get('preferredZoneCode')?.type).toBe('zone');
     expect(byName.get('preferredZoneCode')?.options).toBeUndefined();
+  });
+});
+
+/** 🔴 The edition may now write this list itself. The bays are still what a
+ *  form offers when it has not — which is every form today — and they are still
+ *  what a choice's VALUE has to name for a rent to be found behind it. */
+describe('zoneChoices', () => {
+  const ZONES = [
+    { code: 'A4', name: 'Snake side', blurb: null, isClosedToVendors: false },
+    { code: 'B2', name: 'Behind Adiyogi', blurb: null, isClosedToVendors: true },
+  ] as Parameters<typeof zoneChoices>[1];
+
+  test('offers the edition’s bays when the question has authored none', () => {
+    expect(zoneChoices(null, ZONES, false).map((o) => o.value)).toEqual(['A4', 'B2']);
+    // The vendor form still drops the bays closed to trade.
+    expect(zoneChoices(null, ZONES, true).map((o) => o.value)).toEqual(['A4']);
+  });
+
+  /** ⚠️ An EMPTY list is "not authored", not "offer nothing". A question with
+   *  no choices is a form nobody can submit, and the row arrives empty in
+   *  exactly one ordinary case: an admin clearing the box to go back. */
+  test('an empty authored list falls back to the bays rather than to nothing', () => {
+    expect(zoneChoices([], ZONES, false)).toHaveLength(2);
+  });
+
+  test('an authored list wins, wording and all, and is not filtered', () => {
+    const authored = [
+      { value: 'B2', label: 'Behind Adiyogi — Moon Side', labelTa: null },
+      { value: 'A4', label: 'Snake side : For Paid Seating', labelTa: null },
+    ];
+    // ⚠️ Including the bay closed to trade, and in the order written. Once the
+    // edition has said what this question offers, nothing here second-guesses
+    // it — `isClosedToVendors` is the default list's rule, not an override.
+    expect(zoneChoices(authored, ZONES, true)).toEqual(authored);
+  });
+
+  /** ⚠️ The list is the edition's; the prices never are. A value naming no bay
+   *  is allowed and carries no rent — `ZoneSelect` and the quote both look it
+   *  up against the zones, which is why the Form Builder warns about it. */
+  test('a choice whose value names no bay is still a choice', () => {
+    const authored = [{ value: 'NEW_BAY', label: 'Opening next week', labelTa: null }];
+    expect(zoneChoices(authored, ZONES, false)).toEqual(authored);
   });
 });
 

@@ -578,6 +578,110 @@ describe('login and logout', () => {
     expect(me.json().requesterType).toBeNull();
   });
 
+  /**
+   * 🔴 What is LEFT of the edition's request cap, on the session.
+   *
+   * The two places that act on it — the header's New Request button and the
+   * apply page — are not looking at a request, so neither could read it off
+   * one. Without this, an account at its limit found out by filling in a whole
+   * form and being refused on the post.
+   *
+   * ⚠️ `countedAs` is the wording `TooManyOpenRequestsError` refuses with,
+   * resolved here rather than looked up again by the page, so the sentence on
+   * the apply page and the sentence on the refusal cannot drift apart.
+   */
+  test('the session says what is left of the edition’s request cap', async () => {
+    const edition = await prisma.stallEdition.findFirstOrThrow({ where: { isActive: true } });
+    await prisma.stallEdition.update({
+      where: { id: edition.id },
+      data: { maxOpenRequests: 2, requestCapScope: 'OPEN' },
+    });
+    const value = await loggedIn();
+
+    const before = await app.inject({
+      method: 'GET',
+      url: url('session'),
+      cookies: { stall_requester: value },
+    });
+    expect(before.json().allowance).toEqual({ used: 0, max: 2, countedAs: 'still open' });
+
+    await app.inject({
+      method: 'POST',
+      url: url('requests'),
+      payload: vendorBody({ email: 'new@vendor.example' }),
+      cookies: { stall_requester: value },
+    });
+
+    const after = await app.inject({
+      method: 'GET',
+      url: url('session'),
+      cookies: { stall_requester: value },
+    });
+    expect(after.json().allowance).toEqual({ used: 1, max: 2, countedAs: 'still open' });
+  });
+
+  /** ⚠️ Counted by the SAME function the submit path refuses on, so the page
+   *  and the post cannot disagree about one account. This asserts the seam by
+   *  its consequence: the session reads spent at exactly the point the next
+   *  submission is refused. */
+  test('the count it reports is the count the submit path refuses on', async () => {
+    const edition = await prisma.stallEdition.findFirstOrThrow({ where: { isActive: true } });
+    await prisma.stallEdition.update({
+      where: { id: edition.id },
+      data: { maxOpenRequests: 1, requestCapScope: 'OPEN' },
+    });
+    const value = await loggedIn();
+
+    await app.inject({
+      method: 'POST',
+      url: url('requests'),
+      payload: vendorBody({ email: 'new@vendor.example' }),
+      cookies: { stall_requester: value },
+    });
+
+    const me = await app.inject({
+      method: 'GET',
+      url: url('session'),
+      cookies: { stall_requester: value },
+    });
+    expect(me.json().allowance).toEqual({ used: 1, max: 1, countedAs: 'still open' });
+
+    const second = await app.inject({
+      method: 'POST',
+      url: url('requests'),
+      payload: vendorBody({ email: 'new@vendor.example' }),
+      cookies: { stall_requester: value },
+    });
+    expect(second.statusCode).toBe(422);
+  });
+
+  /** ⚠️ Which statuses count is the EDITION's setting, and the session obeys it
+   *  as the write does. Under UNDECIDED a selection frees the slot; the session
+   *  has to say so, or the button stays hidden for somebody who may file. */
+  test('the scope the edition set is the scope the session counts by', async () => {
+    const edition = await prisma.stallEdition.findFirstOrThrow({ where: { isActive: true } });
+    await prisma.stallEdition.update({
+      where: { id: edition.id },
+      data: { maxOpenRequests: 2, requestCapScope: 'UNDECIDED' },
+    });
+    const value = await loggedIn();
+    await app.inject({
+      method: 'POST',
+      url: url('requests'),
+      payload: vendorBody({ email: 'new@vendor.example' }),
+      cookies: { stall_requester: value },
+    });
+    await prisma.stallRequest.updateMany({ data: { status: 'SELECTED' } });
+
+    const me = await app.inject({
+      method: 'GET',
+      url: url('session'),
+      cookies: { stall_requester: value },
+    });
+    // Selected is no longer awaiting a decision, so the slot is free again.
+    expect(me.json().allowance).toEqual({ used: 0, max: 2, countedAs: 'awaiting a decision' });
+  });
+
   // 🔴 Two different failures, one response, down to the byte.
   test('a wrong password and an unknown contact are the same 401', async () => {
     await loggedIn();

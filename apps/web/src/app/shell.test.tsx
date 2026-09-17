@@ -243,7 +243,7 @@ describe('the public shell', () => {
     renderPublic('/stalls/requests');
 
     const header = await screen.findByRole('banner');
-    expect(within(header).getByRole('link', { name: 'Request a Stall' })).toHaveAttribute(
+    expect(within(header).getByRole('link', { name: 'New Request' })).toHaveAttribute(
       'href',
       '/stalls/apply',
     );
@@ -259,8 +259,28 @@ describe('the public shell', () => {
     renderPublic('/stalls/login');
 
     const header = await screen.findByRole('banner');
-    expect(within(header).queryByRole('link', { name: 'Request a Stall' })).not.toBeInTheDocument();
+    expect(within(header).queryByRole('link', { name: 'New Request' })).not.toBeInTheDocument();
     expect(within(header).queryByRole('button', { name: 'Log Out' })).not.toBeInTheDocument();
+  });
+
+  /** 🔴 The button is an OFFER, and an offer the post would refuse costs a
+   *  requester a whole form to find out. `canFileMore` reads the same count the
+   *  submit path enforces on. */
+  test('the button goes once the account has spent the edition’s cap', async () => {
+    installFetch([
+      [
+        'GET',
+        /\/public\/session$/,
+        () => ({ ...SESSION, allowance: { used: 2, max: 2, countedAs: 'still open' } }),
+      ],
+      ['GET', /\/public\/requests$/, () => ({ displayName: 'Priya Venkat', requests: [] })],
+    ]);
+    renderPublic('/stalls/requests');
+
+    const header = await screen.findByRole('banner');
+    // The name is still there — it is the button that goes, not the session.
+    expect(within(header).getByText('Priya Venkat')).toBeInTheDocument();
+    expect(within(header).queryByRole('link', { name: 'New Request' })).not.toBeInTheDocument();
   });
 
   // ⚠️ Four public screens call `useToast()`, and that hook THROWS outside a

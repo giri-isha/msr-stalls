@@ -153,6 +153,48 @@ export interface RequesterSession {
    *  address — the column holds a placeholder and nothing sends to it. */
   email: string;
   phone: string;
+  /**
+   * What this account has left of the edition's request cap.
+   *
+   * 🔴 On the SESSION, because the two places that need it are the header's
+   * New Request button and the apply page — neither of which is looking at a
+   * request, so neither could have read it off one. Without it the only way an
+   * account at its limit found out was to fill a whole form and be refused on
+   * the post, which is the cap enforced as a punishment rather than as a fact.
+   *
+   * ⚠️ `null` when no edition is active. Nothing is capped by an edition that
+   * does not exist, and a page reading null offers the form as it always did —
+   * the write is still the thing that enforces. See `canFileMore`.
+   */
+  allowance: RequesterAllowance | null;
+}
+
+/**
+ * The edition's request cap, as it stands for one account.
+ *
+ * ⚠️ `countedAs` is WORDING, already resolved — `REQUEST_CAP_SCOPE_LABEL` read
+ * by the API, not the scope for the page to look up again. The same phrase goes
+ * into `TooManyOpenRequestsError`, so the sentence on the apply page and the
+ * sentence the post would refuse with cannot describe the same rule
+ * differently. It is also what keeps this file off `contracts.ts`, which
+ * already imports this one.
+ */
+export interface RequesterAllowance {
+  /** How many of this account's requests count against the cap right now. */
+  used: number;
+  /** How many the edition allows at once. */
+  max: number;
+  /** Which of its requests were counted: "still open", "awaiting a decision",
+   *  or "filed this edition". */
+  countedAs: string;
+}
+
+/** Whether this account may file another request.
+ *
+ *  ⚠️ One spelling for the header's button and for the apply page's tiles. Two
+ *  would be a button that is gone beside a form that is still offered. */
+export function canFileMore(allowance: RequesterAllowance | null): boolean {
+  return allowance === null || allowance.used < allowance.max;
 }
 
 /**

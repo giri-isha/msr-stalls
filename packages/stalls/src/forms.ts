@@ -160,6 +160,37 @@ export function zoneOptions(zones: PublicZone[], forVendor: boolean): FieldOptio
     }));
 }
 
+/**
+ * What a preferred-location question actually OFFERS.
+ *
+ * 🔴 The edition may now author this list on the field, and when it has, the
+ * authored list wins. The bays were the only possible answer while the question
+ * was a constant, and the year the wording has to read differently on one form
+ * — a bay named for where it sits rather than for its letter, a line of Tamil
+ * beside it, a bay left off the vendor form for a reason no flag on the zone
+ * expresses — an admin was left waiting on an engineer.
+ *
+ * ⚠️ An authored list does NOT become the source of the rent. Each choice's
+ * VALUE is still a bay code, looked up against the edition's zones by the quote
+ * and by `ZoneSelect` — so a choice whose value names no bay is a choice with
+ * no rent and no refundable advance behind it. The Form Builder says so beside
+ * the editor, and this is where that promise is kept: the list is the edition's
+ * to write, the prices are never the list's to carry.
+ *
+ * ⚠️ An EMPTY authored list reads as "not authored", not as "offer nothing". A
+ * question with no choices is a form nobody can submit, and the row arrives
+ * empty in exactly one ordinary case — an admin clearing the box to go back to
+ * the bays.
+ */
+export function zoneChoices(
+  authored: FieldOption[] | null | undefined,
+  zones: PublicZone[],
+  forVendor: boolean,
+): FieldOption[] {
+  if (authored && authored.length > 0) return authored;
+  return zoneOptions(zones, forVendor);
+}
+
 const YES_NO: FieldOption[] = [
   { value: 'YES', label: 'Yes', labelTa: null },
   { value: 'NO', label: 'No', labelTa: null },

@@ -309,6 +309,23 @@ export function needsOptions(type: string): boolean {
   return type === 'select' || type === 'radio';
 }
 
+/**
+ * Whether the builder offers a choice list for this type at all.
+ *
+ * 🔴 Wider than `needsOptions`, and the gap is the whole point. A `select` or a
+ * `radio` REQUIRES a list — with none it asks a question nobody can answer, so
+ * the builder will not save one. A `zone` question MAY have one: left empty it
+ * falls back to the edition's bays, which is what it has always done and what
+ * every form does today. See `zoneChoices`.
+ *
+ * ⚠️ Keeping the two functions apart is what stops "may be authored" from
+ * turning into "must be" — a zone question saved with an empty list is the
+ * ordinary case, not a validation failure.
+ */
+export function canAuthorOptions(type: string): boolean {
+  return needsOptions(type) || type === 'zone';
+}
+
 /** Whether an answer to this question is a media-store key rather than text. */
 export function isFileType(type: string): type is 'file' | 'files' {
   return type === 'file' || type === 'files';

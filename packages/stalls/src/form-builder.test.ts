@@ -4,6 +4,7 @@ import {
   AUTHORABLE_FIELD_TYPES,
   type BuiltForm,
   type BuiltFormField,
+  canAuthorOptions,
   canCarryMedia,
   canDeleteField,
   canRetypeBuiltInTo,
@@ -141,6 +142,33 @@ describe('what a built-in field may not change', () => {
    *  the wrong type the moment it is touched. */
   test('a structural field is offered itself and nothing else', () => {
     expect(fieldTypeChoices(field({ isBuiltIn: true, type: 'zone' }))).toEqual(['zone']);
+  });
+
+  /**
+   * 🔴 A zone question's TYPE is fixed and its LIST is not, and the two are
+   * separate questions. It stays a preferred-location question — the column and
+   * the rent lookup depend on it — while what it offers became the edition's to
+   * write. `needsOptions` is what the builder refuses an empty list on;
+   * `canAuthorOptions` is what it draws the editor for.
+   */
+  test('a zone question may carry a choice list without needing one', () => {
+    expect(canAuthorOptions('zone')).toBe(true);
+    expect(needsOptions('zone')).toBe(false);
+  });
+
+  test('a select or a radio needs the list it is offered', () => {
+    for (const t of ['select', 'radio']) {
+      expect(canAuthorOptions(t)).toBe(true);
+      expect(needsOptions(t)).toBe(true);
+    }
+  });
+
+  /** ⚠️ Never on a file question or a display block: a choice list on either is
+   *  a control nobody can answer. */
+  test('nothing else is offered a list at all', () => {
+    for (const t of ['text', 'number', 'file', 'files', 'display', 'appliances']) {
+      expect(canAuthorOptions(t)).toBe(false);
+    }
   });
 
   /** ⚠️ The submit path reads its column whether or not the form asked, so a

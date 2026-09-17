@@ -60,7 +60,7 @@ async function fillVendor(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText(/^Address/), '12 Mettupalayam Road');
   await retype(user, screen.getByLabelText(/Contact Number/), '+91 98400 12345');
   await choose(user, screen.getByLabelText(/Type of stall/), 'FOOD');
-  await user.click(screen.getByLabelText(/Category C1/));
+  await choose(user, screen.getByLabelText(/Preferred Location/), 'C1');
   await user.type(screen.getByLabelText(/What items are you selling/), 'Spices');
   await user.type(screen.getByLabelText(/Number of stalls required/), '1');
 }
@@ -113,22 +113,46 @@ describe('RequestForm — vendor', () => {
     expect(screen.queryByLabelText(/^I Agree$/)).not.toBeInTheDocument();
   });
 
-  test('quotes the rent per open zone and does not offer closed zones to vendors', async () => {
+  /**
+   * 🔴 A DROPDOWN of places, with no money on it.
+   *
+   * It was a grid of radio plates each quoting its own rent and refundable
+   * advance — a third of the form's height for one question, answering a
+   * question nobody had asked yet. What a requester is priced at is the bay
+   * they AGREE to, not the one they ask for, and the quote and the payment
+   * letter are where that is said.
+   */
+  test('offers the bays as a dropdown, and quotes no money on it', async () => {
     installFetch([config(), session()]);
     renderAt('/stalls/apply/vendor', routes, { requester: true });
-    // ⚠️ Wait for the ZONE, not for the form's first label. The form now
-    // renders behind the session load as well as the config load, and the
-    // Tamil caption arrives with the former while the bays arrive with the
-    // latter — so the old wait could pass with no bays on screen yet.
-    const c1 = (await screen.findByLabelText(/Category C1/)).closest('label') as HTMLElement;
-    // The form renders before /config resolves; the rent arrives with it. With
-    // no stall type chosen yet it quotes the non-food rate…
-    expect(await within(c1).findByText(/₹12,000 \+ GST/)).toBeInTheDocument();
-    // …and follows the stall type once one is picked.
-    await choose(userEvent.setup(), screen.getByLabelText(/Type of stall/), 'FOOD');
-    expect(await within(c1).findByText(/₹15,000 \+ GST/)).toBeInTheDocument();
-    expect(screen.queryByLabelText(/Category A3/)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/Category B2/)).not.toBeInTheDocument();
+    // ⚠️ Wait for the BAYS, not for the form's first label. The form renders
+    // behind the session load as well as the config load, and the Tamil caption
+    // arrives with the former while the bays arrive with the latter.
+    const user = userEvent.setup();
+    const picker = await screen.findByLabelText(/Preferred Location/);
+    await user.click(picker);
+    const list = await screen.findByRole('listbox');
+
+    expect(within(list).getByRole('option', { name: /Category C1/ })).toBeInTheDocument();
+    expect(within(list).queryByText(/₹/)).not.toBeInTheDocument();
+    expect(within(list).queryByText(/refundable advance/)).not.toBeInTheDocument();
+  });
+
+  /** 🔴 A bay this form cannot have is not in the list at all, where it used to
+   *  sit greyed out saying "Not available this year". In a dropdown, read one
+   *  row at a time, a dead row is worse than on a plate: it is a row somebody
+   *  arrows onto and then has to work out. */
+  test('leaves out the bays a vendor cannot have', async () => {
+    installFetch([config(), session()]);
+    renderAt('/stalls/apply/vendor', routes, { requester: true });
+    const user = userEvent.setup();
+    await user.click(await screen.findByLabelText(/Preferred Location/));
+    const list = await screen.findByRole('listbox');
+
+    // Closed to trade, so `zoneOptions` never offered them to this form…
+    expect(within(list).queryByRole('option', { name: /Category A3/ })).not.toBeInTheDocument();
+    expect(within(list).queryByRole('option', { name: /Category B2/ })).not.toBeInTheDocument();
+    expect(within(list).queryByText(/Not available/)).not.toBeInTheDocument();
   });
 
   test('appends the admin-configured custom field', async () => {
@@ -225,8 +249,13 @@ describe('RequestForm — local welfare', () => {
     expect(await screen.findByText('திரும்பப்பெறக்கூடிய எச்சரிக்கை வைப்பு')).toBeInTheDocument();
     // The bays arrive with /config, which resolves after the session — wait for
     // the bay itself rather than for a caption that is already on screen.
-    expect(await screen.findByLabelText(/Category A3/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Category A3/)).toBeEnabled();
+    // ⚠️ A3 is closed to TRADE and priced for local welfare — the bays a village
+    // trader is most likely to want. It is the case that makes "drop what this
+    // form cannot have" a rent test rather than an `isClosedToVendors` one.
+    await userEvent.setup().click(await screen.findByLabelText(/Preferred Location/));
+    expect(
+      within(await screen.findByRole('listbox')).getByRole('option', { name: /Category A3/ }),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText(/How many Gas stoves/)).toBeInTheDocument();
   });
 });
@@ -259,8 +288,8 @@ describe('RequestForm — ashram', () => {
     await choose(user, screen.getByLabelText(/Credit card/), 'NO');
     await user.click(screen.getByLabelText(/Used by Department for Sales/));
     await user.type(screen.getByLabelText(/displaying\/Selling/), 'Books');
-    // Preferred location is the zone radio list on every form.
-    await user.click(screen.getByLabelText(/Category A4/));
+    // Preferred location is the same bay dropdown on every form.
+    await choose(user, screen.getByLabelText(/Preferred Location/), 'A4');
     await user.type(screen.getByLabelText(/Number of stalls required/), '1');
     await choose(user, screen.getByLabelText(/Tamil Thembu/), 'NO');
     for (const f of [
