@@ -3,7 +3,7 @@ import { ApiError } from '../api-client';
 import { continueStep, getStatus, requestCoupon } from '../api';
 import { useLoad } from '../hooks';
 import { Card, H1, Icon, Loading } from '../ui';
-import { RequestCards } from './RequestCards';
+import { RequestView } from './RequestView';
 
 /**
  * The vendor's own portal.
@@ -69,7 +69,7 @@ export function StatusPage() {
     <div>
       <H1 sub={data.displayName}>Your Stall Requests</H1>
 
-      <RequestCards
+      <RequestView
         requests={data.requests}
         openStep={(reference, step) => continueStep(token, { reference, step })}
         getCoupon={(reference) => requestCoupon(token, { reference })}

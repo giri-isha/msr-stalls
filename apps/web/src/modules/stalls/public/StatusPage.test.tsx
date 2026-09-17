@@ -10,7 +10,7 @@ afterEach(() => vi.unstubAllGlobals());
 const routes = [{ path: '/stalls/status/:token', element: <StatusPage /> }];
 
 describe('StatusPage', () => {
-  test("shows the vendor's requests, and the stall number only once selected", async () => {
+  test("shows the vendor's requests one at a time, and the stall number only once selected", async () => {
     installFetch([
       [
         'GET',
@@ -42,11 +42,14 @@ describe('StatusPage', () => {
     ]);
     renderAt(`/stalls/status/${'t'.repeat(43)}`, routes);
     expect(await screen.findByText('Priya Venkat')).toBeInTheDocument();
-    expect(screen.getByText('Green Leaf Organics')).toBeInTheDocument();
-    expect(screen.getByText('Second Stall')).toBeInTheDocument();
+    // The newest request is on screen; the other is in the switcher.
+    expect(screen.getByText('Shortlisted')).toBeInTheDocument();
+    expect(screen.queryByText('A4-5')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /Green Leaf Organics/ }));
+
     expect(screen.getByText('A4-5')).toBeInTheDocument();
     expect(screen.getByText('Selected')).toBeInTheDocument();
-    expect(screen.getByText('Shortlisted')).toBeInTheDocument();
   });
 
   test('the emailed link can ask for a coupon too, naming its own token', async () => {
@@ -81,7 +84,8 @@ describe('StatusPage', () => {
     ]);
     renderAt(`/stalls/status/${token}`, routes);
 
-    await userEvent.click(await screen.findByRole('button', { name: /Get Your Coupon/ }));
+    await userEvent.click(await screen.findByRole('tab', { name: /Staff/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Get Your Coupon/ }));
 
     expect(await screen.findByText('GLO-2026-K7Q4M2X9')).toBeInTheDocument();
     expect(fx.last().url).toContain(`/public/status/${token}/coupon`);

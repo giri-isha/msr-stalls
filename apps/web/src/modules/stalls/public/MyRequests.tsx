@@ -2,8 +2,8 @@ import { Link, Navigate } from 'react-router';
 import { continueMyStep, getMyRequests, requestMyCoupon } from '../api';
 import { useLoad } from '../hooks';
 import { useRequester } from '../requester';
-import { Btn, Card, H1, Icon, Loading } from '../ui';
-import { RequestCards } from './RequestCards';
+import { Btn, Card, Icon, Loading } from '../ui';
+import { RequestView } from './RequestView';
 
 /**
  * A requester's own requests, reached by logging in.
@@ -20,6 +20,10 @@ import { RequestCards } from './RequestCards';
  * ⚠️ The gate is `useRequester()`, not a failed fetch. A signed-out reader is
  * sent to the login rather than shown an error, because arriving here signed
  * out is the ordinary case — a bookmark, or a session that quietly expired.
+ *
+ * No heading of its own: the request's header band is the page's title, and
+ * the header above has the way to a new request. A "My Requests" H1 over a
+ * band that already names the request said the same thing twice.
  */
 export function MyRequests() {
   const { requester, status } = useRequester();
@@ -43,48 +47,32 @@ function Loaded() {
   // beside a working link to the forms is the same page with more alarm in it.
   const requests = data?.requests ?? [];
 
-  return (
-    <div>
-      {/* ⚠️ "My Requests", the words on the tab that got the reader here. The
-          heading said "Your Stall Requests" while the nav said My Requests,
-          and a page whose title is not the name of the thing you pressed is a
-          page you check twice to be sure you arrived. The emailed-link portal
-          keeps its own heading — `StatusPage` has no nav above it. */}
-      <H1 icon={<Icon name='list-view' size={18} />} sub={data?.displayName ?? undefined}>
-        My Requests
-      </H1>
+  if (requests.length === 0) {
+    return (
+      <Card pad={18} style={{ display: 'grid', gap: 12, textAlign: 'center' }}>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>You have not requested a stall yet</div>
+        <p style={{ margin: 0, fontSize: 13.5, color: 'var(--mfg)', lineHeight: 1.6 }}>
+          Once you send one in, this page tells you where it has got to and which forms are still
+          waiting on you.
+        </p>
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <Link to='/stalls/apply' style={{ color: 'inherit' }}>
+            <Btn kind='primary'>
+              <Icon name='ticket' size={14} />
+              Request a Stall
+            </Btn>
+          </Link>
+        </div>
+      </Card>
+    );
+  }
 
-      {requests.length === 0 ? (
-        <Card pad={18} style={{ display: 'grid', gap: 12, textAlign: 'center' }}>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>You have not requested a stall yet</div>
-          <p style={{ margin: 0, fontSize: 13.5, color: 'var(--mfg)', lineHeight: 1.6 }}>
-            Once you send one in, this page tells you where it has got to and which forms are still
-            waiting on you.
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <Link to='/stalls/apply' style={{ color: 'inherit' }}>
-              <Btn kind='primary'>
-                <Icon name='ticket' size={14} />
-                Request a Stall
-              </Btn>
-            </Link>
-          </div>
-        </Card>
-      ) : (
-        <>
-          <RequestCards
-            requests={requests}
-            openStep={(reference, step) => continueMyStep({ reference, step })}
-            getCoupon={(reference) => requestMyCoupon({ reference })}
-            reload={reload}
-          />
-          <p style={{ fontSize: 12.5, color: 'var(--mfg)', marginTop: 20, lineHeight: 1.6 }}>
-            Need another stall? <Link to='/stalls/apply'>Send in Another Request</Link>. A request
-            is capped at what one decision can cover, so ground in a second area is a second
-            request.
-          </p>
-        </>
-      )}
-    </div>
+  return (
+    <RequestView
+      requests={requests}
+      openStep={(reference, step) => continueMyStep({ reference, step })}
+      getCoupon={(reference) => requestMyCoupon({ reference })}
+      reload={reload}
+    />
   );
 }

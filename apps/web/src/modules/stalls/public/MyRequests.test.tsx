@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { installFetch, renderAt } from '../test-utils';
@@ -12,7 +12,7 @@ const routes = [
   { path: '/stalls/apply', element: <div>the form picker</div> },
 ];
 
-const render = () => renderAt('/stalls/requests', routes, { requester: true });
+const render = (path = '/stalls/requests') => renderAt(path, routes, { requester: true });
 
 const SESSION = {
   accountId: 'a-1',
@@ -21,6 +21,24 @@ const SESSION = {
   email: 'priya@greenleaf.example',
   phone: '9840012345',
 };
+
+/** What the API reads back off the row — see `submittedSections`. */
+const SUBMITTED = [
+  {
+    title: 'Your Request',
+    glyph: 'clipboard-list',
+    facts: [
+      { label: 'Stall Name', value: 'Green Leaf Organics' },
+      { label: 'Location Requested', value: 'C1' },
+      { label: 'Items', value: 'Organic spices, cold-pressed oils, honey' },
+    ],
+  },
+  {
+    title: 'Electrical',
+    glyph: 'sliders',
+    facts: [{ label: '15 A Plug Points', value: '2' }],
+  },
+];
 
 /** One selected request with whatever is outstanding on it. */
 const withPending = (
@@ -47,23 +65,32 @@ const withPending = (
   ],
 });
 
-/** What the API reads back off the row — see `submittedSections`. */
-const SUBMITTED = [
-  {
-    title: 'Your Request',
-    glyph: 'clipboard-list',
-    facts: [
-      { label: 'Stall Name', value: 'Green Leaf Organics' },
-      { label: 'Location Requested', value: 'C1' },
-      { label: 'Items', value: 'Organic spices, cold-pressed oils, honey' },
-    ],
-  },
-  {
-    title: 'Electrical',
-    glyph: 'sliders',
-    facts: [{ label: '15 A Plug Points', value: '2' }],
-  },
-];
+/** Two requests on one account, newest first — the order the API sends. */
+const TWO = {
+  displayName: 'Priya Venkat',
+  requests: [
+    {
+      reference: 'VEN-2026-0002',
+      requestType: 'VENDOR',
+      stallName: 'Second Stall',
+      status: 'SUBMITTED',
+      submittedAt: '2026-09-02T10:00:00.000Z',
+      allocatedZone: null,
+      allocatedStalls: [],
+      pending: [],
+    },
+    {
+      reference: 'VEN-2026-0001',
+      requestType: 'VENDOR',
+      stallName: 'Green Leaf Organics',
+      status: 'SELECTED',
+      submittedAt: '2026-09-01T10:00:00.000Z',
+      allocatedZone: 'C1',
+      allocatedStalls: ['C1-4'],
+      pending: [],
+    },
+  ],
+};
 
 const PAYMENT = {
   feePaise: 11_800_000, // ₹1,18,000
@@ -79,42 +106,58 @@ const signedIn = (requests: unknown) =>
     ['GET', /\/public\/requests$/, () => requests],
   ]);
 
+const tab = (name: RegExp) => screen.getByRole('tab', { name });
+const noTab = (name: RegExp) => expect(screen.queryByRole('tab', { name })).not.toBeInTheDocument();
+
 describe('MyRequests', () => {
-  test('shows the requests of whoever is logged in', async () => {
-    signedIn({
-      displayName: 'Priya Venkat',
-      requests: [
-        {
-          reference: 'VEN-2026-0002',
-          requestType: 'VENDOR',
-          stallName: 'Second Stall',
-          status: 'SUBMITTED',
-          submittedAt: '2026-09-02T10:00:00.000Z',
-          allocatedZone: null,
-          allocatedStalls: [],
-          pending: [],
-        },
-        {
-          reference: 'VEN-2026-0001',
-          requestType: 'VENDOR',
-          stallName: 'Green Leaf Organics',
-          status: 'SELECTED',
-          submittedAt: '2026-09-01T10:00:00.000Z',
-          allocatedZone: 'C1',
-          allocatedStalls: ['C1-4'],
-          pending: [],
-        },
-      ],
-    });
+  test('shows the newest request first, with the one sentence a new applicant comes back for', async () => {
+    signedIn(TWO);
     render();
 
-    expect(await screen.findByText('Green Leaf Organics')).toBeInTheDocument();
-    expect(screen.getByText('Second Stall')).toBeInTheDocument();
-    expect(screen.getByText('VEN-2026-0001')).toBeInTheDocument();
-    expect(screen.getByText('C1-4')).toBeInTheDocument();
+    expect(await screen.findByText(/Received. The stall team will review it./)).toBeInTheDocument();
+    // The reference is in the band and again on its own pill in the switcher.
+    expect(screen.getAllByText('VEN-2026-0002')).toHaveLength(2);
+    // The other request is in the switcher, not on the page.
+    expect(screen.queryByText('C1-4')).not.toBeInTheDocument();
+  });
+
+  test('two requests draw a switcher, with the one on screen pressed', async () => {
+    signedIn(TWO);
+    render();
+
+    const group = await screen.findByRole('group', { name: 'Your Requests' });
+    expect(within(group).getAllByRole('button')).toHaveLength(2);
+    expect(within(group).getByRole('button', { name: /Second Stall/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  test('a lone request has no switcher to choose from', async () => {
+    signedIn(withPending([]));
+    render();
+
+    await screen.findByText('VEN-2026-0001');
+    expect(screen.queryByRole('group', { name: 'Your Requests' })).not.toBeInTheDocument();
+  });
+
+  test('the switcher moves between requests and keeps the choice in the URL', async () => {
+    signedIn(TWO);
+    const { router } = render();
+
+    await userEvent.click(await screen.findByRole('button', { name: /Green Leaf Organics/ }));
+
+    expect(await screen.findByText('C1-4')).toBeInTheDocument();
     expect(screen.getByText('Selected')).toBeInTheDocument();
-    // The one sentence a requester who has only just applied comes back for.
-    expect(screen.getByText(/Received. The stall team will review it./)).toBeInTheDocument();
+    expect(router.state.location.search).toBe('?ref=VEN-2026-0001');
+  });
+
+  test('?ref in the URL picks the request, so a refresh lands where it was', async () => {
+    signedIn(TWO);
+    render('/stalls/requests?ref=VEN-2026-0001');
+
+    expect(await screen.findByText('C1-4')).toBeInTheDocument();
+    expect(screen.queryByText(/Received. The stall team/)).not.toBeInTheDocument();
   });
 
   test('carries no token in the URL it asks on — the cookie is the credential', async () => {
@@ -145,7 +188,25 @@ describe('MyRequests', () => {
     );
   });
 
-  test('offers a way in only for the steps a requester can fill themselves', async () => {
+  test('a tab exists for a step the API says is outstanding, and not otherwise', async () => {
+    signedIn(
+      withPending([
+        { step: 'BANK_FORM', label: 'Bank details pending' },
+        { step: 'PAYMENT', label: 'Payment pending' },
+      ]),
+    );
+    render();
+
+    await screen.findByRole('tab', { name: /Overview/ });
+    tab(/Bank Details/);
+    tab(/Payment/);
+    noTab(/FSSAI/);
+    // ⚠️ `staff` is null here, so no Staff tab either — the tab set is what the
+    // API sent, nothing more.
+    noTab(/Staff/);
+  });
+
+  test('the overview lists what is still to do, with a way in only where there is one', async () => {
     signedIn(
       withPending([
         { step: 'BANK_FORM', label: 'Bank details pending' },
@@ -156,9 +217,21 @@ describe('MyRequests', () => {
 
     expect(await screen.findByText('Bank details pending')).toBeInTheDocument();
     // Payment shows — the requester should know the team is waiting on it —
-    // but carries no button, because Finance moves it and this page cannot.
+    // but its row leads to the figures, because Finance moves the step and
+    // this page cannot.
     expect(screen.getByText('Payment pending')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /Open the Form/ })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /See Payment/ })).toBeInTheDocument();
+  });
+
+  test('"See Payment" on the overview opens the Payment tab', async () => {
+    signedIn(withPending([{ step: 'PAYMENT', label: 'Payment pending' }], { payment: PAYMENT }));
+    render();
+
+    await userEvent.click(await screen.findByRole('button', { name: /See Payment/ }));
+
+    expect(screen.getByRole('tab', { name: /Payment/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('₹1,38,000')).toBeInTheDocument();
   });
 
   test('opens a step on the click, naming its own request', async () => {
@@ -185,14 +258,35 @@ describe('MyRequests', () => {
     expect(fx.last().body).toEqual({ reference: 'VEN-2026-0001', step: 'FSSAI' });
   });
 
-  test('names the amount and the accounts under the payment chip', async () => {
+  test("the step's own tab opens the form too", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, assign });
+    installFetch([
+      ['GET', /\/public\/session$/, () => SESSION],
+      [
+        'GET',
+        /\/public\/requests$/,
+        () => withPending([{ step: 'BANK_FORM', label: 'Bank details pending' }]),
+      ],
+      ['POST', /\/public\/requests\/continue$/, () => ({ url: 'http://web.test/stalls/bank/tok' })],
+    ]);
+    render();
+
+    await userEvent.click(await screen.findByRole('tab', { name: /Bank Details/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Open the Form/ }));
+
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('http://web.test/stalls/bank/tok'));
+  });
+
+  test('names the amount and the accounts on the Payment tab', async () => {
     // 🔴 The whole point: these figures used to exist only in a letter, and a
     // vendor who never got it had a chip saying "payment pending" and no way on
     // this earth to find out what to pay or where.
     signedIn(withPending([{ step: 'PAYMENT', label: 'Payment pending' }], { payment: PAYMENT }));
     render();
 
-    expect(await screen.findByText('Payment pending')).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('tab', { name: /Payment/ }));
+
     expect(screen.getByText('₹1,18,000')).toBeInTheDocument();
     expect(screen.getByText('₹20,000')).toBeInTheDocument();
     expect(screen.getByText('₹1,38,000')).toBeInTheDocument();
@@ -208,12 +302,105 @@ describe('MyRequests', () => {
     );
     render();
 
+    await userEvent.click(await screen.findByRole('tab', { name: /Payment/ }));
+
     // A vendor transferring to a half-remembered account is the expensive
     // failure here, so a missing number is said out loud.
-    expect(await screen.findAllByText(/ask the stall team for the account/i)).toHaveLength(2);
+    expect(screen.getAllByText(/ask the stall team for the account/i)).toHaveLength(2);
   });
 
-  test('shows the coupon and the way to register under the staff chip', async () => {
+  test('a confirmed transfer keeps the Payment tab after the step has cleared', async () => {
+    signedIn(
+      withPending([], {
+        payment: PAYMENT,
+        paymentClaims: [
+          {
+            id: 'pc-1',
+            purpose: 'RENT',
+            amountPaise: 11_800_000,
+            referenceNo: 'UTR123',
+            paidOn: '2026-09-05',
+            status: 'VERIFIED',
+            rejectReason: null,
+          },
+        ],
+      }),
+    );
+    render();
+
+    await userEvent.click(await screen.findByRole('tab', { name: /Payment/ }));
+
+    expect(screen.getByText('Confirmed')).toBeInTheDocument();
+    expect(screen.getByText(/UTR123/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Report Another Transfer/ })).toBeInTheDocument();
+  });
+
+  test('a rejected transfer shows its reason', async () => {
+    // 🔴 That reason is the only thing telling the requester what to correct.
+    signedIn(
+      withPending([{ step: 'PAYMENT', label: 'Payment pending' }], {
+        payment: PAYMENT,
+        paymentClaims: [
+          {
+            id: 'pc-1',
+            purpose: 'RENT',
+            amountPaise: 11_800_000,
+            referenceNo: 'UTR999',
+            paidOn: '2026-09-05',
+            status: 'REJECTED',
+            rejectReason: 'No credit with this reference on the statement.',
+          },
+        ],
+      }),
+    );
+    render();
+
+    await userEvent.click(await screen.findByRole('tab', { name: /Payment/ }));
+
+    expect(screen.getByText('Not found')).toBeInTheDocument();
+    expect(screen.getByText(/No credit with this reference/)).toBeInTheDocument();
+  });
+
+  test('reporting a transfer opens a dialog, sends the claim, and re-reads', async () => {
+    let reads = 0;
+    const fx = installFetch([
+      ['GET', /\/public\/session$/, () => SESSION],
+      [
+        'GET',
+        /\/public\/requests$/,
+        () => {
+          reads += 1;
+          return withPending([{ step: 'PAYMENT', label: 'Payment pending' }], {
+            payment: PAYMENT,
+          });
+        },
+      ],
+      ['POST', /\/public\/requests\/payment-claim$/, () => ({ id: 'pc-1' })],
+    ]);
+    render();
+
+    await userEvent.click(await screen.findByRole('tab', { name: /Payment/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Report a Transfer/ }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Report a transfer' });
+    await userEvent.type(within(dialog).getByLabelText(/UTR or reference number/), 'UTR123');
+    await userEvent.type(within(dialog).getByLabelText(/Amount transferred/), '118000');
+    await userEvent.type(within(dialog).getByLabelText(/Date of transfer/), '2026-09-05');
+    await userEvent.click(within(dialog).getByRole('button', { name: /Report It/ }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const post = fx.calls.find((c) => c.method === 'POST');
+    expect(post?.body).toMatchObject({
+      reference: 'VEN-2026-0001',
+      purpose: 'RENT',
+      referenceNo: 'UTR123',
+      amountPaise: 11_800_000,
+      paidOn: '2026-09-05',
+    });
+    await waitFor(() => expect(reads).toBe(2));
+  });
+
+  test('shows the coupon and the way to register on the Staff tab', async () => {
     signedIn(
       withPending([{ step: 'STAFF_REGISTRATION', label: 'Staff not registered' }], {
         staff: {
@@ -225,7 +412,9 @@ describe('MyRequests', () => {
     );
     render();
 
-    expect(await screen.findByText('Staff not registered')).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('tab', { name: /Staff/ }));
+
+    expect(screen.getByText('Staff not registered')).toBeInTheDocument();
     expect(screen.getByText('GLO-2026-K7Q4M2X9')).toBeInTheDocument();
     // ⚠️ Never "0 of 8": the cap is what the coupon admits, not what the stall
     // owes. Reading it as a quota is the misreading this wording exists to stop.
@@ -235,19 +424,19 @@ describe('MyRequests', () => {
       'href',
       '/stalls/staff/GLO-2026-K7Q4M2X9',
     );
-    // The chip above already carries the warning; the panel adds no second one.
-    expect(screen.queryByText('Staff registration')).not.toBeInTheDocument();
   });
 
   test('offers a coupon to a vendor who has none, without inventing a chore', async () => {
     signedIn(withPending([], { staff: { coupons: [], capacity: 0, registered: 0 } }));
     render();
 
-    expect(await screen.findByRole('button', { name: /Get Your Coupon/ })).toBeInTheDocument();
     // ⚠️ `pendingSteps` said nothing is outstanding — it cannot, with no coupon
-    // to register against — so this page must not say otherwise.
+    // to register against — so the overview must not say otherwise.
+    expect(await screen.findByText(/Nothing is outstanding/)).toBeInTheDocument();
     expect(screen.queryByText('Still to do')).not.toBeInTheDocument();
-    expect(screen.getByText('Staff registration')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('tab', { name: /Staff/ }));
+    expect(screen.getByRole('button', { name: /Get Your Coupon/ })).toBeInTheDocument();
   });
 
   test('asking for a coupon names its own request and reveals the code', async () => {
@@ -262,7 +451,8 @@ describe('MyRequests', () => {
     ]);
     render();
 
-    await userEvent.click(await screen.findByRole('button', { name: /Get Your Coupon/ }));
+    await userEvent.click(await screen.findByRole('tab', { name: /Staff/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Get Your Coupon/ }));
 
     expect(await screen.findByText('GLO-2026-K7Q4M2X9')).toBeInTheDocument();
     expect(fx.last().body).toEqual({ reference: 'VEN-2026-0001' });
@@ -289,7 +479,9 @@ describe('MyRequests', () => {
     );
     render();
 
-    expect(await screen.findByText('GLO-2026-K7Q4M2X9')).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('tab', { name: /Staff/ }));
+
+    expect(screen.getByText('GLO-2026-K7Q4M2X9')).toBeInTheDocument();
     expect(screen.getByText('GLO-2026-B4K2M7PW')).toBeInTheDocument();
 
     const links = screen.getAllByRole('link', { name: /Register Staff/ });
@@ -304,35 +496,32 @@ describe('MyRequests', () => {
     expect(screen.getByText('up to 12 people')).toBeInTheDocument();
   });
 
-  /** 🔴 What they filled in, read back to them — the question the portal could
-   *  not answer at all. Closed on arrival: the page's job first is to say what
-   *  has been decided and what is outstanding, and a full application unfolded
-   *  above those would bury both. */
-  test('reads back what the requester submitted, from a section they open', async () => {
+  test('reads back what the requester submitted, on its own tab', async () => {
+    // 🔴 What they filled in, read back to them — the question the portal could
+    // not answer at all. Not the default tab: the page's job first is to say
+    // what has been decided and what is outstanding.
     signedIn(withPending([]));
     render();
 
-    const open = await screen.findByText(/what you submitted/i);
-    // Present but not unfolded: `details` keeps its contents out of the
-    // accessibility tree until the summary is pressed.
-    expect(screen.queryByText('Location Requested')).not.toBeVisible();
+    await screen.findByRole('tab', { name: /Overview/ });
+    expect(screen.queryByText('Location Requested')).not.toBeInTheDocument();
 
-    await userEvent.click(open);
+    await userEvent.click(screen.getByRole('tab', { name: /What You Submitted/ }));
 
-    expect(screen.getByText('Location Requested')).toBeVisible();
+    expect(screen.getByText('Location Requested')).toBeInTheDocument();
     expect(screen.getByText('Organic spices, cold-pressed oils, honey')).toBeInTheDocument();
     expect(screen.getByText('15 A Plug Points')).toBeInTheDocument();
     expect(screen.getByText('Electrical')).toBeInTheDocument();
   });
 
-  test('draws no such section for a payload that carries no answers', async () => {
+  test('draws no such tab for a payload that carries no answers', async () => {
     // The API and the web deploy separately: a page served ahead of the API
     // that fills this block must still show the status a requester came for.
     signedIn(withPending([], { submitted: undefined }));
     render();
 
     await screen.findByText('Green Leaf Organics');
-    expect(screen.queryByText(/what you submitted/i)).not.toBeInTheDocument();
+    noTab(/What You Submitted/);
   });
 
   test('a request still under consideration is given no list of future chores', async () => {
@@ -355,5 +544,6 @@ describe('MyRequests', () => {
 
     await screen.findByText('Second Stall');
     expect(screen.queryByText('Still to do')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Nothing is outstanding/)).not.toBeInTheDocument();
   });
 });
