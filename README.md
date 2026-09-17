@@ -205,6 +205,16 @@ docs/                         specs, plans, migration checklist
   `requireBackoffice`, `/api/m/stalls/backoffice`, the Users directory's
   Backoffice tile. "Staff" is left to the vendor alone — the coupon, the staff
   passes, the staff-registration page — and means exactly one thing now.
+- **Every write leaves a row the team can read back.** `audit()` is the one
+  way the module records that something happened: it writes the module's own
+  `stall_audit_event` and forwards the same event to the host's trail. A
+  requester's sign-ins and submissions are recorded against their account, not
+  against whoever opens the record next; amendments and account edits carry
+  before/after per field; every letter out is a row, sent or failed. Reading it
+  is `audit.read`, a `sensitive` privilege, on Audit Logs and on each request's
+  Activity Log tab. **Reads are deliberately not recorded** — a row per view
+  would bury the writes the log exists to answer for.
+
 - **A backoffice desk can set a requester's password, and that is
   TEMPORARY.** It is the only action in the module that hands somebody a way
   into an account rather than causing the account holder to be sent one, which

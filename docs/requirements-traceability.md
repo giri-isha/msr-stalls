@@ -245,3 +245,15 @@ this repository.
 |---|---|---|
 | The Tamil for the refundable-advance consent | The 2025 Tamil names a flat Rs.4000. The advance is area-wise now, so that sentence is no longer true — and it is the sentence that tells a requester money will be withheld from them. It needs the team's own revised wording, not a translation invented here. The field renders its English help alone until then, which is correct rather than broken. | `packages/stalls/src/forms.ts`, `depositAcknowledged.helpTa` |
 | Whether the vendor chair and table rates are current | Rs.100 and Rs.400 per day come from the 2025 bank-details form. They are seeded as an edition's defaults and an admin sets them per edition, so a stale figure is editable rather than baked in — but nobody has confirmed the 2026 numbers. | Admin → Charges |
+
+## 10. Audit
+
+| Requirement | Where | Status |
+|---|---|---|
+| A full audit log of every operation, so the team knows who made a change | `stall_audit_event`, written by `apps/api/src/modules/stalls/audit.ts` on every write; `GET /audit`; `apps/web/src/modules/stalls/backoffice/AuditLog.tsx` | Built |
+| The same at request level | `GET /requests/:id/audit`; the Activity Log tab on `RequestDetail.tsx` | Built |
+| Who changed what, and from what | `changes` on `stall_request.amended` and `stall_account.updated` (`changeSet` in `@stalls/core`) | Built |
+| Requester sign-ins and submissions | `stall_account.*`, `stall_request.filed`, `stall_fssai.submitted`, `stall_vendor_staff.registered`, `stall_payment_claim.submitted` — all attributed to the ACCOUNT | Built |
+| Letters sent and letters that failed | `audit-senders.ts` wraps the mailer and the WhatsApp sender at registration | Built |
+| Backoffice sign-ins | `auditBackofficeSignIn`, called by the shell's dev sign-in; the host's SSO callback makes the same call | Built |
+| Who READ a record | Not recorded, by decision — a row per view would bury the writes. One `audit()` call in a route if the team changes its mind. | Differs |
