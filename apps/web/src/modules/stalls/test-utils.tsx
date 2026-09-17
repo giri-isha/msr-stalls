@@ -606,3 +606,30 @@ export const PAST_CONFIG = {
     z.code === 'C1' ? { ...z, name: 'C1 — Moon side (2025)' } : z,
   ),
 };
+
+/** One audit row, as `GET /audit` and `GET /requests/:id/audit` return it. */
+export function auditEvent(over: Record<string, unknown> = {}) {
+  return {
+    id: 'a1111111-1111-4111-8111-111111111111',
+    occurredAt: '2026-09-17T06:02:47.000Z',
+    action: 'stall_request.amended',
+    label: 'Request Amended',
+    family: 'request',
+    glyph: 'pencil',
+    tone: 'neutral',
+    actorKind: 'BACKOFFICE',
+    actorRef: 'p-lead',
+    actorName: 'Deepa Ramanathan',
+    onBehalfOf: null,
+    channel: 'BACKOFFICE',
+    subjectType: 'request',
+    subjectRef: '22222222-2222-4222-8222-222222222222',
+    requestId: '22222222-2222-4222-8222-222222222222',
+    reference: 'VEN-2026-0001',
+    requestType: 'VENDOR',
+    changes: [{ field: 'chairsNeeded', before: 2, after: 4 }],
+    detail: { fields: ['chairsNeeded'] },
+    outcome: 'OK',
+    ...over,
+  };
+}

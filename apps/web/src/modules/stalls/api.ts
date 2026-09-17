@@ -1,5 +1,8 @@
 import type {
   ApplyPlanResult,
+  AuditEventView,
+  AuditPage,
+  ListAuditQuery,
   AvailableStall,
   AddFormFieldInput,
   AddSectionInput,
@@ -464,6 +467,22 @@ export const sendAccessLinkTo = (accountId: string) =>
  *  host signs requesters in through Isha SSO. */
 export const setRequesterPassword = (accountId: string, password: string) =>
   apiFetch<void>(`${BASE}/users/${accountId}/password`, { method: 'POST', json: { password } });
+
+// ── Backoffice: the audit log ───────────────────────────────────────────────
+//
+// Every filter is applied by the SERVER. The log is the one list in the module
+// expected to run to tens of thousands of rows, so nothing here narrows a list
+// already held.
+
+/** The edition's log, filtered and paged. `audit.read`. */
+export const listAudit = (q: Partial<ListAuditQuery> = {}) =>
+  apiFetch<AuditPage>(
+    `${BASE}/audit${qs(q as Record<string, string | number | boolean | undefined>)}`,
+  );
+
+/** One request's timeline, newest first. `audit.read`, plus the request's scope. */
+export const getRequestAudit = (id: string) =>
+  apiFetch<AuditEventView[]>(`${BASE}/requests/${id}/audit`);
 
 // ════════════════════════════════════════════════════════════════════════════
 // PHASE 2 — Onboarding & money

@@ -2,6 +2,7 @@ import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
+  auditEvent,
   choose,
   detail,
   installFetch,
@@ -63,6 +64,23 @@ const base = () =>
     ],
     ['GET', /\/requests\/[^/]+$/, () => detail()],
     ['GET', /\/onboarding\/[^/]+$/, () => onboarding()],
+    [
+      'GET',
+      /\/requests\/[^/]+\/audit$/,
+      () => [
+        auditEvent(),
+        auditEvent({
+          id: 'a2222222-2222-4222-8222-222222222222',
+          action: 'stall_request.filed',
+          label: 'Request Filed',
+          actorKind: 'REQUESTER',
+          actorName: 'Priya Venkat',
+          channel: 'PORTAL',
+          changes: null,
+          detail: { reference: 'VEN-2026-0001' },
+        }),
+      ],
+    ],
   ] as Array<[string, RegExp, (url: URL) => unknown]>;
 
 describe('Requests', () => {
@@ -291,5 +309,43 @@ describe('Requests', () => {
     expect(screen.getByText('VEN-2026-0002')).toBeInTheDocument();
     expect(router.state.location.search).toContain('stage=BANK_FORM_SENT');
     expect(fx.calls.some((c) => c.url.includes('stage=BANK_FORM_SENT'))).toBe(true);
+  });
+});
+
+describe('RequestDetail › Activity Log', () => {
+  test('the tab lists the timeline for a holder of audit.read', async () => {
+    installFetch(base());
+    const user = userEvent.setup();
+    renderAt('/m/stalls/requests/22222222-2222-4222-8222-222222222222', routes, { me: true });
+    await screen.findByRole('tab', { name: /Application/ });
+    await user.click(screen.getByRole('tab', { name: /Activity Log/ }));
+    expect(await screen.findByText('Request Amended')).toBeInTheDocument();
+    expect(screen.getByText('Request Filed')).toBeInTheDocument();
+    expect(screen.getByText(/2 events/)).toBeInTheDocument();
+    await user.click(screen.getAllByRole('button', { name: 'Show Details' })[0]);
+    expect(screen.getByText('chairsNeeded')).toBeInTheDocument();
+  });
+
+  test('?tab=activity opens it directly, which is where the Audit Logs page links', async () => {
+    installFetch(base());
+    renderAt('/m/stalls/requests/22222222-2222-4222-8222-222222222222?tab=activity', routes, {
+      me: true,
+    });
+    expect(await screen.findByText('Request Amended')).toBeInTheDocument();
+  });
+
+  test('without audit.read there is no tab and no call', async () => {
+    const fx = installFetch([
+      [
+        'GET',
+        /\/me$/,
+        () => ({ ...ME_LEAD, privileges: ME_LEAD.privileges.filter((p) => p !== 'audit.read') }),
+      ],
+      ...base().slice(1),
+    ]);
+    renderAt('/m/stalls/requests/22222222-2222-4222-8222-222222222222', routes, { me: true });
+    await screen.findByRole('tab', { name: /Application/ });
+    expect(screen.queryByRole('tab', { name: /Activity Log/ })).not.toBeInTheDocument();
+    expect(fx.calls.some((c) => c.url.endsWith('/audit'))).toBe(false);
   });
 });

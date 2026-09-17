@@ -19,6 +19,7 @@ import { Submitted } from './public/Submitted';
 import { Empty } from './ui';
 import { useMe } from './me';
 import { Admin } from './backoffice/Admin';
+import { AuditLog } from './backoffice/AuditLog';
 import { RolesPrivileges } from './backoffice/access/RolesPrivileges';
 import { Users } from './backoffice/access/Users';
 import { CheckIn } from './backoffice/CheckIn';
@@ -100,6 +101,7 @@ export const stallsBackofficeRoutes: RouteObject[] = [
   // toolbar, and Admin's strip had grown to ten items.
   { path: 'access/roles', element: <RolesPrivileges /> },
   { path: 'access/users', element: <Users /> },
+  { path: 'audit', element: <AuditLog /> },
   { path: 'docs', element: <Documentation /> },
 ];
 
@@ -290,6 +292,16 @@ export const STALLS_NAV: StallsNavItem[] = [
     glyph: 'users',
     group: 'Access',
     requires: 'config.read',
+  },
+  {
+    label: 'Audit Logs',
+    to: '/m/stalls/audit',
+    glyph: 'scroll',
+    group: 'Access',
+    // ⚠️ Its own `sensitive` privilege, not the `config.read` the two screens
+    // above take: the log shows change sets, including what a bank form said
+    // before it was corrected.
+    requires: 'audit.read',
   },
   // ⚠️ No `requires`. The manual is the one screen everybody gets: a volunteer
   // who holds only `checkin:write` is exactly the reader who has never seen the

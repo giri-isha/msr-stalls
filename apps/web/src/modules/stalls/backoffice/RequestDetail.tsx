@@ -1,6 +1,6 @@
 import type { OnboardingDetail, RequestAllocation, RequestDetail as Detail } from '@stalls/core';
 import { useState } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { ApiError } from '../api-client';
 import * as api from '../api';
 import { StagePill, StatusPill, TypeBadge, hasStage } from '../components/StatusPill';
@@ -32,6 +32,7 @@ import {
   useToast,
   titleCase,
 } from '../ui';
+import { ActivityTimeline } from './ActivityTimeline';
 import { AmendDialog } from './AmendDialog';
 import { MoveAllocationDialog } from './MoveAllocationDialog';
 import { SelectDialog } from './SelectDialog';
@@ -96,7 +97,15 @@ export function RequestDetail() {
   // second call rather than a fatter `/requests/:id`, because this is the
   // shape Onboarding already reads and a second copy of it on the request
   // would be two answers to "what has come back" waiting to disagree.
-  const { data: forms } = useLoad(() => api.getOnboarding(id), [id]);
+  const formsLoad = useLoad(() => api.getOnboarding(id), [id]);
+  const forms = formsLoad.data;
+  const canAudit = can('audit.read');
+  // ⚠️ Not fetched at all without the privilege: a screen that asks and is
+  // refused logs a 403 per visit and tells the reader nothing.
+  const activity = useLoad(
+    () => (canAudit ? api.getRequestAudit(id) : Promise.resolve(null)),
+    [id, canAudit],
+  );
   const [busy, setBusy] = useState(false);
   const [reasonFor, setReasonFor] = useState<'reject' | 'flag' | null>(null);
   const [reason, setReason] = useState('');
@@ -106,10 +115,25 @@ export function RequestDetail() {
   // page closes on Escape, and a dialog whose open state it cannot see would
   // be dismissed together with the record behind it.
   const [moving, setMoving] = useState<RequestAllocation | null>(null);
-  const [tab, setTab] = useState('application');
+  // ⚠️ The tab rides in the URL as `?tab=`. The Audit Logs page links a row to
+  // `…/requests/:id?tab=activity`, and a coordinator sends a colleague "look at
+  // the activity on this one" — both need the tab in the address.
+  const [params, setParams] = useSearchParams();
+  const tab = params.get('tab') ?? 'application';
+  const setTab = (key: string) => {
+    const next = new URLSearchParams(params);
+    if (key === 'application') next.delete('tab');
+    else next.set('tab', key);
+    setParams(next, { replace: true });
+  };
 
   const listPath = pathname.slice(0, pathname.lastIndexOf('/'));
-  const listTo = { pathname: listPath, search };
+  // ⚠️ The list's own filters ride in the same query string as `tab`, so the
+  // tab is stripped on the way back — otherwise returning to the pipeline
+  // would carry a section of a record that is no longer on screen.
+  const listSearch = new URLSearchParams(search);
+  listSearch.delete('tab');
+  const listTo = { pathname: listPath, search: listSearch.toString() ? `?${listSearch}` : '' };
   const listLabel = LIST_LABEL[listPath.split('/').pop() ?? ''] ?? 'Requests';
 
   // ⚠️ Only while nothing is stacked on top. The reason prompt and the stall
@@ -124,6 +148,8 @@ export function RequestDetail() {
       await fn();
       toast.ok(label);
       reload();
+      formsLoad.reload();
+      activity.reload();
     } catch (e) {
       toast.fail(e instanceof ApiError ? e : new Error('Something went wrong'));
     } finally {
@@ -167,6 +193,8 @@ export function RequestDetail() {
     tabs.push({ key: 'staff', label: 'Staff', glyph: 'users' });
   }
   if (tabs.length > 1) tabs.push({ key: 'all', label: 'All Details', glyph: 'list-view' });
+  // After All Details: the log is about the record rather than part of it.
+  if (canAudit) tabs.push({ key: 'activity', label: 'Activity Log', glyph: 'scroll' });
   // A tab can vanish under the reader — the forms arrive a moment after the
   // application, and an amendment can take a stall out of the food category.
   const active = tabs.some((t) => t.key === tab) ? tab : 'application';
@@ -338,6 +366,27 @@ export function RequestDetail() {
             {(active === 'bank' || active === 'all') && <BankPanel forms={forms} />}
             {(active === 'fssai' || active === 'all') && <FssaiPanel forms={forms} />}
             {(active === 'staff' || active === 'all') && <StaffPanel forms={forms} />}
+            {active === 'activity' && (
+              <Section
+                icon='scroll'
+                title='Activity Timeline'
+                note='Everything that happened to this request, newest first.'
+                count={activity.data?.length}
+                last
+              >
+                {activity.loading && <Loading />}
+                {activity.error && <ErrorBox>{activity.error.message}</ErrorBox>}
+                {activity.data?.length === 0 && <Empty>Nothing has been recorded yet.</Empty>}
+                {activity.data && activity.data.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 12, color: 'var(--mfg)', marginBottom: 12 }}>
+                      {activity.data.length} event{activity.data.length === 1 ? '' : 's'}
+                    </div>
+                    <ActivityTimeline events={activity.data} />
+                  </>
+                )}
+              </Section>
+            )}
           </Card>
         </>
       )}
