@@ -14,6 +14,7 @@ import {
   chargeLines,
   depositLines,
   formatInr,
+  isStepAsked,
   renderTemplate,
   virtualAccountFor,
 } from '@stalls/core';
@@ -196,8 +197,10 @@ const LINK_TTL_DAYS = 180;
  *
  *  🔴 The team asked for the mails to be locked along with the forms, and the
  *  shape that survives contact with these four templates is: a letter still
- *  SENDS, each link or coupon inside it is DROPPED when its step is locked, and
- *  a letter that is nothing but a locked step is refused.
+ *  SENDS, each link or coupon inside it is DROPPED when its step is withheld,
+ *  and a letter that is nothing but withheld steps is refused. A step is
+ *  withheld when this requester type is not asked for it, or when the ordering
+ *  has not reached it.
  *
  *  ⚠️ `isOnlyThoseSteps` is the distinction that matters. `SELECTION_VENDOR`
  *  IS the letter that tells a vendor they were selected and merely happens to
@@ -220,14 +223,26 @@ const LETTER_STEPS: Partial<
   },
 };
 
-/** The steps of this letter the edition's ordering has not reached. */
-function lockedStepsFor(
+/** The steps of this letter that must not be written into it: the ones this
+ *  requester type is not asked for at all, and the ones the edition's ordering
+ *  has not reached yet.
+ *
+ *  🔴 Both are withheld the same way, and that is the point. A letter carries a
+ *  way INTO a step — a link, a coupon — and the two reasons a requester may not
+ *  walk through it produce the same instruction to the letter: leave it out.
+ *  Where they differ is what the letter becomes when everything it carries is
+ *  withheld, and that is `isOnlyThoseSteps`'s question, not this one's. */
+function withheldStepsFor(
   r: RequestWithFacts,
   flow: FlowConfig,
   key: StallTemplateKey,
 ): Set<OnboardingStep> {
   const carries = LETTER_STEPS[key]?.carries ?? [];
-  return new Set(carries.filter((step) => stepLockedFor(r, flow, step)));
+  return new Set(
+    carries.filter(
+      (step) => !isStepAsked(flow, r.requestType, step) || stepLockedFor(r, flow, step),
+    ),
+  );
 }
 
 /** Builds every placeholder value for one request.
@@ -337,11 +352,16 @@ async function templateVars(
   }
 
   if (key === 'ONBOARDING_FSSAI_STAFF' || key === 'SELECTION_ASHRAM') {
-    // 🔴 No mint while staff registration is locked, not merely no code in the
-    // letter. `ensureCoupon` is a WRITE, and the coupon is its own credential:
-    // minting one and leaving it out of the letter creates a live code the
-    // staff route is about to refuse, and puts the stall on Onboarding as one
-    // that has been offered the step.
+    // 🔴 No mint while staff registration is withheld, not merely no code in
+    // the letter. `ensureCoupon` is a WRITE, and the coupon is its own
+    // credential: minting one and leaving it out of the letter creates a live
+    // code the staff route is about to refuse, and puts the stall on Onboarding
+    // as one that has been offered the step.
+    //
+    // ⚠️ `ensureCoupon` refuses a withheld step itself. This check is still
+    // what keeps a letter to an ashram that does not register staff SENDING —
+    // the mint would throw, and the whole letter would be skipped for a coupon
+    // it was never going to carry.
     if (!locked.has('STAFF_REGISTRATION')) {
       const coupon = await ensureCoupon(db, r.id, r.stallName, r.edition.year, by);
       vars.staffCouponCode = coupon.code;
@@ -441,11 +461,12 @@ export async function sendTemplate(
       continue;
     }
 
-    // 🔴 The letters follow the same ordering the forms do. A locked step's
-    // link is dropped; a letter that is nothing BUT locked steps is not sent at
+    // 🔴 The letters follow the same flow the forms do. The link for a step
+    // that is not asked, or not yet open, is dropped; a letter that is nothing
+    // BUT such steps is not sent at
     // all, and says so, so the Communication screen reports a skip rather than
     // a letter that went out empty.
-    const locked = lockedStepsFor(r, flow, input.templateKey);
+    const locked = withheldStepsFor(r, flow, input.templateKey);
     const letter = LETTER_STEPS[input.templateKey];
     if (letter?.isOnlyThoseSteps && locked.size === letter.carries.length) {
       skipped.push({

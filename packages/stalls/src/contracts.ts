@@ -876,23 +876,41 @@ export const StepStagesInput = z.object({
   STAFF_REGISTRATION: z.number().int().min(1).max(4),
 });
 
+/** Which steps one requester type is asked for. */
+export const StepsAskedInput = z.object({
+  BANK_FORM: z.boolean(),
+  PAYMENT: z.boolean(),
+  FSSAI: z.boolean(),
+  STAFF_REGISTRATION: z.boolean(),
+});
+
+const PerType = <T extends z.ZodTypeAny>(inner: T) =>
+  z.object({ VENDOR: inner, LOCAL_WELFARE: inner, ASHRAM: inner });
+
 export const FlowInput = z.object({
-  bankStepEnabled: z.boolean(),
-  paymentStepEnabled: z.boolean(),
-  fssaiStepEnabled: z.boolean(),
+  /** Which steps each requester type is asked for.
+   *
+   *  ⚠️ Optional, and the three legacy booleans below are why. The web and the
+   *  API deploy separately, so a Flow panel served before this change still
+   *  PUTs `bankStepEnabled` and its two neighbours; absent `asked`, those are
+   *  spread across all three types, which is exactly what that page means by
+   *  them. Present, it wins and they are ignored. */
+  asked: PerType(StepsAskedInput).optional(),
+  /** @deprecated Superseded by `asked`. Accepted so a page served ahead of
+   *  this API keeps working; see above. */
+  bankStepEnabled: z.boolean().optional(),
+  /** @deprecated See `bankStepEnabled`. */
+  paymentStepEnabled: z.boolean().optional(),
+  /** @deprecated See `bankStepEnabled`. */
+  fssaiStepEnabled: z.boolean().optional(),
   /** When each step opens, per requester type. Omitted leaves the edition's
    *  ordering alone, so a caller that only means to flip a switch does not
    *  silently reset the grid. */
-  stages: z
-    .object({
-      VENDOR: StepStagesInput,
-      LOCAL_WELFARE: StepStagesInput,
-      ASHRAM: StepStagesInput,
-    })
-    .optional(),
+  stages: PerType(StepStagesInput).optional(),
 });
 export type FlowInput = z.infer<typeof FlowInput>;
 export type StepStagesInput = z.infer<typeof StepStagesInput>;
+export type StepsAskedInput = z.infer<typeof StepsAskedInput>;
 
 export const FineTypeInput = z.object({
   reason: z.string().trim().min(1).max(200),

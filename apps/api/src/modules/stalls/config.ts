@@ -1,9 +1,12 @@
 import type { PrismaClient, StallEdition, StallRateScope } from '@prisma/client';
 import {
+  ALL_ASKED,
   ALL_AT_ONCE,
   type ChargesInput,
+  type FlowAsked,
+  type FlowConfig,
   type FlowInput,
-  type FlowStages,
+  isStepAsked,
   ONBOARDING_STEPS,
   type OnboardingStep,
   type StallRequestType,
@@ -113,10 +116,9 @@ export async function ensureEditionDefaults(db: Db, editionId: string): Promise<
     create: { editionId, ...CHARGES_2025 },
     update: {},
   });
-  await db.stallFlowConfig.upsert({ where: { editionId }, create: { editionId }, update: {} });
-  // The ordering, all at stage 1 — every step open at once, which is how the
-  // flow has always behaved. Written rather than left implicit so the Admin
-  // grid opens on real rows.
+  // The flow, all asked and all at stage 1 — every step open at once, which is
+  // how the flow has always behaved. Written rather than left implicit so the
+  // Admin grids open on real rows.
   for (const requestType of STALL_REQUEST_TYPES) {
     for (const step of ONBOARDING_STEPS) {
       await db.stallFlowStep.upsert({
@@ -551,40 +553,108 @@ export async function updateCharges(
   return updated;
 }
 
-/** The edition's flow: three switches for WHETHER a step happens, and twelve
- *  integers for WHEN.
+/** The edition's flow: which steps each requester type is asked, and when each
+ *  of them opens.
  *
- *  ⚠️ A missing `stall_flow_step` row reads as stage 1, which is "not locked".
- *  That is what lets the table be sparse and lets an edition created before
- *  sequencing existed behave exactly as it did — so this never inserts rows on
- *  a read path. The migration seeded the twelve for every existing edition and
+ *  ⚠️ A missing `stall_flow_step` row reads as asked, at stage 1 — every step
+ *  open at once, which is what the module did before any of this existed. That
+ *  is what lets the table be sparse, so this never inserts rows on a read path.
+ *  The migrations wrote the twelve for every edition that existed and
  *  `seedEdition` writes them for new ones; this only has to survive their
  *  absence.
+ *
+ *  🔴 A READ path, and it no longer writes. It used to upsert
+ *  `stall_flow_config` on every call — a write on the hot path of every portal
+ *  view, check-in row and letter — because that table had to exist before it
+ *  could be read. There is no such table now.
  */
-export async function flowFor(db: Db, editionId: string): Promise<FlowConfigRow> {
-  const [config, rows] = await Promise.all([
-    db.stallFlowConfig.upsert({ where: { editionId }, create: { editionId }, update: {} }),
-    db.stallFlowStep.findMany({ where: { editionId } }),
-  ]);
-  return { ...config, stages: stagesFrom(rows) };
+export async function flowFor(db: Db, editionId: string): Promise<FlowConfig> {
+  const rows = await db.stallFlowStep.findMany({ where: { editionId } });
+  return flowFrom(rows);
 }
 
-type FlowConfigRow = Awaited<ReturnType<typeof rawFlow>> & { stages: FlowStages };
+type FlowRow = {
+  requestType: StallRequestType;
+  step: OnboardingStep;
+  enabled: boolean;
+  stage: number;
+};
 
-const rawFlow = (db: Db, editionId: string) =>
-  db.stallFlowConfig.upsert({ where: { editionId }, create: { editionId }, update: {} });
-
-/** Rows to the shape `gatedSteps` takes, filling every gap with stage 1. */
-function stagesFrom(
-  rows: Array<{ requestType: StallRequestType; step: OnboardingStep; stage: number }>,
-): FlowStages {
-  const out: FlowStages = {
-    VENDOR: { ...ALL_AT_ONCE },
-    LOCAL_WELFARE: { ...ALL_AT_ONCE },
-    ASHRAM: { ...ALL_AT_ONCE },
+/** Rows to the shape `pendingSteps` and `gatedSteps` take, filling every gap
+ *  with "asked, at stage 1". */
+function flowFrom(rows: FlowRow[]): FlowConfig {
+  const out: FlowConfig = {
+    asked: {
+      VENDOR: { ...ALL_ASKED },
+      LOCAL_WELFARE: { ...ALL_ASKED },
+      ASHRAM: { ...ALL_ASKED },
+    },
+    stages: {
+      VENDOR: { ...ALL_AT_ONCE },
+      LOCAL_WELFARE: { ...ALL_AT_ONCE },
+      ASHRAM: { ...ALL_AT_ONCE },
+    },
   };
-  for (const r of rows) out[r.requestType][r.step] = r.stage;
+  for (const r of rows) {
+    out.asked[r.requestType][r.step] = r.enabled;
+    out.stages[r.requestType][r.step] = r.stage;
+  }
   return out;
+}
+
+/** The flow as the Admin screen reads it: the real answer, plus the three
+ *  booleans the panel used to be.
+ *
+ *  ⚠️ The booleans are DERIVED and are here for one reason — a Flow panel
+ *  served before this change renders from them, and the web and the API deploy
+ *  separately. "Asked of any type" is the truthful summary for such a page:
+ *  a step switched off everywhere reads off, and one switched off for ashram
+ *  only reads on, which is what that page can express. Nothing in the module
+ *  reads them; `updateFlow` accepts them back only when `asked` is absent.
+ */
+export interface FlowView extends FlowConfig {
+  bankStepEnabled: boolean;
+  paymentStepEnabled: boolean;
+  fssaiStepEnabled: boolean;
+}
+
+export async function flowView(db: Db, editionId: string): Promise<FlowView> {
+  return toView(await flowFor(db, editionId));
+}
+
+function toView(flow: FlowConfig): FlowView {
+  const anyType = (step: OnboardingStep) =>
+    STALL_REQUEST_TYPES.some((t) => isStepAsked(flow, t, step));
+  return {
+    ...flow,
+    bankStepEnabled: anyType('BANK_FORM'),
+    paymentStepEnabled: anyType('PAYMENT'),
+    fssaiStepEnabled: anyType('FSSAI'),
+  };
+}
+
+/** What `asked` the caller meant.
+ *
+ *  ⚠️ The three booleans are a page served before this change talking. The web
+ *  and the API deploy separately, so such a page PUTs `bankStepEnabled` and its
+ *  neighbours and nothing else — and it means them for every requester type,
+ *  because that is all it could ever mean. Spreading them is therefore not a
+ *  guess; it is the old control's exact semantics. `asked` present wins.
+ *
+ *  Neither present leaves the answer alone, the way an omitted `stages` does. */
+function askedFrom(input: FlowInput): FlowAsked | null {
+  if (input.asked) return input.asked;
+  const { bankStepEnabled: bank, paymentStepEnabled: pay, fssaiStepEnabled: fssai } = input;
+  if (bank === undefined && pay === undefined && fssai === undefined) return null;
+  const legacy = {
+    BANK_FORM: bank ?? true,
+    PAYMENT: pay ?? true,
+    FSSAI: fssai ?? true,
+    // Never had a switch on that page, so it cannot be what the page meant to
+    // turn off.
+    STAFF_REGISTRATION: true,
+  };
+  return { VENDOR: { ...legacy }, LOCAL_WELFARE: { ...legacy }, ASHRAM: { ...legacy } };
 }
 
 export async function updateFlow(
@@ -592,26 +662,28 @@ export async function updateFlow(
   editionId: string,
   input: FlowInput,
   by: string,
-) {
-  const { stages, ...switches } = input;
-  const updated = await db.stallFlowConfig.upsert({
-    where: { editionId },
-    create: { editionId, ...switches },
-    update: switches,
-  });
+): Promise<FlowView> {
+  const asked = askedFrom(input);
+  const { stages } = input;
 
-  // ⚠️ Omitted stages leave the ordering alone. A caller flipping one switch
-  // must not silently reset the grid to all-at-once.
-  if (stages) {
+  // ⚠️ Either half omitted leaves that half alone. A caller flipping one switch
+  // must not silently reset the ordering, and a caller renumbering the grid
+  // must not silently switch every step back on.
+  if (asked || stages) {
     await db.$transaction(
       STALL_REQUEST_TYPES.flatMap((requestType) =>
-        ONBOARDING_STEPS.map((step) =>
-          db.stallFlowStep.upsert({
+        ONBOARDING_STEPS.map((step) => {
+          const enabled = asked?.[requestType][step];
+          const stage = stages?.[requestType][step];
+          return db.stallFlowStep.upsert({
             where: { editionId_requestType_step: { editionId, requestType, step } },
-            create: { editionId, requestType, step, stage: stages[requestType][step] },
-            update: { stage: stages[requestType][step] },
-          }),
-        ),
+            create: { editionId, requestType, step, enabled: enabled ?? true, stage: stage ?? 1 },
+            update: {
+              ...(enabled === undefined ? {} : { enabled }),
+              ...(stage === undefined ? {} : { stage }),
+            },
+          });
+        }),
       ),
     );
   }
@@ -623,7 +695,7 @@ export async function updateFlow(
     editionId: editionId,
     detail: input,
   });
-  return updated;
+  return flowView(db, editionId);
 }
 
 export async function listFineTypes(db: Db, editionId: string) {

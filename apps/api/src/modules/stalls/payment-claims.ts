@@ -16,9 +16,11 @@ import {
   type PaymentClaimView,
   type ReviewPaymentClaimInput,
   type SubmitPaymentClaimInput,
+  isStepAsked,
   payableFeePaise,
 } from '@stalls/core';
 import { type Filing, actorFrom, audit } from './audit';
+import { flowFor } from './config';
 import type { Db } from './editions';
 import {
   ClaimAlreadyReviewedError,
@@ -103,11 +105,16 @@ export async function submitPaymentClaim(
 ): Promise<PaymentClaimView> {
   const r = await db.stallRequest.findUnique({
     where: { id: requestId },
-    select: { id: true, requestType: true, status: true },
+    select: { id: true, editionId: true, requestType: true, status: true },
   });
   if (!r) throw new UnknownRequestError(requestId);
   if (!MAY_CLAIM.has(r.requestType)) throw new StepNotOpenError('payment details');
   if (r.status !== 'SELECTED') throw new StepNotOpenError('payment details');
+  // An edition that does not collect money from this requester type has nothing
+  // for a claim to be about. Checked here rather than on the route because
+  // filing-on-behalf reaches the same writer.
+  const flow = await flowFor(db, r.editionId);
+  if (!isStepAsked(flow, r.requestType, 'PAYMENT')) throw new StepNotOpenError('payment details');
 
   try {
     const claim = await db.stallPaymentClaim.create({

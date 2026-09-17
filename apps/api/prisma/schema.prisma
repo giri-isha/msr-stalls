@@ -304,7 +304,6 @@ model StallEdition {
   formDefinitions StallFormDefinition[]
   customFields    StallFormField[]
   declarations    StallDeclaration[]
-  flow            StallFlowConfig?
   flowSteps       StallFlowStep[]
   requests        StallRequest[]
   sequences       StallReferenceSequence[]
@@ -743,39 +742,33 @@ model StallFormField {
   @@schema("stalls")
 }
 
-/// The Flow Builder's whole surface: three switches.
-model StallFlowConfig {
-  id                 String  @id @default(uuid()) @db.Uuid
-  editionId          String  @unique @map("edition_id") @db.Uuid
-  bankStepEnabled    Boolean @default(true) @map("bank_step_enabled")
-  paymentStepEnabled Boolean @default(true) @map("payment_step_enabled")
-  fssaiStepEnabled   Boolean @default(true) @map("fssai_step_enabled")
-
-  edition StallEdition @relation(fields: [editionId], references: [id], onDelete: Cascade)
-
-  @@map("stall_flow_config")
-  @@schema("stalls")
-}
-
-/// WHEN each step opens, where `StallFlowConfig` says WHETHER it happens.
+/// The Flow Builder's whole surface: WHETHER each step is asked, and WHEN it
+/// opens — one row per (edition, requester type, step), twelve per edition.
 ///
-/// One row per (edition, requester type, step) — twelve per edition. The lowest
-/// stage still outstanding is the one the requester may act on; everything
-/// numbered above it is locked until that stage clears. See `gatedSteps`.
+/// 🔴 Both answers are per TYPE, and that is the point of the table. The
+/// switches used to be three booleans on `stall_flow_config`, which could only
+/// say "this edition does not do FSSAI" — where the question the stall team
+/// actually asks is "we do not ask an ashram for FSSAI, and we do not ask a
+/// local welfare stall to register staff". That table is gone; its three
+/// columns were spread across the three types by migration and became
+/// `enabled` here.
 ///
-/// 🔴 Stage 1 for everything is today's behaviour — nothing is ever locked —
-/// which is why it is the default and why a MISSING row reads as 1. The table
-/// may be sparse, and an edition created before sequencing existed behaves
-/// exactly as it did.
+/// 🔴 `enabled` true and `stage` 1 is the behaviour the module has always
+/// had — every step asked, nothing ever locked — which is why they are the
+/// defaults and why a MISSING row reads as both. The table may be sparse, and
+/// an edition created before any of this existed behaves exactly as it did.
 ///
-/// ⚠️ Kept apart from `StallFlowConfig` deliberately. Folded into one control,
-/// "off" and "last" become neighbours, which is how an admin switches a step
-/// off while meaning to defer it.
+/// ⚠️ Two columns, one row, and still two CONTROLS on the screen. Whether a
+/// step happens and when it happens are different questions; folded into one
+/// cell, "off" and "last" become neighbours, which is how an admin switches a
+/// step off while meaning to defer it. They share a row because they are the
+/// same shape, which is a fact about storage and not about the panel.
 model StallFlowStep {
   id          String              @id @default(uuid()) @db.Uuid
   editionId   String              @map("edition_id") @db.Uuid
   requestType StallRequestType    @map("request_type")
   step        StallOnboardingStep
+  enabled     Boolean             @default(true)
   stage       Int                 @default(1)
 
   edition StallEdition @relation(fields: [editionId], references: [id], onDelete: Cascade)

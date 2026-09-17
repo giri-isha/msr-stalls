@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  ALL_ASKED,
   ALL_AT_ONCE,
   type OnboardingStep,
   type StallRequestType,
@@ -199,7 +200,7 @@ const FLOW_STEPS: Array<{ step: OnboardingStep; label: string; help: string }> =
   {
     step: 'STAFF_REGISTRATION',
     label: 'Staff Registration',
-    help: 'Never switched off — an unregistered person cannot be let onto the venue.',
+    help: 'Coupon, then the stall’s own people register against it.',
   },
 ];
 
@@ -229,64 +230,36 @@ const ONE_AT_A_TIME: Record<OnboardingStep, number> = {
 };
 
 /** ⚠️ The web and the API deploy separately, so a screen served ahead of an API
- *  that does not send `stages` must still open. All-at-once is the right thing
- *  to fall back to: it is the default, and it is what such an API is doing. */
-const withStages = (flow: api.BackofficeConfig['flow']): api.BackofficeConfig['flow'] =>
-  flow.stages
-    ? flow
-    : {
-        ...flow,
-        stages: {
-          VENDOR: { ...ALL_AT_ONCE },
-          LOCAL_WELFARE: { ...ALL_AT_ONCE },
-          ASHRAM: { ...ALL_AT_ONCE },
-        },
-      };
+ *  that sends neither `asked` nor `stages` must still open. Everything asked,
+ *  all at once, is the right thing to fall back to: it is the default, and it
+ *  is what such an API is doing. */
+const withFlow = (flow: api.BackofficeConfig['flow']): api.BackofficeConfig['flow'] => ({
+  ...flow,
+  asked: flow.asked ?? {
+    VENDOR: { ...ALL_ASKED },
+    LOCAL_WELFARE: { ...ALL_ASKED },
+    ASHRAM: { ...ALL_ASKED },
+  },
+  stages: flow.stages ?? {
+    VENDOR: { ...ALL_AT_ONCE },
+    LOCAL_WELFARE: { ...ALL_AT_ONCE },
+    ASHRAM: { ...ALL_AT_ONCE },
+  },
+});
 
 function Flow({ c, writable, run }: PanelProps) {
-  const [v, setV] = useState(() => withStages(c.flow));
-  useEffect(() => setV(withStages(c.flow)), [c.flow]);
+  const [v, setV] = useState(() => withFlow(c.flow));
+  useEffect(() => setV(withFlow(c.flow)), [c.flow]);
 
-  const enabled = (k: 'bankStepEnabled' | 'paymentStepEnabled' | 'fssaiStepEnabled') => v[k];
+  const asked = (type: StallRequestType, step: OnboardingStep) => v.asked?.[type]?.[step] ?? true;
 
-  const Step = ({
-    k,
-    label,
-    help,
-  }: {
-    k: 'bankStepEnabled' | 'paymentStepEnabled' | 'fssaiStepEnabled';
-    label: string;
-    help: string;
-  }) => (
-    // The label WRAPS its control, which associates them implicitly; the rule
-    // cannot see the input inside <Checkbox>.
-    // biome-ignore lint/a11y/noLabelWithoutControl: implicit association by wrapping
-    <label
-      style={{
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: 11,
-        padding: '12px 14px',
-        borderRadius: 'var(--r3)',
-        border: `1px solid ${enabled(k) ? 'var(--pri)' : 'var(--bd)'}`,
-        background: enabled(k) ? 'var(--pri-t)' : 'var(--card)',
-        cursor: writable ? 'pointer' : 'default',
-      }}
-    >
-      <Checkbox
-        checked={enabled(k)}
-        disabled={!writable}
-        onChange={(e) => setV({ ...v, [k]: e.target.checked })}
-        style={{ marginTop: 2 }}
-      />
-      <span style={{ minWidth: 0 }}>
-        <span style={{ display: 'block', fontSize: 13, fontWeight: 600 }}>{label}</span>
-        <span style={{ display: 'block', fontSize: 11.5, color: 'var(--mfg)', marginTop: 2 }}>
-          {help}
-        </span>
-      </span>
-    </label>
-  );
+  const setAsked = (type: StallRequestType, step: OnboardingStep, on: boolean) =>
+    setV({
+      ...v,
+      asked: { ...v.asked, [type]: { ...v.asked?.[type], [step]: on } } as NonNullable<
+        typeof v.asked
+      >,
+    });
 
   const setStage = (type: StallRequestType, step: OnboardingStep, stage: number) =>
     setV({
@@ -312,22 +285,66 @@ function Flow({ c, writable, run }: PanelProps) {
         </Btn>
       }
     >
-      <div style={{ display: 'grid', gap: 10 }}>
-        <Step
-          k='bankStepEnabled'
-          label='Bank, GST and Contract Details'
-          help='Collected by emailed form after selection.'
-        />
-        <Step
-          k='paymentStepEnabled'
-          label='Payment Details and Confirmation'
-          help='Payment email, then finance confirms receipt.'
-        />
-        <Step
-          k='fssaiStepEnabled'
-          label='FSSAI Certificate Upload'
-          help='Food stalls upload before check-in.'
-        />
+      {/* 🔴 TWO grids, not one with a tick and a number in each cell. Whether a
+          step happens and when it happens are different questions; side by side
+          in one control, "off" and "last" become neighbours, which is how an
+          admin switches a step off while meaning to defer it. */}
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>Which steps are asked</div>
+        <p style={{ fontSize: 11.5, color: 'var(--mfg)', margin: '4px 0 12px' }}>
+          Unticked, the step is not asked of that requester type at all — no tab in their portal, no
+          link or coupon in their letters, and nothing to chase on Onboarding.
+        </p>
+
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--mfg)' }}>Step</th>
+              {FLOW_TYPES.map((t) => (
+                <th
+                  key={t.type}
+                  style={{ textAlign: 'center', padding: '6px 8px', color: 'var(--mfg)' }}
+                >
+                  {t.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {FLOW_STEPS.map(({ step, label, help }) => (
+              <tr key={`asked-${step}`} style={{ borderTop: '1px solid var(--bd)' }}>
+                <td style={{ padding: '8px' }}>
+                  <span style={{ display: 'block', fontWeight: 600 }}>{label}</span>
+                  <span style={{ display: 'block', fontSize: 11, color: 'var(--mfg)' }}>
+                    {help}
+                  </span>
+                </td>
+                {FLOW_TYPES.map((t) => (
+                  <td key={t.type} style={{ textAlign: 'center', padding: '8px' }}>
+                    {stepApplies(step, t.type) ? (
+                      <Checkbox
+                        checked={asked(t.type, step)}
+                        disabled={!writable}
+                        aria-label={`${label} asked of ${t.label}`}
+                        onChange={(e) => setAsked(t.type, step, e.target.checked)}
+                      />
+                    ) : (
+                      // Not asked of this requester type at all — see
+                      // `needsBankStep` and `needsPaymentStep`. A DASH, never a
+                      // gap: a gap reads as a mistake.
+                      <span
+                        title={`${label} is not asked of a ${t.label.toLowerCase()} request`}
+                        style={{ color: 'var(--mfg)' }}
+                      >
+                        —
+                      </span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       <div style={{ marginTop: 22 }}>
@@ -364,12 +381,22 @@ function Flow({ c, writable, run }: PanelProps) {
                 {FLOW_TYPES.map((t) => (
                   <td key={t.type} style={{ textAlign: 'center', padding: '8px' }}>
                     {stepApplies(step, t.type) ? (
+                      // ⚠️ A step switched off above keeps its NUMBER, greyed
+                      // and unedittable — distinct from the dash, which says the
+                      // step can never apply. The number is what the ordering
+                      // returns to if it is ticked back on, and blanking it here
+                      // would lose an edition's numbering to a stray click.
                       <input
                         type='number'
                         min={1}
                         max={4}
                         aria-label={`${label} stage for ${t.label}`}
-                        disabled={!writable}
+                        disabled={!writable || !asked(t.type, step)}
+                        title={
+                          asked(t.type, step)
+                            ? undefined
+                            : `${label} is not asked of a ${t.label.toLowerCase()} request in this edition`
+                        }
                         value={v.stages[t.type][step]}
                         onChange={(e) => setStage(t.type, step, Number(e.target.value))}
                         style={{
@@ -380,6 +407,7 @@ function Flow({ c, writable, run }: PanelProps) {
                           border: '1px solid var(--bd)',
                           background: 'var(--card)',
                           color: 'inherit',
+                          opacity: asked(t.type, step) ? 1 : 0.45,
                         }}
                       />
                     ) : (

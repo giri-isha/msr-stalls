@@ -78,7 +78,7 @@ import {
   setSessionCookie,
   startSession,
 } from './session';
-import { assertStepUnlocked, couponFor, sendAccessLink, statusView, stepLink } from './portal';
+import { assertStepAvailable, couponFor, sendAccessLink, statusView, stepLink } from './portal';
 import { submitRequest } from './submit';
 import { isOurKey, presignUpload } from './uploads';
 
@@ -532,12 +532,13 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
     { schema: { params: z.object({ code: z.string().trim().min(6).max(40) }) } },
     async (req): Promise<CouponView> => {
       const { request, coupon } = await resolveCoupon(prisma, req.params.code);
-      // 🔴 Refused while the edition's ordering has not reached staff
-      // registration. This route is the reason hiding the portal tab is not
-      // enough: the coupon code is its own credential, so a code forwarded from
-      // a letter sent months ago reaches this form without the portal being
-      // involved at all.
-      await assertStepUnlocked(prisma, request.id, 'STAFF_REGISTRATION');
+      // 🔴 Refused when the edition does not ask this requester type to
+      // register staff at all, and while its ordering has not reached the step.
+      // This route is the reason hiding the portal tab is not enough: the
+      // coupon code is its own credential, so a code forwarded from a letter
+      // sent months ago reaches this form without the portal being involved at
+      // all — including one minted before an admin switched the step off.
+      await assertStepAvailable(prisma, request.id, 'STAFF_REGISTRATION');
       // ⚠️ Scoped to the code that was typed. A stall can hold more than one,
       // and the team holding a caterer's code is not shown the vendor's roster.
       return toCouponView(prisma, request, coupon);
@@ -558,7 +559,7 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
       // The GET above already refuses, but a POST is not reached only through
       // it — and the refusal has to be on the write, not on the page that
       // offers it.
-      await assertStepUnlocked(prisma, request.id, 'STAFF_REGISTRATION');
+      await assertStepAvailable(prisma, request.id, 'STAFF_REGISTRATION');
       reply.status(201);
       return registerStaff(prisma, req.body, byRequester(request.accountId));
     },
