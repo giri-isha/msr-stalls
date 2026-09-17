@@ -267,39 +267,209 @@ describe('the template editor', () => {
 });
 
 describe('reminder calls', () => {
-  test('logs a call against the vendor', async () => {
-    const fetch = installFetch([
+  /** The list as the API returns it, with whatever the test wants to vary. */
+  const reminderRow = (over: Record<string, unknown> = {}) => ({
+    requestId: recipient().id,
+    reference: 'VEN-2026-0001',
+    stallName: 'Green Leaf Organics',
+    requesterName: 'Priya Venkat',
+    contactNumber: '9840012345',
+    email: 'priya@greenleaf.example',
+    kind: 'BANK',
+    callCount: 1,
+    lastCalledAt: '2026-01-06T10:00:00.000Z',
+    lastOutcome: null,
+    callbackDate: null,
+    ...over,
+  });
+
+  /** A call form with one Yes/No and one reason branched off it — the shape
+   *  every conditional question on this screen is an instance of. */
+  const CALL_FORM = {
+    kind: 'BANK',
+    script: 'Namaskaram, calling about your bank details.',
+    scriptUpdatedAt: null,
+    questions: [
+      {
+        id: 'q-picked',
+        ordinal: 1,
+        label: 'Did they pick up?',
+        help: null,
+        fieldType: 'select',
+        isRequired: true,
+        isActive: true,
+        options: [
+          { value: 'YES', label: 'Yes', labelTa: null },
+          { value: 'NO', label: 'No', labelTa: null },
+        ],
+        min: null,
+        max: null,
+        minLen: null,
+        maxLen: null,
+        decimals: null,
+        pattern: null,
+        patternHint: null,
+        window: null,
+        showIfQuestionId: null,
+        showIfValue: null,
+        showOnOutcomes: [],
+        answerCount: 0,
+      },
+      {
+        id: 'q-reason',
+        ordinal: 2,
+        label: 'What reason did they give?',
+        help: null,
+        fieldType: 'text',
+        isRequired: false,
+        isActive: true,
+        options: null,
+        min: null,
+        max: null,
+        minLen: null,
+        maxLen: null,
+        decimals: null,
+        pattern: null,
+        patternHint: null,
+        window: null,
+        showIfQuestionId: 'q-picked',
+        showIfValue: 'YES',
+        showOnOutcomes: [],
+        answerCount: 0,
+      },
+    ],
+  };
+
+  const stubReminders = (rows: Array<ReturnType<typeof reminderRow>>) =>
+    installFetch([
+      ['GET', /\/me$/, () => ME_ADMIN],
+      ['GET', /\/comms\/recipients$/, () => recipients],
+      ['GET', /\/comms\/templates$/, () => TEMPLATES],
+      ['GET', /\/comms\/reminders/, () => rows],
+      ['GET', /\/comms\/call-form/, () => CALL_FORM],
+      ['GET', /\/requests\/.+\/reminders/, () => []],
+      ['POST', /\/requests\/.+\/reminders$/, () => [204, null]],
+    ]);
+
+  const openLogCall = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(await screen.findByRole('tab', { name: 'Reminder calls' }));
+    await user.click(await screen.findByRole('button', { name: /Log Call/ }));
+    // The script arrives with the form, so it is what says the dialog is ready.
+    await screen.findByText(/Namaskaram, calling about your bank details/);
+  };
+
+  test('the call is logged with its outcome and the answers to the form', async () => {
+    const fetch = stubReminders([reminderRow()]);
+    render();
+    const user = userEvent.setup();
+    await openLogCall(user);
+
+    await user.click(screen.getByRole('radio', { name: /Promised/ }));
+    await choose(user, screen.getByLabelText(/Did they pick up/), 'YES');
+    await user.type(screen.getByLabelText(/What reason did they give/), 'was travelling');
+    await user.click(screen.getByRole('button', { name: 'Log call' }));
+
+    await waitFor(() => {
+      const post = fetch.calls.find((c) => c.method === 'POST' && c.url.includes('/reminders'));
+      expect(post?.body).toEqual({
+        kind: 'BANK',
+        outcome: 'PROMISED',
+        callbackDate: null,
+        note: undefined,
+        answers: { 'q-picked': 'YES', 'q-reason': 'was travelling' },
+      });
+    });
+  });
+
+  // 🔴 Nothing is asked until the outcome is picked, because a question is
+  // asked on the outcomes it names — and a call that rang out is not one a
+  // scripted question belongs on.
+  test('the questions appear only once an outcome is picked, and only the right ones', async () => {
+    stubReminders([reminderRow()]);
+    render();
+    const user = userEvent.setup();
+    await openLogCall(user);
+
+    expect(screen.queryByLabelText(/Did they pick up/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: /Not answered/ }));
+    expect(screen.queryByLabelText(/Did they pick up/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: /Promised/ }));
+    expect(await screen.findByLabelText(/Did they pick up/)).toBeInTheDocument();
+    // The branch is still closed: its parent has not been answered Yes.
+    expect(screen.queryByLabelText(/What reason did they give/)).not.toBeInTheDocument();
+  });
+
+  test('a branch answered and then abandoned does not travel with the call', async () => {
+    const fetch = stubReminders([reminderRow()]);
+    render();
+    const user = userEvent.setup();
+    await openLogCall(user);
+
+    await user.click(screen.getByRole('radio', { name: /Promised/ }));
+    await choose(user, screen.getByLabelText(/Did they pick up/), 'YES');
+    await user.type(screen.getByLabelText(/What reason did they give/), 'stale');
+    // Changing the answer above it closes the branch again.
+    await choose(user, screen.getByLabelText(/Did they pick up/), 'NO');
+    await user.click(screen.getByRole('button', { name: 'Log call' }));
+
+    await waitFor(() => {
+      const post = fetch.calls.find((c) => c.method === 'POST' && c.url.includes('/reminders'));
+      const body = post?.body as { answers?: Record<string, unknown> } | undefined;
+      expect(body?.answers).toEqual({ 'q-picked': 'NO' });
+    });
+  });
+
+  test('a callback asks for the day, and no other outcome does', async () => {
+    stubReminders([reminderRow()]);
+    render();
+    const user = userEvent.setup();
+    await openLogCall(user);
+
+    await user.click(screen.getByRole('radio', { name: /Refused/ }));
+    expect(screen.queryByText('Call Back On')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: /Callback requested/ }));
+    expect(await screen.findByText('Call Back On')).toBeInTheDocument();
+  });
+
+  test('the last outcome is on the list, and the count opens what was said', async () => {
+    installFetch([
       ['GET', /\/me$/, () => ME_ADMIN],
       ['GET', /\/comms\/recipients$/, () => recipients],
       ['GET', /\/comms\/templates$/, () => TEMPLATES],
       [
         'GET',
         /\/comms\/reminders/,
+        () => [reminderRow({ callCount: 2, lastOutcome: 'CALLBACK', callbackDate: '2026-10-02' })],
+      ],
+      [
+        'GET',
+        /\/requests\/.+\/reminders/,
         () => [
           {
-            requestId: recipient().id,
-            reference: 'VEN-2026-0001',
-            stallName: 'Green Leaf Organics',
-            requesterName: 'Priya Venkat',
-            contactNumber: '9840012345',
-            email: 'priya@greenleaf.example',
+            id: 'call-1',
             kind: 'BANK',
-            callCount: 1,
-            lastCalledAt: '2026-01-06T10:00:00.000Z',
+            calledAt: '2026-01-06T10:00:00.000Z',
+            calledBy: 'system',
+            outcome: 'CALLBACK',
+            callbackDate: '2026-10-02',
+            note: 'ring after the weekend',
+            answers: [{ questionId: 'q-picked', label: 'Did they pick up?', value: 'Yes' }],
           },
         ],
       ],
-      ['POST', /\/requests\/.+\/reminders$/, () => [204, null]],
     ]);
     render();
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole('tab', { name: 'Reminder calls' }));
-    await user.click(await screen.findByRole('button', { name: /Log Call/ }));
+    expect(await screen.findByText('Callback requested')).toBeInTheDocument();
+    expect(screen.getByText('back on 2026-10-02')).toBeInTheDocument();
 
-    await waitFor(() => {
-      const post = fetch.calls.find((c) => c.method === 'POST' && c.url.includes('/reminders'));
-      expect(post?.body).toEqual({ kind: 'BANK', note: undefined });
-    });
+    await user.click(screen.getByRole('button', { name: '2' }));
+    expect(await screen.findByText('ring after the weekend')).toBeInTheDocument();
+    expect(screen.getByText('Did they pick up?')).toBeInTheDocument();
   });
 });

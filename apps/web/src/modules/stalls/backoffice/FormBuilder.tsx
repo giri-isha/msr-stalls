@@ -861,7 +861,17 @@ function PicturePicker({
  * because a disabled row invites the question "why?" and the note above the
  * list has already answered it.
  */
-function TypePicker({
+/**
+ * The Answer Type plates.
+ *
+ * ⚠️ Exported for the Call Log Form builder, which asks the same question over
+ * a shorter list of types. Two copies of "what does a type picker look like"
+ * is two places for the plates, the radio semantics and the wording to drift —
+ * and the call form's questions are drawn by the same `FieldControl` as these
+ * ones, so a picker that described them differently would be describing the
+ * same controls in two voices.
+ */
+export function TypePicker({
   value,
   choices,
   onChange,
@@ -947,7 +957,7 @@ function TypePicker({
  * number, how many files may be uploaded. The words are the whole of what makes
  * that legible.
  */
-function RulesEditor({
+export function RulesEditor({
   type,
   values,
   onChange,

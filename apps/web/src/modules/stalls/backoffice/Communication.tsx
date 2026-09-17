@@ -1,12 +1,11 @@
-import type { CommRecipient, ReminderKind, TemplateKeyValue } from '@stalls/core';
-import { DEFAULT_TEMPLATES, unknownPlaceholders } from '@stalls/core';
+import type { CommRecipient, ReminderKind, ReminderRow, TemplateKeyValue } from '@stalls/core';
+import { CALL_OUTCOME_LABEL, DEFAULT_TEMPLATES, unknownPlaceholders } from '@stalls/core';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   clearSent,
   getTemplates,
   listRecipients,
   listReminders,
-  logReminder,
   putTemplate,
   putTemplateAttachment,
   presignBackofficeUpload,
@@ -15,6 +14,7 @@ import {
   uploadFile,
 } from '../api';
 import { TYPE_LABEL, TypeBadge } from '../components/StatusPill';
+import { CallHistoryDialog, LogCallDialog } from './LogCallDialog';
 import { formatDateTime, useLoad } from '../hooks';
 import { useMe } from '../me';
 import {
@@ -30,6 +30,7 @@ import {
   Search,
   Select,
   Tag,
+  type Tone,
   TBody,
   TD,
   TH,
@@ -710,9 +711,13 @@ function AttachmentControl({
 function ReminderPanel() {
   const { can } = useMe();
   const canLog = can('comms.write');
-  const toast = useToast();
   const [kind, setKind] = useState<ReminderKind>('BANK');
   const { data, error, loading, reload } = useLoad(() => listReminders(kind), [kind]);
+  // The row being logged, and the row whose history is open. Two pieces of
+  // state rather than one mode, because opening the history from a row and then
+  // logging a call on it is the ordinary sequence.
+  const [logging, setLogging] = useState<ReminderRow | null>(null);
+  const [showing, setShowing] = useState<ReminderRow | null>(null);
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
@@ -749,6 +754,7 @@ function ReminderPanel() {
                 <TH>Contact</TH>
                 <TH align='right'>Calls Logged</TH>
                 <TH>Last Call</TH>
+                <TH>Outcome</TH>
                 <TH> </TH>
               </TR>
             </THead>
@@ -762,23 +768,55 @@ function ReminderPanel() {
                   <TD mono style={{ fontSize: 12 }}>
                     {r.contactNumber}
                   </TD>
-                  <TD align='right'>{r.callCount}</TD>
+                  <TD align='right'>
+                    {/* The count is the way in to what was actually SAID. A
+                        number nobody can open is the state this screen was in
+                        before the call form existed. */}
+                    {r.callCount > 0 ? (
+                      <button
+                        type='button'
+                        onClick={() => setShowing(r)}
+                        style={{
+                          border: 0,
+                          background: 'none',
+                          padding: 0,
+                          cursor: 'pointer',
+                          color: 'var(--pri)',
+                          fontSize: 13,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {r.callCount}
+                      </button>
+                    ) : (
+                      r.callCount
+                    )}
+                  </TD>
                   <TD muted style={{ fontSize: 11.5, whiteSpace: 'nowrap' }}>
                     {r.lastCalledAt ? formatDateTime(r.lastCalledAt) : '—'}
                   </TD>
+                  <TD>
+                    {r.lastOutcome ? (
+                      <div style={{ display: 'grid', gap: 3 }}>
+                        <Tag tone={OUTCOME_TONE[r.lastOutcome] ?? 'neutral'} size='sm'>
+                          {CALL_OUTCOME_LABEL[r.lastOutcome]}
+                        </Tag>
+                        {/* ⚠️ The day they ASKED to be rung, shown whether or
+                            not it has passed — a callback nobody made is the
+                            one this list exists to surface. */}
+                        {r.callbackDate && (
+                          <span style={{ fontSize: 11, color: 'var(--mfg)' }}>
+                            back on {r.callbackDate}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 11.5, color: 'var(--mfg)' }}>—</span>
+                    )}
+                  </TD>
                   <TD align='right'>
                     {canLog && (
-                      <Btn
-                        onClick={async () => {
-                          try {
-                            await logReminder(r.requestId, kind);
-                            toast.ok(`Call logged for ${r.stallName}.`);
-                            reload();
-                          } catch (e) {
-                            toast.fail(e);
-                          }
-                        }}
-                      >
+                      <Btn onClick={() => setLogging(r)}>
                         <Icon name='phone-call' size={13} />
                         Log Call
                       </Btn>
@@ -790,6 +828,38 @@ function ReminderPanel() {
           </Table>
         </Card>
       )}
+
+      {logging && (
+        <LogCallDialog
+          requestId={logging.requestId}
+          stallName={logging.stallName}
+          kind={kind}
+          onClose={() => setLogging(null)}
+          onLogged={() => {
+            setLogging(null);
+            reload();
+          }}
+        />
+      )}
+      {showing && (
+        <CallHistoryDialog
+          requestId={showing.requestId}
+          stallName={showing.stallName}
+          kind={kind}
+          onClose={() => setShowing(null)}
+        />
+      )}
     </div>
   );
 }
+
+/** ⚠️ Keyed by the outcome NAME rather than by `statusTone`, which reads
+ *  English words — "DONE" is not a word that function knows. */
+const OUTCOME_TONE: Record<string, Tone> = {
+  DONE: 'ok',
+  PROMISED: 'info',
+  CALLBACK: 'warn',
+  REFUSED: 'des',
+  WRONG_NUMBER: 'des',
+  NOT_ANSWERED: 'neutral',
+};

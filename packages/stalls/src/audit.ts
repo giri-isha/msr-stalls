@@ -108,6 +108,10 @@ export const AUDIT_ACTION_INFO = {
   'stall_email.unsent': info('Letter Marked Unsent', 'comms', 'undo', 'warn'),
   'stall_email_template.updated': info('Letter Template Edited', 'comms', 'pencil', 'neutral'),
   'stall_reminder.logged': info('Reminder Call Logged', 'comms', 'phone-call', 'neutral'),
+  'stall_call_form.script_updated': info('Call Script Edited', 'comms', 'pencil', 'neutral'),
+  'stall_call_question.added': info('Call Question Added', 'comms', 'plus', 'info'),
+  'stall_call_question.updated': info('Call Question Edited', 'comms', 'pencil', 'neutral'),
+  'stall_call_question.deleted': info('Call Question Removed', 'comms', 'trash', 'warn'),
   // ── Event operations ───────────────────────────────────────────────────
   'stall_request.checked_in': info('Checked In', 'checkin', 'circle-check', 'ok'),
   'stall_request.check_in_undone': info('Check-In Undone', 'checkin', 'undo', 'warn'),

@@ -7,13 +7,14 @@
 // never double-seed. `npm run db:reset` passes --force, which wipes the
 // stalls tables first.
 import { randomUUID } from 'node:crypto';
-import { SubmitRequestInput, type ZoneCode } from '@stalls/core';
+import { type AddCallQuestionInput, SubmitRequestInput, type ZoneCode } from '@stalls/core';
 import { LogMailer } from '../src/email';
 import { createUnconfiguredSigner } from '../src/modules/stalls/signer';
 import { createLoggingWhatsAppSender } from '../src/modules/stalls/whatsapp';
 import { submitBankDetails } from '../src/modules/stalls/bank';
 import { checkIn } from '../src/modules/stalls/checkin';
 import { logReminder, sendTemplate } from '../src/modules/stalls/comms';
+import { addCallQuestion, updateCallScript } from '../src/modules/stalls/call-form';
 import { createEdition, updateEditionSettings } from '../src/modules/stalls/config';
 import { hashPassword } from '../src/modules/stalls/credentials';
 import type { StallsDeps } from '../src/modules/stalls/deps';
@@ -402,6 +403,117 @@ async function fakeUpload(_files: MediaStore, folder: string): Promise<string> {
   return `stalls/${folder}/${randomUUID()}.pdf`;
 }
 
+/**
+ * The call form a coordinator would have built, for both chase lists.
+ *
+ * 🔴 DEV ONLY, and the same distinction the letters draw: an edition's call
+ * form is written on the Admin tab and nothing in production seeds one. This
+ * exists so `db:reset` leaves a dialog with something in it — a Log Call that
+ * asks nothing demonstrates nothing.
+ *
+ * Returns the two PAYMENT question ids, because the seeded call answers them.
+ */
+async function seedCallForm(
+  editionId: string,
+  by: string,
+): Promise<{ picked: string; reason: string }> {
+  await updateCallScript(
+    prisma,
+    editionId,
+    'BANK',
+    'Namaskaram, calling from the Isha stall team about your stall at Mahashivratri. ' +
+      'We have not received your bank details form yet — may I check when you can send it?',
+    by,
+  );
+  await updateCallScript(
+    prisma,
+    editionId,
+    'PAYMENT',
+    'Namaskaram, calling from the Isha stall team. The stall fee for your stall has not ' +
+      'reached us yet — may I check when the transfer will go out?',
+    by,
+  );
+
+  /** One question, with the limits every call question shares defaulted off. */
+  const ask = (
+    kind: 'BANK' | 'PAYMENT',
+    input: Partial<AddCallQuestionInput> & Pick<AddCallQuestionInput, 'label' | 'fieldType'>,
+  ) =>
+    addCallQuestion(
+      prisma,
+      editionId,
+      kind,
+      {
+        help: null,
+        isRequired: false,
+        options: null,
+        min: null,
+        max: null,
+        minLen: null,
+        maxLen: null,
+        decimals: null,
+        pattern: null,
+        patternHint: null,
+        window: null,
+        showIfQuestionId: null,
+        showIfValue: null,
+        showOnOutcomes: [],
+        ...input,
+      } as AddCallQuestionInput,
+      by,
+    );
+
+  const YES_NO = [
+    { value: 'YES', label: 'Yes', labelTa: null },
+    { value: 'NO', label: 'No', labelTa: null },
+  ];
+
+  const bankPicked = await ask('BANK', {
+    label: 'Did you speak to the vendor themselves?',
+    fieldType: 'select',
+    isRequired: true,
+    options: YES_NO,
+  });
+  await ask('BANK', {
+    label: 'What is holding up the form?',
+    fieldType: 'textarea',
+    maxLen: 300,
+    // ⚠️ Branched: there is no point asking what is holding it up when the
+    // person on the phone was somebody else's brother-in-law.
+    showIfQuestionId: bankPicked.id,
+    showIfValue: 'YES',
+  });
+  await ask('BANK', {
+    label: 'When will they send it?',
+    fieldType: 'date',
+    // Asked only where an undertaking was actually given.
+    showOnOutcomes: ['PROMISED'],
+  });
+
+  const picked = await ask('PAYMENT', {
+    label: 'Did you speak to the vendor themselves?',
+    fieldType: 'select',
+    isRequired: true,
+    options: YES_NO,
+  });
+  const reason = await ask('PAYMENT', {
+    label: 'Why has the transfer not gone out?',
+    fieldType: 'textarea',
+    maxLen: 300,
+    showIfQuestionId: picked.id,
+    showIfValue: 'YES',
+  });
+  await ask('PAYMENT', {
+    label: 'Do they have the account number and IFSC?',
+    fieldType: 'select',
+    options: YES_NO,
+    showIfQuestionId: picked.id,
+    showIfValue: 'YES',
+  });
+
+  return { picked: picked.id, reason: reason.id };
+}
+
 async function main() {
   const existing = await prisma.stallEdition.count();
   if (existing > 0 && !force) {
@@ -698,14 +810,32 @@ async function main() {
     finance,
   );
 
-  // Two vendors left mid-flow, with a chasing call logged against each.
+  // ⚠️ The call form an edition asks for is an ADMIN's, not a constant — see
+  // `call-form.ts`. Nothing back-fills it and nothing seeds it in production;
+  // this writes the shape a coordinator would build on the Call Log Form tab,
+  // so a developer opening Log Call sees a form rather than an empty dialog.
+  const { picked, reason } = await seedCallForm(edition.id, lead);
+
+  // Two vendors left mid-flow, with a chasing call logged against each — one
+  // that rang out and one where somebody answered, so both halves of the
+  // outcome rule are visible on the screen.
   await logReminder(
     prisma,
     healthCamp,
-    { kind: 'BANK', note: 'No answer, will try tomorrow' },
+    { kind: 'BANK', outcome: 'NOT_ANSWERED', note: 'No answer, will try tomorrow' },
     lead,
   );
-  await logReminder(prisma, healthCamp, { kind: 'PAYMENT' }, lead);
+  await logReminder(
+    prisma,
+    healthCamp,
+    {
+      kind: 'PAYMENT',
+      outcome: 'PROMISED',
+      note: 'Says the transfer goes out on Monday.',
+      answers: { [picked]: 'YES', [reason]: 'Waiting on their own customer to pay' },
+    },
+    lead,
+  );
   console.log('Phase 2: 2 letters sent, 1 bank form in, 1 vendor paid in full');
 
   // ── Phase 3: event operations ─────────────────────────────────────────────

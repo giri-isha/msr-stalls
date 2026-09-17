@@ -820,3 +820,55 @@ export class MissingRejectReasonError extends Error {
     this.name = 'MissingRejectReasonError';
   }
 }
+
+/* ── The call log form ─────────────────────────────────────────────────────*/
+
+/** A call question id that is not on this edition's form. Mapped to 404. */
+export class UnknownCallQuestionError extends Error {
+  constructor(readonly id: string) {
+    super('that question is not on this call form');
+    this.name = 'UnknownCallQuestionError';
+  }
+}
+
+/** A branch that would produce a form nobody can answer. Mapped to 400.
+ *
+ *  ⚠️ The reason is carried rather than flattened, because the four cases are
+ *  four different mistakes — pointing forward, pointing at a free-text
+ *  question, naming a value that question does not offer, or naming a question
+ *  on another form. `callBranchProblem` in `@stalls/core` words all four, and
+ *  the builder reads the SAME function before it saves, so the greyed-out
+ *  option and the refusal cannot disagree. */
+export class BadCallBranchError extends Error {
+  constructor(readonly reason: string) {
+    super(reason);
+    this.name = 'BadCallBranchError';
+  }
+}
+
+/** A question somebody has already answered, offered for deletion. Mapped to
+ *  409.
+ *
+ *  🔴 The answer is the whole point. A call answer exists nowhere else — it is
+ *  not a copy of a column on the request — so deleting the question either
+ *  takes the answer with it or leaves a row nothing can label. Switch it off
+ *  instead; the call history goes on reading correctly, and no caller is asked
+ *  it again. */
+export class CallQuestionInUseError extends Error {
+  constructor(readonly id: string) {
+    super('that question has been answered on a call, so it can only be switched off');
+    this.name = 'CallQuestionInUseError';
+  }
+}
+
+/** A callback day sent with an outcome that is not `CALLBACK`. Mapped to 400.
+ *
+ *  ⚠️ The database refuses this too — `stall_reminder_call_callback_needs_
+ *  outcome`. This is here so the screen gets a sentence rather than a
+ *  constraint name. */
+export class CallbackDateWithoutCallbackError extends Error {
+  constructor() {
+    super('a callback day belongs only on a call whose outcome is "Callback requested"');
+    this.name = 'CallbackDateWithoutCallbackError';
+  }
+}

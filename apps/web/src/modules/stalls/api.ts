@@ -68,6 +68,11 @@ import type {
   RegisterStaffInput,
   ReminderKind,
   ReminderRow,
+  ReminderCallView,
+  CallFormView,
+  CallOutcome,
+  AddCallQuestionInput,
+  CallQuestionPatch,
   RequestDetail,
   RequestPage,
   RequesterSession,
@@ -668,11 +673,43 @@ export const clearSent = (requestId: string, key: TemplateKeyValue) =>
 export const listReminders = (kind: ReminderKind) =>
   apiFetch<ReminderRow[]>(`${BASE}/comms/reminders${qs({ kind })}`);
 
-export const logReminder = (requestId: string, kind: ReminderKind, note?: string) =>
-  apiFetch<void>(`${BASE}/requests/${requestId}/reminders`, {
+/** What this call will ask. Gated on `comms.read`, not the admin privilege —
+ *  the person logging the call is rarely the person who wrote the questions. */
+export const getCallForm = (kind: ReminderKind) =>
+  apiFetch<CallFormView>(`${BASE}/comms/call-form${qs({ kind })}`);
+
+/** Every call already logged against this vendor for this kind, newest first. */
+export const listReminderCalls = (requestId: string, kind: ReminderKind) =>
+  apiFetch<ReminderCallView[]>(`${BASE}/requests/${requestId}/reminders${qs({ kind })}`);
+
+export const logReminder = (
+  requestId: string,
+  body: {
+    kind: ReminderKind;
+    outcome: CallOutcome;
+    callbackDate?: string | null;
+    note?: string;
+    answers?: Record<string, unknown>;
+  },
+) => apiFetch<void>(`${BASE}/requests/${requestId}/reminders`, { method: 'POST', json: body });
+
+// ── Backoffice: the call log form ───────────────────────────────────────────
+
+export const listCallForms = (editionId?: string) =>
+  apiFetch<{ forms: CallFormView[] }>(`${BASE}/config/call-forms${editionQuery(editionId)}`);
+export const putCallScript = (kind: ReminderKind, script: string) =>
+  apiFetch<void>(`${BASE}/config/call-forms/${kind}/script`, { method: 'PUT', json: { script } });
+export const addCallQuestion = (kind: ReminderKind, input: AddCallQuestionInput) =>
+  apiFetch<{ id: string }>(`${BASE}/config/call-forms/${kind}/questions`, {
     method: 'POST',
-    json: { kind, note },
+    json: input,
   });
+export const patchCallQuestion = (id: string, patch: CallQuestionPatch) =>
+  apiFetch<void>(`${BASE}/config/call-questions/${id}`, { method: 'PATCH', json: patch });
+/** ⚠️ 409 once a call has answered it. The caller shows that; it does not
+ *  force — switching the question off is the supported way to stop asking. */
+export const deleteCallQuestion = (id: string) =>
+  apiFetch<void>(`${BASE}/config/call-questions/${id}`, { method: 'DELETE' });
 
 // ── Backoffice: onboarding ───────────────────────────────────────────────────────
 

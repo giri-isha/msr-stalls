@@ -75,7 +75,7 @@ package both sides share.
 | Contract agreement | The agreement checkboxes the 2025 form used (`agreedTermsAt`, `agreedNeftAt`), plus digital signature through a provider port (`signer.ts`, `StallContractSignature`) — `GET/POST /requests/:id/signature` and `POST .../refresh` | Built; no provider is wired up in this repo, and the standalone adapter reports itself unconfigured rather than pretending |
 | The terms document the requester accepts — "to view the terms and conditions document, please click here" on the 2025 form | `StallEdition.termsUrl`, set in Admin → Edition settings, linked beside the acceptance tick-box on the bank form. Blank until the legal team issues one, and the consent then stands without a link rather than with one that 404s | Built |
 | MICR code | Required on the 2025 form; optional here | Differs — the cancelled cheque carries it and is uploaded anyway, so requiring it turns a legible cheque into a blocked submission |
-| Reminder calls for bank details pending | `StallReminderCall(kind: BANK)`, Communication → Reminder calls | Built |
+| Reminder calls for bank details pending | `StallReminderCall(kind: BANK)`, Communication → Reminder calls. Each call records its outcome, any callback day, remarks, and the answers to the questions Admin → Call Log Form asks for this kind | Built |
 | A vendor who lost the email can get back to the form | Their status page lists what is outstanding and opens the bank form from there — reached by the emailed link (`/stalls/status/:token`) **or**, once logged in, from `/stalls/requests` | Built |
 
 ## 6. Payment details and finance
@@ -89,7 +89,7 @@ package both sides share.
 | Finance confirms fee and deposit with reference, amount and date | `StallPaymentRecord`, Finance → Payment confirmation | Built |
 | What the local welfare team actually agreed to collect — "for A3 the cost is 10,000; for the coconut wala, probably we will give that at 5,000 — it is best that it is there in the system" | `StallPaymentPlan.discretionaryFeePaise` with a required reason, `PUT /finance/payments/:id/discretionary-fee`. The quoted figure is kept: what they were told and what they owe are two numbers, and "paid in full" is measured against the second | Built |
 | Payment through the system | Not built. Payment is NEFT to a virtual account, as in 2025, and the Finance screen says so. | Open — deliberate; revisit only if a gateway is introduced |
-| Reminder calls for payment pending | `StallReminderCall(kind: PAYMENT)`, same screen | Built |
+| Reminder calls for payment pending | `StallReminderCall(kind: PAYMENT)`, same screen, with its own script and its own questions | Built |
 
 ## 7. Vendor staff registration
 

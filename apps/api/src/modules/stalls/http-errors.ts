@@ -7,6 +7,8 @@ import {
   CannotSetPasswordError,
   CategoryInUseError,
   CouponFullError,
+  CallQuestionInUseError,
+  CallbackDateWithoutCallbackError,
   CustomFieldInUseError,
   DuplicatePaymentError,
   InvalidCredentialsError,
@@ -18,6 +20,7 @@ import {
   RoleAboveYouError,
   RoleCycleError,
   ArchivedDeclarationError,
+  BadCallBranchError,
   BadDeclarationKeyError,
   DeclarationExistsError,
   DeclarationsChangedError,
@@ -34,6 +37,7 @@ import {
   RoleKeyTakenError,
   UnknownDeclarationError,
   UnknownFormError,
+  UnknownCallQuestionError,
   UnknownFormFieldError,
   UnknownRoleError,
   SystemRoleError,
@@ -108,6 +112,7 @@ function statusFor(err: unknown): number | null {
     err instanceof UnknownDeclarationError ||
     err instanceof UnknownFormError ||
     err instanceof UnknownFormFieldError ||
+    err instanceof UnknownCallQuestionError ||
     err instanceof UnknownAccountError ||
     err instanceof UnknownCouponError ||
     err instanceof UnknownTemplateError
@@ -131,6 +136,7 @@ function statusFor(err: unknown): number | null {
     err instanceof SystemRoleError ||
     err instanceof RoleCycleError ||
     err instanceof CustomFieldInUseError ||
+    err instanceof CallQuestionInUseError ||
     err instanceof WrongTemplateError ||
     err instanceof CouponFullError ||
     err instanceof BankDetailsLockedError ||
@@ -162,6 +168,9 @@ function statusFor(err: unknown): number | null {
   // Malformed rather than conflicting: nothing on the server stands on it, the
   // rule simply does not describe a question anybody could answer.
   if (err instanceof BadFieldRuleError) return 400;
+  // A branch nobody could answer, and a callback day with nothing to hang on.
+  if (err instanceof BadCallBranchError) return 400;
+  if (err instanceof CallbackDateWithoutCallbackError) return 400;
   if (err instanceof BuiltInDecimalsError) return 400;
   if (err instanceof FieldShapeChangeError) return 400;
   if (

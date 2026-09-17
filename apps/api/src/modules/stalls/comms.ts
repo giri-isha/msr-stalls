@@ -7,11 +7,16 @@ import {
   type EmailTemplateView,
   type Quote,
   type QuoteLine,
+  type ReminderCallView,
   type ReminderKind,
   type ReminderRow,
   type SendEmailResult,
   type TemplateKeyValue,
+  CALLBACK_OUTCOME,
+  type CallOutcome,
+  callAnswersToStore,
   chargeLines,
+  checkCallAnswers,
   depositLines,
   formatInr,
   isStepAsked,
@@ -22,7 +27,14 @@ import { actorFrom, audit } from './audit';
 import { mintAccessLink } from './accounts';
 import type { StallsDeps } from './deps';
 import type { Db } from './editions';
-import { UnknownRequestError, UnknownTemplateError, WrongTemplateError } from './errors';
+import { asCallForm, getCallForm } from './call-form';
+import {
+  CallbackDateWithoutCallbackError,
+  UnknownRequestError,
+  UnknownTemplateError,
+  WrongTemplateError,
+} from './errors';
+import { ValidationFailedError } from '../../errors';
 import {
   type RequestWithFacts,
   allocatedNumbers,
@@ -679,27 +691,127 @@ export async function listReminders(
     kind,
     callCount: r.reminders.length,
     lastCalledAt: r.reminders[0]?.calledAt.toISOString() ?? null,
+    lastOutcome: r.reminders[0]?.outcome ?? null,
+    // ⚠️ The most RECENT day asked for, not the first — a vendor who has moved
+    // the callback twice is expecting a call on the day they last said, and a
+    // list showing the older one would send somebody to ring them early and
+    // report that they have already been chased.
+    callbackDate:
+      r.reminders
+        .find((c) => c.callbackDate)
+        ?.callbackDate?.toISOString()
+        .slice(0, 10) ?? null,
   }));
 }
 
+/**
+ * Every call logged against one request, newest first, with what was said.
+ *
+ * 🔴 Without this the call form is write-only: a caller answers six questions
+ * and nobody can ever read them back, which is a form that wastes the caller's
+ * time rather than saving the next one's. The Calls Logged count on the list is
+ * what opens it.
+ *
+ * ⚠️ Questions are labelled as they read NOW, not as they read when the call
+ * was made. The alternative is versioning every question, which buys a fidelity
+ * nobody on this screen has asked for and costs a table.
+ */
+export async function listReminderCalls(
+  db: Db,
+  requestId: string,
+  kind: ReminderKind,
+): Promise<ReminderCallView[]> {
+  const calls = await db.stallReminderCall.findMany({
+    where: { requestId, kind },
+    orderBy: { calledAt: 'desc' },
+    include: {
+      answers: {
+        include: { question: { select: { label: true, ordinal: true } } },
+      },
+    },
+  });
+  return calls.map((c) => ({
+    id: c.id,
+    kind: c.kind,
+    calledAt: c.calledAt.toISOString(),
+    calledBy: c.calledBy,
+    outcome: c.outcome,
+    callbackDate: c.callbackDate?.toISOString().slice(0, 10) ?? null,
+    note: c.note,
+    answers: [...c.answers]
+      .sort((a, b) => a.question.ordinal - b.question.ordinal)
+      .map((a) => ({ questionId: a.questionId, label: a.question.label, value: a.value })),
+  }));
+}
+
+/**
+ * Records one call: how it went, what was agreed, and the answers to whatever
+ * the edition's call form asks.
+ *
+ * 🔴 The answers are checked HERE and not only in the dialog, with the same
+ * `checkCallAnswers` the dialog runs — and only the questions that were
+ * actually VISIBLE are stored. A stale browser holding yesterday's form, or a
+ * caller who answered a branch and then changed the answer above it, must not
+ * be able to file an answer to a question nobody was shown: it would read back
+ * on the call history as something the vendor said.
+ *
+ * ⚠️ Every call is its OWN row. The volunteering module reuses the newest log
+ * per cycle; here the count of calls is the number on the screen the team
+ * chases by, so a second call that overwrote the first would make a vendor rung
+ * four times look like one rung once.
+ */
 export async function logReminder(
   db: PrismaClient,
   requestId: string,
-  input: { kind: ReminderKind; note?: string },
+  input: {
+    kind: ReminderKind;
+    note?: string;
+    outcome?: CallOutcome;
+    callbackDate?: string | null;
+    answers?: Record<string, unknown>;
+  },
   by: string,
 ): Promise<void> {
-  const exists = await db.stallRequest.findUnique({
+  const request = await db.stallRequest.findUnique({
     where: { id: requestId },
-    select: { id: true },
+    select: { id: true, editionId: true },
   });
-  if (!exists) throw new UnknownRequestError(requestId);
+  if (!request) throw new UnknownRequestError(requestId);
+
+  const outcome = input.outcome ?? null;
+  const callbackDate = input.callbackDate ?? null;
+  // The database refuses this too; the sentence is what the screen can show.
+  if (callbackDate !== null && outcome !== CALLBACK_OUTCOME) {
+    throw new CallbackDateWithoutCallbackError();
+  }
+
+  const form = asCallForm(await getCallForm(db, request.editionId, input.kind));
+  const answers = input.answers ?? {};
+  // ⚠️ EVERY problem, not the first — a caller with the vendor still on the
+  // line wants the whole list at once, not one round trip per question.
+  const problems = Object.entries(checkCallAnswers(form.questions, answers, outcome));
+  if (problems.length > 0) {
+    throw new ValidationFailedError(
+      problems.map(([fieldKey, message]) => ({ row: 0, fieldKey, message })),
+    );
+  }
+
+  const stored = callAnswersToStore(form.questions, answers, outcome);
   await db.stallReminderCall.create({
-    data: { requestId, kind: input.kind, note: input.note ?? null, calledBy: by },
+    data: {
+      requestId,
+      kind: input.kind,
+      note: input.note ?? null,
+      calledBy: by,
+      outcome,
+      callbackDate: callbackDate === null ? null : new Date(`${callbackDate}T00:00:00Z`),
+      answers: { create: stored },
+    },
   });
   await audit(db, {
     actor: actorFrom(by),
     action: 'stall_reminder.logged',
     requestId: requestId,
-    detail: { kind: input.kind },
+    detail: { kind: input.kind, outcome, answered: stored.length },
   });
 }
