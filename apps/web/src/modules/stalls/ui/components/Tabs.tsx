@@ -6,6 +6,11 @@ export type TabDef = {
   label: string;
   /** Icon name from `ui/icons`. Omitted on strips whose labels carry enough. */
   glyph?: string;
+  /** A dot after the label: `warn` for a section with something outstanding
+   *  in it, `ok` for one that is settled. The strip then reads as a checklist
+   *  before any tab is opened. ⚠️ Decoration only — the section's own body
+   *  says the same thing in words, so nothing is lost on a screen reader. */
+  mark?: 'warn' | 'ok';
 };
 
 /**
@@ -118,6 +123,19 @@ export function Tabs({
           >
             {t.glyph && <Icon name={t.glyph} size={14} />}
             {t.label}
+            {t.mark && (
+              <span
+                data-mark={t.mark}
+                aria-hidden
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  flex: 'none',
+                  background: t.mark === 'warn' ? 'var(--warn)' : 'var(--ok)',
+                }}
+              />
+            )}
           </button>
         );
       })}
