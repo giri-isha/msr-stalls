@@ -41,29 +41,30 @@ const choice = (over: Partial<CallQuestion> = {}): CallQuestion =>
   });
 
 describe('which questions are asked', () => {
-  test('nothing is asked until an outcome is picked', () => {
+  test('nothing is asked until a status is picked', () => {
     expect(visibleCallQuestions([q()], {}, null)).toEqual([]);
   });
 
   // 🔴 The default that stops a form teaching people to type anything to get
   // past it: a scripted question is something you ask a PERSON.
-  test('a question naming no outcomes is asked only where somebody was spoken to', () => {
+  test('a question naming no statuses is asked only where somebody was spoken to', () => {
     const only = q({ id: 'a' });
     for (const outcome of SPOKEN_OUTCOMES) {
       expect(visibleCallQuestions([only], {}, outcome).map((x) => x.id)).toEqual(['a']);
     }
-    expect(visibleCallQuestions([only], {}, 'NOT_ANSWERED')).toEqual([]);
-    expect(visibleCallQuestions([only], {}, 'WRONG_NUMBER')).toEqual([]);
+    for (const outcome of ['NOT_ANSWERED', 'NOT_REACHABLE', 'WRONG_NUMBER', 'NA'] as const) {
+      expect(visibleCallQuestions([only], {}, outcome)).toEqual([]);
+    }
   });
 
-  test('a question naming outcomes is asked on exactly those', () => {
+  test('a question naming statuses is asked on exactly those', () => {
     const only = q({ id: 'a', showOnOutcomes: ['NOT_ANSWERED'] });
     expect(visibleCallQuestions([only], {}, 'NOT_ANSWERED').map((x) => x.id)).toEqual(['a']);
-    expect(visibleCallQuestions([only], {}, 'DONE')).toEqual([]);
+    expect(visibleCallQuestions([only], {}, 'CALL_COMPLETED')).toEqual([]);
   });
 
   test('a switched-off question is never asked', () => {
-    expect(visibleCallQuestions([q({ isActive: false })], {}, 'DONE')).toEqual([]);
+    expect(visibleCallQuestions([q({ isActive: false })], {}, 'CALL_COMPLETED')).toEqual([]);
   });
 
   test('a branch appears only once its parent carries the matching answer', () => {
@@ -71,23 +72,32 @@ describe('which questions are asked', () => {
     const child = q({ id: 'c', ordinal: 2, showIfQuestionId: 'p', showIfValue: 'YES' });
     const form = [parent, child];
 
-    expect(visibleCallQuestions(form, {}, 'DONE').map((x) => x.id)).toEqual(['p']);
-    expect(visibleCallQuestions(form, { p: 'NO' }, 'DONE').map((x) => x.id)).toEqual(['p']);
-    expect(visibleCallQuestions(form, { p: 'YES' }, 'DONE').map((x) => x.id)).toEqual(['p', 'c']);
+    expect(visibleCallQuestions(form, {}, 'CALL_COMPLETED').map((x) => x.id)).toEqual(['p']);
+    expect(visibleCallQuestions(form, { p: 'NO' }, 'CALL_COMPLETED').map((x) => x.id)).toEqual([
+      'p',
+    ]);
+    expect(visibleCallQuestions(form, { p: 'YES' }, 'CALL_COMPLETED').map((x) => x.id)).toEqual([
+      'p',
+      'c',
+    ]);
   });
 
   // ⚠️ The collapse-from-the-top rule. The grandchild's own condition is met,
   // and it is still not asked, because the question above it is not on screen.
   test('a branch off a hidden question is hidden, whatever its own answer says', () => {
     const form = [
-      choice({ id: 'p', ordinal: 1, showOnOutcomes: ['DONE'] }),
+      choice({ id: 'p', ordinal: 1, showOnOutcomes: ['CALL_COMPLETED'] }),
       choice({ id: 'c', ordinal: 2, showIfQuestionId: 'p', showIfValue: 'YES' }),
       q({ id: 'g', ordinal: 3, showIfQuestionId: 'c', showIfValue: 'YES' }),
     ];
     const answers = { p: 'YES', c: 'YES' };
-    expect(visibleCallQuestions(form, answers, 'DONE').map((x) => x.id)).toEqual(['p', 'c', 'g']);
+    expect(visibleCallQuestions(form, answers, 'CALL_COMPLETED').map((x) => x.id)).toEqual([
+      'p',
+      'c',
+      'g',
+    ]);
     // The parent's outcome rule now fails, and the whole chain goes with it.
-    expect(visibleCallQuestions(form, answers, 'PROMISED')).toEqual([]);
+    expect(visibleCallQuestions(form, answers, 'CALLBACK')).toEqual([]);
   });
 
   test('two questions pointing at each other do not recurse forever', () => {
@@ -95,15 +105,15 @@ describe('which questions are asked', () => {
       choice({ id: 'a', ordinal: 1, showIfQuestionId: 'b', showIfValue: 'YES' }),
       choice({ id: 'b', ordinal: 2, showIfQuestionId: 'a', showIfValue: 'YES' }),
     ];
-    expect(visibleCallQuestions(form, { a: 'YES', b: 'YES' }, 'DONE')).toEqual([]);
+    expect(visibleCallQuestions(form, { a: 'YES', b: 'YES' }, 'CALL_COMPLETED')).toEqual([]);
   });
 });
 
 describe('checking the answers', () => {
   test('a required question that was asked and left blank is a problem', () => {
     const only = q({ id: 'a', isRequired: true, label: 'Reason' });
-    expect(checkCallAnswers([only], {}, 'DONE')).toEqual({ a: 'Reason is needed.' });
-    expect(checkCallAnswers([only], { a: 'because' }, 'DONE')).toEqual({});
+    expect(checkCallAnswers([only], {}, 'CALL_COMPLETED')).toEqual({ a: 'Reason is needed.' });
+    expect(checkCallAnswers([only], { a: 'because' }, 'CALL_COMPLETED')).toEqual({});
   });
 
   // 🔴 A required question on a branch nobody went down is not unanswered — it
@@ -114,14 +124,14 @@ describe('checking the answers', () => {
       choice({ id: 'p', ordinal: 1 }),
       q({ id: 'c', ordinal: 2, isRequired: true, showIfQuestionId: 'p', showIfValue: 'YES' }),
     ];
-    expect(checkCallAnswers(form, { p: 'NO' }, 'DONE')).toEqual({});
-    expect(checkCallAnswers(form, { p: 'YES' }, 'DONE')).toHaveProperty('c');
+    expect(checkCallAnswers(form, { p: 'NO' }, 'CALL_COMPLETED')).toEqual({});
+    expect(checkCallAnswers(form, { p: 'YES' }, 'CALL_COMPLETED')).toHaveProperty('c');
   });
 
   test('a limit is enforced by the module’s own checker', () => {
     const only = q({ id: 'a', label: 'Helpers', type: 'number', min: 1, max: 10 });
-    expect(checkCallAnswers([only], { a: '40' }, 'DONE').a).toContain('Helpers');
-    expect(checkCallAnswers([only], { a: '4' }, 'DONE')).toEqual({});
+    expect(checkCallAnswers([only], { a: '40' }, 'CALL_COMPLETED').a).toContain('Helpers');
+    expect(checkCallAnswers([only], { a: '4' }, 'CALL_COMPLETED')).toEqual({});
   });
 });
 
@@ -133,7 +143,7 @@ describe('what is stored', () => {
       q({ id: 'blank', ordinal: 3 }),
     ];
     // `c` is answered and then abandoned by changing the answer above it.
-    const stored = callAnswersToStore(form, { p: 'NO', c: 'stale', blank: '' }, 'DONE');
+    const stored = callAnswersToStore(form, { p: 'NO', c: 'stale', blank: '' }, 'CALL_COMPLETED');
     expect(stored).toEqual([{ questionId: 'p', value: 'NO' }]);
   });
 

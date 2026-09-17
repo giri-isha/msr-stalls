@@ -754,7 +754,7 @@ function ReminderPanel() {
                 <TH>Contact</TH>
                 <TH align='right'>Calls Logged</TH>
                 <TH>Last Call</TH>
-                <TH>Outcome</TH>
+                <TH>Call Status</TH>
                 <TH> </TH>
               </TR>
             </THead>
@@ -856,10 +856,10 @@ function ReminderPanel() {
 /** ⚠️ Keyed by the outcome NAME rather than by `statusTone`, which reads
  *  English words — "DONE" is not a word that function knows. */
 const OUTCOME_TONE: Record<string, Tone> = {
-  DONE: 'ok',
-  PROMISED: 'info',
+  CALL_COMPLETED: 'ok',
   CALLBACK: 'warn',
-  REFUSED: 'des',
   WRONG_NUMBER: 'des',
+  NOT_REACHABLE: 'neutral',
   NOT_ANSWERED: 'neutral',
+  NA: 'neutral',
 };

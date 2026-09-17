@@ -17,7 +17,7 @@
 -- to invent a script.
 
 -- CreateEnum
-CREATE TYPE "stalls"."StallCallOutcome" AS ENUM ('NOT_ANSWERED', 'WRONG_NUMBER', 'CALLBACK', 'PROMISED', 'REFUSED', 'DONE');
+CREATE TYPE "stalls"."StallCallOutcome" AS ENUM ('CALL_COMPLETED', 'NOT_ANSWERED', 'NOT_REACHABLE', 'CALLBACK', 'WRONG_NUMBER', 'NA');
 
 -- AlterTable
 ALTER TABLE "stalls"."stall_reminder_call" ADD COLUMN     "callback_date" DATE,

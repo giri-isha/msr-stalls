@@ -486,8 +486,8 @@ async function seedCallForm(
   await ask('BANK', {
     label: 'When will they send it?',
     fieldType: 'date',
-    // Asked only where an undertaking was actually given.
-    showOnOutcomes: ['PROMISED'],
+    // Asked only where somebody actually answered and gave a date.
+    showOnOutcomes: ['CALL_COMPLETED'],
   });
 
   const picked = await ask('PAYMENT', {
@@ -830,7 +830,7 @@ async function main() {
     healthCamp,
     {
       kind: 'PAYMENT',
-      outcome: 'PROMISED',
+      outcome: 'CALL_COMPLETED',
       note: 'Says the transfer goes out on Monday.',
       answers: { [picked]: 'YES', [reason]: 'Waiting on their own customer to pay' },
     },

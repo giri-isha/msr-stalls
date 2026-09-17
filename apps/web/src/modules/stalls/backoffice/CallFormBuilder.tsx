@@ -63,7 +63,7 @@ import { RulesEditor, TypePicker } from './FormBuilder';
  * ⚠️ The types, the limits and the controls are the module's OWN — the same
  * `TypePicker`, `RulesEditor` and `FieldControl` the request forms use. What
  * this builder has that the Form Builder does not is the two CONDITIONS: which
- * outcomes a question is asked on, and which earlier answer it hangs off. A
+ * call statuses a question is asked on, and which earlier answer it hangs off. A
  * request form is filled once, in front of a screen; a call form is filled in
  * thirty seconds with a phone at an ear, so a question that does not apply must
  * not be on the page at all.
@@ -125,12 +125,12 @@ export function CallFormBuilder({
 
           <Panel
             title={`${kind === 'BANK' ? 'Bank details' : 'Payment'} — questions`}
-            note='Asked in order, while the call is being logged. A question is only put to the caller when the outcome and the condition below it both allow.'
+            note='Asked in order, while the call is being logged. A question is only put to the caller when the call status and the condition below it both allow.'
             actions={<AddBtn what='question' writable={writable} onClick={() => setAdding(true)} />}
           >
             {form.questions.length === 0 ? (
               <Empty>
-                No questions yet — a call records its outcome and remarks, and nothing more.
+                No questions yet — a call records its status and remarks, and nothing more.
               </Empty>
             ) : (
               <div style={{ display: 'grid', gap: 8 }}>
@@ -451,7 +451,7 @@ function QuestionDialog({
   return (
     <Dialog
       title={question ? `Edit "${question.label}"` : 'Add a question'}
-      note='Asked while a call is being logged, and only when the outcome and the condition below both allow.'
+      note='Asked while a call is being logged, and only when the call status and the condition below both allow.'
       width={620}
       onClose={onClose}
       footer={
@@ -539,13 +539,15 @@ function QuestionDialog({
           problem={ruleProblem}
         />
 
-        {/* 🔴 Which outcomes this is asked on. Empty is the DEFAULT set, not
+        {/* 🔴 Which statuses this is asked on. Empty is the DEFAULT set, not
             "never": a scripted question is something you ask a person, and
             putting "what reason did they give" in front of a caller whose phone
             rang out is how a form teaches people to type anything to get past
             it. */}
         <div>
-          <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>Ask on which calls</div>
+          <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>
+            Ask on which call statuses
+          </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {CALL_OUTCOMES.map((o) => {
               const on = v.showOnOutcomes.includes(o);
@@ -581,9 +583,9 @@ function QuestionDialog({
           <div style={{ fontSize: 11.5, color: 'var(--mfg)', marginTop: 6, lineHeight: 1.55 }}>
             {v.showOnOutcomes.length === 0
               ? `Pick none and it is asked whenever somebody was actually spoken to — ${SPOKEN_OUTCOMES.map(
-                  (o) => CALL_OUTCOME_LABEL[o].toLowerCase(),
-                ).join(', ')}.`
-              : 'Asked only on the outcomes ticked above.'}
+                  (o) => CALL_OUTCOME_LABEL[o],
+                ).join(' and ')}.`
+              : 'Asked only on the statuses ticked above.'}
           </div>
         </div>
 

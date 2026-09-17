@@ -1387,18 +1387,19 @@ enum StallReminderKind {
   @@schema("stalls")
 }
 
-/// How one reminder call went.
+/// The call status — how one reminder call went.
 ///
 /// ⚠️ About the CALL, not about the vendor. Whether the bank form has arrived
 /// is what puts the row on the list in the first place; asking a caller to
-/// restate it is how the two come to disagree. See `CALL_OUTCOMES`.
+/// restate it is how the two come to disagree. See `CALL_OUTCOMES`, whose
+/// order is the order of the dropdown.
 enum StallCallOutcome {
+  CALL_COMPLETED
   NOT_ANSWERED
-  WRONG_NUMBER
+  NOT_REACHABLE
   CALLBACK
-  PROMISED
-  REFUSED
-  DONE
+  WRONG_NUMBER
+  NA
 
   @@schema("stalls")
 }
@@ -1569,7 +1570,7 @@ model StallReminderCall {
   calledAt  DateTime          @default(now()) @map("called_at") @db.Timestamptz
   calledBy  String            @map("called_by")
 
-  /// How the call went.
+  /// The call status.
   ///
   /// 🔴 NULLABLE for one reason only: the calls logged before there was
   /// anything to ask. Those rows are a date and a person and nothing else, and

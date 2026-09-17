@@ -31,56 +31,53 @@ import { needsOptions } from './form-builder';
 /* ── Outcomes ───────────────────────────────────────────────────────────────*/
 
 /**
- * How the call went. Recorded on every call from here on.
+ * The call status — how the call went.
  *
  * ⚠️ Deliberately about the CALL and not about the vendor: whether the bank
  * form has arrived is a fact the database already holds — it is what puts the
  * row on the list at all — and asking a caller to restate it is how the two
  * come to disagree. These six are only what happened on the phone.
+ *
+ * 🔴 The ORDER is the order of the dropdown, and it is the stall team's own,
+ * not alphabetical and not "most likely first". `CALL_COMPLETED` leads because
+ * it is the one that ends the chasing.
  */
 export const CALL_OUTCOMES = [
+  'CALL_COMPLETED',
   'NOT_ANSWERED',
-  'WRONG_NUMBER',
+  'NOT_REACHABLE',
   'CALLBACK',
-  'PROMISED',
-  'REFUSED',
-  'DONE',
+  'WRONG_NUMBER',
+  'NA',
 ] as const;
 
 export type CallOutcome = (typeof CALL_OUTCOMES)[number];
 
 export const CALL_OUTCOME_LABEL: Record<CallOutcome, string> = {
-  NOT_ANSWERED: 'Not answered',
-  WRONG_NUMBER: 'Wrong number',
-  CALLBACK: 'Callback requested',
-  PROMISED: 'Promised',
-  REFUSED: 'Refused',
-  DONE: 'Done',
+  CALL_COMPLETED: 'Call Completed',
+  NOT_ANSWERED: 'Not Answered',
+  NOT_REACHABLE: 'Not Reachable/Switched Off',
+  CALLBACK: 'Callback Requested',
+  WRONG_NUMBER: 'Wrong Number',
+  NA: 'NA',
 };
 
-/** What each outcome means, said on the picker so six words do not have to
- *  carry it. */
-export const CALL_OUTCOME_HINT: Record<CallOutcome, string> = {
-  NOT_ANSWERED: 'Rang out, switched off, or nobody picked up.',
-  WRONG_NUMBER: 'The number does not reach them. Worth correcting on the request.',
-  CALLBACK: 'They asked to be rung again. Set the day below.',
-  PROMISED: 'They said they would send it. Nothing has arrived yet.',
-  REFUSED: 'They are not going ahead.',
-  DONE: 'They say it is already sent or paid.',
-};
-
-/** The one outcome that asks for a day. */
+/** The one status that asks for a day. */
 export const CALLBACK_OUTCOME: CallOutcome = 'CALLBACK';
 
 /**
- * The outcomes where somebody was actually spoken to.
+ * The statuses where somebody was actually spoken to.
  *
- * 🔴 The default for a question that names no outcomes of its own. A scripted
+ * 🔴 The default for a question that names no statuses of its own. A scripted
  * question is something you ask a person, and asking the caller "what reason
  * did they give" after a phone that rang out is how a form teaches people to
  * type anything to get past it.
+ *
+ * ⚠️ `NA` is not here. It is the status for a call that should not have been
+ * made — a row already settled, a duplicate — and a form that asked questions
+ * about one would be asking about a conversation that did not happen.
  */
-export const SPOKEN_OUTCOMES: readonly CallOutcome[] = ['CALLBACK', 'PROMISED', 'REFUSED', 'DONE'];
+export const SPOKEN_OUTCOMES: readonly CallOutcome[] = ['CALL_COMPLETED', 'CALLBACK'];
 
 export function isCallOutcome(v: string): v is CallOutcome {
   return (CALL_OUTCOMES as readonly string[]).includes(v);

@@ -306,13 +306,13 @@ const SCREENS: ScreenDoc[] = [
       'Templates: edit the subject and body for this edition and attach one file. Placeholders such as {{stallNumbers}} are filled per recipient, and the editor warns about a placeholder it does not recognise.',
       'Send letters: pick the letter, tick the recipients — one, or two hundred — and send. The template suggested on each row is the one that fits where that request has reached.',
       'A row that has already had this letter shows its sent stamp instead of a tick box.',
-      'Reminder calls: the two chase lists, pending bank details and pending payment. Log Call opens the form your edition asks for — how the call went, the day they asked to be rung back on, the scripted questions, and your own remarks.',
+      'Reminder calls: the two chase lists, pending bank details and pending payment. Log Call opens the form your edition asks for — the call status, the day they asked to be rung back on, the scripted questions, and your own remarks.',
       'The Calls Logged number on a row opens what was actually said on each of those calls, newest first.',
     ],
     notes: [
       'Bulk and individual send are the same operation — a list of one is an individual send — so the "once only" rule has one place to be right.',
       'An admin can arm Allow re-send on a row, which clears the record for that letter. Two clicks and admin-only, on purpose: it is for the day an address was wrong, not a second Send button.',
-      'What a call asks is set in Admin → Call Log Form, per edition and per chase list. A question is only put to you when the outcome you picked allows it — nothing scripted is asked about a phone that rang out.',
+      'What a call asks is set in Admin → Call Log Form, per edition and per chase list. A question is only put to you when the call status you picked allows it — nothing scripted is asked about a phone that rang out.',
     ],
   },
   {
@@ -412,7 +412,7 @@ const SCREENS: ScreenDoc[] = [
     steps: [
       'Bays, Planning Columns, Rates, Charges and Fines are not here any more — they are tabs on Planning & Zones, beside the grid that counts the stalls they describe.',
       'Form builder: what each of the four request forms asks, and in what order. Reword a question, add a heading, mark something required, or switch a question off. A question whose answer has a record of its own is marked Built in — it can be reworded, moved and switched off, but not retyped or removed.',
-      'Call log form: the script a caller reads out and the questions they answer, one set for pending bank details and one for pending payment. A question carries which outcomes it is asked on, and can be hung off an earlier answer — “what reason did they give” only when “did they pick up” was Yes.',
+      'Call log form: the script a caller reads out and the questions they answer, one set for pending bank details and one for pending payment. A question carries which call statuses it is asked on, and can be hung off an earlier answer — “what reason did they give” only when “did they pick up” was Yes.',
       'Declarations: the wording a requester ticks when they apply. Each form shows its own variant if it has one, otherwise the default. Changing the text creates a new version and archives the old one.',
       'Flow: two grids. Which steps are asked — a tick per step per requester type, so an ashram need not be asked for FSSAI while a vendor still is — and when each step opens.',
       'Users: grant a backoffice member one of the four roles.',
@@ -859,7 +859,7 @@ const LETTERS: FlowItem[] = [
     glyph: 'phone',
     title: 'Whoever has not come back is called',
     detail:
-      'Communication → Reminder calls keeps the log: who rang whom, when, how it went, and the answers to whatever the edition’s call form asks.',
+      'Communication → Reminder calls keeps the log: who rang whom, when, the call status, and the answers to whatever the edition’s call form asks.',
   },
 ];
 

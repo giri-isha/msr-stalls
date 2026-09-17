@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_TEMPLATES, TEMPLATE_PLACEHOLDERS } from '@stalls/core';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -364,7 +364,7 @@ describe('reminder calls', () => {
     const user = userEvent.setup();
     await openLogCall(user);
 
-    await user.click(screen.getByRole('radio', { name: /Promised/ }));
+    await choose(user, screen.getByLabelText('Call Status'), 'CALL_COMPLETED');
     await choose(user, screen.getByLabelText(/Did they pick up/), 'YES');
     await user.type(screen.getByLabelText(/What reason did they give/), 'was travelling');
     await user.click(screen.getByRole('button', { name: 'Log call' }));
@@ -373,7 +373,7 @@ describe('reminder calls', () => {
       const post = fetch.calls.find((c) => c.method === 'POST' && c.url.includes('/reminders'));
       expect(post?.body).toEqual({
         kind: 'BANK',
-        outcome: 'PROMISED',
+        outcome: 'CALL_COMPLETED',
         callbackDate: null,
         note: undefined,
         answers: { 'q-picked': 'YES', 'q-reason': 'was travelling' },
@@ -381,10 +381,10 @@ describe('reminder calls', () => {
     });
   });
 
-  // 🔴 Nothing is asked until the outcome is picked, because a question is
-  // asked on the outcomes it names — and a call that rang out is not one a
+  // 🔴 Nothing is asked until the status is picked, because a question is
+  // asked on the statuses it names — and a call that rang out is not one a
   // scripted question belongs on.
-  test('the questions appear only once an outcome is picked, and only the right ones', async () => {
+  test('the questions appear only once a status is picked, and only the right ones', async () => {
     stubReminders([reminderRow()]);
     render();
     const user = userEvent.setup();
@@ -392,13 +392,37 @@ describe('reminder calls', () => {
 
     expect(screen.queryByLabelText(/Did they pick up/)).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('radio', { name: /Not answered/ }));
+    await choose(user, screen.getByLabelText('Call Status'), 'NOT_ANSWERED');
     expect(screen.queryByLabelText(/Did they pick up/)).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('radio', { name: /Promised/ }));
+    await choose(user, screen.getByLabelText('Call Status'), 'CALL_COMPLETED');
     expect(await screen.findByLabelText(/Did they pick up/)).toBeInTheDocument();
     // The branch is still closed: its parent has not been answered Yes.
     expect(screen.queryByLabelText(/What reason did they give/)).not.toBeInTheDocument();
+  });
+
+  /** ⚠️ The six the stall team asked for, in their order, and nothing else —
+   *  the dropdown is the whole vocabulary of what a chase call can end as. */
+  test('the status dropdown offers exactly the six statuses, in order', async () => {
+    stubReminders([reminderRow()]);
+    render();
+    const user = userEvent.setup();
+    await openLogCall(user);
+
+    await user.click(screen.getByLabelText('Call Status'));
+    const list = await screen.findByRole('listbox');
+    expect(
+      within(list)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual([
+      'Call Completed',
+      'Not Answered',
+      'Not Reachable/Switched Off',
+      'Callback Requested',
+      'Wrong Number',
+      'NA',
+    ]);
   });
 
   test('a branch answered and then abandoned does not travel with the call', async () => {
@@ -407,7 +431,7 @@ describe('reminder calls', () => {
     const user = userEvent.setup();
     await openLogCall(user);
 
-    await user.click(screen.getByRole('radio', { name: /Promised/ }));
+    await choose(user, screen.getByLabelText('Call Status'), 'CALL_COMPLETED');
     await choose(user, screen.getByLabelText(/Did they pick up/), 'YES');
     await user.type(screen.getByLabelText(/What reason did they give/), 'stale');
     // Changing the answer above it closes the branch again.
@@ -421,16 +445,16 @@ describe('reminder calls', () => {
     });
   });
 
-  test('a callback asks for the day, and no other outcome does', async () => {
+  test('a callback asks for the day, and no other status does', async () => {
     stubReminders([reminderRow()]);
     render();
     const user = userEvent.setup();
     await openLogCall(user);
 
-    await user.click(screen.getByRole('radio', { name: /Refused/ }));
+    await choose(user, screen.getByLabelText('Call Status'), 'WRONG_NUMBER');
     expect(screen.queryByText('Call Back On')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('radio', { name: /Callback requested/ }));
+    await choose(user, screen.getByLabelText('Call Status'), 'CALLBACK');
     expect(await screen.findByText('Call Back On')).toBeInTheDocument();
   });
 
@@ -465,7 +489,7 @@ describe('reminder calls', () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole('tab', { name: 'Reminder calls' }));
-    expect(await screen.findByText('Callback requested')).toBeInTheDocument();
+    expect(await screen.findByText('Callback Requested')).toBeInTheDocument();
     expect(screen.getByText('back on 2026-10-02')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '2' }));

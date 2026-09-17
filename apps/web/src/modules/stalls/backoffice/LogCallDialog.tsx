@@ -1,5 +1,4 @@
 import {
-  CALL_OUTCOME_HINT,
   CALL_OUTCOME_LABEL,
   CALL_OUTCOMES,
   CALLBACK_OUTCOME,
@@ -26,6 +25,7 @@ import {
   FormField,
   KV,
   Loading,
+  Select,
   Tag,
   type Tone,
   Textarea,
@@ -159,9 +159,17 @@ export function LogCallDialog({
           ) : null}
 
           {/* 🔴 First, and everything else hangs off it: a question is asked on
-              the outcomes it names, so until one is picked there is nothing
+              the statuses it names, so until one is picked there is nothing
               below but the remarks. */}
-          <OutcomePicker value={outcome} onChange={setOutcome} />
+          <FormField id='lc-status' label='Call Status'>
+            <Select
+              id='lc-status'
+              value={outcome ?? ''}
+              onChange={(v) => setOutcome(v ? (v as CallOutcome) : null)}
+              placeholder='Pick a status…'
+              options={CALL_OUTCOMES.map((o) => ({ value: o, label: CALL_OUTCOME_LABEL[o] }))}
+            />
+          </FormField>
 
           {outcome === CALLBACK_OUTCOME && (
             <FormField id='lc-callback' label='Call Back On'>
@@ -191,76 +199,6 @@ export function LogCallDialog({
         </div>
       )}
     </Dialog>
-  );
-}
-
-/**
- * How the call went.
- *
- * ⚠️ Plates rather than a dropdown, and each carries its own sentence. Six
- * outcomes read as six near-synonyms from a closed list — "Promised" and "Done"
- * are one word apart and a month apart in what they mean for the vendor — and
- * the difference is what the list is chased by.
- */
-function OutcomePicker({
-  value,
-  onChange,
-}: {
-  value: CallOutcome | null;
-  onChange: (o: CallOutcome) => void;
-}) {
-  return (
-    <div>
-      <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>How the call went</div>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-          gap: 7,
-        }}
-        role='radiogroup'
-        aria-label='How the call went'
-      >
-        {CALL_OUTCOMES.map((o) => {
-          const on = value === o;
-          return (
-            // ⚠️ A real radio inside its label, as the Answer Type plates are:
-            // arrow-key movement and what a screen reader announces both come
-            // free from the input and from nothing else.
-            <label
-              key={o}
-              style={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 8,
-                padding: '9px 11px',
-                borderRadius: 'var(--r2)',
-                border: `1px solid ${on ? 'var(--pri)' : 'var(--line)'}`,
-                background: on ? 'var(--pri-t)' : 'var(--bg)',
-                cursor: 'pointer',
-              }}
-            >
-              <input
-                type='radio'
-                name='lc-outcome'
-                value={o}
-                checked={on}
-                onChange={() => onChange(o)}
-                style={{ marginTop: 2, flex: 'none' }}
-              />
-              <span style={{ display: 'grid', gap: 2, minWidth: 0 }}>
-                <span style={{ fontSize: 12.5, fontWeight: on ? 700 : 600 }}>
-                  {CALL_OUTCOME_LABEL[o]}
-                </span>
-                <span style={{ fontSize: 11, color: 'var(--mfg)', lineHeight: 1.45 }}>
-                  {CALL_OUTCOME_HINT[o]}
-                </span>
-              </span>
-            </label>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 
@@ -373,10 +311,10 @@ export function CallHistoryDialog({
  *  English words. These are enum members, and "DONE" is not a word that
  *  function knows. */
 const OUTCOME_TONE: Record<string, Tone> = {
-  DONE: 'ok',
-  PROMISED: 'info',
+  CALL_COMPLETED: 'ok',
   CALLBACK: 'warn',
-  REFUSED: 'des',
   WRONG_NUMBER: 'des',
+  NOT_REACHABLE: 'neutral',
   NOT_ANSWERED: 'neutral',
+  NA: 'neutral',
 };

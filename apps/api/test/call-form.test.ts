@@ -160,7 +160,7 @@ describe('logging a call', () => {
       requestId,
       {
         kind: 'BANK',
-        outcome: 'PROMISED',
+        outcome: 'CALL_COMPLETED',
         note: 'sending it tonight',
         answers: { [picked]: 'YES', [reason]: 'was travelling' },
       },
@@ -168,7 +168,7 @@ describe('logging a call', () => {
     );
 
     const [call] = await listReminderCalls(prisma, requestId, 'BANK');
-    expect(call.outcome).toBe('PROMISED');
+    expect(call.outcome).toBe('CALL_COMPLETED');
     expect(call.note).toBe('sending it tonight');
     expect(call.answers).toEqual([
       { questionId: picked, label: 'Did they pick up?', value: 'YES' },
@@ -186,7 +186,7 @@ describe('logging a call', () => {
     await logReminder(
       prisma,
       requestId,
-      { kind: 'BANK', outcome: 'PROMISED', answers: { [picked]: 'NO', [reason]: 'stale' } },
+      { kind: 'BANK', outcome: 'CALL_COMPLETED', answers: { [picked]: 'NO', [reason]: 'stale' } },
       SYSTEM,
     );
 
@@ -198,7 +198,7 @@ describe('logging a call', () => {
     const { requestId } = await selected(['C1-1']);
     await askedPair();
     await expect(
-      logReminder(prisma, requestId, { kind: 'BANK', outcome: 'PROMISED' }, SYSTEM),
+      logReminder(prisma, requestId, { kind: 'BANK', outcome: 'CALL_COMPLETED' }, SYSTEM),
     ).rejects.toBeInstanceOf(ValidationFailedError);
   });
 
@@ -223,7 +223,7 @@ describe('logging a call', () => {
       logReminder(
         prisma,
         requestId,
-        { kind: 'BANK', outcome: 'REFUSED', callbackDate: '2026-10-01' },
+        { kind: 'BANK', outcome: 'NOT_ANSWERED', callbackDate: '2026-10-01' },
         SYSTEM,
       ),
     ).rejects.toBeInstanceOf(CallbackDateWithoutCallbackError);
@@ -279,7 +279,11 @@ describe('removing a question', () => {
     await logReminder(
       prisma,
       requestId,
-      { kind: 'BANK', outcome: 'DONE', answers: { [picked]: 'YES', [reason]: 'posted it' } },
+      {
+        kind: 'BANK',
+        outcome: 'CALL_COMPLETED',
+        answers: { [picked]: 'YES', [reason]: 'posted it' },
+      },
       SYSTEM,
     );
 
