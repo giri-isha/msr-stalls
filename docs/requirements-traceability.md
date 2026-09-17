@@ -168,7 +168,7 @@ package both sides share.
 | External vendors / local welfare / ashram stall vendors | Requester types on the account side (`StallRequestType`), never backoffice roles | Built |
 | Admin, Lead, Volunteer | `stall_role` / `stall_privilege`, seeded from `SEED_ROLES` in `@stalls/core/rbac.ts`. Roles are DATA — an admin retunes them in Access → Roles & Privileges without a deploy | Built |
 | — | A fourth role, **Finance**, exists because the finance requirement needs one that is not the Lead | Differs — an addition, not a substitution |
-| The local welfare team works inside the application and files on behalf of their traders | A fifth role, **Local Welfare**, scoped to `LOCAL_WELFARE` requests. `scope.ts` narrows every list and guards every request-addressed route, so the role's write access cannot reach a commercial vendor's record | Built |
+| The local welfare team works inside the application and files on behalf of their traders | The **Local Welfare** role, scoped to `LOCAL_WELFARE`, holding `filing.request`, `filing.fssai`, `filing.staff` and `filing.claim` (never `filing.bank`). `POST /requests/file` and the four request-addressed filing routes (`modules/stalls/filing.ts`, `routes.ts`); `FileRequest.tsx` and `FileForRequester.tsx`. `scope.ts` narrows every list and guards every request-addressed route, and every filing is recorded with the member as actor and the trader's account as on-behalf-of | Built |
 
 ---
 
@@ -207,9 +207,11 @@ the six password routes are dropped, and nothing else in the module moves.
 **What is still NOT self-serve.** Registering on a contact that already has an
 account does not attach a password to it — the backoffice does that linking. So the
 village traders the local welfare team files for, who have no address of their
-own, still cannot reach the portal themselves; backoffice screens remain their only
-route. That was a deliberate call, not an oversight, and `StallCredential` is
-shaped to take a claim flow if it is revisited.
+own, still cannot reach the portal themselves. The backoffice files FOR them —
+File a Request, and the on-behalf actions on the record — and a desk can hand
+them a password (`passwords.write`) if they later get a phone that can open it.
+That was a deliberate call, not an oversight, and `StallCredential` is shaped
+to take a claim flow if it is revisited.
 
 ### Pooled deposit — closed
 
@@ -257,3 +259,4 @@ this repository.
 | Letters sent and letters that failed | `audit-senders.ts` wraps the mailer and the WhatsApp sender at registration | Built |
 | Backoffice sign-ins | `auditBackofficeSignIn`, called by the shell's dev sign-in; the host's SSO callback makes the same call | Built |
 | Who READ a record | Not recorded, by decision — a row per view would bury the writes. One `audit()` call in a route if the team changes its mind. | Differs |
+| A form filed by a member names both the member and the requester | `onBehalfOfAccountId` on `stall_audit_event`; `attestedBy` on `stall_declaration_consent` | Built |

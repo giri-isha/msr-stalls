@@ -1,7 +1,7 @@
 # Filing on behalf of a requester, and a full audit log
 
 Date: 2026-09-17
-Status: Phase 1 (audit log) built; Phase 2 (filing on behalf) in progress
+Status: Built
 
 ## The problem
 

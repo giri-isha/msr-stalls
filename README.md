@@ -205,6 +205,16 @@ docs/                         specs, plans, migration checklist
   `requireBackoffice`, `/api/m/stalls/backoffice`, the Users directory's
   Backoffice tile. "Staff" is left to the vendor alone — the coupon, the staff
   passes, the staff-registration page — and means exactly one thing now.
+- **A backoffice member can file any requester form, and it is always recorded
+  as filed FOR somebody.** Five `filing.*` privileges, one per form, in a
+  category of their own — because speaking for a requester is not the same
+  power as correcting a number they gave you. The routes call the same submit
+  functions the public routes call, with the member as actor and the account as
+  `onBehalfOfAccountId`; the declarations are attested rather than skipped,
+  with `attestedBy` on the consent row. The filer sees the reference and the
+  record, never the token. A phone-only trader gets the placeholder address
+  registration already uses, and the receipt goes by WhatsApp.
+
 - **Every write leaves a row the team can read back.** `audit()` is the one
   way the module records that something happened: it writes the module's own
   `stall_audit_event` and forwards the same event to the host's trail. A
