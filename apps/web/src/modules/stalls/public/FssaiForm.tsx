@@ -11,7 +11,20 @@ import { getFssaiForm, presignPublicUpload, submitFssai, uploadFile } from '../a
 import { formatDate, useLoad } from '../hooks';
 import { DeclarationConsent, allTicked } from '../components/DeclarationConsent';
 import { FieldControl } from '../components/FormFields';
-import { Btn, Card, ErrorBox, FormField, H1, Icon, Input, Loading, Tag, useToast } from '../ui';
+import {
+  Btn,
+  Card,
+  ErrorBox,
+  FormField,
+  H1,
+  Icon,
+  Input,
+  Loading,
+  Tag,
+  useIsMobile,
+  useToast,
+} from '../ui';
+import { BackToRequests } from './portal-ui';
 
 /**
  * The FSSAI certificate upload — "The vendor should login and upload the FSSAI
@@ -41,7 +54,8 @@ export function FssaiForm() {
   if (!data) return null;
 
   return (
-    <div style={{ display: 'grid', gap: 16, maxWidth: 640 }}>
+    <div style={{ display: 'grid', gap: 14, maxWidth: 640 }}>
+      <BackToRequests />
       <H1 icon={<Icon name='shield' size={18} />} sub={`${data.stallName} · ${data.reference}`}>
         FSSAI Certificate
       </H1>
@@ -96,6 +110,7 @@ export function FssaiFormBody({
   onDone?: () => void;
 }) {
   const toast = useToast();
+  const mobileView = useIsMobile();
 
   const [ownerName, setOwnerName] = useState('');
   const [mobile, setMobile] = useState('');
@@ -159,23 +174,35 @@ export function FssaiFormBody({
         )}
       </Card>
 
-      <Card pad={18} style={{ display: 'grid', gap: 14 }}>
-        <FormField id='fssai-owner' label='Owner Name'>
-          <Input
-            id='fssai-owner'
-            value={ownerName}
-            onChange={(e) => setOwnerName(e.target.value)}
-          />
-        </FormField>
-        <FormField id='fssai-mobile' label='Mobile Number'>
-          <Input
-            id='fssai-mobile'
-            type='tel'
-            inputMode='tel'
-            value={mobile}
-            onChange={(e) => setMobile(e.target.value)}
-          />
-        </FormField>
+      <Card pad={18} style={{ display: 'grid', gap: 16 }}>
+        {/* Two short answers, beside each other on anything wider than a
+            phone. Stacked, they were two boxes and a mile of card to the right
+            of them. */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: mobileView ? '1fr' : 'repeat(2,minmax(0,1fr))',
+            gap: mobileView ? 14 : '16px 20px',
+            alignItems: 'start',
+          }}
+        >
+          <FormField id='fssai-owner' label='Owner Name'>
+            <Input
+              id='fssai-owner'
+              value={ownerName}
+              onChange={(e) => setOwnerName(e.target.value)}
+            />
+          </FormField>
+          <FormField id='fssai-mobile' label='Mobile Number'>
+            <Input
+              id='fssai-mobile'
+              type='tel'
+              inputMode='tel'
+              value={mobile}
+              onChange={(e) => setMobile(e.target.value)}
+            />
+          </FormField>
+        </div>
 
         <div style={{ display: 'grid', gap: 8 }}>
           <span style={{ fontSize: 13, fontWeight: 600 }}>FSSAI certificate *</span>
@@ -231,7 +258,7 @@ export function FssaiFormBody({
           )}
         </div>
 
-        <div>
+        <div style={{ display: 'grid', gap: 14 }}>
           {/* Questions this edition appended, and the consents it asks for.
               Both are empty until the team authors them, and the button then
               behaves exactly as it does today. */}
@@ -254,10 +281,14 @@ export function FssaiFormBody({
 
           {beforeSubmit}
 
-          <Btn kind='primary' onClick={send} disabled={busy || !ready}>
-            <Icon name='send' size={14} />
-            {busy ? 'Submitting…' : submitLabel}
-          </Btn>
+          {/* Wrapped: a bare button is a grid item and would stretch to the
+              width of the card. */}
+          <div>
+            <Btn kind='primary' onClick={send} disabled={busy || !ready}>
+              <Icon name='send' size={14} />
+              {busy ? 'Submitting…' : submitLabel}
+            </Btn>
+          </div>
         </div>
       </Card>
     </>

@@ -170,7 +170,12 @@ export function portalTabs(r: PublicRequestStatus): Array<TabDef & { key: Portal
   // ⚠️ `undefined` is tolerated, not just empty. The API and the web deploy
   // separately, and a page served ahead of the API must still show the status.
   if ((r.submitted ?? []).length > 0) {
-    tabs.push({ key: 'submitted', label: 'What You Submitted', glyph: 'clipboard-list' });
+    // ⚠️ "Request Form Details", not "What You Submitted". Every other tab on
+    // this strip is named for the thing it holds — Bank Details, Payment,
+    // Staff — and a tab named for an event the reader took part in reads as a
+    // receipt for the act rather than as the answers, which is what they have
+    // come back to look up.
+    tabs.push({ key: 'submitted', label: 'Request Form Details', glyph: 'clipboard-list' });
   }
   return tabs;
 }
@@ -306,10 +311,13 @@ function RequestPanel({
       <header
         style={{
           display: 'flex',
-          alignItems: 'flex-start',
+          // Centred, not `flex-start`: the chip is one line against a
+          // three-line block, and pinned to the top it read as a label on the
+          // reference above it rather than as a fact about the request.
+          alignItems: 'center',
           gap: 12,
           flexWrap: 'wrap',
-          padding: mobile ? '14px 16px' : '18px 22px',
+          padding: mobile ? '16px 18px' : '20px 24px',
           background: 'var(--rail)',
           borderBottom: '1px solid var(--line)',
           borderRadius: 'var(--r4) var(--r4) 0 0',
@@ -448,28 +456,42 @@ function Overview({
 }) {
   return (
     <div style={{ display: 'grid', gap: 14 }}>
-      <p style={{ fontSize: 13.5, margin: 0, lineHeight: 1.6 }}>{STATUS_COPY[r.status]}</p>
+      {/* Capped rather than run to the width of the card. The status sentence
+          is prose, and prose set across 1,600px of screen is read twice. */}
+      <p style={{ fontSize: 13.5, margin: 0, lineHeight: 1.6, maxWidth: 680 }}>
+        {STATUS_COPY[r.status]}
+      </p>
       {r.status === 'SELECTED' &&
         (r.pending.length > 0 ? (
           <Panel>
             <PanelTitle icon='clock'>Still to do</PanelTitle>
-            <div style={{ display: 'grid', width: '100%' }}>
-              {r.pending.map((p, i) => (
-                <StepRow
-                  key={p.step}
-                  step={p}
-                  last={i === r.pending.length - 1}
-                  busy={busy}
-                  onOpen={onOpen}
-                  onPick={onPick}
-                />
+            {/* 🔴 A GRID of plates, where this was a stack of full-width rows.
+                Each row put its label hard left and its button hard right, so
+                on a laptop a single outstanding step was a tag and a button
+                with two feet of nothing between them — and the four steps read
+                as a table with no columns. A step is a card: what it is, what
+                it wants, and the way in, in that order and in one place. */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill,minmax(248px,1fr))',
+                gap: 10,
+                width: '100%',
+              }}
+            >
+              {r.pending.map((p) => (
+                <StepCard key={p.step} step={p} busy={busy} onOpen={onOpen} onPick={onPick} />
               ))}
             </div>
           </Panel>
         ) : (
-          <p style={{ fontSize: 12.5, color: 'var(--mfg)', margin: 0, lineHeight: 1.6 }}>
-            Nothing is outstanding on this request.
-          </p>
+          <Panel>
+            <PanelTitle icon='circle-check'>Nothing outstanding</PanelTitle>
+            <p style={{ fontSize: 12.5, color: 'var(--mfg)', margin: 0, lineHeight: 1.6 }}>
+              Everything we have asked you for on this request is in. The tabs above are where to
+              check any of it.
+            </p>
+          </Panel>
         ))}
     </div>
   );
@@ -494,20 +516,31 @@ const STEP_NAME: Record<string, string> = {
   STAFF_REGISTRATION: 'staff registration',
 };
 
-function StepRow({
+/** What each step actually wants, in a line.
+ *
+ *  ⚠️ The label above it comes from the API (`GatedStep.label`) and names the
+ *  step; this says what doing it involves. A plate with a name and a button and
+ *  nothing between them makes a vendor click to find out what they are being
+ *  asked for. */
+const STEP_HINT: Record<string, string> = {
+  BANK_FORM: 'Your bank account, GST number and final stall requirements.',
+  PAYMENT: 'The rent and the refundable deposit, and the accounts to pay them into.',
+  FSSAI: 'A photo or scan of your FSSAI certificate.',
+  STAFF_REGISTRATION: 'Everyone who will be at your stall has to be registered.',
+};
+
+/** One outstanding step, as a plate: what it is, what it wants, the way in. */
+function StepCard({
   step,
-  last,
   busy,
   onOpen,
   onPick,
 }: {
   step: GatedStep;
-  last: boolean;
   busy: string | null;
   onOpen(step: 'BANK_FORM' | 'FSSAI'): Promise<void>;
   onPick(tab: PortalTab): void;
 }) {
-  const mobile = useIsMobile();
   // 🔴 A step the edition's ordering has not reached. It keeps its place in the
   // list — the requester should be able to read the whole road — but it offers
   // no way in, because there is none: the form mint, the coupon route and the
@@ -516,9 +549,7 @@ function StepRow({
   // Narrowed once, outside the closure — a type guard on `step.step` does not
   // survive into the click handler.
   const self = isSelfServe(step.step) ? step.step : null;
-  const action = locked ? (
-    <span style={{ fontSize: 12, color: 'var(--mfg)' }}>{opensAfter(step)}</span>
-  ) : self ? (
+  const action = locked ? null : self ? (
     <Btn kind='primary' onClick={() => void onOpen(self)} disabled={busy !== null}>
       {busy === step.step ? 'Opening…' : 'Open the Form'}
       <Icon name='chevron-right' size={14} />
@@ -538,21 +569,26 @@ function StepRow({
   return (
     <div
       style={{
-        display: 'flex',
-        flexDirection: mobile ? 'column' : 'row',
-        alignItems: mobile ? 'stretch' : 'center',
-        gap: 10,
-        width: '100%',
-        padding: '10px 0',
-        // A rule between rows, not under the last one — a lone step would
-        // otherwise sit over a line dividing it from nothing.
-        borderBottom: last ? 'none' : '1px solid var(--bd)',
+        display: 'grid',
+        gap: 8,
+        alignContent: 'start',
+        justifyItems: 'start',
+        padding: '12px 13px',
+        borderRadius: 'var(--r2)',
+        // On the card colour, against the panel's muted plate — so the steps
+        // read as items ON the list rather than as divisions of it.
+        background: 'var(--card)',
+        border: '1px solid var(--bd)',
       }}
     >
       <Tag tone={locked ? 'neutral' : 'warn'} size='sm'>
         <Icon name={locked ? 'lock' : 'clock'} size={12} /> {step.label}
       </Tag>
-      <span style={{ flex: 1 }} />
+      {/* A locked step says what opens it, where an open one says what it
+          wants. Both are the same line in the same place. */}
+      <p style={{ margin: 0, fontSize: 12, color: 'var(--mfg)', lineHeight: 1.55 }}>
+        {locked ? opensAfter(step) : (STEP_HINT[step.step] ?? '')}
+      </p>
       {action}
     </div>
   );

@@ -15,7 +15,20 @@ import { BilingualLabel } from '../components/BilingualLabel';
 import { DeclarationConsent, allTicked } from '../components/DeclarationConsent';
 import { FieldControl } from '../components/FormFields';
 import { useLoad } from '../hooks';
-import { Btn, Card, ErrorBox, FormField, H1, Icon, Loading, Tag, Textarea, useToast } from '../ui';
+import {
+  Btn,
+  Card,
+  ErrorBox,
+  FormField,
+  H1,
+  Icon,
+  Loading,
+  Tag,
+  Textarea,
+  useIsMobile,
+  useToast,
+} from '../ui';
+import { BackToRequests } from './portal-ui';
 
 /**
  * "Stall Management Bank Details and Requirements" — the vendor's own Phase 2 form.
@@ -108,15 +121,28 @@ export function BankForm() {
   }
   if (!data) return null;
 
-  if (done || data.submittedAt) return <Received />;
+  // ⚠️ The way back is added HERE rather than inside `BankFormBody`, which the
+  // backoffice mounts too: it reads the requester session, and there is none
+  // behind the desk.
+  if (done || data.submittedAt) {
+    return (
+      <div style={{ display: 'grid', gap: 12 }}>
+        <BackToRequests />
+        <Received />
+      </div>
+    );
+  }
 
   return (
-    <BankFormBody
-      data={data}
-      presign={presignPublicUpload(token)}
-      submit={(body) => submitBankDetails(token, body)}
-      onDone={() => setDone(true)}
-    />
+    <div style={{ display: 'grid', gap: 12 }}>
+      <BackToRequests />
+      <BankFormBody
+        data={data}
+        presign={presignPublicUpload(token)}
+        submit={(body) => submitBankDetails(token, body)}
+        onDone={() => setDone(true)}
+      />
+    </div>
   );
 }
 
@@ -161,6 +187,7 @@ export function BankFormBody({
   onDone?: () => void;
 }) {
   const toast = useToast();
+  const mobile = useIsMobile();
 
   const [values, setValues] = useState<Values>({});
   const [appliances, setAppliances] = useState<ApplianceRow[]>([{ name: '', watts: '' }]);
@@ -334,41 +361,58 @@ export function BankFormBody({
       </Card>
 
       <Card pad={18} style={{ display: 'grid', gap: 14 }}>
+        <CardTitle>Your details</CardTitle>
         {/* 🔴 From the edition's ROWS, not from a constant. The label, the
             Tamil beside it, the help text, whether it is required and whether
             it is asked at all are all the Form Builder's to change — which is
             the whole reason this form stopped being JSX. `FIELDS` remains only
             as the fallback for the window before an edition has rows. */}
-        {textFields.map((f) => (
-          <FieldControl
-            key={f.id}
-            field={asFormField(f)}
-            value={values[f.name ?? f.id] ?? ''}
-            error={errors[f.name ?? f.id]}
-            onChange={(v) => set(f.name ?? f.id, typeof v === 'string' ? v : '')}
-          />
-        ))}
+        {/* 🔴 TWO COLUMNS on a laptop, as the application form has it. Thirteen
+            short answers — a name, a pincode, an IFSC — each took a row of its
+            own across the full width of the card, which made a three-minute
+            form a column of boxes nine inches long with nothing beside them.
+            `minmax(0,1fr)` rather than `1fr`: a grid track is min-content wide
+            by default, so one long unbroken word in a help line would push the
+            column past the card. An address is the exception and takes the
+            width, because a textarea in half of one is a slot. */}
+        <FieldGrid mobile={mobile}>
+          {textFields.map((f) => (
+            <div
+              key={f.id}
+              style={{ minWidth: 0, gridColumn: f.type === 'textarea' ? '1 / -1' : undefined }}
+            >
+              <FieldControl
+                field={asFormField(f)}
+                value={values[f.name ?? f.id] ?? ''}
+                error={errors[f.name ?? f.id]}
+                onChange={(v) => set(f.name ?? f.id, typeof v === 'string' ? v : '')}
+              />
+            </div>
+          ))}
+        </FieldGrid>
       </Card>
 
       <Card pad={18} style={{ display: 'grid', gap: 14 }}>
-        <div style={{ fontSize: 14, fontWeight: 700 }}>Documents</div>
+        <CardTitle>Documents</CardTitle>
         {/* ⚠️ Each keeps its OWN upload purpose — `BANK_CHEQUE`, `BANK_PAN`,
             `BANK_GST`. Those folders already hold live data and the columns
             behind them are typed, so retyping them to `FORM_FIELD` would orphan
             every cheque already uploaded. */}
-        {fileFields.map((f) => (
-          <FileField
-            key={f.id}
-            label={`${f.label}${f.required ? ' *' : ''}`}
-            labelTa={f.labelTa}
-            chosen={files[slotOf(f)]?.name}
-            onPick={(file) => pick(purposeOf(f), file, f.isBuiltIn ? undefined : f.id, slotOf(f))}
-          />
-        ))}
+        <FieldGrid mobile={mobile}>
+          {fileFields.map((f) => (
+            <FileField
+              key={f.id}
+              label={`${f.label}${f.required ? ' *' : ''}`}
+              labelTa={f.labelTa}
+              chosen={files[slotOf(f)]?.name}
+              onPick={(file) => pick(purposeOf(f), file, f.isBuiltIn ? undefined : f.id, slotOf(f))}
+            />
+          ))}
+        </FieldGrid>
       </Card>
 
       <Card pad={18} style={{ display: 'grid', gap: 14 }}>
-        <div style={{ fontSize: 14, fontWeight: 700 }}>Final stall requirements</div>
+        <CardTitle>Final stall requirements</CardTitle>
         <p style={{ margin: 0, fontSize: 12.5, color: 'var(--mfg)' }}>
           These replace what you asked for when you applied, so please check them. The first 5 Amp
           plug point is free; anything beyond it is charged.
@@ -410,6 +454,7 @@ export function BankFormBody({
           their answers are filed by field id — see `allowedCustomValues`. */}
       {appendedFields.length > 0 && (
         <Card pad={18} style={{ display: 'grid', gap: 14 }}>
+          <CardTitle>A few more questions</CardTitle>
           {appendedFields.map((f) =>
             f.type === 'file' || f.type === 'files' ? (
               <FileField
@@ -456,6 +501,30 @@ export function BankFormBody({
           )}
         </div>
       </Card>
+    </div>
+  );
+}
+
+/** A card's heading. One size and one weight for every card on the page —
+ *  they were each writing their own inline div, and the one card without a
+ *  heading read as a continuation of the card above it. */
+function CardTitle({ children }: { children: ReactNode }) {
+  return <div style={{ fontSize: 14, fontWeight: 700 }}>{children}</div>;
+}
+
+/** The two-up field rail. ⚠️ `alignItems: start`, so a field whose help text
+ *  wraps to two lines does not stretch the box beside it to match. */
+function FieldGrid({ mobile, children }: { mobile: boolean; children: ReactNode }) {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: mobile ? '1fr' : 'repeat(2,minmax(0,1fr))',
+        gap: mobile ? 14 : '16px 20px',
+        alignItems: 'start',
+      }}
+    >
+      {children}
     </div>
   );
 }

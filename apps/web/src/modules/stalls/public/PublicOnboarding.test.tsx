@@ -9,9 +9,25 @@ import { StaffRegistration } from './StaffRegistration';
 /** The three pages a vendor reaches with nothing but a link or a coupon. What
  *  matters on each is the same thing: the credential in the URL is the only
  *  thing that says who this is, and a bad one must read as "not valid" rather
- *  than as an error to debug. */
+ *  than as an error to debug.
+ *
+ *  ⚠️ Every render here mounts `RequesterProvider`, as the public shell does.
+ *  The pages do not need a session — the token IS the credential — but each
+ *  draws a way back to the portal FOR SOMEBODY WHO HAS ONE, and that link
+ *  reads the provider. With `/public/session` left unstubbed the session reads
+ *  as signed out, which is the ordinary case for these three: a vendor who
+ *  opened a link from an email. */
 
 const TOKEN = 'a'.repeat(32);
+
+/** A logged-in requester, for the one test about the way back. */
+const SESSION = {
+  accountId: 'a-1',
+  displayName: 'Priya Venkat',
+  requesterType: 'VENDOR',
+  email: 'priya@greenleaf.example',
+  phone: '9840012345',
+};
 
 beforeEach(() => {
   vi.unstubAllGlobals();
@@ -123,7 +139,9 @@ const BANK_VIEW = {
 
 describe('the bank details form', () => {
   const render = () =>
-    renderAt(`/stalls/bank/${TOKEN}`, [{ path: '/stalls/bank/:token', element: <BankForm /> }]);
+    renderAt(`/stalls/bank/${TOKEN}`, [{ path: '/stalls/bank/:token', element: <BankForm /> }], {
+      requester: true,
+    });
 
   test('prefills the requirements the vendor gave when they applied', async () => {
     installFetch([['GET', /\/public\/bank\//, () => BANK_VIEW]]);
@@ -231,11 +249,37 @@ describe('the bank details form', () => {
 
     expect(await screen.findByText(/This link is not valid/)).toBeInTheDocument();
   });
+
+  test('offers the way back to the portal only to somebody signed in', async () => {
+    // 🔴 The form is opened by a whole-page navigation onto a freshly minted
+    // link, so the portal it was opened from is off the screen and the browser
+    // button is the only way back — which on a phone is no way back at all.
+    installFetch([['GET', /\/public\/bank\//, () => BANK_VIEW]]);
+    render();
+
+    // Signed out — a vendor on a link from an email — there is no portal to
+    // return to, so nothing is offered.
+    expect(await screen.findByText(/VEN-2026-0001/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /My Requests/ })).not.toBeInTheDocument();
+
+    installFetch([
+      ['GET', /\/public\/session$/, () => SESSION],
+      ['GET', /\/public\/bank\//, () => BANK_VIEW],
+    ]);
+    render();
+
+    expect(await screen.findByRole('link', { name: /My Requests/ })).toHaveAttribute(
+      'href',
+      '/stalls/requests',
+    );
+  });
 });
 
 describe('the FSSAI upload', () => {
   const render = () =>
-    renderAt(`/stalls/fssai/${TOKEN}`, [{ path: '/stalls/fssai/:token', element: <FssaiForm /> }]);
+    renderAt(`/stalls/fssai/${TOKEN}`, [{ path: '/stalls/fssai/:token', element: <FssaiForm /> }], {
+      requester: true,
+    });
 
   test('will not submit with no file attached', async () => {
     installFetch([
@@ -300,9 +344,11 @@ describe('Staff Registration', () => {
   };
 
   const renderWithCode = (code: string) =>
-    renderAt(`/stalls/staff/${code}`, [
-      { path: '/stalls/staff/:code', element: <StaffRegistration /> },
-    ]);
+    renderAt(
+      `/stalls/staff/${code}`,
+      [{ path: '/stalls/staff/:code', element: <StaffRegistration /> }],
+      { requester: true },
+    );
 
   test('a coupon in the link opens the stall straight away', async () => {
     installFetch([['GET', /\/public\/staff-registration\//, () => COUPON]]);
@@ -367,7 +413,9 @@ describe('Staff Registration', () => {
     installFetch([
       ['GET', /\/public\/staff-registration\//, () => [404, { error: 'this coupon is not valid' }]],
     ]);
-    renderAt('/stalls/staff', [{ path: '/stalls/staff', element: <StaffRegistration /> }]);
+    renderAt('/stalls/staff', [{ path: '/stalls/staff', element: <StaffRegistration /> }], {
+      requester: true,
+    });
     const user = userEvent.setup();
 
     await user.type(await screen.findByLabelText('Stall Coupon'), 'GRE-2026-ZZZZZZZZ');

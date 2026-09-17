@@ -539,7 +539,7 @@ describe('MyRequests', () => {
 
     expect(screen.getByText('Confirmed')).toBeInTheDocument();
     expect(screen.getByText(/UTR123/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Report Another Transfer/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Add Another Payment/ })).toBeInTheDocument();
   });
 
   test('a rejected transfer shows its reason', async () => {
@@ -568,7 +568,7 @@ describe('MyRequests', () => {
     expect(screen.getByText(/No credit with this reference/)).toBeInTheDocument();
   });
 
-  test('reporting a transfer opens a dialog, sends the claim, and re-reads', async () => {
+  test('adding payment details opens a dialog, sends the claim, and re-reads', async () => {
     let reads = 0;
     const fx = installFetch([
       ['GET', /\/public\/session$/, () => SESSION],
@@ -587,13 +587,13 @@ describe('MyRequests', () => {
     render();
 
     await userEvent.click(await screen.findByRole('tab', { name: /Payment/ }));
-    await userEvent.click(screen.getByRole('button', { name: /Report a Transfer/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Add Payment Details/ }));
 
-    const dialog = screen.getByRole('dialog', { name: 'Report a transfer' });
+    const dialog = screen.getByRole('dialog', { name: 'Add payment details' });
     await userEvent.type(within(dialog).getByLabelText(/UTR or reference number/), 'UTR123');
     await userEvent.type(within(dialog).getByLabelText(/Amount transferred/), '118000');
     await userEvent.type(within(dialog).getByLabelText(/Date of transfer/), '2026-09-05');
-    await userEvent.click(within(dialog).getByRole('button', { name: /Report It/ }));
+    await userEvent.click(within(dialog).getByRole('button', { name: /Save Details/ }));
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     const post = fx.calls.find((c) => c.method === 'POST');
@@ -630,13 +630,11 @@ describe('MyRequests', () => {
     render();
 
     await userEvent.click(await screen.findByRole('tab', { name: /Payment/ }));
-    await userEvent.click(screen.getByRole('button', { name: /Report Another Transfer/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Add Another Payment/ }));
 
-    const dialog = screen.getByRole('dialog', { name: 'Report a transfer' });
+    const dialog = screen.getByRole('dialog', { name: 'Add payment details' });
     // Said out loud: a list that quietly grew shorter reads as a bug.
-    expect(
-      within(dialog).getByText(/already reported the refundable deposit/i),
-    ).toBeInTheDocument();
+    expect(within(dialog).getByText(/already added the refundable deposit/i)).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole('combobox', { name: /Which payment/ }));
     const options = within(await screen.findByRole('listbox')).getAllByRole('option');
     expect(options.map((o) => o.textContent)).toEqual(['Rent']);
@@ -655,9 +653,9 @@ describe('MyRequests', () => {
     render();
 
     await userEvent.click(await screen.findByRole('tab', { name: /Payment/ }));
-    await userEvent.click(screen.getByRole('button', { name: /Report a Transfer/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Add Payment Details/ }));
 
-    const dialog = screen.getByRole('dialog', { name: 'Report a transfer' });
+    const dialog = screen.getByRole('dialog', { name: 'Add payment details' });
     await userEvent.click(within(dialog).getByRole('combobox', { name: /Which payment/ }));
     await userEvent.click(
       within(await screen.findByRole('listbox')).getByRole('option', {
@@ -676,7 +674,7 @@ describe('MyRequests', () => {
 
     await userEvent.type(within(dialog).getByLabelText(/UTR or reference number/), 'UTRDEP');
     await userEvent.type(within(dialog).getByLabelText(/Date of transfer/), '2026-09-05');
-    await userEvent.click(within(dialog).getByRole('button', { name: /Report It/ }));
+    await userEvent.click(within(dialog).getByRole('button', { name: /Save Details/ }));
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(fx.calls.find((c) => c.method === 'POST')?.body).toMatchObject({
@@ -705,13 +703,13 @@ describe('MyRequests', () => {
     render();
 
     await userEvent.click(await screen.findByRole('tab', { name: /Payment/ }));
-    await userEvent.click(screen.getByRole('button', { name: /Report Another Transfer/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Add Another Payment/ }));
 
-    const dialog = screen.getByRole('dialog', { name: 'Report a transfer' });
+    const dialog = screen.getByRole('dialog', { name: 'Add payment details' });
     // ⚠️ A trader paying the second of three instalments reads this line for the
     // figure, and "₹1,18,000 is due" is the wrong one.
     expect(
-      within(dialog).getByText(/reported ₹50,000 so far, so ₹68,000 is left/i),
+      within(dialog).getByText(/added ₹50,000 so far, so ₹68,000 is left/i),
     ).toBeInTheDocument();
     expect(within(dialog).getByLabelText(/Amount transferred/)).toHaveAttribute(
       'placeholder',
@@ -751,7 +749,7 @@ describe('MyRequests', () => {
 
     // ⚠️ `pendingSteps` said nothing is outstanding — it cannot, with no coupon
     // to register against — so the overview must not say otherwise.
-    expect(await screen.findByText(/Nothing is outstanding/)).toBeInTheDocument();
+    expect(await screen.findByText(/Nothing outstanding/)).toBeInTheDocument();
     expect(screen.queryByText('Still to do')).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('tab', { name: /Staff/ }));
@@ -825,7 +823,7 @@ describe('MyRequests', () => {
     await screen.findByRole('tab', { name: /Overview/ });
     expect(screen.queryByText('Location Requested')).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('tab', { name: /What You Submitted/ }));
+    await userEvent.click(screen.getByRole('tab', { name: /Request Form Details/ }));
 
     expect(screen.getByText('Location Requested')).toBeInTheDocument();
     expect(screen.getByText('Organic spices, cold-pressed oils, honey')).toBeInTheDocument();
@@ -840,7 +838,7 @@ describe('MyRequests', () => {
     render();
 
     await screen.findByText('Green Leaf Organics');
-    noTab(/What You Submitted/);
+    noTab(/Request Form Details/);
   });
 
   test('a request still under consideration is given no list of future chores', async () => {

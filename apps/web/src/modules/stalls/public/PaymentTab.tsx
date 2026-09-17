@@ -38,9 +38,14 @@ import { Copyable, Panel, PanelTitle, Row } from './portal-ui';
  * figure under a total that is smaller is exactly that comparison drawn out.
  *
  * ⚠️ The figures are absent until Finance has quoted. "Payment pending" with no
- * figure is honest; a number invented on this page would not be. Reporting a
- * transfer is offered even then: a requester who paid against a letter can
- * still tell us, and finance would rather have the reference than a mailbox.
+ * figure is honest; a number invented on this page would not be. Adding payment
+ * details is offered even then: a requester who paid against a letter can still
+ * tell us, and finance would rather have the reference than a mailbox.
+ *
+ * ⚠️ "Add payment details", never "report a transfer". A vendor reads "report"
+ * as telling us about a problem — and the ones who did not read it that way
+ * read it as being asked to do the payment again. What the button opens is a
+ * short form about a transfer they have already made.
  *
  * ⚠️ An account number can be null — an edition with no virtual-account prefix,
  * or a contact that is not a mobile. The row says to ask rather than printing a
@@ -86,18 +91,18 @@ export function PaymentTab({ request, reload }: { request: PublicRequestStatus; 
               <p style={{ margin: 0, fontSize: 12.5, color: 'var(--mfg)', lineHeight: 1.6 }}>
                 Finance has not sent the figures yet. The amount and the accounts to pay into will
                 appear here once they have. If you have already paid against a letter, you can still
-                report the transfer.
+                add the details.
               </p>
             </Panel>
           )}
         </div>
         <div style={{ display: 'grid', gap: 12, alignContent: 'start' }}>
           <Panel>
-            <PanelTitle icon='file-text'>Transfers you have reported</PanelTitle>
+            <PanelTitle icon='file-text'>Payments you have added</PanelTitle>
             {claims.length === 0 ? (
               <p style={{ margin: 0, fontSize: 12.5, color: 'var(--mfg)', lineHeight: 1.6 }}>
-                Nothing reported yet. Once you have paid, tell us the UTR so Finance can match it
-                against the bank statement.
+                Nothing added yet. Once you have paid, add the details of the transfer — the UTR
+                above all — so Finance can match it against the bank statement.
               </p>
             ) : (
               <div style={{ display: 'grid', gap: 6, width: '100%' }}>
@@ -109,7 +114,7 @@ export function PaymentTab({ request, reload }: { request: PublicRequestStatus; 
             <div style={{ marginTop: 6 }}>
               <Btn kind='primary' onClick={() => setOpen(true)}>
                 <Icon name='plus' size={14} />
-                {claims.length > 0 ? 'Report Another Transfer' : 'Report a Transfer'}
+                {claims.length > 0 ? 'Add Another Payment' : 'Add Payment Details'}
               </Btn>
             </div>
           </Panel>
@@ -366,7 +371,7 @@ function NotesPanel() {
           These accounts are issued to you alone. Please do not share them or pay into any other
           account.
         </li>
-        <li>Once you have paid, report the transfer here so Finance can match it.</li>
+        <li>Once you have paid, add the payment details here so Finance can match it.</li>
       </ul>
     </Panel>
   );

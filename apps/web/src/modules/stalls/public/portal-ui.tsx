@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router';
+import { useRequester } from '../requester';
 import { Icon, useIsMobile, useToast } from '../ui';
 
 /**
- * The pieces every tab of the requester's portal is built from — one plate,
- * one heading, one label-and-value row, one copyable value — so the payment
- * figures, the coupon and the read-back grid read as one thing rather than as
- * panels that grew separately.
+ * The pieces the requester's own pages are built from — one plate, one heading,
+ * one label-and-value row, one copyable value, one way back — so the payment
+ * figures, the coupon, the read-back grid and the forms read as one thing
+ * rather than as panels that grew separately.
  */
 
 /** The plate a tab body's block sits on. Fills its grid cell: the tab bodies
@@ -125,4 +127,56 @@ export function Copyable({ value, label }: { value: string; label: string }) {
       </button>
     </span>
   );
+}
+
+/**
+ * The way back out of a page that was opened from somewhere else.
+ *
+ * 🔴 The steps are full PAGES — the bank form and the FSSAI upload are reached
+ * by a whole-page navigation onto a freshly minted link, staff registration by
+ * a coupon URL, the application form by its own route — so the page they came
+ * from is gone from the screen and the only way back was the browser's own
+ * button. On a phone, which is where most of these are filled in, that button
+ * is a chin nobody's thumb is near.
+ *
+ * ⚠️ A LINK to a named place, not `history.back()`. Half of these pages are
+ * arrived at from an email, where there is no previous page in the tab at all
+ * and a back control would either do nothing or leave the site.
+ */
+export function BackLink({ to, children }: { to: string; children: ReactNode }) {
+  return (
+    <Link
+      to={to}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        width: 'fit-content',
+        fontSize: 12.5,
+        fontWeight: 600,
+        color: 'var(--mfg)',
+      }}
+    >
+      <Icon name='chevron-left' size={14} />
+      {children}
+    </Link>
+  );
+}
+
+/**
+ * Back to the requester's own portal, for a step opened out of it.
+ *
+ * ⚠️ NOTHING at all when signed out — the rule the public shell already follows
+ * for its header controls. A vendor holding a bank-form link from an email has
+ * no portal to go back to, and a link that bounced them to a login would be
+ * worse than no link.
+ *
+ * ⚠️ Reads the session, so it may only be drawn inside `RequesterProvider` —
+ * which is to say on a public page, never inside a form body the backoffice
+ * also mounts.
+ */
+export function BackToRequests() {
+  const { requester } = useRequester();
+  if (!requester) return null;
+  return <BackLink to='/stalls/requests'>My Requests</BackLink>;
 }

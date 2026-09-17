@@ -40,8 +40,12 @@ export function PaymentClaimDialog({
   onClose,
   onSubmitted,
   submit: submitProp,
-  title = 'Report a transfer',
-  submitLabel = 'Report It',
+  // ⚠️ "Add payment details" on the requester's side, because "report" reads
+  // either as telling us about a problem or as being asked to pay again — see
+  // the note at the top of `PaymentTab`. The backoffice passes its own title:
+  // a member filing for a vendor IS recording something reported to them.
+  title = 'Add payment details',
+  submitLabel = 'Save Details',
 }: {
   reference: string;
   payment: PublicPaymentDue | null;
@@ -107,7 +111,7 @@ export function PaymentClaimDialog({
       : owed === null
         ? undefined
         : rentReportedPaise > 0
-          ? `${formatInr(owed)} is due in all. You have reported ${formatInr(rentReportedPaise)} so far, so ${formatInr(rentLeftPaise ?? 0)} is left. Rent may be sent in instalments.`
+          ? `${formatInr(owed)} is due in all. You have added ${formatInr(rentReportedPaise)} so far, so ${formatInr(rentLeftPaise ?? 0)} is left. Rent may be sent in instalments.`
           : `${formatInr(owed)} is due for this. You may send it in instalments.`;
 
   const submit = async () => {
@@ -143,7 +147,7 @@ export function PaymentClaimDialog({
   return (
     <Dialog
       title={title}
-      note='Rent and the deposit are paid separately, so please report them separately. We check what you tell us against the bank statement before it counts as paid.'
+      note='Rent and the deposit are paid separately, so please add them separately. We check what you tell us against the bank statement before it counts as paid.'
       onClose={onClose}
       footer={
         <>
@@ -164,7 +168,7 @@ export function PaymentClaimDialog({
           // loud, because a list that quietly grew shorter reads as a bug.
           help={
             depositReported
-              ? 'You have already reported the refundable deposit, so only rent is left to report.'
+              ? 'You have already added the refundable deposit, so only rent is left to add.'
               : undefined
           }
           required
@@ -301,7 +305,7 @@ export function ClaimRow({ claim }: { claim: PaymentClaimView }) {
       </div>
       {claim.status === 'REJECTED' && claim.rejectReason && (
         <div style={{ color: 'var(--des-fg)', lineHeight: 1.55 }}>
-          {claim.rejectReason} Please check the details and report it again.
+          {claim.rejectReason} Please check the details and add it again.
         </div>
       )}
     </div>

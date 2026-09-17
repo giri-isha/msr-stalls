@@ -25,6 +25,7 @@ import { FieldControl } from '../components/FormFields';
 import { useLoad } from '../hooks';
 import { useRequester } from '../requester';
 import { Card, Icon, Loading, useIsMobile } from '../ui';
+import { BackLink } from './portal-ui';
 
 /** ⚠️ Includes `string[]`, for a `file`/`files` answer — a list of media-store
  *  keys. A request form has no built-in file question, but an admin can append
@@ -346,14 +347,22 @@ export function RequestForm({ type }: { type: StallRequestType }) {
     return <Navigate to='/stalls/apply' replace />;
   }
   return (
-    <RequestFormBody
-      type={type}
-      requester={requester}
-      submit={async (input) => {
-        const r = await submitRequest(input);
-        navigate('/stalls/submitted', { state: { ...r, type }, replace: true });
-      }}
-    />
+    // ⚠️ The way out is a LINK to the picker, not the browser's back: this page
+    // is often the first in the tab — a bookmark, or a link in a mail — and a
+    // form forty questions long is the last place to leave somebody without
+    // one. Added here rather than in `RequestFormBody`, which the backoffice
+    // mounts inside its own dialog and has its own way out of.
+    <div style={{ display: 'grid', gap: 12 }}>
+      <BackLink to='/stalls/apply'>Request a Stall</BackLink>
+      <RequestFormBody
+        type={type}
+        requester={requester}
+        submit={async (input) => {
+          const r = await submitRequest(input);
+          navigate('/stalls/submitted', { state: { ...r, type }, replace: true });
+        }}
+      />
+    </div>
   );
 }
 

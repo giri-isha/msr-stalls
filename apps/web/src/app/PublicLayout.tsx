@@ -6,11 +6,17 @@
 // share is the token scope — `Frame` is the same, so the card, the type and the
 // palette are the product's, not a second look grown for the public side.
 //
-// 🔴 FLUID, and with a button where there was a nav. The public side ran in a
-// 1060px column with a two-tab rail — Request a Stall, My Requests — and the
-// first of those is an action, not a place. With the requests page as the
-// portal there is nothing left to tab between: the way to a new request is a
-// primary button at the top right, and the page takes the width it is given.
+// 🔴 A button where there was a nav. The public side ran with a two-tab rail —
+// Request a Stall, My Requests — and the first of those is an action, not a
+// place. With the requests page as the portal there is nothing left to tab
+// between: the way to a new request is a primary button at the top right.
+//
+// ⚠️ The BODY is capped and centred; the header is not. Going fluid fixed the
+// 1060px column the rail sat in, and then overshot: on a wide monitor a
+// request card with one outstanding step stretched two feet across the screen,
+// which is not more information, only more space between the same words. The
+// cap is generous enough for the application form's two columns and the
+// portal's two-up panels, which are the widest things served here.
 import { canFileMore } from '@stalls/core';
 import { Link, Outlet, useNavigate } from 'react-router';
 import { RequesterProvider, useRequester } from '@/modules/stalls';
@@ -133,7 +139,13 @@ function PublicChrome() {
             <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={15} />
           </button>
         </header>
-        <main style={{ padding: mobile ? '16px 14px 72px' : '26px 28px 64px' }}>
+        <main
+          style={{
+            maxWidth: 1240,
+            margin: '0 auto',
+            padding: mobile ? '16px 14px 72px' : '26px 28px 64px',
+          }}
+        >
           <Outlet />
         </main>
       </div>

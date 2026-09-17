@@ -6,6 +6,7 @@ import { fieldErrorsFrom } from '../api-client';
 import { DeclarationConsent, allTicked } from '../components/DeclarationConsent';
 import { FieldControl } from '../components/FormFields';
 import { getCoupon, registerStaff } from '../api';
+import { BackToRequests } from './portal-ui';
 import { formatDate } from '../hooks';
 import {
   Btn,
@@ -81,7 +82,8 @@ export function StaffRegistration() {
   const full = coupon !== null && coupon.maxStaff > 0 && coupon.registered >= coupon.maxStaff;
 
   return (
-    <div style={{ display: 'grid', gap: 16, maxWidth: 620 }}>
+    <div style={{ display: 'grid', gap: 14, maxWidth: 620 }}>
+      <BackToRequests />
       <H1
         icon={<Icon name='user-plus' size={18} />}
         sub='Everyone working on the stall must be registered before they can be given a pass.'

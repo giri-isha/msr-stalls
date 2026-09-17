@@ -2,7 +2,7 @@ import { Link, Navigate } from 'react-router';
 import { continueMyStep, getMyRequests, requestMyCoupon } from '../api';
 import { useLoad } from '../hooks';
 import { useRequester } from '../requester';
-import { Btn, Card, Icon, Loading } from '../ui';
+import { Btn, Card, H1, Icon, Loading } from '../ui';
 import { RequestView } from './RequestView';
 
 /**
@@ -21,9 +21,12 @@ import { RequestView } from './RequestView';
  * sent to the login rather than shown an error, because arriving here signed
  * out is the ordinary case — a bookmark, or a session that quietly expired.
  *
- * No heading of its own: the request's header band is the page's title, and
- * the header above has the way to a new request. A "My Requests" H1 over a
- * band that already names the request said the same thing twice.
+ * ⚠️ The page IS titled, where it deliberately was not. The argument for no
+ * heading was that the request's header band already names the request — true,
+ * but it names ONE request, and a reader arriving from a form or a link has
+ * nothing telling them which of the site's pages they are on. The forms link
+ * back here by this name (`BackToRequests`), so the name has to be on the page
+ * they land on.
  */
 export function MyRequests() {
   const { requester, status } = useRequester();
@@ -49,30 +52,51 @@ function Loaded() {
 
   if (requests.length === 0) {
     return (
-      <Card pad={18} style={{ display: 'grid', gap: 12, textAlign: 'center' }}>
-        <div style={{ fontSize: 15, fontWeight: 700 }}>You have not requested a stall yet</div>
-        <p style={{ margin: 0, fontSize: 13.5, color: 'var(--mfg)', lineHeight: 1.6 }}>
-          Once you send one in, this page tells you where it has got to and which forms are still
-          waiting on you.
-        </p>
-        <div style={{ display: 'flex', justifyContent: 'center' }}>
-          <Link to='/stalls/apply' style={{ color: 'inherit' }}>
-            <Btn kind='primary'>
-              <Icon name='ticket' size={14} />
-              Request a Stall
-            </Btn>
-          </Link>
-        </div>
-      </Card>
+      <>
+        <Heading />
+        <Card pad={18} style={{ display: 'grid', gap: 12, textAlign: 'center' }}>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>You have not requested a stall yet</div>
+          <p style={{ margin: 0, fontSize: 13.5, color: 'var(--mfg)', lineHeight: 1.6 }}>
+            Once you send one in, this page tells you where it has got to and which forms are still
+            waiting on you.
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <Link to='/stalls/apply' style={{ color: 'inherit' }}>
+              <Btn kind='primary'>
+                <Icon name='ticket' size={14} />
+                Request a Stall
+              </Btn>
+            </Link>
+          </div>
+        </Card>
+      </>
     );
   }
 
   return (
-    <RequestView
-      requests={requests}
-      openStep={(reference, step) => continueMyStep({ reference, step })}
-      getCoupon={(reference) => requestMyCoupon({ reference })}
-      reload={reload}
-    />
+    <>
+      <Heading />
+      <RequestView
+        requests={requests}
+        openStep={(reference, step) => continueMyStep({ reference, step })}
+        getCoupon={(reference) => requestMyCoupon({ reference })}
+        reload={reload}
+      />
+    </>
+  );
+}
+
+/** The page's own name, top left — the one the forms link back to.
+ *
+ *  ⚠️ No actions on it. The way to a new request is the primary button in the
+ *  shell's header, and a second one here would be the same offer twice. */
+function Heading() {
+  return (
+    <H1
+      icon={<Icon name='clipboard-list' size={18} />}
+      sub='Where each of your requests has got to, and what is still waiting on you.'
+    >
+      My Requests
+    </H1>
   );
 }
