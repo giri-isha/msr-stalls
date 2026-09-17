@@ -32,7 +32,7 @@ import {
   type DeclarationRow,
   type ListDeclarationsResponse,
   EditionSettingsInput,
-  EquipmentAction,
+  EquipmentActionInput,
   EquipmentPatch,
   FineTypeInput,
   FlagRequestInput,
@@ -1689,14 +1689,29 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
 
   zod.post(
     '/equipment/:id/action',
-    { schema: { params: IdParams, body: z.object({ action: EquipmentAction }) } },
+    { schema: { params: IdParams, body: EquipmentActionInput } },
     async (req) => {
       const caller = await requireBackoffice(req, prisma);
       requirePrivilege(caller, 'equipment.write');
       await requireRequestScope(caller, prisma, req.params.id);
-      return equipment.actOnEquipment(prisma, req.params.id, req.body.action, caller.personId);
+      return equipment.actOnEquipment(
+        prisma,
+        req.params.id,
+        req.body.action,
+        caller.personId,
+        req.body.found,
+      );
     },
   );
+
+  /** ⚠️ `equipment.read`, not `audit.read`. It returns this stall's
+   *  chairs-and-tables events and nothing else — see `equipmentHistory`. */
+  zod.get('/equipment/:id/history', { schema: { params: IdParams } }, async (req) => {
+    const caller = await requireBackoffice(req, prisma);
+    requirePrivilege(caller, 'equipment.read');
+    await requireRequestScope(caller, prisma, req.params.id);
+    return equipment.equipmentHistory(prisma, req.params.id);
+  });
 
   zod.get('/equipment/:id/challan', { schema: { params: IdParams } }, async (req) => {
     const caller = await requireBackoffice(req, prisma);

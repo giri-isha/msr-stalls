@@ -359,7 +359,8 @@ async function toRefundRow(
         {
           missingChairs: r.equipment.missingChairs,
           missingTables: r.equipment.missingTables,
-          damaged: r.equipment.damaged,
+          damagedChairs: r.equipment.damagedChairs,
+          damagedTables: r.equipment.damagedTables,
         },
         {
           chairReplacementPaise: charges.chairReplacementPaise,

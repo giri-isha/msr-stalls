@@ -113,10 +113,19 @@ export async function listAudit(
   return { items: await toViews(db, rows), total, page: q.page, pageSize: q.pageSize };
 }
 
-/** One request's rows, newest first. The route has already checked scope. */
-export async function requestAudit(db: Db, requestId: string): Promise<AuditEventView[]> {
+/** One request's rows, newest first. The route has already checked scope.
+ *
+ *  `actionPrefix` narrows the trail to one screen's own actions — what the
+ *  chairs-and-tables counter is shown, which it may read on `equipment.read`
+ *  because it is the counter's own work rather than the request's whole life.
+ *  The unnarrowed call is the Activity Log tab, and that one is `audit.read`. */
+export async function requestAudit(
+  db: Db,
+  requestId: string,
+  actionPrefix?: string,
+): Promise<AuditEventView[]> {
   const rows = await db.stallAuditEvent.findMany({
-    where: { requestId },
+    where: { requestId, ...(actionPrefix ? { action: { startsWith: actionPrefix } } : {}) },
     include: INCLUDE,
     orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
   });

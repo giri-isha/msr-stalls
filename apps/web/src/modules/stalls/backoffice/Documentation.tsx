@@ -395,7 +395,8 @@ const SCREENS: ScreenDoc[] = [
       'Distribute, and it moves to the issued list.',
       'Extras are charged at the counter: enter the extra chairs or tables, take the cash, and mark it collected.',
       'Print the two-part challan — vendor copy and office copy.',
-      'After the event, collect: record anything short or damaged, which becomes a deduction on that vendor’s refund.',
+      'After the event, press Collect: count what came back — chairs and tables missing, chairs and tables damaged — and the row is collected and priced in one step. What is short becomes a deduction on that vendor’s refund.',
+      'Edit corrects the details afterwards; the clock on the row shows who did what, and what they changed.',
       'Flag a row that still needs chasing.',
     ],
     notes: [
@@ -1008,7 +1009,8 @@ const SETTLE: FlowItem[] = [
     actor: 'volunteer',
     glyph: 'arrow-left-right',
     title: 'Equipment collected back',
-    detail: 'Anything short or damaged is recorded on the row it went out on.',
+    detail:
+      'Counted at the Collect step, on the row it went out on, with the vendor standing there.',
   },
   {
     actor: 'backoffice',

@@ -1,12 +1,15 @@
 import type { Prisma, PrismaClient, StallEquipmentIssue } from '@prisma/client';
 import type {
   AuditAction,
+  AuditEventView,
   ChallanView,
   EquipmentAction,
+  EquipmentFound,
   EquipmentPatch,
   EquipmentRow,
 } from '@stalls/core';
-import { equipmentDeduction } from '@stalls/core';
+import { changeSet, equipmentDeduction } from '@stalls/core';
+import { requestAudit } from './audit-read';
 import { actorFrom, audit } from './audit';
 import { chargesFor } from './config';
 import type { Db } from './editions';
@@ -86,12 +89,14 @@ function toRow(r: Row, issue: StallEquipmentIssue, rates: Rates): EquipmentRow {
     collectedAt: issue.collectedAt?.toISOString() ?? null,
     missingChairs: issue.missingChairs,
     missingTables: issue.missingTables,
-    damaged: issue.damaged,
+    damagedChairs: issue.damagedChairs,
+    damagedTables: issue.damagedTables,
     deductionPaise: equipmentDeduction(
       {
         missingChairs: issue.missingChairs,
         missingTables: issue.missingTables,
-        damaged: issue.damaged,
+        damagedChairs: issue.damagedChairs,
+        damagedTables: issue.damagedTables,
       },
       rates,
     ),
@@ -157,7 +162,7 @@ export async function patchEquipment(
   by: string,
 ): Promise<EquipmentRow> {
   const r = await load(db, requestId);
-  await ensureIssue(db, r);
+  const before = await ensureIssue(db, r);
   const rates = await ratesFor(db, r.editionId, r.requestType);
 
   const updated = await db.stallEquipmentIssue.update({
@@ -174,30 +179,52 @@ export async function patchEquipment(
     data: { extraChargePaise: extraCharge(updated, rates) },
   });
 
+  // 🔴 What CHANGED, not what was sent. The dialog posts every field it holds
+  // on every save, so a log of the payload said a counter had touched six
+  // figures when they had corrected one — and the row that matters, the chair
+  // count somebody argued about, was buried among five that never moved.
   await audit(db, {
     actor: actorFrom(by),
     action: 'stall_equipment.updated',
     requestId: requestId,
-    detail: patch as Record<string, unknown>,
+    changes: changeSet(before, updated, Object.keys(patch)),
   });
   return toRow(await load(db, requestId), withCharge, rates);
 }
 
+/**
+ * A step of the counter, taken.
+ *
+ * 🔴 `found` travels WITH the collection, in one write. Counting the stack and
+ * marking it collected are one act at the counter and must be one act here:
+ * saved-then-collected was two requests over the marquee's wifi, and the half
+ * that landed alone left either a row collected with nobody's figures on it or
+ * figures against a row still reading as out — the second of which the refund
+ * screen would price anyway, for furniture nobody had confirmed was back.
+ *
+ * ⚠️ Read on COLLECT only. UNCOLLECT does not wipe the figures: what was found
+ * is still what was found, and the log carries both events.
+ */
 export async function actOnEquipment(
   db: PrismaClient,
   requestId: string,
   action: EquipmentAction,
   by: string,
+  found?: EquipmentFound,
 ): Promise<EquipmentRow> {
   const r = await load(db, requestId);
-  await ensureIssue(db, r);
+  const before = await ensureIssue(db, r);
   const now = new Date();
 
   const data: Prisma.StallEquipmentIssueUpdateInput = {
     DISTRIBUTE: { distributedAt: now, distributedBy: by },
     UNDISTRIBUTE: { distributedAt: null, distributedBy: null },
     COLLECT_EXTRA_PAYMENT: { extraCollectedAt: now },
-    COLLECT: { collectedAt: now, collectedBy: by },
+    COLLECT: {
+      collectedAt: now,
+      collectedBy: by,
+      ...(found ? { ...found, note: found.note || null } : {}),
+    },
     UNCOLLECT: { collectedAt: null, collectedBy: null },
   }[action];
 
@@ -206,8 +233,25 @@ export async function actOnEquipment(
     actor: actorFrom(by),
     action: `stall_equipment.${action.toLowerCase()}` as AuditAction,
     requestId: requestId,
+    changes: found ? changeSet(before, updated, Object.keys(found)) : undefined,
   });
   return toRow(await load(db, requestId), updated, await ratesFor(db, r.editionId, r.requestType));
+}
+
+/** This stall's chairs-and-tables trail, newest first.
+ *
+ *  🔴 Narrowed to `stall_equipment.*` and read with `equipment.read`, NOT with
+ *  `audit.read`. The counter volunteer holding the tablet has neither the
+ *  privilege nor any business with the rest of the request's log — their bank
+ *  details, their fee, who overrode what — but they are exactly the person who
+ *  needs to know that somebody already collected this stall an hour ago, and
+ *  who. A trail nobody at the counter can read settles no argument at the
+ *  counter. */
+export async function equipmentHistory(
+  db: PrismaClient,
+  requestId: string,
+): Promise<AuditEventView[]> {
+  return requestAudit(db, requestId, 'stall_equipment.');
 }
 
 /** The paper slip, assembled server-side so the printout and the screen cannot

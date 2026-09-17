@@ -1961,7 +1961,12 @@ model StallEquipmentIssue {
   collectedBy      String?   @map("collected_by")
   missingChairs    Int       @default(0) @map("missing_chairs")
   missingTables    Int       @default(0) @map("missing_tables")
-  damaged          Boolean   @default(false)
+  /// Returned, but broken. Counted rather than ticked: the counter is looking
+  /// at a stack of chairs and knows how many of them are unusable, and the
+  /// refund is charged per item, so "damaged" as a single flag priced three
+  /// broken chairs the same as one.
+  damagedChairs    Int       @default(0) @map("damaged_chairs")
+  damagedTables    Int       @default(0) @map("damaged_tables")
   note             String?
   flagged          Boolean   @default(false)
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz

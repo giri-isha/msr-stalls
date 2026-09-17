@@ -258,7 +258,7 @@ describe('refunds', () => {
     await patchEquipment(
       prisma,
       requestId,
-      { missingChairs: 2, missingTables: 1, damaged: true },
+      { missingChairs: 2, missingTables: 1, damagedChairs: 1 },
       SYSTEM,
     );
 

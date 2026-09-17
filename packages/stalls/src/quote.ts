@@ -355,20 +355,31 @@ export function computeRefund(input: RefundInput): Refund {
   };
 }
 
-/** What the team owes for furniture that did not come back. Missing items are
- *  charged at the replacement rate an admin configures; "damaged" is a flag on
- *  the row rather than a count, so it carries a single configured penalty. */
+/** What the team owes for furniture that did not come back whole. An item that
+ *  never came back is charged at the replacement rate an admin configures; one
+ *  that came back broken carries the damage penalty instead — it is a repair,
+ *  not a replacement, and the same penalty covers a chair or a table.
+ *
+ *  ⚠️ Damage is counted, not ticked. It was a flag, which priced three broken
+ *  chairs as one; a vendor asked to account for the deduction is owed a figure
+ *  that follows the chairs. */
 export function equipmentDeduction(
-  input: { missingChairs: number; missingTables: number; damaged: boolean },
+  input: {
+    missingChairs: number;
+    missingTables: number;
+    damagedChairs: number;
+    damagedTables: number;
+  },
   rates: {
     chairReplacementPaise: number;
     tableReplacementPaise: number;
     damagePenaltyPaise: number;
   },
 ): number {
+  const damaged = Math.max(0, input.damagedChairs) + Math.max(0, input.damagedTables);
   return (
     Math.max(0, input.missingChairs) * rates.chairReplacementPaise +
     Math.max(0, input.missingTables) * rates.tableReplacementPaise +
-    (input.damaged ? rates.damagePenaltyPaise : 0)
+    damaged * rates.damagePenaltyPaise
   );
 }

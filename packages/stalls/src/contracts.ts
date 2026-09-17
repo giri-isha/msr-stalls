@@ -2558,11 +2558,26 @@ export const EquipmentPatch = z.object({
   extraTables: z.number().int().min(0).max(500).optional(),
   missingChairs: z.number().int().min(0).max(500).optional(),
   missingTables: z.number().int().min(0).max(500).optional(),
-  damaged: z.boolean().optional(),
+  damagedChairs: z.number().int().min(0).max(500).optional(),
+  damagedTables: z.number().int().min(0).max(500).optional(),
   note: z.string().trim().max(500).optional(),
   flagged: z.boolean().optional(),
 });
 export type EquipmentPatch = z.infer<typeof EquipmentPatch>;
+
+/** What the counter found when the stack came back, counted in front of the
+ *  vendor. It rides WITH the collect action rather than being saved first and
+ *  marked collected second: those were two requests over a field network, and
+ *  the pair that only half landed left either a collected row with nobody's
+ *  figures on it or figures on a row that still reads as out. */
+export const EquipmentFound = z.object({
+  missingChairs: z.number().int().min(0).max(500),
+  missingTables: z.number().int().min(0).max(500),
+  damagedChairs: z.number().int().min(0).max(500),
+  damagedTables: z.number().int().min(0).max(500),
+  note: z.string().trim().max(500).optional(),
+});
+export type EquipmentFound = z.infer<typeof EquipmentFound>;
 
 export const EquipmentAction = z.enum([
   'DISTRIBUTE',
@@ -2572,6 +2587,15 @@ export const EquipmentAction = z.enum([
   'UNCOLLECT',
 ]);
 export type EquipmentAction = z.infer<typeof EquipmentAction>;
+
+/** ⚠️ `found` is read on COLLECT and ignored everywhere else. Undoing a
+ *  collection does not erase what was found — the figures stay on the row for
+ *  whoever re-collects it, and the log says both happened. */
+export const EquipmentActionInput = z.object({
+  action: EquipmentAction,
+  found: EquipmentFound.optional(),
+});
+export type EquipmentActionInput = z.infer<typeof EquipmentActionInput>;
 
 export interface EquipmentRow {
   requestId: string;
@@ -2594,7 +2618,10 @@ export interface EquipmentRow {
   collectedAt: string | null;
   missingChairs: number;
   missingTables: number;
-  damaged: boolean;
+  /** Returned broken, counted per item — the refund charges the damage penalty
+   *  once per chair or table, not once per stall. */
+  damagedChairs: number;
+  damagedTables: number;
   /** Priced from the admin's replacement rates; feeds the refund screen. */
   deductionPaise: number;
   note: string | null;

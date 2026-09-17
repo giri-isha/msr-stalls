@@ -39,6 +39,7 @@ import type {
   ElectricalSheet,
   EmailTemplateView,
   EquipmentAction,
+  EquipmentFound,
   EquipmentPatch,
   EquipmentRow,
   FssaiFormView,
@@ -831,6 +832,13 @@ export const undoCheckIn = (id: string) =>
 export const listEquipment = () => apiFetch<EquipmentRow[]>(`${BASE}/equipment`);
 export const patchEquipment = (id: string, patch: EquipmentPatch) =>
   apiFetch<EquipmentRow>(`${BASE}/equipment/${id}`, { method: 'PATCH', json: patch });
-export const equipmentAction = (id: string, action: EquipmentAction) =>
-  apiFetch<EquipmentRow>(`${BASE}/equipment/${id}/action`, { method: 'POST', json: { action } });
+export const equipmentAction = (id: string, action: EquipmentAction, found?: EquipmentFound) =>
+  apiFetch<EquipmentRow>(`${BASE}/equipment/${id}/action`, {
+    method: 'POST',
+    json: found ? { action, found } : { action },
+  });
+/** This stall's counter trail only — readable on `equipment.read`, unlike the
+ *  request's whole Activity Log. */
+export const equipmentHistory = (id: string) =>
+  apiFetch<AuditEventView[]>(`${BASE}/equipment/${id}/history`);
 export const getChallan = (id: string) => apiFetch<ChallanView>(`${BASE}/equipment/${id}/challan`);

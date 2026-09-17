@@ -415,6 +415,42 @@ describe('the ops surfaces over HTTP', () => {
     expect(slip.json().chairsOnline).toBe(4);
   });
 
+  /** 🔴 The counter's trail is read on `equipment.read`, NOT on `audit.read` —
+   *  which the volunteer does not hold and which would hand them the rest of
+   *  the request's log. They are the one being asked who collected this stall
+   *  an hour ago; the answer must be reachable from where they are standing,
+   *  and it must be the furniture's rows only. */
+  test('a volunteer reads the counter trail without reading the audit log', async () => {
+    const { requestId } = await selected(['C1-1'], { chairsNeeded: 4 });
+    await post(`/equipment/${requestId}/action`, { action: 'DISTRIBUTE' }, volunteer);
+
+    const history = await get(`/equipment/${requestId}/history`, volunteer);
+    expect(history.statusCode).toBe(200);
+    expect(history.json().map((e: { action: string }) => e.action)).toEqual([
+      'stall_equipment.distribute',
+    ]);
+
+    expect((await get(`/requests/${requestId}/audit`, volunteer)).statusCode).toBe(403);
+  });
+
+  /** The figures ride with the collection, over HTTP as in the module. */
+  test('a volunteer collects a stall and counts it in one post', async () => {
+    const { requestId } = await selected(['C1-1'], { chairsNeeded: 4 });
+    await post(`/equipment/${requestId}/action`, { action: 'DISTRIBUTE' }, volunteer);
+
+    const res = await post(
+      `/equipment/${requestId}/action`,
+      {
+        action: 'COLLECT',
+        found: { missingChairs: 1, missingTables: 0, damagedChairs: 2, damagedTables: 0 },
+      },
+      volunteer,
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ missingChairs: 1, damagedChairs: 2 });
+    expect(res.json().collectedAt).not.toBeNull();
+  });
+
   test('a bulk send reports per row over HTTP', async () => {
     const a = await selected(['C1-1'], { email: 'a@x.example' });
     const b = await selected(['C1-2'], { email: 'b@x.example' });

@@ -885,12 +885,16 @@ async function main() {
   await checkIn(prisma, greenLeaf, undefined, volunteer);
 
   // A stall that came back short, so the refund screen has something to price.
-  await patchEquipment(
-    prisma,
-    healthCamp,
-    { missingChairs: 1, damaged: true, note: '1 chair broken', flagged: true },
-    volunteer,
-  );
+  // Counted as the counter counts it: with the collection, in one act.
+  await actOnEquipment(prisma, healthCamp, 'DISTRIBUTE', volunteer);
+  await actOnEquipment(prisma, healthCamp, 'COLLECT', volunteer, {
+    missingChairs: 1,
+    missingTables: 0,
+    damagedChairs: 2,
+    damagedTables: 0,
+    note: '2 chairs broken',
+  });
+  await patchEquipment(prisma, healthCamp, { flagged: true }, volunteer);
   console.log(`Phase 3: staff coupon ${coupon.code}, 2 staff registered, 1 stall checked in`);
 
   const first = mail.sent[0];
