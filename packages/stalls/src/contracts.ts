@@ -2056,7 +2056,22 @@ export interface PaymentRecordView {
   mode: string;
   note: string | null;
   confirmedAt: string;
+  /** 🔴 Set means this credit was entered in error and WITHDRAWN. It counts
+   *  towards nothing from that moment — not what has been received, not whether
+   *  the stall is settled, not the deposit a refund is measured against — but
+   *  it is still returned, because the screen has to be able to show that the
+   *  entry existed and was taken back. */
+  voidedAt: string | null;
+  voidReason: string | null;
 }
+
+/** ⚠️ The reason is REQUIRED. An entry withdrawn with nothing beside it is
+ *  indistinguishable from one deleted by accident, which is the state this
+ *  whole step exists to get away from. */
+export const VoidPaymentInput = z.object({
+  reason: z.string().trim().min(1).max(200),
+});
+export type VoidPaymentInput = z.infer<typeof VoidPaymentInput>;
 
 export interface PaymentRow {
   requestId: string;

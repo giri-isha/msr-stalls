@@ -5,11 +5,11 @@ import { sendTemplate } from '../src/modules/stalls/comms';
 import { DuplicatePaymentError, RefundAlreadySubmittedError } from '../src/modules/stalls/errors';
 import {
   confirmPayment,
-  deletePayment,
   listPayments,
   listRefunds,
   setVoucherRef,
   submitRefund,
+  voidPayment,
 } from '../src/modules/stalls/finance';
 import { patchEquipment } from '../src/modules/stalls/equipment';
 import { SYSTEM, prisma, resetDatabase, seedEdition } from './helpers/db';
@@ -142,12 +142,60 @@ describe('confirming a payment', () => {
     expect((await rowFor(requestId))?.fullySettled).toBe(false);
   });
 
-  test('a mistaken entry can be removed', async () => {
+  test('a mistaken entry is withdrawn, not deleted: it stops counting and stays', async () => {
     const { requestId } = await selected(['C1-1']);
     await confirmPayment(prisma, requestId, credit(), SYSTEM);
     const record = await prisma.stallPaymentRecord.findFirstOrThrow({ where: { requestId } });
-    await deletePayment(prisma, record.id, SYSTEM);
-    expect((await rowFor(requestId))?.records).toEqual([]);
+    await voidPayment(prisma, record.id, { reason: 'Credited to the wrong stall' }, SYSTEM);
+
+    const row = await rowFor(requestId);
+    // It counts towards nothing …
+    expect(row?.receivedRentPaise).toBe(0);
+    expect(row?.fullySettled).toBe(false);
+    // … and it is still there to be shown, with the reason it was taken back.
+    expect(row?.records).toHaveLength(1);
+    expect(row?.records[0]?.voidedAt).not.toBeNull();
+    expect(row?.records[0]?.voidReason).toBe('Credited to the wrong stall');
+  });
+
+  test('withdrawing frees the reference so the corrected entry can carry it', async () => {
+    // 🔴 The common correction: the transfer was real, the AMOUNT was typed
+    // wrong. The fix is the same UTR with the right figure, which the old
+    // blanket unique index would have refused.
+    const { requestId } = await selected(['C1-1']);
+    await confirmPayment(prisma, requestId, credit({ amountPaise: rupeesToPaise(2_596) }), SYSTEM);
+    const record = await prisma.stallPaymentRecord.findFirstOrThrow({ where: { requestId } });
+    await voidPayment(prisma, record.id, { reason: 'Amount keyed wrong' }, SYSTEM);
+
+    await confirmPayment(prisma, requestId, credit(), SYSTEM);
+
+    const row = await rowFor(requestId);
+    expect(row?.receivedRentPaise).toBe(rupeesToPaise(25_960));
+    expect(row?.records).toHaveLength(2);
+  });
+
+  test('an entry cannot be withdrawn twice over the first reason', async () => {
+    const { requestId } = await selected(['C1-1']);
+    await confirmPayment(prisma, requestId, credit(), SYSTEM);
+    const record = await prisma.stallPaymentRecord.findFirstOrThrow({ where: { requestId } });
+    await voidPayment(prisma, record.id, { reason: 'Wrong stall' }, SYSTEM);
+
+    await expect(
+      voidPayment(prisma, record.id, { reason: 'Something else' }, SYSTEM),
+    ).rejects.toThrow();
+    const after = await prisma.stallPaymentRecord.findFirstOrThrow({ where: { id: record.id } });
+    expect(after.voidReason).toBe('Wrong stall');
+  });
+
+  test('withdrawing the rent puts a food stall back before the FSSAI step', async () => {
+    // 🔴 The stage is recomputed, not just the figure. A credit that never
+    // existed must not leave the stall standing on a step it never reached.
+    const { requestId } = await selected(['C1-1'], { plugs5a: 4, plugs15a: 5 });
+    await confirmPayment(prisma, requestId, credit(), SYSTEM);
+    const record = await prisma.stallPaymentRecord.findFirstOrThrow({ where: { requestId } });
+    await voidPayment(prisma, record.id, { reason: 'Credited to the wrong stall' }, SYSTEM);
+
+    expect((await rowFor(requestId))?.fullySettled).toBe(false);
   });
 
   test('confirming the rent moves a food stall on to the FSSAI step', async () => {

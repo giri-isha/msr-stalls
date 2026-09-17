@@ -1633,13 +1633,31 @@ model StallPaymentRecord {
   confirmedAt  DateTime            @default(now()) @map("confirmed_at") @db.Timestamptz
   confirmedBy  String              @map("confirmed_by")
 
+  /// 🔴 A credit entered in error is WITHDRAWN, never deleted. It stops
+  /// counting the instant this is set — the money it claimed was never there —
+  /// but the row stays, because "this reference was recorded and withdrawn" and
+  /// "this reference was never seen" are different facts, and the vendor who
+  /// rang about it is owed the first one. A delete leaves only an audit line
+  /// nobody on the finance screen can see.
+  voidedAt   DateTime? @map("voided_at") @db.Timestamptz
+  voidedBy   String?   @map("voided_by")
+  /// ⚠️ Required once withdrawn, enforced by a CHECK rather than by application
+  /// code — `stall_payment_record_void_reason`. An entry withdrawn with no
+  /// reason is one nobody can reconcile against the statement later.
+  voidReason String?   @map("void_reason")
+
   request StallRequest        @relation(fields: [requestId], references: [id], onDelete: Cascade)
   claims  StallPaymentClaim[]
 
   /// One reference number is one credit. Entering it twice — the same NEFT
   /// pasted into two rows on a busy afternoon — would double-count what the
   /// vendor paid and shrink their refund.
-  @@unique([requestId, referenceNo])
+  ///
+  /// ⚠️ The real constraint is a PARTIAL unique index Prisma cannot express —
+  /// `stall_payment_record_live_reference`, over (request, reference) where the
+  /// record is not withdrawn. A withdrawn entry keeps its reference so the trail
+  /// stays readable, and the correction almost always carries the SAME UTR: the
+  /// mistake was the amount, the date or the purpose, not the transfer.
   @@index([requestId])
   @@map("stall_payment_record")
   @@schema("stalls")

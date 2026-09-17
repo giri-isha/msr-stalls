@@ -657,7 +657,14 @@ export async function listReminders(
       ...scopeWhere(scope),
       ...(kind === 'BANK'
         ? { requestType: 'VENDOR', bankDetail: null }
-        : { requestType: { in: ['VENDOR', 'LOCAL_WELFARE'] }, payments: { none: {} } }),
+        : {
+            requestType: { in: ['VENDOR', 'LOCAL_WELFARE'] },
+            // ⚠️ `none: { voidedAt: null }`, not `none: {}`. A stall whose only
+            // credit was entered in error and withdrawn has paid nothing, and
+            // dropping off the call list on the strength of a withdrawn row is
+            // exactly how one goes unchased to the event.
+            payments: { none: { voidedAt: null } },
+          }),
     },
     include: { reminders: { where: { kind }, orderBy: { calledAt: 'desc' } } },
     orderBy: { stallName: 'asc' },

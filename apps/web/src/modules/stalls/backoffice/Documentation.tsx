@@ -338,14 +338,16 @@ const SCREENS: ScreenDoc[] = [
     requires: 'finance.read',
     purpose: 'What is due, what has landed, and what goes back.',
     steps: [
-      'Payment details: the quote per selected request — stall fee, plug points, chairs and tables, GST on the fee, then the refundable deposit kept separate. Send the payment letter from here; the figures freeze at that moment.',
-      'Payment confirmation: record a credit with its reference number, amount and date. Several credits can settle one request, and the row shows what is still short.',
+      'Payment applications: every selected request with its quote — stall fee, plug points, chairs and tables, GST on the fee, then the refundable deposit kept separate — beside what has been paid and what is still remaining. Send the payment letter from here (the figures freeze at that moment), and record a credit against the row it settles.',
+      'Reported payments: what requesters say they transferred, checked against the statement.',
+      'Payment confirmation: every credit confirmed so far, newest first, with its reference number, amount and date. Several credits can settle one request.',
+      'A credit entered in error is marked as a wrong entry, not deleted. It stops counting at once — towards what the stall has paid, whether it is settled, and the deposit its refund is measured against — and stays on the list, struck through, with the reason beside it.',
       'Refunds & deductions: the deposit, less what chairs and tables cost in shortfalls or damage, less any penalty, each itemised. Submit it, then record the voucher reference once Finance has paid it.',
     ],
     notes: [
       'No money is collected in the app. Payment is NEFT, exactly as in 2025; this screen records what a bank statement already shows.',
       'GST applies to the fee and never to the deposit — a taxed deposit would refund more than was taken.',
-      'The same reference number cannot be recorded twice against one request. A pasted duplicate would double-count and shrink the refund.',
+      'The same reference number cannot be recorded twice against one request. A pasted duplicate would double-count and shrink the refund. Marking an entry as a wrong entry frees its reference, so the corrected row can carry the same UTR — which is the usual case, because the mistake is normally the amount, the date or the purpose rather than the transfer.',
       'A refund is never negative. Deductions beyond the deposit floor it at zero and surface as a shortfall to chase separately.',
     ],
   },
@@ -1423,7 +1425,7 @@ function VendorPanel() {
           items={[
             '“I have lost my link.” — There is nothing to reset. Send them to /stalls/status, where an email address or mobile number gets the link emailed back to them. If the address on the account is itself wrong, find them in All Requests and re-send the letter (an admin arms Allow re-send first).',
             '“What is my reference?” — The prefix says which form they used: VEN for vendor, LWS for local welfare, ASH for ashram, AFD for ashram food.',
-            '“Has my payment reached you?” — Finance → Payment confirmation shows every credit recorded against the request, and what is still short.',
+            '“Has my payment reached you?” — Finance → Payment confirmation lists every credit recorded, searchable by reference; Payment applications shows what that request has paid and what is still short.',
             '“What else do you need from me?” — Their status page lists it, and so does their row in Vendor Onboarding. Both are computed by the same rule, so they cannot disagree.',
           ]}
         />

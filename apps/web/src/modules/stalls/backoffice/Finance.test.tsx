@@ -74,7 +74,8 @@ describe('what is due', () => {
     expect(await screen.findByText('₹15,000')).toBeInTheDocument(); // stall fee
     expect(screen.getByText('₹7,000')).toBeInTheDocument(); // plug points
     expect(screen.getByText('₹3,960')).toBeInTheDocument(); // GST
-    expect(screen.getByText('₹29,960')).toBeInTheDocument(); // fee + deposit
+    // Twice: Total Due, and Remaining — nothing has been paid against it yet.
+    expect(screen.getAllByText('₹29,960')).toHaveLength(2); // fee + deposit
     expect(screen.getByText(/incl\. ₹4,000 deposit/)).toBeInTheDocument();
   });
 
@@ -116,7 +117,6 @@ describe('confirming a credit', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('tab', { name: 'Payment confirmation' }));
     await user.click(await screen.findByRole('button', { name: 'Record Credit' }));
 
     const dialog = await screen.findByRole('dialog');
@@ -141,7 +141,6 @@ describe('confirming a credit', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('tab', { name: 'Payment confirmation' }));
     await user.click(await screen.findByRole('button', { name: 'Record Credit' }));
 
     const dialog = await screen.findByRole('dialog');
@@ -167,7 +166,6 @@ describe('confirming a credit', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('tab', { name: 'Payment confirmation' }));
     await user.click(await screen.findByRole('button', { name: 'Record Credit' }));
     const dialog = await screen.findByRole('dialog');
     await user.click(
@@ -204,14 +202,13 @@ describe('confirming a credit', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('tab', { name: 'Payment confirmation' }));
     await user.click(await screen.findByRole('button', { name: 'Record Credit' }));
 
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByRole('button', { name: 'Record Credit' })).toBeDisabled();
   });
 
-  test('shows what has already been received', async () => {
+  test('lists every confirmed credit, newest first', async () => {
     payments = [
       paymentRow({
         receivedRentPaise: 2_596_000,
@@ -229,6 +226,89 @@ describe('confirming a credit', () => {
             mode: 'NEFT',
             note: null,
             confirmedAt: '2026-02-15T10:00:00.000Z',
+            voidedAt: null,
+            voidReason: null,
+          },
+        ],
+      }),
+    ];
+    stub();
+    render();
+    const user = userEvent.setup();
+
+    // A settled application says so on its own row, without opening anything.
+    expect(await screen.findByText('Settled')).toBeInTheDocument();
+
+    await user.click(await screen.findByRole('tab', { name: 'Payment confirmation' }));
+    const row = (await screen.findByText('NEFT12345')).closest('tr');
+    expect(within(row as HTMLElement).getByText('Rent')).toBeInTheDocument();
+    expect(within(row as HTMLElement).getByText('₹25,960')).toBeInTheDocument();
+    expect(within(row as HTMLElement).getByText('GREEN LEAF')).toBeInTheDocument();
+  });
+
+  test('a wrong entry is withdrawn with a reason, never deleted', async () => {
+    const fetch = stub([['POST', /\/finance\/payments\/.*\/void$/, () => [204, null]]]);
+    payments = [
+      paymentRow({
+        receivedRentPaise: 2_596_000,
+        records: [
+          {
+            id: 'r1',
+            purpose: 'RENT',
+            referenceNo: 'NEFT12345',
+            eCollectCode: null,
+            amountPaise: 2_596_000,
+            receivedOn: '2026-02-14',
+            remitterName: null,
+            mode: 'NEFT',
+            note: null,
+            confirmedAt: '2026-02-15T10:00:00.000Z',
+            voidedAt: null,
+            voidReason: null,
+          },
+        ],
+      }),
+    ];
+    render();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('tab', { name: 'Payment confirmation' }));
+    // Nothing on this screen destroys a credit.
+    expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: 'Wrong Entry' }));
+
+    const dialog = await screen.findByRole('dialog');
+    // A reason is the whole point — without one there is nothing a delete did not do.
+    expect(within(dialog).getByRole('button', { name: 'Mark as Wrong Entry' })).toBeDisabled();
+    await user.type(
+      within(dialog).getByLabelText(/What was wrong with it\?/),
+      'Credited to the wrong stall',
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Mark as Wrong Entry' }));
+
+    await waitFor(() => {
+      const post = fetch.calls.find((c) => c.url.includes('/void'));
+      expect(post?.body).toMatchObject({ reason: 'Credited to the wrong stall' });
+    });
+  });
+
+  test('a withdrawn entry stays on the ledger and is left out of the total', async () => {
+    payments = [
+      paymentRow({
+        records: [
+          {
+            id: 'r1',
+            purpose: 'RENT',
+            referenceNo: 'NEFT12345',
+            eCollectCode: null,
+            amountPaise: 2_596_000,
+            receivedOn: '2026-02-14',
+            remitterName: null,
+            mode: 'NEFT',
+            note: null,
+            confirmedAt: '2026-02-15T10:00:00.000Z',
+            voidedAt: '2026-02-16T10:00:00.000Z',
+            voidReason: 'Credited to the wrong stall',
           },
         ],
       }),
@@ -238,7 +318,24 @@ describe('confirming a credit', () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole('tab', { name: 'Payment confirmation' }));
-    expect(await screen.findByText(/1 · settled/)).toBeInTheDocument();
+
+    // Still listed, with what was wrong beside it …
+    expect(await screen.findByText('NEFT12345')).toBeInTheDocument();
+    expect(screen.getByText(/Credited to the wrong stall/)).toBeInTheDocument();
+    // … and not counted: no credits, nothing received.
+    expect(screen.getByText(/0 credits/)).toBeInTheDocument();
+    expect(screen.getByText(/1 withdrawn, not counted/)).toBeInTheDocument();
+    // It cannot be withdrawn a second time.
+    expect(screen.queryByRole('button', { name: 'Wrong Entry' })).not.toBeInTheDocument();
+  });
+
+  test('the ledger is empty until a credit is confirmed', async () => {
+    stub();
+    render();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('tab', { name: 'Payment confirmation' }));
+    expect(await screen.findByText('No credits confirmed yet.')).toBeInTheDocument();
   });
 });
 
@@ -394,7 +491,6 @@ describe('access', () => {
     render();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('tab', { name: 'Payment confirmation' }));
     await user.click(await screen.findByRole('button', { name: 'View' }));
 
     const dialog = await screen.findByRole('dialog');

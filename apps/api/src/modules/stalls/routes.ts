@@ -68,6 +68,7 @@ import {
   UpdatePersonInput,
   SetRequesterPasswordInput,
   UpdateTemplateInput,
+  VoidPaymentInput,
   ZoneCodeValue,
   ZoneInput,
   ZonePlanInput,
@@ -1426,20 +1427,31 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     },
   );
 
-  // ⚠️ `:id` is the credit record's here, not the request's — unlike the POST
-  // above it, which is addressed by request.
-  zod.delete('/finance/payments/:id', { schema: { params: IdParams } }, async (req, reply) => {
-    const caller = await requireBackoffice(req, prisma);
-    requirePrivilege(caller, 'finance.write');
-    await requireOwnerScope(caller, prisma, () =>
-      prisma.stallPaymentRecord.findUnique({
-        where: { id: req.params.id },
-        select: { requestId: true },
-      }),
-    );
-    await finance.deletePayment(prisma, req.params.id, caller.personId);
-    reply.status(204);
-  });
+  /** Withdraw a credit entered in error.
+   *
+   *  🔴 A POST, not a DELETE. The row is kept and marked — see
+   *  `finance.voidPayment`. There is no route that destroys a confirmed credit:
+   *  a deleted one leaves the vendor's "why has my payment disappeared?"
+   *  answerable only from the audit log.
+   *
+   *  ⚠️ `:id` is the credit record's here, not the request's — unlike the POST
+   *  above it, which is addressed by request. */
+  zod.post(
+    '/finance/payments/:id/void',
+    { schema: { params: IdParams, body: VoidPaymentInput } },
+    async (req, reply) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'finance.write');
+      await requireOwnerScope(caller, prisma, () =>
+        prisma.stallPaymentRecord.findUnique({
+          where: { id: req.params.id },
+          select: { requestId: true },
+        }),
+      );
+      await finance.voidPayment(prisma, req.params.id, req.body, caller.personId);
+      reply.status(204);
+    },
+  );
 
   /** The concession the local welfare team agreed on one stall — "for A3 the
    *  cost is 10,000; for the coconut wala, probably we will give that at

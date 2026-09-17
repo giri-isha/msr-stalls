@@ -95,7 +95,10 @@ export const AUDIT_ACTION_INFO = {
   'stall_signature.sent': info('Agreement Sent for Signature', 'onboarding', 'scroll', 'info'),
   // ── Money ──────────────────────────────────────────────────────────────
   'stall_payment.confirmed': info('Payment Confirmed', 'money', 'rupee', 'ok'),
+  // ⚠️ Kept for the editions already audited under it. Nothing writes it any
+  // more — a mistaken credit is WITHDRAWN now, and the row survives.
   'stall_payment.removed': info('Payment Record Removed', 'money', 'trash', 'warn'),
+  'stall_payment.withdrawn': info('Payment Entry Withdrawn', 'money', 'undo', 'warn'),
   'stall_payment_plan.concession_set': info('Concession Agreed', 'money', 'rupee', 'warn'),
   'stall_payment_plan.concession_cleared': info('Concession Cleared', 'money', 'undo', 'neutral'),
   'stall_refund.submitted': info('Refund Sent to Finance', 'money', 'send', 'info'),

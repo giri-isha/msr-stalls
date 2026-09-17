@@ -1,9 +1,15 @@
-import type { PaymentClaimRow, PaymentRow, RefundRow, ReviewPaymentClaimInput } from '@stalls/core';
+import type {
+  PaymentClaimRow,
+  PaymentRecordView,
+  PaymentRow,
+  RefundRow,
+  ReviewPaymentClaimInput,
+} from '@stalls/core';
 import { formatInr, paiseToRupees, rupeesToPaise } from '@stalls/core';
 import { useMemo, useState } from 'react';
 import {
   confirmPayment,
-  deletePaymentRecord,
+  voidPaymentRecord,
   getConfig,
   getPaymentClaims,
   listPayments,
@@ -54,9 +60,15 @@ import {
  *
  * ⚠️ **No money is collected on this screen.** The requirement is explicit that
  * payment happens by NEFT to a virtual account; every figure here records what
- * has already happened on a bank statement. The three tabs follow the money in
- * order: tell the vendor what to pay, tick off the credit when it lands, hand
- * the balance back after the event.
+ * has already happened on a bank statement. The tabs follow the money in
+ * order: what each application owes and what has landed against it, what
+ * requesters say they transferred, the credits that have been confirmed, and
+ * the balance handed back after the event.
+ *
+ * ⚠️ Recording a credit happens on **Payment applications**, beside the figure
+ * being settled — not on Payment confirmation, which is the ledger of what has
+ * already landed and answers a different question ("did this transfer arrive?"
+ * across everybody, rather than "what does this one stall still owe?").
  */
 export function Finance() {
   const [tab, setTab] = useState<'due' | 'claims' | 'confirm' | 'refund'>('due');
@@ -75,27 +87,30 @@ export function Finance() {
     <div>
       <H1
         icon={<Icon name='bar-chart' size={18} />}
-        sub='Payment details, confirmation of credits received, and refunds after the event.'
+        sub='What each application owes, what has been reported and confirmed, and refunds after the event.'
       >
         Finance
       </H1>
       <Tabs
         label='Finance Sections'
         tabs={[
-          { key: 'due', label: 'Payment details', glyph: 'rupee' },
+          // ⚠️ The keys are the storage names, not the labels. `due` is also
+          // the suffix of the saved column choice (`finance-due`), so renaming
+          // it would silently un-hide every column somebody had turned off.
+          { key: 'due', label: 'Payment applications', glyph: 'rupee' },
           // 🔴 Between "what to pay" and "what landed": what the vendor SAYS
           // they paid. That step used to be a mailbox — the 2025 letter ended
           // "please send transfer details on E-mail IDs finance.support@…".
-          { key: 'claims', label: 'Reported transfers', glyph: 'arrow-right' },
+          { key: 'claims', label: 'Reported payments', glyph: 'arrow-right' },
           { key: 'confirm', label: 'Payment confirmation', glyph: 'circle-check' },
           { key: 'refund', label: 'Refunds & deductions', glyph: 'undo' },
         ]}
         active={tab}
         onPick={(t) => setTab(t as typeof tab)}
       />
-      {tab === 'due' && <DuePanel />}
+      {tab === 'due' && <ApplicationsPanel />}
       {tab === 'claims' && <ClaimsPanel />}
-      {tab === 'confirm' && <ConfirmPanel />}
+      {tab === 'confirm' && <ConfirmedPanel />}
       {tab === 'refund' && <RefundPanel />}
     </div>
   );
@@ -115,7 +130,7 @@ const matchPayment = (r: PaymentRow, t: string) =>
   r.requesterName.toLowerCase().includes(t) ||
   r.reference.toLowerCase().includes(t);
 
-// ── Tab 1: what is due ──────────────────────────────────────────────────────
+// ── Tab 1: every application, what it owes and what has landed ──────────────
 
 /** ⚠️ The five money columns are ONE group as far as the unpriced row is
  *  concerned — it draws a single cell spanning all of them — so hiding any of
@@ -132,11 +147,34 @@ const DUE_COLUMNS: ColumnDef[] = [
   { key: 'equipment', label: 'Chairs/tables' },
   { key: 'gst', label: 'GST' },
   { key: 'total', label: 'Total Due' },
+  // ⚠️ Outside `PRICED`. A zone with no rate still receives money, so these two
+  // are drawn for an unpriced row as well and must not sit under the cell that
+  // spans the quote columns.
+  { key: 'paid', label: 'Paid' },
+  { key: 'remaining', label: 'Remaining' },
   { key: 'bank', label: 'Bank Details' },
   { key: 'email', label: 'Payment Email' },
 ];
 
-function DuePanel() {
+/**
+ * What has landed against one application, and what is still short.
+ *
+ * ⚠️ Against `grandTotalPaise`, which already follows a concession — a local
+ * welfare trader who paid exactly the figure the team agreed reads as nothing
+ * remaining, not as short by the discount.
+ *
+ * 🔴 An unpriced zone gets `null`, not zero. Nothing is known about what is
+ * owed there, and a zero remainder would read as paid in full.
+ */
+function settlement(row: PaymentRow) {
+  const paidPaise = row.receivedRentPaise + row.receivedDepositPaise;
+  return {
+    paidPaise,
+    remainingPaise: row.quote.unpriced ? null : Math.max(0, row.quote.grandTotalPaise - paidPaise),
+  };
+}
+
+function ApplicationsPanel() {
   const toast = useToast();
   const { can } = useMe();
   const { data, error, loading, reload } = useLoad(listPayments);
@@ -146,12 +184,18 @@ function DuePanel() {
   const [outstanding, setOutstanding] = useState('');
   const columns = useColumns('finance-due', DUE_COLUMNS);
   const pricedSpan = PRICED.filter((k) => columns.shown(k)).length;
+  const [open, setOpen] = useState<PaymentRow | null>(null);
+  const canWrite = can('finance.write');
+  // ⚠️ Separate from `canWrite`. Agreeing a fee and confirming a credit are two
+  // acts held by two different sets of people — see `concession.write`.
+  const canConcede = can('concession.write');
 
   const rows = filtered.filter((r) => {
     if (outstanding === 'bank') return r.bankDetailsReceivedAt === null;
     if (outstanding === 'email') return r.paymentEmailSentAt === null;
     // Both in, so the only thing left to wait for is the money itself.
     if (outstanding === 'ready') return r.bankDetailsReceivedAt !== null && !r.paymentEmailSentAt;
+    if (outstanding === 'short') return !r.fullySettled;
     return true;
   });
 
@@ -175,9 +219,10 @@ function DuePanel() {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <div style={{ fontSize: 12.5, color: 'var(--mfg)', maxWidth: 680 }}>
-        Once a vendor's bank details are in, send them the payment details with the calculation
-        below. Payment is made by NEFT to the Isha Foundation account sent separately — nothing is
-        collected here.
+        Every selected application, what it owes, and what has landed against it. Once a vendor's
+        bank details are in, send them the payment details with the calculation below; when a credit
+        appears on the statement, record it against the row. Payment is made by NEFT to the Isha
+        Foundation account sent separately — nothing is collected here.
       </div>
       <Toolbar>
         <Search value={q} onChange={setQ} placeholder='Search vendor…' />
@@ -191,6 +236,7 @@ function DuePanel() {
           <option value='bank'>Waiting on Bank Details</option>
           <option value='ready'>Ready to Be Told What to Pay</option>
           <option value='email'>Not Yet Told What to Pay</option>
+          <option value='short'>Not Yet Paid in Full</option>
         </Select>
         <div style={{ flex: 1 }} />
         {!mobile && <ColumnsButton state={columns} />}
@@ -210,6 +256,10 @@ function DuePanel() {
                   Send Payment Email
                 </Btn>
               )}
+              <Btn onClick={() => setOpen(r)}>
+                <Icon name='rupee' size={14} />
+                {canWrite ? 'Record Credit' : 'View Credits'}
+              </Btn>
             </Card>
           ))}
         </div>
@@ -224,97 +274,160 @@ function DuePanel() {
                 {columns.shown('equipment') && <TH align='right'>Chairs/tables</TH>}
                 {columns.shown('gst') && <TH align='right'>GST</TH>}
                 {columns.shown('total') && <TH align='right'>Total Due</TH>}
+                {columns.shown('paid') && <TH align='right'>Paid</TH>}
+                {columns.shown('remaining') && <TH align='right'>Remaining</TH>}
                 {columns.shown('bank') && <TH>Bank Details</TH>}
                 {columns.shown('email') && <TH>Payment Email</TH>}
                 <TH> </TH>
               </TR>
             </THead>
             <TBody>
-              {rows.map((r) => (
-                <TR key={r.requestId}>
-                  <TD>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{r.stallName}</div>
-                    <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
-                      {r.stallNumbers.join(', ') || '—'}
-                    </div>
-                  </TD>
-                  {r.quote.unpriced ? (
-                    // Nothing at all when every priced column is hidden — a
-                    // `colSpan={0}` is not a narrower cell, it is a cell that
-                    // spans to the end of the row.
-                    pricedSpan > 0 && (
-                      <TD colSpan={pricedSpan} muted>
-                        No rent is quoted for this zone — priced by the team.
-                      </TD>
-                    )
-                  ) : (
-                    <>
-                      {columns.shown('stallFee') && (
-                        <TD align='right'>{formatInr(r.quote.stallFeePaise)}</TD>
-                      )}
-                      {columns.shown('plugs') && (
-                        <TD align='right'>{formatInr(r.quote.plugFeePaise)}</TD>
-                      )}
-                      {columns.shown('equipment') && (
-                        <TD align='right'>{formatInr(r.quote.equipmentFeePaise)}</TD>
-                      )}
-                      {columns.shown('gst') && (
-                        <TD align='right' muted>
-                          {formatInr(r.quote.gstPaise)}
+              {rows.map((r) => {
+                const { paidPaise, remainingPaise } = settlement(r);
+                return (
+                  <TR key={r.requestId}>
+                    <TD>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{r.stallName}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
+                        {r.stallNumbers.join(', ') || '—'}
+                      </div>
+                    </TD>
+                    {r.quote.unpriced ? (
+                      // Nothing at all when every priced column is hidden — a
+                      // `colSpan={0}` is not a narrower cell, it is a cell that
+                      // spans to the end of the row.
+                      pricedSpan > 0 && (
+                        <TD colSpan={pricedSpan} muted>
+                          No rent is quoted for this zone — priced by the team.
                         </TD>
-                      )}
-                      {columns.shown('total') && (
-                        <TD align='right' style={{ fontWeight: 700 }}>
-                          {formatInr(r.quote.grandTotalPaise)}
-                          <div style={{ fontSize: 10.5, color: 'var(--mfg)', fontWeight: 400 }}>
-                            incl. {formatInr(r.quote.depositTotalPaise)} deposit
-                          </div>
-                          {/* The total already follows the concession. Without
+                      )
+                    ) : (
+                      <>
+                        {columns.shown('stallFee') && (
+                          <TD align='right'>{formatInr(r.quote.stallFeePaise)}</TD>
+                        )}
+                        {columns.shown('plugs') && (
+                          <TD align='right'>{formatInr(r.quote.plugFeePaise)}</TD>
+                        )}
+                        {columns.shown('equipment') && (
+                          <TD align='right'>{formatInr(r.quote.equipmentFeePaise)}</TD>
+                        )}
+                        {columns.shown('gst') && (
+                          <TD align='right' muted>
+                            {formatInr(r.quote.gstPaise)}
+                          </TD>
+                        )}
+                        {columns.shown('total') && (
+                          <TD align='right' style={{ fontWeight: 700 }}>
+                            {formatInr(r.quote.grandTotalPaise)}
+                            <div style={{ fontSize: 10.5, color: 'var(--mfg)', fontWeight: 400 }}>
+                              incl. {formatInr(r.quote.depositTotalPaise)} deposit
+                            </div>
+                            {/* The total already follows the concession. Without
                             this line it silently disagrees with the itemised
                             columns beside it, which still show the card rate. */}
-                          {r.quote.discretionaryFeePaise !== null && (
-                            <div style={{ fontSize: 10.5, color: 'var(--mfg)', fontWeight: 400 }}>
-                              Agreed fee {formatInr(r.quote.payableFeePaise)} —{' '}
-                              {r.quote.discretionaryReason}
-                            </div>
-                          )}
-                        </TD>
-                      )}
-                    </>
-                  )}
-                  {columns.shown('bank') && (
-                    <TD>
-                      <Tag tone={r.bankDetailsReceivedAt ? 'ok' : 'warn'} size='sm'>
-                        {r.bankDetailsReceivedAt ? 'Received' : 'Pending'}
-                      </Tag>
-                    </TD>
-                  )}
-                  {columns.shown('email') && (
-                    <TD>
-                      {r.paymentEmailSentAt ? (
-                        <Tag tone='ok' size='sm'>
-                          Sent {formatDate(r.paymentEmailSentAt)}
-                        </Tag>
-                      ) : (
-                        <Tag tone='neutral' size='sm'>
-                          Not Sent
-                        </Tag>
-                      )}
-                    </TD>
-                  )}
-                  <TD align='right'>
-                    {can('comms.write') && !r.paymentEmailSentAt && (
-                      <Btn onClick={() => sendPayment(r)} disabled={busy === r.requestId}>
-                        <Icon name='send' size={14} />
-                        Send
-                      </Btn>
+                            {r.quote.discretionaryFeePaise !== null && (
+                              <div style={{ fontSize: 10.5, color: 'var(--mfg)', fontWeight: 400 }}>
+                                Agreed fee {formatInr(r.quote.payableFeePaise)} —{' '}
+                                {r.quote.discretionaryReason}
+                              </div>
+                            )}
+                          </TD>
+                        )}
+                      </>
                     )}
-                  </TD>
-                </TR>
-              ))}
+                    {columns.shown('paid') && (
+                      <TD align='right'>
+                        {paidPaise === 0 ? (
+                          <span style={{ color: 'var(--mfg)' }}>—</span>
+                        ) : (
+                          formatInr(paidPaise)
+                        )}
+                        {r.records.length > 0 && (
+                          <div style={{ fontSize: 10.5, color: 'var(--mfg)' }}>
+                            {r.records.length} credit{r.records.length === 1 ? '' : 's'}
+                          </div>
+                        )}
+                      </TD>
+                    )}
+                    {columns.shown('remaining') && (
+                      <TD align='right'>
+                        {remainingPaise === null ? (
+                          <span style={{ color: 'var(--mfg)' }}>—</span>
+                        ) : r.fullySettled ? (
+                          <Tag tone='ok' size='sm'>
+                            Settled
+                          </Tag>
+                        ) : (
+                          <>
+                            <div style={{ fontWeight: 600 }}>{formatInr(remainingPaise)}</div>
+                            {/* ⚠️ Rent and deposit settle against their own totals,
+                              so the sum can reach zero while one is over and the
+                              other is still short. Saying nothing here would make
+                              a ₹0 row that is not settled look like a bug. */}
+                            {remainingPaise === 0 && (
+                              <div style={{ fontSize: 10.5, color: 'var(--mfg)', fontWeight: 400 }}>
+                                split across rent and deposit
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </TD>
+                    )}
+                    {columns.shown('bank') && (
+                      <TD>
+                        <Tag tone={r.bankDetailsReceivedAt ? 'ok' : 'warn'} size='sm'>
+                          {r.bankDetailsReceivedAt ? 'Received' : 'Pending'}
+                        </Tag>
+                      </TD>
+                    )}
+                    {columns.shown('email') && (
+                      <TD>
+                        {r.paymentEmailSentAt ? (
+                          <Tag tone='ok' size='sm'>
+                            Sent {formatDate(r.paymentEmailSentAt)}
+                          </Tag>
+                        ) : (
+                          <Tag tone='neutral' size='sm'>
+                            Not Sent
+                          </Tag>
+                        )}
+                      </TD>
+                    )}
+                    <TD align='right'>
+                      <RowActions>
+                        {can('comms.write') && !r.paymentEmailSentAt && (
+                          <Btn onClick={() => sendPayment(r)} disabled={busy === r.requestId}>
+                            <Icon name='send' size={14} />
+                            Send
+                          </Btn>
+                        )}
+                        <Btn onClick={() => setOpen(r)}>
+                          <Icon name='rupee' size={14} />
+                          {canWrite ? 'Record Credit' : 'View'}
+                        </Btn>
+                      </RowActions>
+                    </TD>
+                  </TR>
+                );
+              })}
             </TBody>
           </Table>
         </Card>
+      )}
+
+      {open && (
+        <ConfirmDialog
+          row={open}
+          canWrite={canWrite}
+          canConcede={canConcede}
+          onClose={() => setOpen(null)}
+          onDone={() => {
+            reload();
+            setOpen(null);
+          }}
+          onToast={toast}
+        />
       )}
     </div>
   );
@@ -325,6 +438,7 @@ function Money({ row }: { row: PaymentRow }) {
     return <div style={{ fontSize: 12.5, color: 'var(--mfg)' }}>No rent quoted for this zone.</div>;
   }
   const conceded = row.quote.discretionaryFeePaise !== null;
+  const { paidPaise, remainingPaise } = settlement(row);
   return (
     <div style={{ fontSize: 12.5, display: 'grid', gap: 2 }}>
       {/* Both figures, always, where a concession stands: what the requester was
@@ -341,11 +455,18 @@ function Money({ row }: { row: PaymentRow }) {
       )}
       <div>Deposit: {formatInr(row.quote.depositTotalPaise)}</div>
       <div style={{ fontWeight: 700 }}>Total: {formatInr(row.quote.grandTotalPaise)}</div>
+      <div style={{ color: 'var(--mfg)' }}>Paid: {formatInr(paidPaise)}</div>
+      {remainingPaise !== null &&
+        (row.fullySettled ? (
+          <Tag tone='ok' size='sm'>
+            Settled
+          </Tag>
+        ) : (
+          <div style={{ fontWeight: 700 }}>Remaining: {formatInr(remainingPaise)}</div>
+        ))}
     </div>
   );
 }
-
-// ── Tab 2: confirming a credit ──────────────────────────────────────────────
 
 // ── Tab 2: what the vendor says they paid ───────────────────────────────────
 
@@ -536,16 +657,62 @@ function RejectDialog({
   );
 }
 
-function ConfirmPanel() {
+// ── Tab 3: the credits that have landed ─────────────────────────────────────
+
+/**
+ * The credits that have actually landed, one row per record.
+ *
+ * 🔴 A ledger, not a worklist. Recording a credit belongs on Payment
+ * applications, beside the figure being settled and the request it settles;
+ * this tab answers the other question — "has this transfer arrived?" — across
+ * every application at once, which is the question that comes down the phone.
+ *
+ * ⚠️ Flattened from the same `listPayments` payload the applications tab reads,
+ * so the two can never disagree about what has been confirmed.
+ */
+type ConfirmedCredit = PaymentRecordView & {
+  requestId: string;
+  reference: string;
+  stallName: string;
+  requesterName: string;
+};
+
+const matchCredit = (c: ConfirmedCredit, t: string) =>
+  c.stallName.toLowerCase().includes(t) ||
+  c.requesterName.toLowerCase().includes(t) ||
+  c.reference.toLowerCase().includes(t) ||
+  c.referenceNo.toLowerCase().includes(t);
+
+function ConfirmedPanel() {
   const toast = useToast();
   const { can } = useMe();
   const { data, error, loading, reload } = useLoad(listPayments);
-  const { q, setQ, filtered } = useSearch(data, matchPayment);
-  const [open, setOpen] = useState<PaymentRow | null>(null);
+  const [withdrawing, setWithdrawing] = useState<ConfirmedCredit | null>(null);
   const canWrite = can('finance.write');
-  // ⚠️ Separate from `canWrite`. Agreeing a fee and confirming a credit are two
-  // acts held by two different sets of people — see `concession.write`.
-  const canConcede = can('concession.write');
+
+  const credits = useMemo(
+    () =>
+      (data ?? [])
+        .flatMap((r) =>
+          r.records.map((rec) => ({
+            ...rec,
+            requestId: r.requestId,
+            reference: r.reference,
+            stallName: r.stallName,
+            requesterName: r.requesterName,
+          })),
+        )
+        // Newest first. The question asked of this screen is almost always
+        // about a transfer made this week, not about what February looked like.
+        .sort((a, b) => b.receivedOn.localeCompare(a.receivedOn)),
+    [data],
+  );
+  const { q, setQ, filtered } = useSearch(credits, matchCredit);
+  // ⚠️ The LIVE ones only. A withdrawn entry is shown so the trail reads, but a
+  // total that counted it would be money the Foundation never had.
+  const live = filtered.filter((c) => c.voidedAt === null);
+  const totalPaise = live.reduce((t, c) => t + c.amountPaise, 0);
+  const withdrawnCount = filtered.length - live.length;
 
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox>{error.message}</ErrorBox>;
@@ -553,73 +720,116 @@ function ConfirmPanel() {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <div style={{ fontSize: 12.5, color: 'var(--mfg)', maxWidth: 680 }}>
-        When a credit lands, record its reference number, amount and date here. Rent and deposit are
-        recorded separately because they usually arrive as separate transfers.
+        Every credit confirmed against an application, newest first. Rent and deposit are recorded
+        separately because they usually arrive as separate transfers. To record a new one, go to
+        Payment applications and open the row it settles. An entry made in error is marked as a
+        wrong entry rather than deleted — it stops counting, and it stays on the list so the trail
+        can still be read.
       </div>
-      <Search value={q} onChange={setQ} placeholder='Search vendor…' />
+      <Search value={q} onChange={setQ} placeholder='Search vendor or reference…' />
 
       {filtered.length === 0 ? (
-        <Empty>Nothing to confirm.</Empty>
+        <Empty>
+          {credits.length === 0 ? 'No credits confirmed yet.' : 'No credits match that search.'}
+        </Empty>
       ) : (
-        <Card pad={0} style={{ overflow: 'hidden' }}>
-          <Table>
-            <THead>
-              <TR>
-                <TH>Vendor</TH>
-                <TH align='right'>Fee Due</TH>
-                <TH align='right'>Deposit Due</TH>
-                <TH align='right'>Rent Received</TH>
-                <TH align='right'>Deposit Received</TH>
-                <TH>Credits</TH>
-                <TH> </TH>
-              </TR>
-            </THead>
-            <TBody>
-              {filtered.map((r) => (
-                <TR key={r.requestId}>
-                  <TD>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{r.stallName}</div>
-                    <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>{r.requesterName}</div>
-                  </TD>
-                  <TD align='right'>{formatInr(r.quote.feeTotalPaise)}</TD>
-                  <TD align='right'>{formatInr(r.quote.depositTotalPaise)}</TD>
-                  <TD align='right'>{formatInr(r.receivedRentPaise)}</TD>
-                  <TD align='right'>{formatInr(r.receivedDepositPaise)}</TD>
-                  <TD>
-                    {r.records.length === 0 ? (
-                      <Tag tone='warn' size='sm'>
-                        None
-                      </Tag>
-                    ) : (
-                      <Tag tone={r.fullySettled ? 'ok' : 'info'} size='sm'>
-                        {r.records.length} · {r.fullySettled ? 'settled' : 'part paid'}
-                      </Tag>
-                    )}
-                  </TD>
-                  <TD align='right'>
-                    <RowActions>
-                      <Btn onClick={() => setOpen(r)}>
-                        <Icon name='rupee' size={14} />
-                        {canWrite ? 'Record Credit' : 'View'}
-                      </Btn>
-                    </RowActions>
-                  </TD>
+        <>
+          <Card pad={0} style={{ overflow: 'hidden' }}>
+            <Table>
+              <THead>
+                <TR>
+                  <TH>Vendor</TH>
+                  <TH>For</TH>
+                  <TH>Reference</TH>
+                  <TH align='right'>Amount</TH>
+                  <TH>Credit Date</TH>
+                  <TH>Mode</TH>
+                  <TH> </TH>
                 </TR>
-              ))}
-            </TBody>
-          </Table>
-        </Card>
+              </THead>
+              <TBody>
+                {filtered.map((c) => {
+                  const withdrawn = c.voidedAt !== null;
+                  return (
+                    <TR key={c.id}>
+                      <TD>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{c.stallName}</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
+                          {c.reference} · {c.requesterName}
+                        </div>
+                      </TD>
+                      <TD>
+                        {withdrawn ? (
+                          <Tag tone='warn' size='sm'>
+                            Wrong entry
+                          </Tag>
+                        ) : (
+                          <Tag tone='neutral' size='sm'>
+                            {c.purpose === 'RENT' ? 'Rent' : 'Deposit'}
+                          </Tag>
+                        )}
+                      </TD>
+                      <TD mono style={{ fontSize: 11.5 }}>
+                        {c.referenceNo}
+                        {c.remitterName && (
+                          <div style={{ fontSize: 11, color: 'var(--mfg)' }}>{c.remitterName}</div>
+                        )}
+                      </TD>
+                      {/* 🔴 Struck through, not hidden and not blank. The figure
+                          is what somebody entered; the line through it is the
+                          fact that it was taken back, and the reason underneath
+                          is what a person reconciling this six months on needs. */}
+                      <TD
+                        align='right'
+                        style={
+                          withdrawn
+                            ? { color: 'var(--mfg)', textDecoration: 'line-through' }
+                            : { fontWeight: 700 }
+                        }
+                      >
+                        {formatInr(c.amountPaise)}
+                      </TD>
+                      <TD muted style={{ fontSize: 11.5 }}>
+                        {formatDate(c.receivedOn)}
+                        {withdrawn && c.voidReason && (
+                          <div style={{ fontSize: 11 }}>Withdrawn — {c.voidReason}</div>
+                        )}
+                      </TD>
+                      <TD muted style={{ fontSize: 11.5 }}>
+                        {c.mode}
+                      </TD>
+                      <TD align='right'>
+                        {canWrite && !withdrawn && (
+                          <Btn onClick={() => setWithdrawing(c)}>
+                            <Icon name='undo' size={14} />
+                            Wrong Entry
+                          </Btn>
+                        )}
+                      </TD>
+                    </TR>
+                  );
+                })}
+              </TBody>
+            </Table>
+          </Card>
+          {/* The sum of what is LISTED, so it follows the search rather than
+              claiming to be the edition's total when a filter is on. */}
+          <div style={{ fontSize: 12.5, color: 'var(--mfg)', textAlign: 'right' }}>
+            {live.length} credit{live.length === 1 ? '' : 's'} ·{' '}
+            <strong>{formatInr(totalPaise)}</strong>
+            {withdrawnCount > 0 && <> · {withdrawnCount} withdrawn, not counted</>}
+          </div>
+        </>
       )}
 
-      {open && (
-        <ConfirmDialog
-          row={open}
-          canWrite={canWrite}
-          canConcede={canConcede}
-          onClose={() => setOpen(null)}
+      {withdrawing && (
+        <WrongEntryDialog
+          record={withdrawing}
+          stallName={withdrawing.stallName}
+          onClose={() => setWithdrawing(null)}
           onDone={() => {
+            setWithdrawing(null);
             reload();
-            setOpen(null);
           }}
           onToast={toast}
         />
@@ -627,6 +837,81 @@ function ConfirmPanel() {
     </div>
   );
 }
+
+/** ⚠️ The reason is REQUIRED, and it is the point of the whole step. An entry
+ *  withdrawn with nothing beside it is indistinguishable from one deleted by
+ *  accident, which is the state this replaced. */
+function WrongEntryDialog({
+  record,
+  stallName,
+  onClose,
+  onDone,
+  onToast,
+}: {
+  record: PaymentRecordView;
+  stallName: string;
+  onClose: () => void;
+  onDone: () => void;
+  onToast: ReturnType<typeof useToast>;
+}) {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await voidPaymentRecord(record.id, { reason: reason.trim() });
+      onToast.ok('Marked as a wrong entry.');
+      onDone();
+    } catch (e) {
+      onToast.fail(e);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      title='Mark as a wrong entry'
+      note={`${stallName} · ${record.referenceNo} · ${formatInr(record.amountPaise)}`}
+      onClose={onClose}
+      width={460}
+      footer={
+        <>
+          <Btn onClick={onClose}>Cancel</Btn>
+          <Btn kind='danger' disabled={busy || reason.trim() === ''} onClick={save}>
+            <Icon name='undo' size={14} />
+            Mark as Wrong Entry
+          </Btn>
+        </>
+      }
+    >
+      <div style={{ display: 'grid', gap: 12 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--mfg)' }}>
+          The credit stops counting straight away — towards what this stall has paid, whether it is
+          settled, and the deposit its refund is measured against. The entry itself stays on the
+          list, struck through, with what you write here beside it. The reference number is freed,
+          so the corrected entry can carry the same one.
+        </div>
+        <FormField
+          id='void-reason'
+          label='What was wrong with it?'
+          help='Write it for whoever reconciles this edition months from now.'
+          required
+        >
+          <Textarea
+            id='void-reason'
+            rows={3}
+            value={reason}
+            placeholder='e.g. Credited against the wrong stall — belongs to VEN-2026-0042.'
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </FormField>
+      </div>
+    </Dialog>
+  );
+}
+
+// ── The box both of those tabs hang off: one application's credits ──────────
 
 /** Recording what the team actually agreed to collect on one stall.
  *
@@ -824,6 +1109,7 @@ function ConfirmDialog({
   const [remitterName, setRemitter] = useState('');
   const [mode, setMode] = useState<'NEFT' | 'CASH' | 'CHEQUE' | 'UPI' | 'OTHER'>('NEFT');
   const [busy, setBusy] = useState(false);
+  const [withdrawing, setWithdrawing] = useState<PaymentRecordView | null>(null);
 
   const save = async () => {
     const rupees = Number(amount);
@@ -880,37 +1166,49 @@ function ConfirmDialog({
                 </TR>
               </THead>
               <TBody>
-                {row.records.map((rec) => (
-                  <TR key={rec.id}>
-                    <TD>{rec.purpose === 'RENT' ? 'Rent' : 'Deposit'}</TD>
-                    <TD mono style={{ fontSize: 11.5 }}>
-                      {rec.referenceNo}
-                    </TD>
-                    <TD align='right'>{formatInr(rec.amountPaise)}</TD>
-                    <TD muted style={{ fontSize: 11.5 }}>
-                      {rec.receivedOn}
-                    </TD>
-                    <TD align='right'>
-                      {canWrite && (
-                        <Btn
-                          kind='danger'
-                          onClick={async () => {
-                            try {
-                              await deletePaymentRecord(rec.id);
-                              onToast.ok('Credit removed.');
-                              onDone();
-                            } catch (e) {
-                              onToast.fail(e);
-                            }
-                          }}
-                        >
-                          <Icon name='trash' size={14} />
-                          Remove
-                        </Btn>
-                      )}
-                    </TD>
-                  </TR>
-                ))}
+                {row.records.map((rec) => {
+                  const withdrawn = rec.voidedAt !== null;
+                  return (
+                    <TR key={rec.id}>
+                      <TD>
+                        {withdrawn ? (
+                          <Tag tone='warn' size='sm'>
+                            Wrong entry
+                          </Tag>
+                        ) : rec.purpose === 'RENT' ? (
+                          'Rent'
+                        ) : (
+                          'Deposit'
+                        )}
+                      </TD>
+                      <TD mono style={{ fontSize: 11.5 }}>
+                        {rec.referenceNo}
+                      </TD>
+                      <TD
+                        align='right'
+                        style={
+                          withdrawn
+                            ? { color: 'var(--mfg)', textDecoration: 'line-through' }
+                            : undefined
+                        }
+                      >
+                        {formatInr(rec.amountPaise)}
+                      </TD>
+                      <TD muted style={{ fontSize: 11.5 }}>
+                        {rec.receivedOn}
+                        {withdrawn && rec.voidReason && <div>Withdrawn — {rec.voidReason}</div>}
+                      </TD>
+                      <TD align='right'>
+                        {canWrite && !withdrawn && (
+                          <Btn onClick={() => setWithdrawing(rec)}>
+                            <Icon name='undo' size={14} />
+                            Wrong Entry
+                          </Btn>
+                        )}
+                      </TD>
+                    </TR>
+                  );
+                })}
               </TBody>
             </Table>
           </Card>
@@ -985,11 +1283,27 @@ function ConfirmDialog({
           </>
         )}
       </div>
+      {/* ⚠️ A dialog opened FROM a dialog. `Dialog` is built for it — only the
+          topmost answers Escape and holds the focus trap — and the alternative,
+          sending Finance to another tab to undo an entry they are looking at,
+          is the hop this screen was rearranged to remove. */}
+      {withdrawing && (
+        <WrongEntryDialog
+          record={withdrawing}
+          stallName={row.stallName}
+          onClose={() => setWithdrawing(null)}
+          onDone={() => {
+            setWithdrawing(null);
+            onDone();
+          }}
+          onToast={onToast}
+        />
+      )}
     </Dialog>
   );
 }
 
-// ── Tab 3: refunds ──────────────────────────────────────────────────────────
+// ── Tab 4: refunds ──────────────────────────────────────────────────────────
 
 function RefundPanel() {
   const toast = useToast();

@@ -96,6 +96,7 @@ import type {
   PaymentClaimsResponse,
   ReviewPaymentClaimInput,
   SubmitPaymentClaimInput,
+  VoidPaymentInput,
 } from '@stalls/core';
 import { apiFetch } from './api-client';
 
@@ -716,8 +717,13 @@ export const refreshSignature = (id: string) =>
 export const listPayments = () => apiFetch<PaymentRow[]>(`${BASE}/finance/payments`);
 export const confirmPayment = (requestId: string, body: ConfirmPaymentInput) =>
   apiFetch<void>(`${BASE}/finance/payments/${requestId}`, { method: 'POST', json: body });
-export const deletePaymentRecord = (recordId: string) =>
-  apiFetch<void>(`${BASE}/finance/payments/${recordId}`, { method: 'DELETE' });
+/** Withdraw a credit entered in error.
+ *
+ *  🔴 There is no delete. The row is kept and marked so the trail survives —
+ *  "recorded on the 14th, withdrawn on the 16th" is the answer to the vendor
+ *  asking why their payment vanished. The reason is required. */
+export const voidPaymentRecord = (recordId: string, body: VoidPaymentInput) =>
+  apiFetch<void>(`${BASE}/finance/payments/${recordId}/void`, { method: 'POST', json: body });
 
 /** The concession the local welfare team agreed on one stall. Recorded beside
  *  the quote, never on top of it — what the requester was told and what they
