@@ -1,4 +1,4 @@
-import type { PaymentClaimView, PublicPaymentDue } from '@stalls/core';
+import type { PaymentClaimView, PublicPaymentDue, SubmitPaymentClaimInput } from '@stalls/core';
 import { formatInr } from '@stalls/core';
 import { useState } from 'react';
 import { submitPaymentClaim } from '../api';
@@ -28,11 +28,19 @@ export function PaymentClaimDialog({
   payment,
   onClose,
   onSubmitted,
+  submit: submitProp,
+  title = 'Report a transfer',
+  submitLabel = 'Report It',
 }: {
   reference: string;
   payment: PublicPaymentDue | null;
   onClose: () => void;
   onSubmitted: () => void;
+  /** How the claim is sent. The requester's own dialog posts it against their
+   *  session; the backoffice posts it against the request it is filing for. */
+  submit?: (input: Omit<SubmitPaymentClaimInput, 'reference'>) => Promise<unknown>;
+  title?: string;
+  submitLabel?: string;
 }) {
   const toast = useToast();
   const [purpose, setPurpose] = useState<'RENT' | 'DEPOSIT'>('RENT');
@@ -54,8 +62,7 @@ export function PaymentClaimDialog({
     setErrors({});
     setBusy(true);
     try {
-      await submitPaymentClaim({
-        reference,
+      const body = {
         purpose,
         referenceNo: referenceNo.trim(),
         // Rupees on screen, paise on the wire — the whole module counts in
@@ -64,7 +71,8 @@ export function PaymentClaimDialog({
         paidOn,
         remitterName: remitterName.trim() || undefined,
         note: note.trim() || undefined,
-      });
+      };
+      await (submitProp ?? ((input) => submitPaymentClaim({ reference, ...input })))(body);
       toast.ok('Thank you. Finance will confirm it against the bank statement.');
       onSubmitted();
       onClose();
@@ -80,7 +88,7 @@ export function PaymentClaimDialog({
 
   return (
     <Dialog
-      title='Report a transfer'
+      title={title}
       note='Rent and the deposit are paid separately, so please report them separately. We check what you tell us against the bank statement before it counts as paid.'
       onClose={onClose}
       footer={
@@ -88,7 +96,7 @@ export function PaymentClaimDialog({
           <Btn onClick={onClose}>Cancel</Btn>
           <Btn kind='primary' onClick={submit} disabled={busy || !ready}>
             <Icon name='send' size={14} />
-            {busy ? 'Sending…' : 'Report It'}
+            {busy ? 'Sending…' : submitLabel}
           </Btn>
         </>
       }

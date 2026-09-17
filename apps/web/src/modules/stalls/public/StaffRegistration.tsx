@@ -1,6 +1,6 @@
 import type { CouponView, RegisterStaffInput } from '@stalls/core';
 import { asFormField, formFields } from '@stalls/core';
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { fieldErrorsFrom } from '../api-client';
 import { DeclarationConsent, allTicked } from '../components/DeclarationConsent';
@@ -51,29 +51,11 @@ const ID_TYPES: Array<[RegisterStaffInput['idType'], string]> = [
 
 export function StaffRegistration() {
   const { code: codeParam } = useParams();
-  const toast = useToast();
 
   const [code, setCode] = useState(codeParam ?? '');
   const [coupon, setCoupon] = useState<CouponView | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [looking, setLooking] = useState(false);
-
-  const [name, setName] = useState('');
-  const [mobile, setMobile] = useState('');
-  const [idType, setIdType] = useState<RegisterStaffInput['idType']>('AADHAAR');
-  const [idNumber, setIdNumber] = useState('');
-  const [role, setRole] = useState('');
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
-  const [extra, setExtra] = useState<Record<string, string>>({});
-  const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
-  const toggle = (id: string, on: boolean) =>
-    setTicked((was) => {
-      const next = new Set(was);
-      if (on) next.add(id);
-      else next.delete(id);
-      return next;
-    });
 
   const lookup = async (value: string) => {
     if (!value.trim()) return;
@@ -97,45 +79,6 @@ export function StaffRegistration() {
   }, [codeParam]);
 
   const full = coupon !== null && coupon.maxStaff > 0 && coupon.registered >= coupon.maxStaff;
-
-  // Questions this edition appended to the staff form. Answers are filed
-  // against the person, not the stall — see `replaceCustomValues`.
-  const appendedFields = (coupon?.form ? formFields(coupon.form) : []).filter((f) => !f.isBuiltIn);
-
-  const submit = async () => {
-    setErrors({});
-    setBusy(true);
-    try {
-      const next = await registerStaff({
-        couponCode: code.trim(),
-        name: name.trim(),
-        mobile: mobile.trim(),
-        idType,
-        idNumber: idNumber.trim(),
-        role: role.trim() || undefined,
-        declarationIds: (coupon?.declarations ?? []).map((d) => d.id),
-        // 🔴 Filed against THIS PERSON, not the stall. Eight people register
-        // against one coupon and share a request.
-        customFields: Object.fromEntries(Object.entries(extra).filter(([, v]) => v.trim() !== '')),
-      });
-      setCoupon(next);
-      setName('');
-      setMobile('');
-      setIdNumber('');
-      setRole('');
-      // ⚠️ Cleared for the NEXT person. The page is used by a queue of people
-      // in turn, and leaving one person's consent ticked would register the
-      // next one against a tick they never made.
-      setExtra({});
-      setTicked(new Set());
-      toast.ok('Registered. The next person can use the same link.');
-    } catch (e) {
-      setErrors(fieldErrorsFrom(e));
-      toast.fail(e);
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <div style={{ display: 'grid', gap: 16, maxWidth: 620 }}>
@@ -198,101 +141,11 @@ export function StaffRegistration() {
               the stalls team if you need another pass.
             </ErrorBox>
           ) : (
-            <Card pad={18} style={{ display: 'grid', gap: 14 }}>
-              <FormField id='staff-name' label='Full Name' required error={errors.name}>
-                <Input
-                  id='staff-name'
-                  value={name}
-                  invalid={!!errors.name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </FormField>
-              <FormField id='staff-mobile' label='Mobile Number' required error={errors.mobile}>
-                <Input
-                  id='staff-mobile'
-                  type='tel'
-                  inputMode='tel'
-                  value={mobile}
-                  invalid={!!errors.mobile}
-                  onChange={(e) => setMobile(e.target.value)}
-                />
-              </FormField>
-              <FormField id='staff-idtype' label='ID Proof' required>
-                {/* ⚠️ `?? ''` for the TYPE, not for the screen: the contract
-                    made this optional once a form was allowed to stop asking
-                    for it, and the state here still starts on a real choice. */}
-                <Select
-                  id='staff-idtype'
-                  value={idType ?? ''}
-                  onChange={(v) => setIdType(v as RegisterStaffInput['idType'])}
-                >
-                  {ID_TYPES.map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </Select>
-              </FormField>
-              <FormField
-                id='staff-idnumber'
-                label='ID Number'
-                required
-                help={idType === 'AADHAAR' ? 'Only the last four digits are stored.' : undefined}
-                error={errors.idNumber}
-              >
-                <Input
-                  id='staff-idnumber'
-                  value={idNumber}
-                  invalid={!!errors.idNumber}
-                  onChange={(e) => setIdNumber(e.target.value)}
-                />
-              </FormField>
-              <FormField id='staff-role' label='Role on the Stall'>
-                <Input
-                  id='staff-role'
-                  value={role}
-                  placeholder='e.g. Cook, cashier'
-                  onChange={(e) => setRole(e.target.value)}
-                />
-              </FormField>
-              {appendedFields.length > 0 && (
-                <div style={{ display: 'grid', gap: 14 }}>
-                  {appendedFields.map((f) => (
-                    <FieldControl
-                      key={f.id}
-                      field={asFormField(f)}
-                      value={extra[f.id] ?? ''}
-                      onChange={(v) =>
-                        setExtra((was) => ({ ...was, [f.id]: typeof v === 'string' ? v : '' }))
-                      }
-                    />
-                  ))}
-                </div>
-              )}
-
-              <DeclarationConsent
-                declarations={coupon.declarations}
-                ticked={ticked}
-                onToggle={toggle}
-              />
-
-              <div>
-                <Btn
-                  kind='primary'
-                  onClick={submit}
-                  disabled={
-                    busy ||
-                    !name.trim() ||
-                    !mobile.trim() ||
-                    !idNumber.trim() ||
-                    !allTicked(coupon.declarations, ticked)
-                  }
-                >
-                  <Icon name='user-plus' size={14} />
-                  {busy ? 'Registering…' : 'Register'}
-                </Btn>
-              </div>
-            </Card>
+            <StaffFormBody
+              coupon={coupon}
+              submit={(body) => registerStaff({ ...body, couponCode: code.trim() })}
+              onRegistered={setCoupon}
+            />
           )}
 
           <Card pad={18} style={{ display: 'grid', gap: 10 }}>
@@ -327,5 +180,178 @@ export function StaffRegistration() {
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * One person's registration, on a coupon somebody else resolved.
+ *
+ * 🔴 Split out so the BACKOFFICE can register a stall's team for it — the same
+ * questions, the same consents, and the same clearing between people, because
+ * this form is used by a QUEUE: leaving one person's tick set would register
+ * the next against a consent they never gave.
+ */
+export function StaffFormBody({
+  coupon,
+  submit,
+  submitLabel = 'Register',
+  beforeSubmit,
+  ready: readyProp = true,
+  onRegistered,
+}: {
+  coupon: CouponView;
+  submit: (body: Omit<RegisterStaffInput, 'couponCode'>) => Promise<CouponView>;
+  submitLabel?: string;
+  beforeSubmit?: ReactNode;
+  ready?: boolean;
+  onRegistered?: (next: CouponView) => void;
+}) {
+  const toast = useToast();
+  const [name, setName] = useState('');
+  const [mobile, setMobile] = useState('');
+  const [idType, setIdType] = useState<RegisterStaffInput['idType']>('AADHAAR');
+  const [idNumber, setIdNumber] = useState('');
+  const [role, setRole] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [extra, setExtra] = useState<Record<string, string>>({});
+  const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (id: string, on: boolean) =>
+    setTicked((was) => {
+      const next = new Set(was);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+
+  // Questions this edition appended to the staff form. Answers are filed
+  // against the person, not the stall — see `replaceCustomValues`.
+  const appendedFields = (coupon.form ? formFields(coupon.form) : []).filter((f) => !f.isBuiltIn);
+
+  const send = async () => {
+    setErrors({});
+    setBusy(true);
+    try {
+      const next = await submit({
+        name: name.trim(),
+        mobile: mobile.trim(),
+        idType,
+        idNumber: idNumber.trim(),
+        role: role.trim() || undefined,
+        declarationIds: coupon.declarations.map((d) => d.id),
+        // 🔴 Filed against THIS PERSON, not the stall. Eight people register
+        // against one coupon and share a request.
+        customFields: Object.fromEntries(Object.entries(extra).filter(([, v]) => v.trim() !== '')),
+      });
+      setName('');
+      setMobile('');
+      setIdNumber('');
+      setRole('');
+      // ⚠️ Cleared for the NEXT person. The page is used by a queue in turn, and
+      // leaving one person's consent ticked would register the next one against
+      // a tick they never made.
+      setExtra({});
+      setTicked(new Set());
+      onRegistered?.(next);
+      toast.ok('Registered. The next person can use the same link.');
+    } catch (e) {
+      setErrors(fieldErrorsFrom(e));
+      toast.fail(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const ready =
+    readyProp &&
+    !!name.trim() &&
+    !!mobile.trim() &&
+    !!idNumber.trim() &&
+    allTicked(coupon.declarations, ticked);
+
+  return (
+    <Card pad={18} style={{ display: 'grid', gap: 14 }}>
+      <FormField id='staff-name' label='Full Name' required error={errors.name}>
+        <Input
+          id='staff-name'
+          value={name}
+          invalid={!!errors.name}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </FormField>
+      <FormField id='staff-mobile' label='Mobile Number' required error={errors.mobile}>
+        <Input
+          id='staff-mobile'
+          type='tel'
+          inputMode='tel'
+          value={mobile}
+          invalid={!!errors.mobile}
+          onChange={(e) => setMobile(e.target.value)}
+        />
+      </FormField>
+      <FormField id='staff-idtype' label='ID Proof' required>
+        {/* ⚠️ `?? ''` for the TYPE, not for the screen: the contract
+                  made this optional once a form was allowed to stop asking
+                  for it, and the state here still starts on a real choice. */}
+        <Select
+          id='staff-idtype'
+          value={idType ?? ''}
+          onChange={(v) => setIdType(v as RegisterStaffInput['idType'])}
+        >
+          {ID_TYPES.map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </Select>
+      </FormField>
+      <FormField
+        id='staff-idnumber'
+        label='ID Number'
+        required
+        help={idType === 'AADHAAR' ? 'Only the last four digits are stored.' : undefined}
+        error={errors.idNumber}
+      >
+        <Input
+          id='staff-idnumber'
+          value={idNumber}
+          invalid={!!errors.idNumber}
+          onChange={(e) => setIdNumber(e.target.value)}
+        />
+      </FormField>
+      <FormField id='staff-role' label='Role on the Stall'>
+        <Input
+          id='staff-role'
+          value={role}
+          placeholder='e.g. Cook, cashier'
+          onChange={(e) => setRole(e.target.value)}
+        />
+      </FormField>
+      {appendedFields.length > 0 && (
+        <div style={{ display: 'grid', gap: 14 }}>
+          {appendedFields.map((f) => (
+            <FieldControl
+              key={f.id}
+              field={asFormField(f)}
+              value={extra[f.id] ?? ''}
+              onChange={(v) =>
+                setExtra((was) => ({ ...was, [f.id]: typeof v === 'string' ? v : '' }))
+              }
+            />
+          ))}
+        </div>
+      )}
+
+      <DeclarationConsent declarations={coupon.declarations} ticked={ticked} onToggle={toggle} />
+
+      {beforeSubmit}
+
+      <div>
+        <Btn kind='primary' onClick={send} disabled={busy || !ready}>
+          <Icon name='user-plus' size={14} />
+          {busy ? 'Registering…' : submitLabel}
+        </Btn>
+      </div>
+    </Card>
   );
 }

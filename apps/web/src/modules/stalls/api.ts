@@ -1,6 +1,13 @@
 import type {
   ApplyPlanResult,
   AuditEventView,
+  FileBankInput,
+  FileClaimInput,
+  FileFssaiInput,
+  FileRequestInput,
+  FileRequestResponse,
+  FileStaffInput,
+  RequesterLookupResponse,
   AuditPage,
   ListAuditQuery,
   AvailableStall,
@@ -700,6 +707,41 @@ export const setVoucherRef = (requestId: string, voucherRef: string) =>
   apiFetch<void>(`${BASE}/finance/refunds/${requestId}/voucher`, {
     method: 'PUT',
     json: { voucherRef },
+  });
+
+// ── Backoffice: filing on behalf of a requester ─────────────────────────────
+//
+// The same five writes the requester has, from the backoffice. Each answers
+// with what the requester's own call answers, minus anything that is a way in:
+// `fileRequest` returns a reference and never a token.
+
+/** Resolves a contact to an account, for the requester step. `filing.request`. */
+export const lookupRequester = (contact: string) =>
+  apiFetch<RequesterLookupResponse>(`${BASE}/requests/file/lookup${qs({ contact })}`);
+
+export const fileRequest = (body: FileRequestInput) =>
+  apiFetch<FileRequestResponse>(`${BASE}/requests/file`, { method: 'POST', json: body });
+
+export const getBankFormFor = (id: string) =>
+  apiFetch<BankFormView>(`${BASE}/requests/${id}/bank-form`);
+export const fileBank = (id: string, body: FileBankInput) =>
+  apiFetch<void>(`${BASE}/requests/${id}/bank`, { method: 'POST', json: body });
+
+export const getFssaiFormFor = (id: string) =>
+  apiFetch<FssaiFormView>(`${BASE}/requests/${id}/fssai-form`);
+export const fileFssai = (id: string, body: FileFssaiInput) =>
+  apiFetch<void>(`${BASE}/requests/${id}/fssai`, { method: 'POST', json: body });
+
+/** The stall's own coupon, found or issued, with the staff form beside it. */
+export const getStaffFormFor = (id: string) =>
+  apiFetch<CouponView & { couponCode: string }>(`${BASE}/requests/${id}/staff-form`);
+export const fileStaff = (id: string, body: FileStaffInput) =>
+  apiFetch<CouponView>(`${BASE}/requests/${id}/staff`, { method: 'POST', json: body });
+
+export const fileClaim = (id: string, body: FileClaimInput) =>
+  apiFetch<PaymentClaimView>(`${BASE}/requests/${id}/payment-claim`, {
+    method: 'POST',
+    json: body,
   });
 
 // ════════════════════════════════════════════════════════════════════════════

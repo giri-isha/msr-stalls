@@ -1,6 +1,12 @@
-import type { BuiltFormField, PresignUploadInput, SubmitBankDetailsInput } from '@stalls/core';
+import type {
+  BankFormView,
+  BuiltFormField,
+  PresignUploadInput,
+  PresignUploadResponse,
+  SubmitBankDetailsInput,
+} from '@stalls/core';
 import { asFormField, formFields, uploadPurposeFor } from '@stalls/core';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { useParams } from 'react-router';
 import { fieldErrorsFrom } from '../api-client';
 import { getBankForm, presignPublicUpload, submitBankDetails, uploadFile } from '../api';
@@ -88,8 +94,73 @@ type Values = Record<string, string>;
 
 export function BankForm() {
   const { token = '' } = useParams();
+  const { data, error, loading } = useLoad(() => getBankForm(token), [token]);
+  const [done, setDone] = useState(false);
+
+  if (loading && !data) return <Loading />;
+  if (error) {
+    return (
+      <ErrorBox>
+        This link is not valid. It may have expired, or it may already have been used. Please ask
+        the stalls team for a new one.
+      </ErrorBox>
+    );
+  }
+  if (!data) return null;
+
+  if (done || data.submittedAt) return <Received />;
+
+  return (
+    <BankFormBody
+      data={data}
+      presign={presignPublicUpload(token)}
+      submit={(body) => submitBankDetails(token, body)}
+      onDone={() => setDone(true)}
+    />
+  );
+}
+
+/** The read-back a vendor sees once their details are in. */
+function Received() {
+  return (
+    <Card pad={24} style={{ display: 'grid', gap: 12, justifyItems: 'start' }}>
+      <Tag tone='ok'>
+        <Icon name='check' size={12} /> Received
+      </Tag>
+      <h2 style={{ margin: 0, fontSize: 20 }}>Thank you — we have your details</h2>
+      <p style={{ margin: 0, fontSize: 13.5, color: 'var(--mfg)', maxWidth: 560 }}>
+        We will email you the payment details and the Isha Foundation bank account to transfer to.
+        If anything in your bank details needs to change, please call the stalls team rather than
+        filling this form again.
+      </p>
+    </Card>
+  );
+}
+
+/**
+ * The form itself, drawn from a view somebody else loaded.
+ *
+ * 🔴 Split out so the BACKOFFICE can draw the same form when it files for a
+ * vendor — same questions, same required-ness, same upload purposes.
+ */
+export function BankFormBody({
+  data,
+  presign,
+  submit,
+  submitLabel = 'Submit',
+  beforeSubmit,
+  ready: readyProp = true,
+  onDone,
+}: {
+  data: BankFormView;
+  presign: (input: PresignUploadInput) => Promise<PresignUploadResponse>;
+  submit: (body: SubmitBankDetailsInput) => Promise<void>;
+  submitLabel?: string;
+  beforeSubmit?: ReactNode;
+  ready?: boolean;
+  onDone?: () => void;
+}) {
   const toast = useToast();
-  const { data, error, loading, reload } = useLoad(() => getBankForm(token), [token]);
 
   const [values, setValues] = useState<Values>({});
   const [appliances, setAppliances] = useState<ApplianceRow[]>([{ name: '', watts: '' }]);
@@ -104,9 +175,6 @@ export function BankForm() {
     });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
-
-  const presign = presignPublicUpload(token);
 
   // 🔴 The edition's own definition, grouped the way this page lays it out.
   // `formFields` drops the questions an admin switched off and orders the rest,
@@ -139,7 +207,7 @@ export function BankForm() {
   // that frame has their answer overwritten. `loadedFor` is the guard that makes
   // this a one-shot adjustment rather than a loop.
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
-  if (data && data.reference !== loadedFor) {
+  if (data.reference !== loadedFor) {
     setLoadedFor(data.reference);
     setValues({
       email: data.email,
@@ -155,33 +223,6 @@ export function BankForm() {
     if (data.current.appliances.length > 0) {
       setAppliances(data.current.appliances.map((a) => ({ name: a.name, watts: String(a.watts) })));
     }
-  }
-
-  if (loading && !data) return <Loading />;
-  if (error) {
-    return (
-      <ErrorBox>
-        This link is not valid. It may have expired, or it may already have been used. Please ask
-        the stalls team for a new one.
-      </ErrorBox>
-    );
-  }
-  if (!data) return null;
-
-  if (done || data.submittedAt) {
-    return (
-      <Card pad={24} style={{ display: 'grid', gap: 12, justifyItems: 'start' }}>
-        <Tag tone='ok'>
-          <Icon name='check' size={12} /> Received
-        </Tag>
-        <h2 style={{ margin: 0, fontSize: 20 }}>Thank you — we have your details</h2>
-        <p style={{ margin: 0, fontSize: 13.5, color: 'var(--mfg)', maxWidth: 560 }}>
-          We will email you the payment details and the Isha Foundation bank account to transfer to.
-          If anything in your bank details needs to change, please call the stalls team rather than
-          filling this form again.
-        </p>
-      </Card>
-    );
   }
 
   const set = (name: string, v: string) => setValues((prev) => ({ ...prev, [name]: v }));
@@ -205,11 +246,11 @@ export function BankForm() {
     }
   };
 
-  const submit = async () => {
+  const send = async () => {
     setErrors({});
     setBusy(true);
     try {
-      await submitBankDetails(token, {
+      await submit({
         email: values.email ?? '',
         invoiceName: values.invoiceName ?? '',
         accountHolder: values.accountHolder ?? '',
@@ -254,12 +295,11 @@ export function BankForm() {
         passesStaff: num('passesStaff'),
         remarks: values.remarks ?? '',
       } as SubmitBankDetailsInput);
-      setDone(true);
+      onDone?.();
     } catch (e) {
       const fields = fieldErrorsFrom(e);
       setErrors(fields);
       toast.fail(e);
-      if (Object.keys(fields).length === 0) reload();
     } finally {
       setBusy(false);
     }
@@ -271,7 +311,8 @@ export function BankForm() {
   const requiredDocsIn = fileFields
     .filter((f) => f.required)
     .every((f) => files[slotOf(f)] !== undefined);
-  const ready = data.form !== null && allTicked(data.declarations, ticked) && requiredDocsIn;
+  const ready =
+    readyProp && data.form !== null && allTicked(data.declarations, ticked) && requiredDocsIn;
 
   return (
     <div style={{ display: 'grid', gap: 16, maxWidth: 760 }}>
@@ -402,10 +443,11 @@ export function BankForm() {
           onToggle={toggle}
           error={errors.declarationIds}
         />
+        {beforeSubmit}
         <div>
-          <Btn kind='primary' onClick={submit} disabled={!ready || busy}>
+          <Btn kind='primary' onClick={send} disabled={!ready || busy}>
             <Icon name='send' size={14} />
-            {busy ? 'Submitting…' : 'Submit'}
+            {busy ? 'Submitting…' : submitLabel}
           </Btn>
           {!ready && (
             <div style={{ fontSize: 11.5, color: 'var(--mfg)', marginTop: 8 }}>

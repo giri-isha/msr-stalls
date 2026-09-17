@@ -10,12 +10,11 @@ import {
   renderForm,
   type RenderedGroup,
   type RateScope,
-  type RequesterSession,
   type StallRequestType,
   SubmitRequestInput,
   validateAgainstForm,
 } from '@stalls/core';
-import { useMemo, useState } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router';
 import { ApiError, fieldErrorsFrom } from '../api-client';
 import { getPublicConfig, submitRequest } from '../api';
@@ -323,6 +322,7 @@ function isEmpty(v: unknown): boolean {
  */
 export function RequestForm({ type }: { type: StallRequestType }) {
   const { requester, status } = useRequester();
+  const navigate = useNavigate();
   // ⚠️ The API refuses an unauthenticated submission regardless — this only
   // saves a vendor filling in two pages of form before being told. Wait for the
   // session to land first, or a signed-in reader is bounced on every refresh.
@@ -336,12 +336,47 @@ export function RequestForm({ type }: { type: StallRequestType }) {
   if (requester.requesterType && requester.requesterType !== type) {
     return <Navigate to='/stalls/apply' replace />;
   }
-  return <Form type={type} requester={requester} />;
+  return (
+    <RequestFormBody
+      type={type}
+      requester={requester}
+      submit={async (input) => {
+        const r = await submitRequest(input);
+        navigate('/stalls/submitted', { state: { ...r, type }, replace: true });
+      }}
+    />
+  );
 }
 
-function Form({ type, requester }: { type: StallRequestType; requester: RequesterSession }) {
+/**
+ * The form itself, with no notion of who is filling it in or where they go
+ * next.
+ *
+ * 🔴 Split out so the BACKOFFICE can draw the same form when it files for
+ * somebody. A second implementation for the desk is how a question an admin
+ * appended stops being asked of half the people who answer it.
+ */
+export function RequestFormBody({
+  type,
+  requester,
+  submit,
+  submitLabel = 'Submit request',
+  beforeSubmit,
+  ready = true,
+}: {
+  type: StallRequestType;
+  /** The three facts the form prefills from. The public page passes the
+   *  session; the backoffice passes what the filer typed. */
+  requester: { displayName: string; email: string; phone: string };
+  /** Given the parsed body. Throw an `ApiError` to put field errors back. */
+  submit: (input: SubmitRequestInput) => Promise<void>;
+  submitLabel?: string;
+  /** Drawn under the declarations, above the submit rail — the attestation. */
+  beforeSubmit?: ReactNode;
+  /** When false, Submit stays disabled however many boxes are ticked. */
+  ready?: boolean;
+}) {
   const def = FORM_DEFINITIONS[type];
-  const navigate = useNavigate();
   const mobile = useIsMobile();
   // ⚠️ Quoted at THIS form's scope. A local welfare requester asking after A3
   // gets a figure; a vendor asking after the same bay is told it is closed to
@@ -519,8 +554,7 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
 
     setSubmitting(true);
     try {
-      const r = await submitRequest(parsed.data);
-      navigate('/stalls/submitted', { state: { ...r, type }, replace: true });
+      await submit(parsed.data);
     } catch (err) {
       const fe = fieldErrorsFrom(err);
       const mapped = Object.fromEntries(
@@ -642,13 +676,14 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
             form with a bare "I Agree" tick thirty questions below it — by the
             time the tick was in reach the words had been off screen for
             minutes. */}
-        <div style={{ padding: '0 18px' }}>
+        <div style={{ padding: '0 18px', display: 'grid', gap: 12 }}>
           <DeclarationConsent
             declarations={shown}
             ticked={ticked}
             onToggle={toggleDeclaration}
             error={errors.declarationIds}
           />
+          {beforeSubmit}
         </div>
 
         {/* ⚠️ The submit sits INSIDE the card, on its own rail, rather than
@@ -667,8 +702,8 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
         >
           <button
             type='submit'
-            disabled={submitting || !consented}
-            className={submitting || !consented ? undefined : 'stalls-lift'}
+            disabled={submitting || !consented || !ready}
+            className={submitting || !consented || !ready ? undefined : 'stalls-lift'}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -682,11 +717,11 @@ function Form({ type, requester }: { type: StallRequestType; requester: Requeste
               boxShadow: 'var(--sh-pri)',
               fontSize: 13.5,
               fontWeight: 700,
-              cursor: submitting || !consented ? 'not-allowed' : 'pointer',
-              opacity: submitting || !consented ? 0.5 : 1,
+              cursor: submitting || !consented || !ready ? 'not-allowed' : 'pointer',
+              opacity: submitting || !consented || !ready ? 0.5 : 1,
             }}
           >
-            {submitting ? 'Submitting…' : 'Submit request'}
+            {submitting ? 'Submitting…' : submitLabel}
             {!submitting && <Icon name='chevron-right' size={15} />}
           </button>
         </div>
