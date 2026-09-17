@@ -1314,6 +1314,12 @@ export interface MeResponse {
    *  stale, it is unknowable, because the client cannot learn a new role's
    *  privileges (msr ADR 0065). */
   privileges: string[];
+  /** The requester types the caller's roles reach, or `null` for all of them.
+   *
+   *  ⚠️ The File a Request page offers only the forms inside it, so a Local
+   *  Welfare member is never shown a vendor form the API would refuse — a
+   *  refusal after two pages of typing. */
+  requestTypeScope: string[] | null;
 }
 
 /**

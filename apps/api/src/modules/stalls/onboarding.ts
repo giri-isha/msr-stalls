@@ -15,7 +15,7 @@ import {
 } from '@stalls/core';
 import { ValidationFailedError } from '../../errors';
 import type { MediaStore } from '../../storage/media-namespace';
-import { type AuditActor, actorFrom, audit } from './audit';
+import { type AuditActor, type Filing, actorFrom, attestedByOf, audit } from './audit';
 import { flowFor } from './config';
 import { declarationsForForm, recordConsent, sameDeclarations } from './declarations';
 import { allowedCustomValues, replaceCustomValues } from './custom-values';
@@ -257,7 +257,7 @@ function narrowId(
 export async function registerStaff(
   db: PrismaClient,
   input: RegisterStaffInput,
-  actor: AuditActor,
+  filing: Filing,
 ): Promise<CouponView> {
   const { request, coupon } = await resolveCoupon(db, input.couponCode);
   // 🔴 THIS coupon's cap against THIS coupon's registrations. A stall holding a
@@ -319,12 +319,18 @@ export async function registerStaff(
     // and share a request id, and the consent is the individual's — they are
     // the one carrying the photo ID through the gate. Filed against the request
     // alone, seven of the eight would collapse into the first person's row.
-    await recordConsent(tx, { requestId: request.id, formType: 'STAFF', staffId: row.id }, live);
+    await recordConsent(
+      tx,
+      { requestId: request.id, formType: 'STAFF', staffId: row.id },
+      live,
+      attestedByOf(filing),
+    );
 
     await audit(tx, {
-      actor,
+      actor: filing.actor,
       action: 'stall_vendor_staff.registered',
       requestId: request.id,
+      onBehalfOfAccountId: filing.onBehalfOfAccountId ?? null,
       // ⚠️ The SUBJECT is this person's row; the request is what the event is
       // filed against. Eight people register against one coupon and would
       // otherwise be eight rows about the same subject.
@@ -376,7 +382,7 @@ export async function submitFssai(
   db: PrismaClient,
   requestId: string,
   input: SubmitFssaiInput,
-  actor: AuditActor,
+  filing: Filing,
 ): Promise<void> {
   const r = await db.stallRequest.findUniqueOrThrow({
     where: { id: requestId },
@@ -400,7 +406,7 @@ export async function submitFssai(
     // authors some — at which point this starts gating without a code change.
     const live = await declarationsForForm(tx, r.editionId, 'FSSAI');
     if (!sameDeclarations(live, input.declarationIds)) throw new DeclarationsChangedError();
-    await recordConsent(tx, { requestId, formType: 'FSSAI' }, live);
+    await recordConsent(tx, { requestId, formType: 'FSSAI' }, live, attestedByOf(filing));
 
     await replaceCustomValues(
       tx,
@@ -432,9 +438,10 @@ export async function submitFssai(
     });
 
     await audit(tx, {
-      actor,
+      actor: filing.actor,
       action: 'stall_fssai.submitted',
       requestId,
+      onBehalfOfAccountId: filing.onBehalfOfAccountId ?? null,
       detail: { files: input.files.map((f) => f.name) },
     });
   });

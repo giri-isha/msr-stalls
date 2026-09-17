@@ -42,7 +42,7 @@ describe('a requester says what they transferred', () => {
     const { requestId } = await selected(['C1-1']);
     const before = await prisma.stallRequest.findUniqueOrThrow({ where: { id: requestId } });
 
-    const out = await submitPaymentClaim(prisma, requestId, claim(), { kind: 'SYSTEM' });
+    const out = await submitPaymentClaim(prisma, requestId, claim(), { actor: { kind: 'SYSTEM' } });
     expect(out.status).toBe('PENDING');
 
     const after = await prisma.stallRequest.findUniqueOrThrow({ where: { id: requestId } });
@@ -55,7 +55,7 @@ describe('a requester says what they transferred', () => {
    *  claim over that sends them back to the mailbox this replaced. */
   test('no receipt is still a claim', async () => {
     const { requestId } = await selected(['C1-1']);
-    const out = await submitPaymentClaim(prisma, requestId, claim(), { kind: 'SYSTEM' });
+    const out = await submitPaymentClaim(prisma, requestId, claim(), { actor: { kind: 'SYSTEM' } });
     expect(out.hasReceipt).toBe(false);
   });
 
@@ -63,9 +63,9 @@ describe('a requester says what they transferred', () => {
    *  attempt does not create two claims against one transfer. */
   test('the same reference twice is refused', async () => {
     const { requestId } = await selected(['C1-1']);
-    await submitPaymentClaim(prisma, requestId, claim(), { kind: 'SYSTEM' });
+    await submitPaymentClaim(prisma, requestId, claim(), { actor: { kind: 'SYSTEM' } });
     await expect(
-      submitPaymentClaim(prisma, requestId, claim(), { kind: 'SYSTEM' }),
+      submitPaymentClaim(prisma, requestId, claim(), { actor: { kind: 'SYSTEM' } }),
     ).rejects.toThrow(DuplicatePaymentError);
   });
 
@@ -73,12 +73,12 @@ describe('a requester says what they transferred', () => {
    *  same UTR is not expected — but two claims for the two purposes are. */
   test('rent and deposit are separate claims', async () => {
     const { requestId } = await selected(['C1-1']);
-    await submitPaymentClaim(prisma, requestId, claim(), { kind: 'SYSTEM' });
+    await submitPaymentClaim(prisma, requestId, claim(), { actor: { kind: 'SYSTEM' } });
     await submitPaymentClaim(
       prisma,
       requestId,
       claim({ purpose: 'DEPOSIT', referenceNo: 'NEFT99887766', amountPaise: 400_000 }),
-      { kind: 'SYSTEM' },
+      { actor: { kind: 'SYSTEM' } },
     );
     expect(await claimsFor(prisma, requestId)).toHaveLength(2);
   });
@@ -89,7 +89,7 @@ describe('a requester says what they transferred', () => {
     const { requestId } = await selected(['C1-1']);
     await prisma.stallRequest.update({ where: { id: requestId }, data: { requestType: 'ASHRAM' } });
     await expect(
-      submitPaymentClaim(prisma, requestId, claim(), { kind: 'SYSTEM' }),
+      submitPaymentClaim(prisma, requestId, claim(), { actor: { kind: 'SYSTEM' } }),
     ).rejects.toThrow(StepNotOpenError);
   });
 });
@@ -99,7 +99,7 @@ describe('finance settles it', () => {
    *  `StallPaymentRecord` that `paymentConfirmed` settles against. */
   test('VERIFY writes the payment record and links it back', async () => {
     const { requestId } = await selected(['C1-1']);
-    const c = await submitPaymentClaim(prisma, requestId, claim(), { kind: 'SYSTEM' });
+    const c = await submitPaymentClaim(prisma, requestId, claim(), { actor: { kind: 'SYSTEM' } });
 
     await reviewPaymentClaim(prisma, edition.id, c.id, { verdict: 'VERIFY' }, SYSTEM);
 
@@ -116,7 +116,7 @@ describe('finance settles it', () => {
    *  statement, and the claim keeps what was claimed — the gap stays visible. */
   test('finance may correct the amount, and the claim keeps the original', async () => {
     const { requestId } = await selected(['C1-1']);
-    const c = await submitPaymentClaim(prisma, requestId, claim(), { kind: 'SYSTEM' });
+    const c = await submitPaymentClaim(prisma, requestId, claim(), { actor: { kind: 'SYSTEM' } });
 
     await reviewPaymentClaim(
       prisma,
@@ -134,7 +134,7 @@ describe('finance settles it', () => {
 
   test('REJECT writes no payment record and keeps the reason', async () => {
     const { requestId } = await selected(['C1-1']);
-    const c = await submitPaymentClaim(prisma, requestId, claim(), { kind: 'SYSTEM' });
+    const c = await submitPaymentClaim(prisma, requestId, claim(), { actor: { kind: 'SYSTEM' } });
 
     await reviewPaymentClaim(
       prisma,
@@ -153,7 +153,7 @@ describe('finance settles it', () => {
   /** ⚠️ The reason is the only thing telling the requester what to correct. */
   test('a rejection with no reason is refused', async () => {
     const { requestId } = await selected(['C1-1']);
-    const c = await submitPaymentClaim(prisma, requestId, claim(), { kind: 'SYSTEM' });
+    const c = await submitPaymentClaim(prisma, requestId, claim(), { actor: { kind: 'SYSTEM' } });
     await expect(
       reviewPaymentClaim(prisma, edition.id, c.id, { verdict: 'REJECT' }, SYSTEM),
     ).rejects.toThrow(MissingRejectReasonError);
@@ -163,7 +163,7 @@ describe('finance settles it', () => {
    *  double-counts what the vendor paid and shrinks their refund. */
   test('a settled claim cannot be settled again', async () => {
     const { requestId } = await selected(['C1-1']);
-    const c = await submitPaymentClaim(prisma, requestId, claim(), { kind: 'SYSTEM' });
+    const c = await submitPaymentClaim(prisma, requestId, claim(), { actor: { kind: 'SYSTEM' } });
     await reviewPaymentClaim(prisma, edition.id, c.id, { verdict: 'VERIFY' }, SYSTEM);
     await expect(
       reviewPaymentClaim(prisma, edition.id, c.id, { verdict: 'VERIFY' }, SYSTEM),
@@ -176,7 +176,9 @@ describe('finance settles it', () => {
    *  was the amount or the date. */
   test('a corrected claim may reuse the reference of a rejected one', async () => {
     const { requestId } = await selected(['C1-1']);
-    const first = await submitPaymentClaim(prisma, requestId, claim(), { kind: 'SYSTEM' });
+    const first = await submitPaymentClaim(prisma, requestId, claim(), {
+      actor: { kind: 'SYSTEM' },
+    });
     await reviewPaymentClaim(
       prisma,
       edition.id,
@@ -186,7 +188,7 @@ describe('finance settles it', () => {
     );
 
     const second = await submitPaymentClaim(prisma, requestId, claim({ amountPaise: 1_700_000 }), {
-      kind: 'SYSTEM',
+      actor: { kind: 'SYSTEM' },
     });
     expect(second.status).toBe('PENDING');
     expect(await claimsFor(prisma, requestId)).toHaveLength(2);
@@ -196,7 +198,7 @@ describe('finance settles it', () => {
 describe('the finance queue', () => {
   test('lists what is pending, oldest first, with what is owed beside it', async () => {
     const { requestId } = await selected(['C1-1']);
-    await submitPaymentClaim(prisma, requestId, claim(), { kind: 'SYSTEM' });
+    await submitPaymentClaim(prisma, requestId, claim(), { actor: { kind: 'SYSTEM' } });
 
     const rows = await pendingClaims(prisma, edition.id);
     expect(rows).toHaveLength(1);
@@ -206,7 +208,7 @@ describe('the finance queue', () => {
 
   test('and drops one once it is settled', async () => {
     const { requestId } = await selected(['C1-1']);
-    const c = await submitPaymentClaim(prisma, requestId, claim(), { kind: 'SYSTEM' });
+    const c = await submitPaymentClaim(prisma, requestId, claim(), { actor: { kind: 'SYSTEM' } });
     await reviewPaymentClaim(prisma, edition.id, c.id, { verdict: 'VERIFY' }, SYSTEM);
     expect(await pendingClaims(prisma, edition.id)).toHaveLength(0);
   });

@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { type BankFormView, type SubmitBankDetailsInput, validateAgainstForm } from '@stalls/core';
 import { ValidationFailedError } from '../../errors';
-import { audit, requesterActor } from './audit';
+import { type Filing, attestedByOf, audit } from './audit';
 import { flowFor } from './config';
 import { declarationsForForm, recordConsent, sameDeclarations } from './declarations';
 import { allowedCustomValues, replaceCustomValues } from './custom-values';
@@ -76,6 +76,7 @@ export async function submitBankDetails(
   db: PrismaClient,
   requestId: string,
   input: SubmitBankDetailsInput,
+  filing: Filing,
 ): Promise<void> {
   const r = await db.stallRequest.findUnique({
     where: { id: requestId },
@@ -134,7 +135,7 @@ export async function submitBankDetails(
     // record WHEN; these rows are what record WHAT.
     const live = await declarationsForForm(tx, r.editionId, 'BANK');
     if (!sameDeclarations(live, input.declarationIds)) throw new DeclarationsChangedError();
-    await recordConsent(tx, { requestId, formType: 'BANK' }, live);
+    await recordConsent(tx, { requestId, formType: 'BANK' }, live, attestedByOf(filing));
 
     // Answers to questions an admin appended to this form.
     await replaceCustomValues(
@@ -198,11 +199,12 @@ export async function submitBankDetails(
     }
 
     await audit(tx, {
-      // The requester acted, from their own link — not whoever opens the
-      // record next. The account is the actor; the request is the subject.
-      actor: requesterActor(r.accountId),
+      // Whoever actually filled it in: the requester from their own link, or
+      // the member who did it for them — and then the account is named too.
+      actor: filing.actor,
       action: 'stall_bank_detail.submitted',
       requestId,
+      onBehalfOfAccountId: filing.onBehalfOfAccountId ?? null,
       detail: { gst: (input.gstNumber ?? '').toUpperCase() !== 'NONE' },
     });
   });

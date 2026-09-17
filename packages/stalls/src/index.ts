@@ -3,6 +3,7 @@ export * from './audit';
 export * from './contracts';
 export * from './coupons';
 export * from './field-rules';
+export * from './filing';
 export * from './forms';
 export * from './money';
 export * from './declarations';

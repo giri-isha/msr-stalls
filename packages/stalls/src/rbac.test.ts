@@ -155,6 +155,12 @@ const SHIPPED_HOLDINGS: Record<string, readonly string[]> = {
     'refunds.write',
     // Reads the log. Sensitive, like finance.read, and for the same reason.
     'audit.read',
+    // Files any of the five requester forms on somebody's behalf.
+    'filing.request',
+    'filing.bank',
+    'filing.fssai',
+    'filing.staff',
+    'filing.claim',
   ],
   // 🔴 NARROWED, on purpose. Was `['requests.read', 'checkin.write']` — the
   // read was there only because the check-in LIST was gated on it, so staffing
@@ -174,6 +180,12 @@ const SHIPPED_HOLDINGS: Record<string, readonly string[]> = {
     'onboarding.read',
     'checkin.read',
     'equipment.read',
+    // Files for its own villages. Never the bank form — a local welfare stall
+    // is not asked for bank details.
+    'filing.request',
+    'filing.fssai',
+    'filing.staff',
+    'filing.claim',
   ],
 };
 
@@ -607,3 +619,17 @@ function seeded(roleKey: string) {
   if (!role) throw new Error(`no seeded role ${roleKey}`);
   return role;
 }
+
+test('the filing privileges are a category of their own, and Local Welfare never files a bank form', () => {
+  const filing = PRIVILEGE_CATEGORIES.find((c) => c.key === 'filing');
+  expect(filing?.items.map((i) => i.code).sort()).toEqual([
+    'filing.bank',
+    'filing.claim',
+    'filing.fssai',
+    'filing.request',
+    'filing.staff',
+  ]);
+  const lw = SEED_ROLES.find((r) => r.roleKey === 'stalls_local_welfare');
+  expect(lw?.privileges).not.toContain('filing.bank');
+  expect(lw?.privileges).toContain('filing.request');
+});

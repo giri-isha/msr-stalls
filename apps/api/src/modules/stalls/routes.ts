@@ -165,11 +165,13 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
   // ── Me ────────────────────────────────────────────────────────────────────
   zod.get('/me', async (req): Promise<MeResponse> => {
     const caller = await requireBackoffice(req, prisma);
-    // `requestTypeScope` is deliberately not published: it narrows what the
-    // server returns, and a screen that also filtered by it would be a second
-    // opinion on the same rule.
-    const { personId, displayName, roleKeys, privileges } = caller;
-    return { personId, displayName, roleKeys, privileges };
+    // ⚠️ `requestTypeScope` IS published now, and only for the one screen that
+    // has to know before it asks: File a Request offers the forms the caller
+    // may file, and a tile that opens a form the server will refuse costs the
+    // filer two pages of typing. Every LIST still narrows on the server; this
+    // is not a filter the web applies.
+    const { personId, displayName, roleKeys, privileges, requestTypeScope } = caller;
+    return { personId, displayName, roleKeys, privileges, requestTypeScope };
   });
 
   zod.get('/roles', async (req): Promise<ListRolesResponse> => {

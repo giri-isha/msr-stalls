@@ -61,6 +61,11 @@ export const STALL_PRIVILEGES = [
   'roles.write',
   'passwords.write',
   'audit.read',
+  'filing.request',
+  'filing.bank',
+  'filing.fssai',
+  'filing.staff',
+  'filing.claim',
 ] as const;
 export type StallPrivilege = (typeof STALL_PRIVILEGES)[number];
 
@@ -95,9 +100,13 @@ export const PRIVILEGE_CATEGORIES: readonly PrivilegeCategory[] = [
       },
       {
         code: 'requests.write',
-        label: 'File and amend requests',
+        label: 'Amend requests',
         kind: 'action',
-        description: 'Enter a request on behalf of a trader, and amend one.',
+        // ⚠️ Amending, not filing. Entering a request FOR somebody is
+        // `filing.request` — its own privilege in its own category, because
+        // speaking for a requester is not the same power as correcting a
+        // number they gave you.
+        description: 'Amend a request after it was filed, and flag one for follow-up.',
       },
     ],
   },
@@ -338,6 +347,51 @@ export const PRIVILEGE_CATEGORIES: readonly PrivilegeCategory[] = [
     ],
   },
   {
+    /** 🔴 Its own category, never five more items under Requests.
+     *
+     *  A category is the unit a role is granted whole, and these hand a
+     *  backoffice member the power to speak FOR a requester — to file the
+     *  form, to tick the declarations on their word, to upload their
+     *  documents. Bundled with "amend a request" they would arrive with every
+     *  role that corrects a phone number. */
+    key: 'filing',
+    name: 'Filing on behalf',
+    items: [
+      {
+        code: 'filing.request',
+        label: 'File a request for a requester',
+        kind: 'action',
+        description:
+          'Enter a stall request on behalf of a vendor, department or trader, creating their account if they have none.',
+      },
+      {
+        code: 'filing.bank',
+        label: 'Enter a bank form for a requester',
+        kind: 'action',
+        description:
+          'Fill in the bank, GST and contract form and upload its documents on their behalf.',
+      },
+      {
+        code: 'filing.fssai',
+        label: 'Upload an FSSAI certificate for a requester',
+        kind: 'action',
+        description: 'Upload the food licence a vendor sent by some other means.',
+      },
+      {
+        code: 'filing.staff',
+        label: 'Register staff for a stall',
+        kind: 'action',
+        description: "Register the people working a stall, against the stall's own coupon.",
+      },
+      {
+        code: 'filing.claim',
+        label: 'Record a transfer a requester reported',
+        kind: 'action',
+        description: 'Record a payment a requester reported by phone, for Finance to verify.',
+      },
+    ],
+  },
+  {
     /** 🔴 `sensitive`, like `finance.read`, and for the same kind of reason:
      *  the log carries the change sets of every record, so a reader of it sees
      *  what a bank form said before it was corrected. */
@@ -429,6 +483,12 @@ const LEAD_PRIVILEGES = [
   'refunds.write',
   // Reads the log. Sensitive, like `finance.read`, and for the same reason.
   'audit.read',
+  // Files any of the five requester forms for somebody who cannot.
+  'filing.request',
+  'filing.bank',
+  'filing.fssai',
+  'filing.staff',
+  'filing.claim',
 ] as const;
 
 /** The roles the module ships with.
@@ -527,6 +587,13 @@ export const SEED_ROLES: readonly SeedRole[] = [
       // whether the trader turned up and what furniture they took.
       'checkin.read',
       'equipment.read',
+      // 🔴 Files for the village traders who have no email address — the
+      // reason this role exists at all. Never `filing.bank`: a local welfare
+      // stall is not asked for bank details.
+      'filing.request',
+      'filing.fssai',
+      'filing.staff',
+      'filing.claim',
     ],
     allPrivileges: false,
     canAssignSameLevel: false,

@@ -210,6 +210,9 @@ export async function recordConsent(
   db: Db,
   where: ConsentWhere,
   declarations: readonly { id: string }[],
+  /** The backoffice member who ticked these on the requester's word, when one
+   *  did. Absent — the ordinary case — means the requester ticked them. */
+  attestedBy?: string,
 ): Promise<void> {
   if (declarations.length === 0) return;
   await db.stallDeclarationConsent.createMany({
@@ -218,6 +221,7 @@ export async function recordConsent(
       formType: where.formType,
       staffId: where.staffId ?? null,
       declarationId: d.id,
+      attestedBy: attestedBy ?? null,
     })),
     skipDuplicates: true,
   });

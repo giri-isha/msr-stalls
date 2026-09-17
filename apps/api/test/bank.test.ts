@@ -149,7 +149,7 @@ describe('the bank form', () => {
 
   test('stores the details and overwrites the stale requirements', async () => {
     const { requestId } = await selected(['C1-1'], { chairsNeeded: 0, plugs5a: 0, passesStaff: 0 });
-    await submitBankDetails(prisma, requestId, await body());
+    await submitBankDetails(prisma, requestId, await body(), { actor: { kind: 'SYSTEM' } });
 
     const saved = await prisma.stallBankDetail.findUniqueOrThrow({ where: { requestId } });
     expect(saved.ifsc).toBe('HDFC0001234');
@@ -173,16 +173,18 @@ describe('the bank form', () => {
         { name: 'Old griller', watts: 2000 },
       ],
     });
-    await submitBankDetails(prisma, requestId, await body({ appliances: [] }));
+    await submitBankDetails(prisma, requestId, await body({ appliances: [] }), {
+      actor: { kind: 'SYSTEM' },
+    });
     expect(await prisma.stallRequestAppliance.count({ where: { requestId } })).toBe(0);
   });
 
   test('a second submission is refused — bank details change by phone call', async () => {
     const { requestId } = await selected(['C1-1']);
-    await submitBankDetails(prisma, requestId, await body());
-    await expect(submitBankDetails(prisma, requestId, await body())).rejects.toBeInstanceOf(
-      BankDetailsLockedError,
-    );
+    await submitBankDetails(prisma, requestId, await body(), { actor: { kind: 'SYSTEM' } });
+    await expect(
+      submitBankDetails(prisma, requestId, await body(), { actor: { kind: 'SYSTEM' } }),
+    ).rejects.toBeInstanceOf(BankDetailsLockedError);
   });
 
   test('a key the module never issued is refused', async () => {
@@ -192,6 +194,7 @@ describe('the bank form', () => {
         prisma,
         requestId,
         await body({ chequeKey: 'stalls/bank/cheque/../x.jpg' }),
+        { actor: { kind: 'SYSTEM' } },
       ),
     ).rejects.toBeInstanceOf(StepNotOpenError);
   });
@@ -204,9 +207,9 @@ describe('the bank form', () => {
       { bankStepEnabled: false, paymentStepEnabled: true, fssaiStepEnabled: true },
       SYSTEM,
     );
-    await expect(submitBankDetails(prisma, requestId, await body())).rejects.toBeInstanceOf(
-      StepNotOpenError,
-    );
+    await expect(
+      submitBankDetails(prisma, requestId, await body(), { actor: { kind: 'SYSTEM' } }),
+    ).rejects.toBeInstanceOf(StepNotOpenError);
   });
 
   test('a local welfare stall is never asked for bank details', async () => {
@@ -215,9 +218,9 @@ describe('the bank form', () => {
       email: 'lw@x.example',
       depositAcknowledged: true,
     });
-    await expect(submitBankDetails(prisma, requestId, await body())).rejects.toBeInstanceOf(
-      StepNotOpenError,
-    );
+    await expect(
+      submitBankDetails(prisma, requestId, await body(), { actor: { kind: 'SYSTEM' } }),
+    ).rejects.toBeInstanceOf(StepNotOpenError);
   });
 
   test('submitting moves the request on to the payment step', async () => {
@@ -233,7 +236,7 @@ describe('the bank form', () => {
       'BANK_FORM_SENT',
     );
 
-    await submitBankDetails(prisma, requestId, await body());
+    await submitBankDetails(prisma, requestId, await body(), { actor: { kind: 'SYSTEM' } });
     expect((await prisma.stallRequest.findUniqueOrThrow({ where: { id: requestId } })).stage).toBe(
       'BANK_FORM_FILLED',
     );
@@ -283,10 +286,15 @@ describe('consent', () => {
     const live = await declarationsForForm(prisma, edition.id, 'BANK');
     expect(live.length).toBeGreaterThan(0);
 
-    await submitBankDetails(prisma, requestId, {
-      ...(await body()),
-      declarationIds: live.map((d) => d.id),
-    });
+    await submitBankDetails(
+      prisma,
+      requestId,
+      {
+        ...(await body()),
+        declarationIds: live.map((d) => d.id),
+      },
+      { actor: { kind: 'SYSTEM' } },
+    );
 
     const rows = await prisma.stallDeclarationConsent.findMany({
       where: { requestId, formType: 'BANK' },
@@ -300,10 +308,15 @@ describe('consent', () => {
   test('a stale declaration set is refused', async () => {
     const { requestId } = await selected(['C1-1']);
     await expect(
-      submitBankDetails(prisma, requestId, {
-        ...(await body()),
-        declarationIds: ['11111111-1111-4111-8111-111111111111'],
-      }),
+      submitBankDetails(
+        prisma,
+        requestId,
+        {
+          ...(await body()),
+          declarationIds: ['11111111-1111-4111-8111-111111111111'],
+        },
+        { actor: { kind: 'SYSTEM' } },
+      ),
     ).rejects.toThrow(DeclarationsChangedError);
   });
 });

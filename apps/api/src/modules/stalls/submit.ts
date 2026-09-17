@@ -5,7 +5,7 @@ import {
   type SubmitRequestInput,
   validateAgainstForm,
 } from '@stalls/core';
-import { audit, requesterActor } from './audit';
+import { type Filing, attestedByOf, audit, byRequester } from './audit';
 import { mintAccessLink, normalizeEmail, resolveRequesterType } from './accounts';
 import { allowedCustomValues } from './custom-values';
 import { declarationsForForm, recordConsent, sameDeclarations } from './declarations';
@@ -106,6 +106,9 @@ export async function submitRequest(
    *  receipt, carrying a status link, to them. The session decides now, and
    *  the contact fields on the form are per-request facts that select nothing. */
   accountId: string,
+  /** Who is filing. Defaults to the requester on their own account, which is
+   *  every public submission; the backoffice route passes a member. */
+  filing: Filing = byRequester(accountId),
 ): Promise<SubmitResult> {
   const now = deps.now?.() ?? new Date();
 
@@ -275,14 +278,25 @@ export async function submitRequest(
     // prevent. So it is refused and they re-read it.
     const live = await declarationsForForm(tx, edition.id, input.requestType);
     if (!sameDeclarations(live, input.declarationIds)) throw new DeclarationsChangedError();
-    await recordConsent(tx, { requestId: request.id, formType: input.requestType }, live);
+    await recordConsent(
+      tx,
+      { requestId: request.id, formType: input.requestType },
+      live,
+      attestedByOf(filing),
+    );
 
     await audit(tx, {
-      actor: requesterActor(account.id, account.displayName),
+      actor: filing.actor,
       action: 'stall_request.filed',
       requestId: request.id,
       editionId: edition.id,
-      detail: { reference, requestType: input.requestType, stallName: input.stallName },
+      onBehalfOfAccountId: filing.onBehalfOfAccountId ?? null,
+      detail: {
+        reference,
+        requestType: input.requestType,
+        stallName: input.stallName,
+        filedBy: filing.onBehalfOfAccountId ? 'BACKOFFICE' : 'REQUESTER',
+      },
     });
 
     const { token } = await mintAccessLink(tx, {

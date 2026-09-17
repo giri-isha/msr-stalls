@@ -566,6 +566,14 @@ model StallDeclarationConsent {
   /// first person's row.
   staffId String? @map("staff_id") @db.Uuid
 
+  /// Set when a BACKOFFICE member ticked this on the requester's word — filing
+  /// the form for somebody who could not fill it themselves.
+  ///
+  /// 🔴 The requester did not tick this; this is who says they agreed. Null is
+  /// the ordinary case and means the requester ticked it themselves. A
+  /// `person_id`, with no foreign key: Person belongs to another module.
+  attestedBy String? @map("attested_by")
+
   request     StallRequest      @relation(fields: [requestId], references: [id], onDelete: Cascade)
   declaration StallDeclaration  @relation(fields: [declarationId], references: [id])
   staff       StallVendorStaff? @relation(fields: [staffId], references: [id], onDelete: Cascade)

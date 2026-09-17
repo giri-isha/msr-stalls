@@ -8,6 +8,8 @@ import {
   actorFrom,
   audit,
   auditBackofficeSignIn,
+  byRequester,
+  onBehalfOf,
   requesterActor,
 } from '../src/modules/stalls/audit';
 import { SubmitRequestInput } from '@stalls/core';
@@ -260,7 +262,7 @@ describe('the requester’s own actions are recorded against their account', () 
     await edition();
     const { requestId } = await selected(['C1-1']);
     const r = await prisma.stallRequest.findUniqueOrThrow({ where: { id: requestId } });
-    const who = requesterActor(r.accountId);
+    const who = byRequester(r.accountId);
 
     await submitFssai(
       prisma,
@@ -272,7 +274,7 @@ describe('the requester’s own actions are recorded against their account', () 
       },
       who,
     );
-    const coupon = await ensureCoupon(prisma, requestId, r.stallName, 2026, who);
+    const coupon = await ensureCoupon(prisma, requestId, r.stallName, 2026, who.actor);
     await registerStaff(
       prisma,
       {
@@ -289,7 +291,6 @@ describe('the requester’s own actions are recorded against their account', () 
       prisma,
       requestId,
       {
-        reference: r.reference,
         purpose: 'RENT',
         referenceNo: 'UTR12345',
         amountPaise: 100,
@@ -576,5 +577,61 @@ describe('reading the log', () => {
     const items = res.json();
     expect(items.map((i: { action: string }) => i.action)).toContain('stall_request.selected');
     expect(items.every((i: { requestId: string }) => i.requestId === requestId)).toBe(true);
+  });
+});
+
+describe('a form filed on behalf names both people', () => {
+  test('the FSSAI upload: the member is the actor, the account is on-behalf-of, the consent is attested', async () => {
+    await edition();
+    const { requestId } = await selected(['C1-1']);
+    const r = await prisma.stallRequest.findUniqueOrThrow({ where: { id: requestId } });
+    const lead = await seedBackoffice(['stalls_lead']);
+
+    await submitFssai(
+      prisma,
+      requestId,
+      {
+        stallName: r.stallName,
+        files: [{ key: 'stalls/fssai/00000000-0000-4000-8000-000000000000.pdf', name: 'c.pdf' }],
+        declarationIds: [],
+      },
+      onBehalfOf({ personId: lead.personId, displayName: 'Deepa' }, r.accountId),
+    );
+
+    const [row] = await prisma.stallAuditEvent.findMany({
+      where: { action: 'stall_fssai.submitted' },
+    });
+    expect(row.actorKind).toBe('BACKOFFICE');
+    expect(row.actorRef).toBe(lead.personId);
+    expect(row.onBehalfOfAccountId).toBe(r.accountId);
+    expect(row.channel).toBe('BACKOFFICE');
+
+    const consents = await prisma.stallDeclarationConsent.findMany({
+      where: { requestId, formType: 'FSSAI' },
+    });
+    // Empty until the team authors FSSAI wording; when there is any, every row
+    // records the member who attested it rather than a tick nobody made.
+    expect(consents.every((c) => c.attestedBy === lead.personId)).toBe(true);
+  });
+
+  test('a requester filing their own form records no on-behalf-of', async () => {
+    await edition();
+    const { requestId } = await selected(['C1-1']);
+    const r = await prisma.stallRequest.findUniqueOrThrow({ where: { id: requestId } });
+    await submitFssai(
+      prisma,
+      requestId,
+      {
+        stallName: r.stallName,
+        files: [{ key: 'stalls/fssai/00000000-0000-4000-8000-000000000000.pdf', name: 'c.pdf' }],
+        declarationIds: [],
+      },
+      byRequester(r.accountId),
+    );
+    const [row] = await prisma.stallAuditEvent.findMany({
+      where: { action: 'stall_fssai.submitted' },
+    });
+    expect(row.actorKind).toBe('REQUESTER');
+    expect(row.onBehalfOfAccountId).toBeNull();
   });
 });

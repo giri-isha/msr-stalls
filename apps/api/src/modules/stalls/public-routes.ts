@@ -59,7 +59,7 @@ import {
 } from '@stalls/core';
 import { prisma } from '../../prisma';
 import type { ZodTypeProvider } from '../../zod-validation';
-import { audit, requesterActor } from './audit';
+import { audit, byRequester, requesterActor } from './audit';
 import { resolveAccessLink, resolveRequesterType } from './accounts';
 import { getBankForm, submitBankDetails } from './bank';
 import { declarationsForForm } from './declarations';
@@ -398,7 +398,7 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
         select: { id: true },
       });
       if (!request) throw new UnknownAccessLinkError();
-      return submitPaymentClaim(prisma, request.id, req.body, requesterActor(account.id));
+      return submitPaymentClaim(prisma, request.id, req.body, byRequester(account.id));
     },
   );
 
@@ -488,7 +488,7 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
     async (req, reply) => {
       const link = await resolveAccessLink(prisma, req.params.token, 'BANK_FORM');
       if (!link.requestId) throw new UnknownAccessLinkError();
-      await submitBankDetails(prisma, link.requestId, req.body);
+      await submitBankDetails(prisma, link.requestId, req.body, byRequester(link.accountId));
       reply.status(204);
     },
   );
@@ -540,7 +540,7 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
       if (!req.body.files.every((f) => isOurKey(f.key, 'FSSAI'))) {
         throw new UnknownAccessLinkError();
       }
-      await submitFssai(prisma, link.requestId, req.body, requesterActor(link.accountId));
+      await submitFssai(prisma, link.requestId, req.body, byRequester(link.accountId));
       reply.status(204);
     },
   );
@@ -570,7 +570,7 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
       // acting on the requester's behalf — there is no other account here.
       const { request } = await resolveCoupon(prisma, req.body.couponCode);
       reply.status(201);
-      return registerStaff(prisma, req.body, requesterActor(request.accountId));
+      return registerStaff(prisma, req.body, byRequester(request.accountId));
     },
   );
 }

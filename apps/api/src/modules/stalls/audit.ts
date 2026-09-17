@@ -183,3 +183,40 @@ export async function auditBackofficeSignIn(
     subject: { type: 'person', ref: person.personId },
   });
 }
+
+/* ── Filing ─────────────────────────────────────────────────────────────────*/
+
+/**
+ * Who is filing a form, and for whom.
+ *
+ * A requester filing their own is `byRequester(accountId)`. A backoffice
+ * member filing for them is `onBehalfOf(caller, accountId)`: the member is the
+ * ACTOR, the account is whose request it is, and both land on the row — which
+ * is the whole point. "Who entered this" and "whose stall is this" are two
+ * questions, and a log that answers only the second cannot say who spoke for
+ * somebody.
+ */
+export interface Filing {
+  actor: AuditActor;
+  onBehalfOfAccountId?: string;
+}
+
+export function byRequester(accountId: string, name?: string): Filing {
+  return { actor: requesterActor(accountId, name) };
+}
+
+export function onBehalfOf(
+  caller: { personId: string; displayName: string },
+  accountId: string,
+): Filing {
+  return {
+    actor: { kind: 'BACKOFFICE', personId: caller.personId, name: caller.displayName },
+    onBehalfOfAccountId: accountId,
+  };
+}
+
+/** The member who attested a consent, when one did — the fourth argument to
+ *  `recordConsent`. Undefined when the requester ticked it themselves. */
+export function attestedByOf(f: Filing): string | undefined {
+  return f.onBehalfOfAccountId && f.actor.kind === 'BACKOFFICE' ? f.actor.personId : undefined;
+}

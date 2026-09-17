@@ -593,40 +593,45 @@ async function main() {
     lead,
   );
 
-  await submitBankDetails(prisma, greenLeaf, {
-    email: 'priya@maildrop.cc',
-    invoiceName: 'Green Leaf Organics Pvt Ltd',
-    accountHolder: 'Green Leaf Organics Pvt Ltd',
-    mobile: '9840012345',
-    address: '12 Mettupalayam Road, Coimbatore',
-    pincode: '641043',
-    bankName: 'HDFC Bank',
-    branch: 'RS Puram',
-    accountNumber: '50100123456789',
-    ifsc: 'HDFC0001234',
-    micr: '641240002',
-    panNumber: 'ABCDE1234F',
-    gstNumber: '33ABCDE1234F1Z5',
-    chequeKey: await fakeUpload(deps.files, 'bank/cheque'),
-    panKey: await fakeUpload(deps.files, 'bank/pan'),
-    gstKey: '',
-    // Consent is declaration rows now. The seed posts no `declarationIds`,
-    // which is the documented "I make no claim about what I displayed" case —
-    // the submit path then logs whatever is live. See `DeclarationIds`.
-    plugs5a: 4,
-    plugs15a: 5,
-    gasStoves: 1,
-    appliances: [
-      { name: 'Deep fryer', watts: 2500 },
-      { name: 'Freezer', watts: 1500 },
-    ],
-    tablesNeeded: 2,
-    chairsNeeded: 6,
-    passes2w: 1,
-    passes4w: 1,
-    passesStaff: 3,
-    remarks: 'Please place us near a water point if possible.',
-  });
+  await submitBankDetails(
+    prisma,
+    greenLeaf,
+    {
+      email: 'priya@maildrop.cc',
+      invoiceName: 'Green Leaf Organics Pvt Ltd',
+      accountHolder: 'Green Leaf Organics Pvt Ltd',
+      mobile: '9840012345',
+      address: '12 Mettupalayam Road, Coimbatore',
+      pincode: '641043',
+      bankName: 'HDFC Bank',
+      branch: 'RS Puram',
+      accountNumber: '50100123456789',
+      ifsc: 'HDFC0001234',
+      micr: '641240002',
+      panNumber: 'ABCDE1234F',
+      gstNumber: '33ABCDE1234F1Z5',
+      chequeKey: await fakeUpload(deps.files, 'bank/cheque'),
+      panKey: await fakeUpload(deps.files, 'bank/pan'),
+      gstKey: '',
+      // Consent is declaration rows now. The seed posts no `declarationIds`,
+      // which is the documented "I make no claim about what I displayed" case —
+      // the submit path then logs whatever is live. See `DeclarationIds`.
+      plugs5a: 4,
+      plugs15a: 5,
+      gasStoves: 1,
+      appliances: [
+        { name: 'Deep fryer', watts: 2500 },
+        { name: 'Freezer', watts: 1500 },
+      ],
+      tablesNeeded: 2,
+      chairsNeeded: 6,
+      passes2w: 1,
+      passes4w: 1,
+      passesStaff: 3,
+      remarks: 'Please place us near a water point if possible.',
+    },
+    { actor: { kind: 'SYSTEM' } },
+  );
 
   await sendTemplate(
     prisma,
@@ -695,7 +700,7 @@ async function main() {
       mobile: '9840012345',
       files: [{ key: await fakeUpload(deps.files, 'fssai'), name: 'fssai-certificate.pdf' }],
     },
-    { kind: 'SYSTEM' },
+    { actor: { kind: 'SYSTEM' } },
   );
   await verifyFssai(prisma, greenLeaf, true, lead);
 
@@ -714,7 +719,7 @@ async function main() {
         idNumber: `1234567890${person.mobile.slice(-2)}`,
         role: person.role,
       },
-      { kind: 'SYSTEM' },
+      { actor: { kind: 'SYSTEM' } },
     );
   }
 

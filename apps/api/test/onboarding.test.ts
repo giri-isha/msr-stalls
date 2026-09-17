@@ -100,7 +100,7 @@ describe('staff registration', () => {
     const coupon = await couponFor(requestId);
 
     const view = await registerStaff(prisma, staffBody({ couponCode: coupon.code }), {
-      kind: 'SYSTEM',
+      actor: { kind: 'SYSTEM' },
     });
     expect(view.registered).toBe(1);
     // 🔴 The coupon's own capacity, not the 3 this vendor asked for on a form
@@ -113,7 +113,9 @@ describe('staff registration', () => {
   test('keeps only the last four digits of an Aadhaar', async () => {
     const { requestId } = await selected(['C1-1'], { passesStaff: 3 });
     const coupon = await couponFor(requestId);
-    await registerStaff(prisma, staffBody({ couponCode: coupon.code }), { kind: 'SYSTEM' });
+    await registerStaff(prisma, staffBody({ couponCode: coupon.code }), {
+      actor: { kind: 'SYSTEM' },
+    });
 
     const [row] = await listStaffFor(prisma, requestId);
     expect(row.idNumber).toBe('9012');
@@ -125,7 +127,7 @@ describe('staff registration', () => {
     await registerStaff(
       prisma,
       staffBody({ couponCode: coupon.code, idType: 'PASSPORT', idNumber: 'M1234567' }),
-      { kind: 'SYSTEM' },
+      { actor: { kind: 'SYSTEM' } },
     );
     expect((await listStaffFor(prisma, requestId))[0].idNumber).toBe('M1234567');
   });
@@ -134,7 +136,7 @@ describe('staff registration', () => {
     const { requestId } = await selected(['C1-1'], { passesStaff: 3 });
     const coupon = await couponFor(requestId);
     const view = await registerStaff(prisma, staffBody({ couponCode: coupon.code }), {
-      kind: 'SYSTEM',
+      actor: { kind: 'SYSTEM' },
     });
     expect(view.staff[0].mobile).toBe('98••••555');
     // Backoffice themselves see the full number.
@@ -144,11 +146,13 @@ describe('staff registration', () => {
   test('re-submitting the same person updates rather than inflating the count', async () => {
     const { requestId } = await selected(['C1-1'], { passesStaff: 3 });
     const coupon = await couponFor(requestId);
-    await registerStaff(prisma, staffBody({ couponCode: coupon.code }), { kind: 'SYSTEM' });
+    await registerStaff(prisma, staffBody({ couponCode: coupon.code }), {
+      actor: { kind: 'SYSTEM' },
+    });
     const view = await registerStaff(
       prisma,
       staffBody({ couponCode: coupon.code, name: 'Ravi K Kumar' }),
-      { kind: 'SYSTEM' },
+      { actor: { kind: 'SYSTEM' } },
     );
     expect(view.registered).toBe(1);
     expect((await listStaffFor(prisma, requestId))[0].name).toBe('Ravi K Kumar');
@@ -159,10 +163,12 @@ describe('staff registration', () => {
     const coupon = await couponFor(requestId);
     await setCouponCapacity(prisma, requestId, coupon.id, 1, SYSTEM);
 
-    await registerStaff(prisma, staffBody({ couponCode: coupon.code }), { kind: 'SYSTEM' });
+    await registerStaff(prisma, staffBody({ couponCode: coupon.code }), {
+      actor: { kind: 'SYSTEM' },
+    });
     await expect(
       registerStaff(prisma, staffBody({ couponCode: coupon.code, mobile: '9840066666' }), {
-        kind: 'SYSTEM',
+        actor: { kind: 'SYSTEM' },
       }),
     ).rejects.toBeInstanceOf(CouponFullError);
   });
@@ -174,13 +180,15 @@ describe('staff registration', () => {
     const { requestId } = await selected(['C1-1']);
     const coupon = await couponFor(requestId);
     await setCouponCapacity(prisma, requestId, coupon.id, 1, SYSTEM);
-    await registerStaff(prisma, staffBody({ couponCode: coupon.code }), { kind: 'SYSTEM' });
+    await registerStaff(prisma, staffBody({ couponCode: coupon.code }), {
+      actor: { kind: 'SYSTEM' },
+    });
 
     await setCouponCapacity(prisma, requestId, coupon.id, 2, SYSTEM);
     const view = await registerStaff(
       prisma,
       staffBody({ couponCode: coupon.code, mobile: '9840066666' }),
-      { kind: 'SYSTEM' },
+      { actor: { kind: 'SYSTEM' } },
     );
     expect(view.registered).toBe(2);
     expect(view.maxStaff).toBe(2);
@@ -194,14 +202,16 @@ describe('staff registration', () => {
     const coupon = await couponFor(requestId);
     await setCouponCapacity(prisma, requestId, coupon.id, 0, SYSTEM);
     await expect(
-      registerStaff(prisma, staffBody({ couponCode: coupon.code }), { kind: 'SYSTEM' }),
+      registerStaff(prisma, staffBody({ couponCode: coupon.code }), { actor: { kind: 'SYSTEM' } }),
     ).rejects.toBeInstanceOf(CouponFullError);
   });
 
   test('a backoffice member can be removed by the team', async () => {
     const { requestId } = await selected(['C1-1'], { passesStaff: 3 });
     const coupon = await couponFor(requestId);
-    await registerStaff(prisma, staffBody({ couponCode: coupon.code }), { kind: 'SYSTEM' });
+    await registerStaff(prisma, staffBody({ couponCode: coupon.code }), {
+      actor: { kind: 'SYSTEM' },
+    });
     const [row] = await listStaffFor(prisma, requestId);
 
     await removeStaff(prisma, row.id, SYSTEM);
@@ -229,7 +239,7 @@ describe('FSSAI', () => {
         stallName: 'Green Leaf Organics',
         files: [await upload()],
       },
-      { kind: 'SYSTEM' },
+      { actor: { kind: 'SYSTEM' } },
     );
     const row = await prisma.stallFssaiCertificate.findUniqueOrThrow({
       where: { requestId },
@@ -245,7 +255,7 @@ describe('FSSAI', () => {
       prisma,
       requestId,
       { stallName: 'X', files: [await upload()] },
-      { kind: 'SYSTEM' },
+      { actor: { kind: 'SYSTEM' } },
     );
     await verifyFssai(prisma, requestId, true, SYSTEM);
     expect(
@@ -256,7 +266,7 @@ describe('FSSAI', () => {
       prisma,
       requestId,
       { stallName: 'X', files: [await upload()] },
-      { kind: 'SYSTEM' },
+      { actor: { kind: 'SYSTEM' } },
     );
     expect(
       (await prisma.stallFssaiCertificate.findUniqueOrThrow({ where: { requestId } })).verifiedAt,
@@ -272,13 +282,13 @@ describe('FSSAI', () => {
         stallName: 'X',
         files: [await upload(), await upload()],
       },
-      { kind: 'SYSTEM' },
+      { actor: { kind: 'SYSTEM' } },
     );
     await submitFssai(
       prisma,
       requestId,
       { stallName: 'X', files: [await upload()] },
-      { kind: 'SYSTEM' },
+      { actor: { kind: 'SYSTEM' } },
     );
     expect(await prisma.stallFssaiFile.count({ where: { requestId } })).toBe(1);
   });
@@ -406,10 +416,12 @@ describe('a stall holding more than one coupon', () => {
     await setCouponCapacity(prisma, requestId, first.id, 1, SYSTEM);
     await setCouponCapacity(prisma, requestId, second.id, 1, SYSTEM);
 
-    await registerStaff(prisma, staffBody({ couponCode: first.code }), { kind: 'SYSTEM' });
+    await registerStaff(prisma, staffBody({ couponCode: first.code }), {
+      actor: { kind: 'SYSTEM' },
+    });
     await expect(
       registerStaff(prisma, staffBody({ couponCode: first.code, mobile: '9840066666' }), {
-        kind: 'SYSTEM',
+        actor: { kind: 'SYSTEM' },
       }),
     ).rejects.toBeInstanceOf(CouponFullError);
 
@@ -418,7 +430,7 @@ describe('a stall holding more than one coupon', () => {
     const view = await registerStaff(
       prisma,
       staffBody({ couponCode: second.code, mobile: '9840077777' }),
-      { kind: 'SYSTEM' },
+      { actor: { kind: 'SYSTEM' } },
     );
     expect(view.registered).toBe(1);
     expect(view.maxStaff).toBe(1);
@@ -430,12 +442,12 @@ describe('a stall holding more than one coupon', () => {
     const second = await secondCouponFor(requestId);
 
     await registerStaff(prisma, staffBody({ couponCode: first.code, name: 'Kitchen Ravi' }), {
-      kind: 'SYSTEM',
+      actor: { kind: 'SYSTEM' },
     });
     const caterer = await registerStaff(
       prisma,
       staffBody({ couponCode: second.code, name: 'Caterer Meena', mobile: '9840077777' }),
-      { kind: 'SYSTEM' },
+      { actor: { kind: 'SYSTEM' } },
     );
 
     // ⚠️ The roster is read by whoever holds the code. A caterer's team is not
@@ -450,9 +462,11 @@ describe('a stall holding more than one coupon', () => {
     const second = await secondCouponFor(requestId);
     await setCouponCapacity(prisma, requestId, second.id, 4, SYSTEM);
 
-    await registerStaff(prisma, staffBody({ couponCode: first.code }), { kind: 'SYSTEM' });
+    await registerStaff(prisma, staffBody({ couponCode: first.code }), {
+      actor: { kind: 'SYSTEM' },
+    });
     await registerStaff(prisma, staffBody({ couponCode: second.code, mobile: '9840077777' }), {
-      kind: 'SYSTEM',
+      actor: { kind: 'SYSTEM' },
     });
 
     const row = await getOnboarding(prisma, requestId, deps.files);
@@ -466,7 +480,9 @@ describe('a stall holding more than one coupon', () => {
     const { requestId } = await selected(['C1-1']);
     const first = await couponFor(requestId);
     const second = await secondCouponFor(requestId);
-    await registerStaff(prisma, staffBody({ couponCode: second.code }), { kind: 'SYSTEM' });
+    await registerStaff(prisma, staffBody({ couponCode: second.code }), {
+      actor: { kind: 'SYSTEM' },
+    });
 
     await prisma.stallStaffCoupon.update({
       where: { id: second.id },
@@ -488,10 +504,10 @@ describe('a stall holding more than one coupon', () => {
     const second = await secondCouponFor(requestId);
 
     await registerStaff(prisma, staffBody({ couponCode: first.code, mobile: '9840055555' }), {
-      kind: 'SYSTEM',
+      actor: { kind: 'SYSTEM' },
     });
     await registerStaff(prisma, staffBody({ couponCode: second.code, mobile: '9840055555' }), {
-      kind: 'SYSTEM',
+      actor: { kind: 'SYSTEM' },
     });
 
     // ⚠️ Keyed on the stall and the mobile, not on the coupon — otherwise
