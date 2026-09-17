@@ -17,6 +17,14 @@ export default defineConfig({
     },
   },
   test: {
+    // ⚠️ Above vitest's 5s default, and it is the SUITE that needs it rather
+    // than any one test. These are full render-and-drive tests — a request
+    // form draws forty questions and a test types through them — and at ~340
+    // of them the slowest half-dozen cross 5s whenever the machine is busy.
+    // They pass in isolation and failed only in a full run, which is the
+    // signature of a timeout rather than a bug: the failures moved around
+    // between runs and never reproduced alone.
+    testTimeout: 20_000,
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test-setup.ts'],
