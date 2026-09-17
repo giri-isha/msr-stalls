@@ -5,6 +5,7 @@ import {
   type SubmitRequestInput,
   validateAgainstForm,
 } from '@stalls/core';
+import { audit, requesterActor } from './audit';
 import { mintAccessLink, normalizeEmail, resolveRequesterType } from './accounts';
 import { allowedCustomValues } from './custom-values';
 import { declarationsForForm, recordConsent, sameDeclarations } from './declarations';
@@ -275,6 +276,14 @@ export async function submitRequest(
     const live = await declarationsForForm(tx, edition.id, input.requestType);
     if (!sameDeclarations(live, input.declarationIds)) throw new DeclarationsChangedError();
     await recordConsent(tx, { requestId: request.id, formType: input.requestType }, live);
+
+    await audit(tx, {
+      actor: requesterActor(account.id, account.displayName),
+      action: 'stall_request.filed',
+      requestId: request.id,
+      editionId: edition.id,
+      detail: { reference, requestType: input.requestType, stallName: input.stallName },
+    });
 
     const { token } = await mintAccessLink(tx, {
       accountId: account.id,

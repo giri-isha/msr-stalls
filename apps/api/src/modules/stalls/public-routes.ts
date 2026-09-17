@@ -59,6 +59,7 @@ import {
 } from '@stalls/core';
 import { prisma } from '../../prisma';
 import type { ZodTypeProvider } from '../../zod-validation';
+import { audit, requesterActor } from './audit';
 import { resolveAccessLink, resolveRequesterType } from './accounts';
 import { getBankForm, submitBankDetails } from './bank';
 import { declarationsForForm } from './declarations';
@@ -173,7 +174,27 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
       config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
     },
     async (req, reply) => {
-      const cred = await authenticate(prisma, req.body);
+      let cred: Awaited<ReturnType<typeof authenticate>>;
+      try {
+        cred = await authenticate(prisma, req.body);
+      } catch (err) {
+        // ⚠️ SYSTEM actor and a MASKED contact. A failed login names nobody,
+        // and a row carrying the whole address would turn the log into a way
+        // of reading which contacts somebody tried.
+        await audit(prisma, {
+          actor: { kind: 'SYSTEM' },
+          action: 'stall_account.login_failed',
+          subject: { type: 'login', ref: maskContact(req.body.contact) },
+          detail: { contact: maskContact(req.body.contact) },
+          outcome: 'FAILED',
+        }).catch(() => {});
+        throw err;
+      }
+      await audit(prisma, {
+        actor: requesterActor(cred.accountId),
+        action: 'stall_account.logged_in',
+        subject: { type: 'account', ref: cred.accountId },
+      });
       setSessionCookie(reply, await startSession(prisma, cred.accountId));
       return { ok: true };
     },
@@ -181,7 +202,18 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
 
   app.post('/logout', async (req, reply) => {
     const token = req.cookies[REQUESTER_COOKIE];
-    if (token) await endSession(prisma, token);
+    if (token) {
+      // Resolved BEFORE the session ends, so the row can name who left.
+      const account = await requireRequester(prisma, req).catch(() => null);
+      await endSession(prisma, token);
+      if (account) {
+        await audit(prisma, {
+          actor: requesterActor(account.id, account.displayName),
+          action: 'stall_account.logged_out',
+          subject: { type: 'account', ref: account.id },
+        });
+      }
+    }
     clearSessionCookie(reply);
     return { ok: true };
   });
@@ -366,7 +398,7 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
         select: { id: true },
       });
       if (!request) throw new UnknownAccessLinkError();
-      return submitPaymentClaim(prisma, request.id, req.body);
+      return submitPaymentClaim(prisma, request.id, req.body, requesterActor(account.id));
     },
   );
 
@@ -508,7 +540,7 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
       if (!req.body.files.every((f) => isOurKey(f.key, 'FSSAI'))) {
         throw new UnknownAccessLinkError();
       }
-      await submitFssai(prisma, link.requestId, req.body);
+      await submitFssai(prisma, link.requestId, req.body, requesterActor(link.accountId));
       reply.status(204);
     },
   );
@@ -533,8 +565,23 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
       config: { rateLimit: { max: deps.publicRateLimitMax, timeWindow: '1 minute' } },
     },
     async (req, reply): Promise<CouponView> => {
+      // ⚠️ The coupon names the stall, and the stall's ACCOUNT is the actor.
+      // A staff member registering themselves is the requester's own team
+      // acting on the requester's behalf — there is no other account here.
+      const { request } = await resolveCoupon(prisma, req.body.couponCode);
       reply.status(201);
-      return registerStaff(prisma, req.body);
+      return registerStaff(prisma, req.body, requesterActor(request.accountId));
     },
   );
+}
+
+/** `p…@greenleaf.example` or `98…45`: enough for somebody to recognise their
+ *  own failed attempt, never enough to learn anybody else's contact from the
+ *  log. */
+function maskContact(raw: string): string {
+  const s = raw.trim();
+  const at = s.indexOf('@');
+  if (at > 0) return `${s[0]}…${s.slice(at)}`;
+  const digits = s.replace(/\D/g, '');
+  return digits.length >= 4 ? `${digits.slice(0, 2)}…${digits.slice(-2)}` : '…';
 }

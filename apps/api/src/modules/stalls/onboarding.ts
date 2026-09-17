@@ -257,6 +257,7 @@ function narrowId(
 export async function registerStaff(
   db: PrismaClient,
   input: RegisterStaffInput,
+  actor: AuditActor,
 ): Promise<CouponView> {
   const { request, coupon } = await resolveCoupon(db, input.couponCode);
   // 🔴 THIS coupon's cap against THIS coupon's registrations. A stall holding a
@@ -319,6 +320,17 @@ export async function registerStaff(
     // the one carrying the photo ID through the gate. Filed against the request
     // alone, seven of the eight would collapse into the first person's row.
     await recordConsent(tx, { requestId: request.id, formType: 'STAFF', staffId: row.id }, live);
+
+    await audit(tx, {
+      actor,
+      action: 'stall_vendor_staff.registered',
+      requestId: request.id,
+      // ⚠️ The SUBJECT is this person's row; the request is what the event is
+      // filed against. Eight people register against one coupon and would
+      // otherwise be eight rows about the same subject.
+      subject: { type: 'vendor_staff', ref: row.id },
+      detail: { mobile: input.mobile, name: input.name ?? null, couponCode: coupon.code },
+    });
   });
   await refreshStage(db, request.id);
 
@@ -364,6 +376,7 @@ export async function submitFssai(
   db: PrismaClient,
   requestId: string,
   input: SubmitFssaiInput,
+  actor: AuditActor,
 ): Promise<void> {
   const r = await db.stallRequest.findUniqueOrThrow({
     where: { id: requestId },
@@ -416,6 +429,13 @@ export async function submitFssai(
     await tx.stallFssaiFile.deleteMany({ where: { requestId } });
     await tx.stallFssaiFile.createMany({
       data: input.files.map((f) => ({ requestId, fileKey: f.key, fileName: f.name })),
+    });
+
+    await audit(tx, {
+      actor,
+      action: 'stall_fssai.submitted',
+      requestId,
+      detail: { files: input.files.map((f) => f.name) },
     });
   });
   await refreshStage(db, requestId);

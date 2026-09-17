@@ -686,12 +686,17 @@ async function main() {
     deps,
     lead,
   );
-  await submitFssai(prisma, greenLeaf, {
-    stallName: 'Green Leaf Organics',
-    ownerName: 'Priya Venkat',
-    mobile: '9840012345',
-    files: [{ key: await fakeUpload(deps.files, 'fssai'), name: 'fssai-certificate.pdf' }],
-  });
+  await submitFssai(
+    prisma,
+    greenLeaf,
+    {
+      stallName: 'Green Leaf Organics',
+      ownerName: 'Priya Venkat',
+      mobile: '9840012345',
+      files: [{ key: await fakeUpload(deps.files, 'fssai'), name: 'fssai-certificate.pdf' }],
+    },
+    { kind: 'SYSTEM' },
+  );
   await verifyFssai(prisma, greenLeaf, true, lead);
 
   const coupon = await ensureCoupon(prisma, greenLeaf, 'Green Leaf Organics', edition.year, lead);
@@ -699,14 +704,18 @@ async function main() {
     { name: 'Ravi Kumar', mobile: '9840055551', role: 'Cook' },
     { name: 'Meena S', mobile: '9840055552', role: 'Cashier' },
   ]) {
-    await registerStaff(prisma, {
-      couponCode: coupon.code,
-      name: person.name,
-      mobile: person.mobile,
-      idType: 'AADHAAR',
-      idNumber: `1234567890${person.mobile.slice(-2)}`,
-      role: person.role,
-    });
+    await registerStaff(
+      prisma,
+      {
+        couponCode: coupon.code,
+        name: person.name,
+        mobile: person.mobile,
+        idType: 'AADHAAR',
+        idNumber: `1234567890${person.mobile.slice(-2)}`,
+        role: person.role,
+      },
+      { kind: 'SYSTEM' },
+    );
   }
 
   const volunteer = people.get('kavya.n@maildrop.cc') ?? SYSTEM;

@@ -12,7 +12,7 @@ import {
   isSelfServe,
   virtualAccountFor,
 } from '@stalls/core';
-import { requesterActor } from './audit';
+import { audit, requesterActor } from './audit';
 import { findAccountByContact, mintAccessLink } from './accounts';
 import { flowFor } from './config';
 import { claimsFor } from './payment-claims';
@@ -86,6 +86,15 @@ type AshramDetail = {
 export async function sendAccessLink(db: Db, deps: AccessLinkDeps, contact: string): Promise<void> {
   const account = await findAccountByContact(db, contact);
   if (!account) return;
+
+  // ⚠️ Only a HIT is recorded. A row per miss would make the log a way of
+  // reading which contacts have an account — the one thing this route's
+  // identical answers exist to prevent.
+  await audit(db, {
+    actor: requesterActor(account.id, account.displayName),
+    action: 'stall_account.access_link_requested',
+    subject: { type: 'account', ref: account.id },
+  });
 
   try {
     await deliverAccessLink(db, deps, account);

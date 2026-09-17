@@ -6,6 +6,7 @@ import {
   type RegisterInput,
   parseContact,
 } from '@stalls/core';
+import { audit, requesterActor } from './audit';
 import { findAccountByContact, mintAccessLink, resolveAccessLink } from './accounts';
 import { createCredential, setPassword } from './credentials';
 import type { StallsDeps } from './deps';
@@ -80,6 +81,13 @@ export async function register(db: Db, deps: SendDeps, input: RegisterInput): Pr
     contact,
     password: input.password,
   });
+
+  await audit(db, {
+    actor: requesterActor(account.id, account.displayName),
+    action: 'stall_account.registered',
+    subject: { type: 'account', ref: account.id },
+    detail: { requesterType: input.requesterType, via: contact.kind },
+  });
 }
 
 export type { SendDeps };
@@ -139,6 +147,11 @@ export async function requestPasswordReset(
     purpose: 'PASSWORD_RESET',
     ttlDays: RESET_TTL_DAYS,
   });
+  await audit(db, {
+    actor: requesterActor(cred.accountId),
+    action: 'stall_account.password_reset_requested',
+    subject: { type: 'account', ref: cred.accountId },
+  });
   await deliver(deps, contact, {
     subject: 'Reset your stall password',
     body: `Reset your stall password: ${deps.passwordResetUrl(token)}`,
@@ -160,5 +173,10 @@ export async function completePasswordReset(
   });
   // Whoever prompted the reset is evicted. That is most of the point of one.
   await endAllSessions(db, link.accountId);
+  await audit(db, {
+    actor: requesterActor(link.accountId),
+    action: 'stall_account.password_reset',
+    subject: { type: 'account', ref: link.accountId },
+  });
   return { accountId: link.accountId };
 }

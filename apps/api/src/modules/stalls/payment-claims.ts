@@ -18,7 +18,7 @@ import {
   type SubmitPaymentClaimInput,
   payableFeePaise,
 } from '@stalls/core';
-import { actorFrom, audit } from './audit';
+import { type AuditActor, actorFrom, audit } from './audit';
 import type { Db } from './editions';
 import {
   ClaimAlreadyReviewedError,
@@ -100,6 +100,7 @@ export async function submitPaymentClaim(
   db: PrismaClient,
   requestId: string,
   input: SubmitPaymentClaimInput,
+  actor: AuditActor,
 ): Promise<PaymentClaimView> {
   const r = await db.stallRequest.findUnique({
     where: { id: requestId },
@@ -122,6 +123,17 @@ export async function submitPaymentClaim(
         note: input.note || null,
       },
       select: SELECT,
+    });
+    await audit(db, {
+      actor,
+      action: 'stall_payment_claim.submitted',
+      requestId,
+      subject: { type: 'payment_claim', ref: claim.id },
+      detail: {
+        purpose: input.purpose,
+        referenceNo: input.referenceNo,
+        amountPaise: input.amountPaise,
+      },
     });
     return toView(claim);
   } catch (err) {
