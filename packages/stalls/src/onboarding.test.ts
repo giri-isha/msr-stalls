@@ -1,26 +1,39 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ALL_ASKED,
+  ALL_TYPES_ASKED,
   ALL_TYPES_AT_ONCE,
+  type FlowAsked,
   type FlowConfig,
   type FlowStages,
   type OnboardingFacts,
+  type OnboardingStep,
   type StepStages,
   blockingSteps,
   deriveStage,
   gatedSteps,
   isStepLocked,
   isStepOpen,
+  isStepAsked,
   needsBankStep,
   openSteps,
   pendingSteps,
 } from './onboarding';
+import type { StallRequestType } from './reference';
 
 const ALL_ON: FlowConfig = {
-  bankStepEnabled: true,
-  paymentStepEnabled: true,
-  fssaiStepEnabled: true,
+  asked: ALL_TYPES_ASKED,
   stages: ALL_TYPES_AT_ONCE,
 };
+
+/** One type's answers changed, the other two left asking everything. */
+const askedWith = (
+  type: StallRequestType,
+  off: Partial<Record<OnboardingStep, boolean>>,
+): FlowAsked => ({
+  ...ALL_TYPES_ASKED,
+  [type]: { ...ALL_ASKED, ...off },
+});
 
 const vendor: OnboardingFacts = {
   requestType: 'VENDOR',
@@ -74,10 +87,33 @@ describe('pendingSteps', () => {
   });
 
   it('honours the Flow Builder switches', () => {
-    expect(steps({}, { ...ALL_ON, bankStepEnabled: false, fssaiStepEnabled: false })).toEqual([
-      'PAYMENT',
-      'STAFF_REGISTRATION',
-    ]);
+    const flow = { ...ALL_ON, asked: askedWith('VENDOR', { BANK_FORM: false, FSSAI: false }) };
+    expect(steps({}, flow)).toEqual(['PAYMENT', 'STAFF_REGISTRATION']);
+  });
+
+  it('switches a step off for ONE requester type and leaves the others asking', () => {
+    // 🔴 The whole point of the switches being per type: an ashram is not asked
+    // for FSSAI, and a vendor at the same event still is.
+    const noFssaiForAshram = { ...ALL_ON, asked: askedWith('ASHRAM', { FSSAI: false }) };
+    expect(steps({ requestType: 'ASHRAM' }, noFssaiForAshram)).toEqual(['STAFF_REGISTRATION']);
+    expect(steps({}, noFssaiForAshram)).toContain('FSSAI');
+  });
+
+  it('lets staff registration be switched off, which it never used to be', () => {
+    // ⚠️ The rule was "an unregistered person cannot be let onto the venue", and
+    // that is a fact about a vendor's outside workers, not about an ashram
+    // department whose people are already on campus.
+    const flow = { ...ALL_ON, asked: askedWith('ASHRAM', { STAFF_REGISTRATION: false }) };
+    expect(steps({ requestType: 'ASHRAM', isFood: false }, flow)).toEqual([]);
+    expect(steps({}, flow)).toContain('STAFF_REGISTRATION');
+  });
+
+  it('reads a missing answer as asked', () => {
+    // The table is sparse: an edition written before the column existed has no
+    // row to read, and must behave exactly as it did.
+    const empty = { ...ALL_ON, asked: {} as FlowAsked };
+    expect(isStepAsked(empty, 'VENDOR', 'FSSAI')).toBe(true);
+    expect(steps({}, empty)).toEqual(['BANK_FORM', 'PAYMENT', 'FSSAI', 'STAFF_REGISTRATION']);
   });
 
   it('does not chase staff registration when no coupon has been issued', () => {
@@ -220,7 +256,16 @@ describe('gatedSteps', () => {
   });
 
   it('does not let a step an admin switched off block the next one', () => {
-    expect(open({}, flowWith(ONE_AT_A_TIME, { bankStepEnabled: false }))).toEqual(['PAYMENT']);
+    const off = { asked: askedWith('VENDOR', { BANK_FORM: false }) };
+    expect(open({}, flowWith(ONE_AT_A_TIME, off))).toEqual(['PAYMENT']);
+  });
+
+  it('does not let a step switched off for ANOTHER type stop blocking for this one', () => {
+    // ⚠️ The gate reads the row for the request's OWN type. Switching bank off
+    // for local welfare (where it does not apply anyway) must not open payment
+    // early for a vendor.
+    const off = { asked: askedWith('LOCAL_WELFARE', { BANK_FORM: false }) };
+    expect(open({}, flowWith(ONE_AT_A_TIME, off))).toEqual(['BANK_FORM']);
   });
 
   it('does not let staff block while no coupon has been issued', () => {

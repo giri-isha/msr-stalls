@@ -408,12 +408,12 @@ const SCREENS: ScreenDoc[] = [
       'Bays, Planning Columns, Rates, Charges and Fines are not here any more — they are tabs on Planning & Zones, beside the grid that counts the stalls they describe.',
       'Form builder: what each of the four request forms asks, and in what order. Reword a question, add a heading, mark something required, or switch a question off. A question whose answer has a record of its own is marked Built in — it can be reworded, moved and switched off, but not retyped or removed.',
       'Declarations: the wording a requester ticks when they apply. Each form shows its own variant if it has one, otherwise the default. Changing the text creates a new version and archives the old one.',
-      'Flow: three switches for the whole edition — bank step, payment step, FSSAI step.',
+      'Flow: two grids. Which steps are asked — a tick per step per requester type, so an ashram need not be asked for FSSAI while a vendor still is — and when each step opens.',
       'Users: grant a backoffice member one of the four roles.',
       'Editions: the year everything else hangs off. Each row carries that edition’s own settings — its name as letters print it, the two virtual-account prefixes Finance issues, the cap on stalls one request may ask for, and the terms link — changed with the pencil on the row.',
     ],
     notes: [
-      'Staff registration has no switch. An unregistered person cannot be let onto the venue, so that step is never skipped.',
+      'Switching a step off is not the same as hiding it. The requester gets no tab, no link and no coupon, the letters leave it out, and the backoffice cannot file it on their behalf either — including a coupon code already sent, which stops working.',
       'Editing a form changes THIS edition only. The four 2025 forms are written into each new edition when it is created, so next year starts from the printed originals again rather than from whatever this year was edited into.',
       'A declaration is never edited in place once the wording changes, and never deleted once somebody has agreed to it — a consent is worth exactly what the person saw when they gave it. Retire it with the Active switch instead. The old versions stay on screen because "what did this say in January?" is the question the history exists to answer.',
       'The four base forms are coded from the 2025 PDFs and cannot be rebuilt here — a question added in the Form Builder appends to them.',
@@ -454,7 +454,7 @@ const TROUBLE: Array<{ q: string; a: string }> = [
   },
   {
     q: 'A row is asking for bank details it should not need.',
-    a: 'Only external vendors are asked. If the whole edition should skip a step, the three switches are in Admin → Flow.',
+    a: 'Only external vendors are asked. If a requester type should skip a step altogether, untick it in Admin → Flow, under Which steps are asked.',
   },
   {
     q: 'An upload says documents are unavailable.',
@@ -1119,7 +1119,8 @@ const APPLIES: FlowItem[] = [
             actor: 'requester',
             glyph: 'users',
             title: 'Registration runs until the count is met',
-            detail: 'This one has no switch: an unregistered person cannot be let onto the venue.',
+            detail:
+              'Asked of a requester type unless Admin → Flow says otherwise — an ashram department’s people are already on campus.',
           },
         ],
       },

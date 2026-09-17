@@ -43,22 +43,71 @@ export const ALL_TYPES_AT_ONCE: FlowStages = {
   ASHRAM: ALL_AT_ONCE,
 };
 
-/** The three switches on the Flow Builder, and the order the steps open in.
+/** Whether each step is asked at all, for one requester type. */
+export type StepsAsked = Record<OnboardingStep, boolean>;
+
+/** Which steps are asked of each requester type.
  *
- *  Staff registration is not toggleable — an unregistered person cannot be let
- *  onto the venue, so it is never skipped. It does take a STAGE, because "no
- *  coupon until the money is in" is the sequencing the team asked for most.
+ *  🔴 Per TYPE, not per edition. The switches were edition-wide, and that could
+ *  only say "this edition does not do FSSAI" — where the stall team's question
+ *  is "we do not ask an ashram for FSSAI, and we do not ask a local welfare
+ *  stall to register staff". One answer for all three types cannot express
+ *  either, so the answer moved to where the question is.
  *
- *  🔴 Whether a step happens and WHEN it happens are separate questions and
- *  they are stored separately — three booleans on `stall_flow_config`, twelve
- *  integers in `stall_flow_step`. Folded into one control, "off" and "last"
+ *  ⚠️ Carried whole rather than resolved per request, for the same reason
+ *  `FlowStages` is: `FlowConfig` is loaded once per EDITION, and the request
+ *  type is a fact about the request. */
+export type FlowAsked = Record<StallRequestType, StepsAsked>;
+
+/** Every step asked — what a MISSING row reads as, so the table stays sparse
+ *  and an edition written before this existed behaves exactly as it did. */
+export const ALL_ASKED: StepsAsked = {
+  BANK_FORM: true,
+  PAYMENT: true,
+  FSSAI: true,
+  STAFF_REGISTRATION: true,
+};
+
+export const ALL_TYPES_ASKED: FlowAsked = {
+  VENDOR: ALL_ASKED,
+  LOCAL_WELFARE: ALL_ASKED,
+  ASHRAM: ALL_ASKED,
+};
+
+/** The edition's flow: which steps each requester type is asked, and the order
+ *  those steps open in.
+ *
+ *  🔴 Whether a step happens and WHEN it happens are separate QUESTIONS and
+ *  they keep separate controls — two grids on the Flow panel, never one cell
+ *  carrying a tick and a number. Folded into one control, "off" and "last"
  *  become neighbours, which is how an admin switches a step off while meaning
- *  to defer it. */
+ *  to defer it. They share a row in the database because they are now the same
+ *  SHAPE — an answer per type, per step — and that is a fact about storage, not
+ *  about the screen.
+ *
+ *  ⚠️ Staff registration is switchable, and it did not use to be. The rule it
+ *  was exempted by — "an unregistered person cannot be let onto the venue" —
+ *  is true of a vendor bringing outside workers through the gate, and not of an
+ *  ashram department whose people are already on campus. So the rule narrows to
+ *  "skipped only where the admin says this type does not need it", and the
+ *  default stays on for all three. */
 export interface FlowConfig {
-  bankStepEnabled: boolean;
-  paymentStepEnabled: boolean;
-  fssaiStepEnabled: boolean;
+  asked: FlowAsked;
   stages: FlowStages;
+}
+
+/** Whether the edition asks this requester type for this step.
+ *
+ *  ⚠️ The ADMIN'S answer only. Whether a step could apply at all — bank details
+ *  of a local welfare stall, FSSAI of a non-food one — is `needsBankStep`,
+ *  `needsPaymentStep` and `isFood`'s to decide, and this never repeats them.
+ *  A caller that wants both asks `pendingSteps`. */
+export function isStepAsked(
+  flow: FlowConfig,
+  requestType: StallRequestType,
+  step: OnboardingStep,
+): boolean {
+  return (flow.asked[requestType] ?? ALL_ASKED)[step] ?? true;
 }
 
 export interface OnboardingFacts {
@@ -108,14 +157,18 @@ const LABEL: Record<OnboardingStep, string> = {
  *  same on a screen and must not be confused in a query. */
 export function pendingSteps(facts: OnboardingFacts, flow: FlowConfig): PendingStep[] {
   const out: OnboardingStep[] = [];
+  // Three questions per step, in the same order they have always been asked:
+  // does this edition ask this requester type for it, could it apply to this
+  // stall at all, and is it still undone.
+  const asked = (step: OnboardingStep) => isStepAsked(flow, facts.requestType, step);
 
-  if (flow.bankStepEnabled && needsBankStep(facts.requestType) && !facts.bankDetailsReceived) {
+  if (asked('BANK_FORM') && needsBankStep(facts.requestType) && !facts.bankDetailsReceived) {
     out.push('BANK_FORM');
   }
-  if (flow.paymentStepEnabled && needsPaymentStep(facts.requestType) && !facts.paymentConfirmed) {
+  if (asked('PAYMENT') && needsPaymentStep(facts.requestType) && !facts.paymentConfirmed) {
     out.push('PAYMENT');
   }
-  if (flow.fssaiStepEnabled && facts.isFood && !facts.fssaiOnFile) {
+  if (asked('FSSAI') && facts.isFood && !facts.fssaiOnFile) {
     out.push('FSSAI');
   }
   // 🔴 Outstanding only when NOBODY has registered — not until the coupon is
@@ -124,7 +177,7 @@ export function pendingSteps(facts: OnboardingFacts, flow: FlowConfig): PendingS
   // and chasing them for the other five is chasing a number the stall team
   // picked as a default. Reading it as a quota left every such stall flagged
   // on Onboarding and held at the check-in counter for the whole edition.
-  if (facts.staffExpected > 0 && facts.staffRegistered === 0) {
+  if (asked('STAFF_REGISTRATION') && facts.staffExpected > 0 && facts.staffRegistered === 0) {
     out.push('STAFF_REGISTRATION');
   }
 

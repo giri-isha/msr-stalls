@@ -78,11 +78,12 @@ describe('edition settings', () => {
   });
 });
 
-// ── When each step opens ────────────────────────────────────────────────────
+// ── Which steps are asked, and when they open ───────────────────────────────
 //
-// Three switches say WHETHER a step happens; the grid says WHEN. The lowest
-// number still outstanding is what a requester can act on, so all 1s — the
-// default — opens everything at once and locks nothing.
+// Two grids. The first says WHETHER a step is asked of a requester type; the
+// second says WHEN it opens. The lowest number still outstanding is what a
+// requester can act on, so all 1s — the default — opens everything at once and
+// locks nothing.
 
 describe('the onboarding flow ordering', () => {
   const openFlow = async (user: ReturnType<typeof userEvent.setup>) => {
@@ -148,6 +149,78 @@ describe('the onboarding flow ordering', () => {
     expect(
       (puts[1].body as { stages: Record<string, Record<string, number>> }).stages.VENDOR,
     ).toEqual({ BANK_FORM: 1, PAYMENT: 1, FSSAI: 1, STAFF_REGISTRATION: 1 });
+  });
+
+  test('a step is switched off for one requester type and left on for the others', async () => {
+    const fx = base([['PUT', /\/config\/flow$/, () => ({})]]);
+    const user = userEvent.setup();
+    render();
+    await openFlow(user);
+
+    // 🔴 The thing the three edition-wide switches could not say: no FSSAI for
+    // an ashram, and the vendor beside it still asked for one.
+    await user.click(await screen.findByLabelText(/fssai certificate upload asked of ashram/i));
+    await user.click(screen.getByRole('button', { name: /save/i }));
+
+    const put = await waitFor(() => {
+      const hit = fx.calls.find((c) => c.method === 'PUT');
+      if (!hit) throw new Error('no PUT yet');
+      return hit;
+    });
+    const body = put.body as { asked: Record<string, Record<string, boolean>> };
+    expect(body.asked.ASHRAM.FSSAI).toBe(false);
+    expect(body.asked.VENDOR.FSSAI).toBe(true);
+    expect(body.asked.LOCAL_WELFARE.FSSAI).toBe(true);
+  });
+
+  test('staff registration is switchable, which it never used to be', async () => {
+    const fx = base([['PUT', /\/config\/flow$/, () => ({})]]);
+    const user = userEvent.setup();
+    render();
+    await openFlow(user);
+
+    await user.click(await screen.findByLabelText(/staff registration asked of local welfare/i));
+    await user.click(screen.getByRole('button', { name: /save/i }));
+
+    const put = await waitFor(() => {
+      const hit = fx.calls.find((c) => c.method === 'PUT');
+      if (!hit) throw new Error('no PUT yet');
+      return hit;
+    });
+    expect(
+      (put.body as { asked: Record<string, Record<string, boolean>> }).asked.LOCAL_WELFARE
+        .STAFF_REGISTRATION,
+    ).toBe(false);
+  });
+
+  test('a switched-off step keeps its number, greyed, rather than losing it', async () => {
+    const user = userEvent.setup();
+    base();
+    render();
+    await openFlow(user);
+
+    const stage = await screen.findByLabelText(/fssai certificate upload stage for vendor/i);
+    expect(stage).not.toBeDisabled();
+
+    await user.click(screen.getByLabelText(/fssai certificate upload asked of vendor/i));
+    // ⚠️ Disabled, not blanked. The number is what the ordering returns to if
+    // the step is ticked back on, and a stray click must not cost an edition
+    // its numbering.
+    expect(stage).toBeDisabled();
+    expect(stage).toHaveValue(1);
+  });
+
+  test('a step a requester type is never asked draws a dash in BOTH grids', async () => {
+    const user = userEvent.setup();
+    base();
+    render();
+    await openFlow(user);
+
+    await screen.findByLabelText(/bank, gst and contract details asked of vendor/i);
+    expect(
+      screen.queryByLabelText(/bank, gst and contract details asked of local welfare/i),
+    ).toBeNull();
+    expect(screen.queryByLabelText(/payment details and confirmation asked of ashram/i)).toBeNull();
   });
 
   test('a step a requester type is never asked draws a dash, not an input', async () => {

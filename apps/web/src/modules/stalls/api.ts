@@ -287,10 +287,17 @@ export interface BackofficeConfig {
    *  apart. */
   rateCard: RateCardEntry[];
   charges: ChargesInput & { id: string; editionId: string };
-  /** The three switches say WHETHER a step happens; `stages` says WHEN. The
-   *  lowest stage still outstanding is the one the requester may act on. All
-   *  four at 1 — the default — locks nothing. */
+  /** `asked` says WHETHER each step happens, per requester type; `stages` says
+   *  WHEN. The lowest stage still outstanding is the one the requester may act
+   *  on. Everything asked and all four at 1 — the default — switches nothing
+   *  off and locks nothing.
+   *
+   *  ⚠️ The three booleans are DERIVED ("asked of any type") and are what this
+   *  panel used to read. They are still sent so a page served ahead of the API
+   *  renders, and are still accepted on a PUT that carries no `asked`. Nothing
+   *  here reads them. */
   flow: {
+    asked?: Record<StallRequestType, Record<OnboardingStep, boolean>>;
     bankStepEnabled: boolean;
     paymentStepEnabled: boolean;
     fssaiStepEnabled: boolean;

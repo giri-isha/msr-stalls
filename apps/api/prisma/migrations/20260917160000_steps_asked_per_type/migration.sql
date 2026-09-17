@@ -1,0 +1,61 @@
+-- Which steps are asked is a question about the REQUESTER TYPE.
+--
+-- `stall_flow_config` held three booleans for the whole edition. They could say
+-- "this edition does not do FSSAI"; they could not say "we do not ask an ashram
+-- for FSSAI, and we do not ask a local welfare stall to register staff", which
+-- is the question the stall team actually asks. So the answer moves to the
+-- table that is already shaped that way — one row per (edition, type, step) —
+-- and `stall_flow_config` is dropped, having nothing left in it.
+
+-- ── Whether, beside when ───────────────────────────────────────────────────
+--
+-- 🔴 Default TRUE, and a MISSING row reads as TRUE in the application too.
+-- Every step asked is the behaviour the module has always had, so the table
+-- stays sparse-tolerant and no edition changes by the column arriving.
+ALTER TABLE "stalls"."stall_flow_step"
+  ADD COLUMN "enabled" BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- ── Carrying the three switches over ───────────────────────────────────────
+--
+-- An edition that had FSSAI switched off meant it for everybody, because it had
+-- no way to mean anything else. So the boolean is spread across all three
+-- types, which is exactly what it said.
+--
+-- ⚠️ The rows must exist first. `20260917120000_step_sequencing` inserted the
+-- twelve for every edition that existed then; an edition created since is
+-- written by `seedEdition`. This backfills anything still missing rather than
+-- assuming, because an edition whose rows are absent would otherwise silently
+-- keep asking a step its config had switched off.
+INSERT INTO "stalls"."stall_flow_step" ("edition_id", "request_type", "step", "stage")
+SELECT e."id", t."request_type", s."step", 1
+FROM "stalls"."stall_edition" e
+CROSS JOIN (
+  VALUES ('VENDOR'::"stalls"."StallRequestType"),
+         ('LOCAL_WELFARE'),
+         ('ASHRAM')
+) AS t("request_type")
+CROSS JOIN (
+  VALUES ('BANK_FORM'::"stalls"."StallOnboardingStep"),
+         ('PAYMENT'),
+         ('FSSAI'),
+         ('STAFF_REGISTRATION')
+) AS s("step")
+ON CONFLICT DO NOTHING;
+
+UPDATE "stalls"."stall_flow_step" f
+SET "enabled" = CASE f."step"
+  WHEN 'BANK_FORM' THEN c."bank_step_enabled"
+  WHEN 'PAYMENT'   THEN c."payment_step_enabled"
+  WHEN 'FSSAI'     THEN c."fssai_step_enabled"
+  -- Staff registration had no switch at all — it was the one step the flow
+  -- could not skip. It carries over as asked, for every type.
+  ELSE TRUE
+END
+FROM "stalls"."stall_flow_config" c
+WHERE c."edition_id" = f."edition_id";
+
+-- ── The table with nothing left in it ──────────────────────────────────────
+--
+-- Its three columns are now twelve rows above. What remained was an id and a
+-- foreign key.
+DROP TABLE "stalls"."stall_flow_config";

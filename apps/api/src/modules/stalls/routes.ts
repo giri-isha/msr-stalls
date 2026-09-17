@@ -620,7 +620,7 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
         config.listPlanCategories(prisma, edition.id),
         config.rateCardFor(prisma, edition.id),
         config.chargesFor(prisma, edition.id),
-        config.flowFor(prisma, edition.id),
+        config.flowView(prisma, edition.id),
         config.listFineTypes(prisma, edition.id),
         config.listCustomFields(prisma, edition.id),
       ]);

@@ -1,5 +1,10 @@
 import type { PrismaClient } from '@prisma/client';
-import { type BankFormView, type SubmitBankDetailsInput, validateAgainstForm } from '@stalls/core';
+import {
+  type BankFormView,
+  type SubmitBankDetailsInput,
+  isStepAsked,
+  validateAgainstForm,
+} from '@stalls/core';
 import { ValidationFailedError } from '../../errors';
 import { type Filing, attestedByOf, audit } from './audit';
 import { flowFor } from './config';
@@ -85,8 +90,11 @@ export async function submitBankDetails(
   if (r.bankDetail) throw new BankDetailsLockedError();
   if (r.status !== 'SELECTED') throw new StepNotOpenError('bank details');
 
+  // 🔴 The edition's answer for THIS requester type, and the one writer both
+  // the public form and filing-on-behalf come through — so a step switched off
+  // for a type is off however it is approached.
   const flow = await flowFor(db, r.editionId);
-  if (!flow.bankStepEnabled) throw new StepNotOpenError('bank details');
+  if (!isStepAsked(flow, r.requestType, 'BANK_FORM')) throw new StepNotOpenError('bank details');
   if (r.requestType !== 'VENDOR') throw new StepNotOpenError('bank details');
 
   // Keys the browser sends back must be ones this module handed out, for this

@@ -11,6 +11,7 @@ import {
   type OnboardingStep,
   type SelfServeStepValue,
   isSelfServe,
+  isStepAsked,
   virtualAccountFor,
 } from '@stalls/core';
 import { audit, requesterActor } from './audit';
@@ -425,13 +426,21 @@ export async function stepLink(
   return { url: url[input.step] };
 }
 
-/** Refuses a step the edition's ordering has not reached yet.
+/** Refuses a step this requester type is not asked for, or that the edition's
+ *  ordering has not reached yet.
  *
  *  ⚠️ Shared by the coupon route and the staff registration route because both
  *  reach a step WITHOUT the portal: one mints the credential, the other is
  *  entered with a code that may have been forwarded from a letter sent months
- *  ago. Hiding a tab does nothing about either. */
-export async function assertStepUnlocked(
+ *  ago. Hiding a tab does nothing about either.
+ *
+ *  🔴 TWO refusals, in this order, and they are different things to be told.
+ *  Not asked is `StepNotOpenError` — there is nothing here and there never will
+ *  be, for an ashram whose edition does not register staff. Locked is
+ *  `StepLockedError`, which names what comes first. A requester told the wrong
+ *  one of those goes looking for a problem that does not exist, or waits for a
+ *  turn that never comes. */
+export async function assertStepAvailable(
   db: Db,
   requestId: string,
   step: OnboardingStep,
@@ -439,6 +448,7 @@ export async function assertStepUnlocked(
   const r = await db.stallRequest.findUnique({ where: { id: requestId }, include: factsInclude });
   if (!r) return;
   const flow = await flowFor(db, r.editionId);
+  if (!isStepAsked(flow, r.requestType, step)) throw new StepNotOpenError(step);
   if (stepLockedFor(r, flow, step)) {
     throw new StepLockedError(step, blockedByFor(r, flow));
   }
@@ -452,9 +462,7 @@ export async function assertStepUnlocked(
  * coupon was minted only by an admin pressing Issue Coupon, or as a side effect
  * of sending `ONBOARDING_FSSAI_STAFF` — so a vendor who never received that
  * letter had no coupon, `staffExpected` was 0, `pendingSteps` said nothing was
- * outstanding, and their team could not be registered. Staff registration is
- * the one step `FlowConfig` cannot switch off, because an unregistered person
- * cannot be let onto the venue.
+ * outstanding, and their team could not be registered.
  *
  * ⚠️ Idempotent, and that is load-bearing rather than tidy. `ensureCoupon`
  * returns the existing code, so pressing this twice — or pressing it after the
@@ -484,7 +492,8 @@ export async function couponFor(
   });
   if (request?.status !== 'SELECTED') throw new UnknownAccessLinkError();
 
-  // 🔴 Refused while STAFF_REGISTRATION is locked, and refused BEFORE the mint.
+  // 🔴 Refused while STAFF_REGISTRATION is not asked of this requester type or
+  // is locked, and refused BEFORE the mint.
   // `ensureCoupon` is a write: minting and then hiding the code would leave a
   // live credential the staff route is about to refuse, and a stall holding a
   // coupon nobody may use reads on Onboarding as one that was offered a step.
@@ -494,7 +503,7 @@ export async function couponFor(
   // a check that looked for it there would answer "not locked" for exactly the
   // request this button is about to mint a coupon for. The question is about
   // the step's stage.
-  await assertStepUnlocked(db, request.id, 'STAFF_REGISTRATION');
+  await assertStepAvailable(db, request.id, 'STAFF_REGISTRATION');
 
   const coupon = await ensureCoupon(
     db,

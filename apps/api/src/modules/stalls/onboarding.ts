@@ -9,6 +9,7 @@ import {
   type SubmitFssaiInput,
   type VendorStaffView,
   formatCouponCode,
+  isStepAsked,
   needsBankStep,
   needsPaymentStep,
   normalizeCouponCode,
@@ -24,6 +25,7 @@ import type { Db } from './editions';
 import {
   CouponFullError,
   DeclarationsChangedError,
+  StepNotOpenError,
   UnknownCouponError,
   UnknownRequestError,
 } from './errors';
@@ -87,9 +89,39 @@ export async function ensureCoupon(
   year: number,
   by: string | AuditActor,
 ): Promise<StallStaffCoupon> {
+  await assertStaffRegistrationAsked(db, requestId);
   const [existing] = await liveCoupons(db, requestId);
   if (existing) return existing;
   return issueCoupon(db, requestId, stallName, year, by);
+}
+
+/** Refuses a coupon for a requester type this edition does not ask to register
+ *  staff.
+ *
+ *  🔴 On the MINTS, not on the routes above them. A coupon is its own
+ *  credential — it is typed into a public form by somebody who was forwarded
+ *  it — so a code that exists is a way in whatever screen produced it. There
+ *  are four producers (the vendor's Get Your Coupon, two letters, the filing
+ *  screen, and the backoffice New Coupon button) and guarding each one is four
+ *  chances to miss one.
+ *
+ *  ⚠️ It refuses the EXISTING coupon too, not only a new one. A step switched
+ *  off mid-edition leaves codes already minted, and those are exactly the ones
+ *  that reach the registration form without the portal. That form refuses them
+ *  as well; this keeps a screen from handing one out again in the meantime.
+ *
+ *  ⚠️ An unknown request passes. It fails on its own terms in the caller, with
+ *  the error that names it, rather than being reported as a step problem. */
+async function assertStaffRegistrationAsked(db: PrismaClient, requestId: string): Promise<void> {
+  const r = await db.stallRequest.findUnique({
+    where: { id: requestId },
+    select: { editionId: true, requestType: true },
+  });
+  if (!r) return;
+  const flow = await flowFor(db, r.editionId);
+  if (!isStepAsked(flow, r.requestType, 'STAFF_REGISTRATION')) {
+    throw new StepNotOpenError('staff registration');
+  }
 }
 
 /** Mints ANOTHER coupon for a stall that already has one.
@@ -113,6 +145,7 @@ export async function issueCoupon(
   year: number,
   by: string | AuditActor,
 ): Promise<StallStaffCoupon> {
+  await assertStaffRegistrationAsked(db, requestId);
   // A collision is vanishingly unlikely at 40 bits over a few hundred coupons,
   // but `code` is a unique column and a retry is three lines.
   for (let attempt = 0; attempt < 5; attempt++) {
