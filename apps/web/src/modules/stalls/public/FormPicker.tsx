@@ -125,20 +125,14 @@ export function FormPicker() {
         })}
       </div>
 
-      <p style={{ fontSize: 12, color: 'var(--mfg)', marginTop: 20, lineHeight: 1.6 }}>
-        Already submitted?{' '}
-        {signedIn ? (
-          <>
-            <Link to='/stalls/requests'>My Requests</Link> has every request on this account, what
-            has been decided, and which forms are still waiting on you.
-          </>
-        ) : (
-          <>
-            Use the link in your confirmation email to check your status — or{' '}
-            <Link to='/stalls/status'>have it emailed to you again</Link>.
-          </>
-        )}
-      </p>
+      {/* Signed in, the header carries the way to the requests page; a second
+          sentence about it here said the same thing twice. */}
+      {!signedIn && (
+        <p style={{ fontSize: 12, color: 'var(--mfg)', marginTop: 20, lineHeight: 1.6 }}>
+          Already submitted? Use the link in your confirmation email to check your status — or{' '}
+          <Link to='/stalls/status'>have it emailed to you again</Link>.
+        </p>
+      )}
     </div>
   );
 }

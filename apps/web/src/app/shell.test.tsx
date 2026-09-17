@@ -180,6 +180,34 @@ describe('the public shell', () => {
     expect(screen.queryByRole('button', { name: 'Account Menu' })).not.toBeInTheDocument();
   });
 
+  test('signed in, the way to a new request is a button in the header, not a tab', async () => {
+    installFetch([
+      ['GET', /\/public\/session$/, () => SESSION],
+      ['GET', /\/public\/requests$/, () => ({ displayName: 'Priya Venkat', requests: [] })],
+    ]);
+    renderPublic('/stalls/requests');
+
+    const header = await screen.findByRole('banner');
+    expect(within(header).getByRole('link', { name: 'Request a Stall' })).toHaveAttribute(
+      'href',
+      '/stalls/apply',
+    );
+    expect(within(header).getByText('Priya Venkat')).toBeInTheDocument();
+    expect(within(header).getByRole('button', { name: 'Log Out' })).toBeInTheDocument();
+    // ⚠️ No tab strip. The requests page IS the portal; there is nothing left
+    // to tab between, and an action drawn as a tab reads as a place.
+    expect(within(header).queryByRole('navigation')).not.toBeInTheDocument();
+  });
+
+  test('signed out, the header carries neither the button nor a name', async () => {
+    installFetch([['GET', /\/public\/session$/, () => [404, { error: 'no session' }]]]);
+    renderPublic('/stalls/login');
+
+    const header = await screen.findByRole('banner');
+    expect(within(header).queryByRole('link', { name: 'Request a Stall' })).not.toBeInTheDocument();
+    expect(within(header).queryByRole('button', { name: 'Log Out' })).not.toBeInTheDocument();
+  });
+
   // ⚠️ Four public screens call `useToast()`, and that hook THROWS outside a
   // provider. The shell is the only place that can mount one, so this asserts
   // the wiring from the real route tree rather than from a harness — the
