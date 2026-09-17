@@ -266,13 +266,55 @@ failure does not fail the selection, which has already happened — an exempt or
 unpriced stall is refused by the API, and reporting that as "something went
 wrong" would have the reader redo a selection that stands.
 
-🔴 **The field is drawn only for `finance.write`,** which is what the route
-requires — showing a control that 403s on submit is worse than not showing it.
-The **Lead role does not hold `finance.write`** (it holds `finance.read`), so a
-lead doing the selection will not see the field. Whether leads should be granted
-`finance.write`, or the concession route should also accept `selection.write`,
-is a privileges decision rather than a matter for this change, and it is left as
-it stands.
+### `concession.write` — its own privilege
+
+🔴 The route required `finance.write`, and that turned out to be the wrong gate:
+the **Lead role does not hold it**. A lead runs the selection, so the field
+would never have appeared for the people the feature is for, and the figure
+would have gone on being carried to Finance afterwards — which is the failure
+this change exists to end.
+
+Widening `finance.write` was not the answer either, because it covers two
+different acts. Matching a credit against a bank statement is a Finance job done
+from a statement. "For A3 the cost is 10,000 — for the coconut wala, probably we
+will give that stall at 5,000" is a judgement made while negotiating with a
+trader, in the same conversation as the bay and the stall count. Folded
+together, whoever holds one holds the other.
+
+So there is a new code, `concession.write`, in the `finance` category, kind
+`action`. It is held by:
+
+| Role | Why |
+|---|---|
+| Lead | Runs the selection; the fee is agreed in that call. **The only finance write a lead holds** — confirming payments and issuing refunds stay Finance's. |
+| Finance | Where the concession dialog has always lived. |
+| Local Welfare | The team in the quote. `setDiscretionaryFee` is documented as "the judgement is theirs, per trader", and this is that judgement being writable by the people who make it. |
+| Admin | Via `allPrivileges`. |
+
+⚠️ **It implies no read.** Every other write in `IMPLIED_READ` unlocks its own
+screen; the screen this one would unlock is `finance.read`, which is `sensitive`
+— it carries a requester's bank account. Conceding one figure is not a reason to
+be shown that, and the three roles above hold `finance.read` on their own terms
+where they need it.
+
+⚠️ **Local Welfare's grant is contained by `requestTypeScope`.** The route
+checks the privilege and the scope separately, so that team may concede on their
+own villages' stalls and gets a 403 naming `VENDOR` on anybody else's. Both
+cases are tested, because the privilege being theirs and the reach being theirs
+are two different guarantees.
+
+The privilege row is installed by a migration rather than left to `seedRbac`:
+the grant statements beside it reference the row, and a migration that depends
+on application code having run first fails on a fresh deploy. The migration
+grants it to **admin-composed** roles that already held `finance.write` — a role
+somebody authored must mean on Monday what it meant on Friday — and leaves the
+shipped roles to `SEED_ROLES`, whose bundles `seedRbac` rewrites.
+
+⚠️ A test asserted `a lead may see the figure but not agree one`, on the
+reasoning that "preparing the concession is Finance's act, the same as every
+other money-moving write on this screen". That premise is what this change
+rejects; the test now asserts the lead succeeds, with a second test holding the
+line that they still cannot confirm a payment.
 
 ## Tests
 

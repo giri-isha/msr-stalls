@@ -89,7 +89,11 @@ export function SelectDialog({
   // ⚠️ `requestType` is a plain string on the summary contract. The narrowing
   // is safe — the column is the enum — and `needsPaymentStep` answers false for
   // anything that is not one of the three in any case.
-  const canPrice = needsPaymentStep(r.requestType as StallRequestType) && can('finance.write');
+  //
+  // 🔴 `concession.write`, the same privilege the route requires. A lead holds
+  // it and does not hold `finance.write`, which is the whole point: the fee is
+  // agreed here, in the conversation, not carried to Finance afterwards.
+  const canPrice = needsPaymentStep(r.requestType as StallRequestType) && can('concession.write');
   const feeTyped = feeText.trim();
   const feeRupees = Number(feeTyped);
   const feeOk = feeTyped === '' || (Number.isFinite(feeRupees) && feeRupees >= 0);

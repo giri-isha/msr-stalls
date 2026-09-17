@@ -147,6 +147,10 @@ const SHIPPED_HOLDINGS: Record<string, readonly string[]> = {
     'onboarding.read',
     'onboarding.write',
     'finance.read',
+    // 🔴 The one finance WRITE a lead holds. The fee is agreed in the same
+    // conversation as the bay and the stall count, both of which a lead already
+    // settles; confirming payments and issuing refunds stay Finance's.
+    'concession.write',
     // The two counter screens, read-only — the reach a lead already had when
     // both were gated on `requests.read`.
     'checkin.read',
@@ -167,13 +171,24 @@ const SHIPPED_HOLDINGS: Record<string, readonly string[]> = {
   // a gate meant handing over every requester's full application. The two
   // screens a volunteer works have their own codes now.
   stalls_volunteer: ['checkin.write', 'equipment.write'],
-  stalls_finance: ['requests.read', 'finance.read', 'finance.write', 'onboarding.read'],
+  stalls_finance: [
+    'requests.read',
+    'finance.read',
+    'finance.write',
+    // Where the concession dialog has always lived.
+    'concession.write',
+    'onboarding.read',
+  ],
   stalls_electrical: ['electrical.read'],
   stalls_local_welfare: [
     'requests.read',
     'requests.write',
     'selection.read',
     'finance.read',
+    // 🔴 The team whose judgement this is — "for the coconut wala, probably we
+    // will give that stall at 5,000" — held under `requestTypeScope`, so it
+    // reaches their own villages' stalls and nothing else.
+    'concession.write',
     // Reading, not sending: this team chases its own villages' stalls and
     // should see what has gone out without being able to email the edition.
     'comms.read',

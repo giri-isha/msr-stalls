@@ -543,6 +543,9 @@ function ConfirmPanel() {
   const { q, setQ, filtered } = useSearch(data, matchPayment);
   const [open, setOpen] = useState<PaymentRow | null>(null);
   const canWrite = can('finance.write');
+  // ⚠️ Separate from `canWrite`. Agreeing a fee and confirming a credit are two
+  // acts held by two different sets of people — see `concession.write`.
+  const canConcede = can('concession.write');
 
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox>{error.message}</ErrorBox>;
@@ -612,6 +615,7 @@ function ConfirmPanel() {
         <ConfirmDialog
           row={open}
           canWrite={canWrite}
+          canConcede={canConcede}
           onClose={() => setOpen(null)}
           onDone={() => {
             reload();
@@ -798,12 +802,14 @@ function ConcessionDialog({
 function ConfirmDialog({
   row,
   canWrite,
+  canConcede,
   onClose,
   onDone,
   onToast,
 }: {
   row: PaymentRow;
   canWrite: boolean;
+  canConcede: boolean;
   onClose: () => void;
   onDone: () => void;
   onToast: ReturnType<typeof useToast>;
@@ -910,7 +916,11 @@ function ConfirmDialog({
           </Card>
         )}
 
-        {canWrite && <Concession row={row} onToast={onToast} onDone={onDone} />}
+        {/* ⚠️ Its own privilege, not `canWrite`. The fee agreed with a trader and
+            the credit matched against a statement are two different acts, and
+            a lead or the local welfare team holds the first without the
+            second — see `concession.write`. */}
+        {canConcede && <Concession row={row} onToast={onToast} onDone={onDone} />}
 
         {canWrite && (
           <>

@@ -144,10 +144,66 @@ describe('recording the agreed fee', () => {
     expect(after.quote.payableFeePaise).toBe(after.quote.feeTotalPaise);
   });
 
-  test('a lead may see the figure but not agree one', async () => {
-    // Preparing the concession is Finance's act, the same as every other
-    // money-moving write on this screen.
-    expect((await put(lead, { discretionaryFeePaise: 1, reason: 'x' })).statusCode).toBe(403);
+  test('a lead may agree one — the figure is settled in their conversation', async () => {
+    // 🔴 This asserted a 403, on the reasoning that "preparing the concession
+    // is Finance's act, the same as every other money-moving write on this
+    // screen". It is not the same act. A lead runs the selection and the fee is
+    // agreed in that call, alongside the bay and the stall count they already
+    // settle; sending them to Finance afterwards to record one number meant it
+    // was usually never recorded. `concession.write` is the split.
+    expect((await put(lead, { discretionaryFeePaise: 1, reason: 'x' })).statusCode).toBe(204);
+  });
+
+  test('and still may not confirm a payment — the two acts stayed apart', async () => {
+    // 🔴 The point of a second privilege rather than widening `finance.write`.
+    // Matching a credit against a bank statement is Finance's job, and a lead
+    // holding `concession.write` gets no closer to it.
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/m/stalls/finance/payments/${requestId}`,
+      headers: lead.headers,
+      payload: {
+        purpose: 'RENT',
+        referenceNo: 'NEFT99999',
+        amountPaise: 1,
+        receivedOn: '2026-02-14',
+        mode: 'NEFT',
+      },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  test('the local welfare team may agree one on their own stall', async () => {
+    // The team in the quote — "for the coconut wala, probably we will give that
+    // stall at 5,000". The request in this file IS a local welfare pitch, which
+    // is what their `requestTypeScope` reaches.
+    const welfare = await seedBackoffice(['stalls_local_welfare']);
+    expect(
+      (await put(welfare, { discretionaryFeePaise: 500_000, reason: 'Village trader' })).statusCode,
+    ).toBe(204);
+  });
+
+  test('and not on a vendor stall — the privilege is theirs, the reach is not', async () => {
+    // ⚠️ What keeps the grant safe. `concession.write` says they may agree a
+    // fee; `requestTypeScope` says whose. Both have to hold for a write to
+    // land, and the route checks them separately.
+    const welfare = await seedBackoffice(['stalls_local_welfare']);
+    const vendor = await submitRequest(
+      prisma,
+      SubmitRequestInput.parse(vendorBody({ email: 'other@vendor.example' })),
+      { mail: new LogMailer(), statusUrl: (t) => t },
+      await accountFor({ email: 'other@vendor.example' }),
+    );
+    await selectRequest(prisma, { requestId: vendor.requestId, stallNumbers: ['A4-2'] }, SYSTEM);
+
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/api/m/stalls/finance/payments/${vendor.requestId}/discretionary-fee`,
+      headers: welfare.headers,
+      payload: { discretionaryFeePaise: 1, reason: 'x' },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toContain('VENDOR');
   });
 
   test('it is on the activity trail with both figures', async () => {

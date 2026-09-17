@@ -21,13 +21,14 @@ const routes = [
   { path: '/m/stalls/requests/:id', element: <RequestDetail /> },
 ];
 
-/** ⚠️ An ADMIN, not the lead the other selection tests use. The concession
- *  route requires `finance.write`, which the Lead role does not hold — so the
- *  field is drawn only for somebody who can actually save it. Showing a control
- *  that 403s on submit is worse than not showing it. */
+/** 🔴 A LEAD, which is the whole point. `concession.write` is its own
+ *  privilege precisely so the person running the selection can record the
+ *  figure they just agreed — a lead holds it and does not hold
+ *  `finance.write`. Gated on `finance.write`, this field would never have
+ *  appeared for the people the feature is for. */
 const stubs = (over: Record<string, unknown> = {}) =>
   [
-    ['GET', /\/me$/, () => ME_ADMIN],
+    ['GET', /\/me$/, () => ME_LEAD],
     ['GET', /\/zones$/, () => ZONES],
     ['GET', /\/requests$/, () => ({ items: [summary()], nextCursor: null })],
     ['GET', /\/requests\/[^/]+$/, () => detail(over)],
@@ -99,14 +100,39 @@ describe('agreeing a fee while selecting', () => {
 });
 
 describe('who may agree a fee', () => {
-  test('a lead selects as before and is not offered the field', async () => {
-    // ⚠️ `finance.write` is not a Lead privilege — the concession route refuses
-    // it, so the dialog does not offer a control that cannot be saved.
+  /** The same stubs, with one identity swapped in. */
+  const asSomebodyElse = (me: unknown) =>
     installFetch(
       stubs().map((r) =>
-        r[1].source.includes('me') ? (['GET', /\/me$/, () => ME_LEAD] as const) : r,
+        r[1].source.includes('me') ? (['GET', /\/me$/, () => me] as const) : r,
       ) as Array<[string, RegExp, (url: URL) => unknown]>,
     );
+
+  test('somebody without the privilege selects as before, and is not offered it', async () => {
+    // ⚠️ The route refuses without `concession.write`, so the dialog does not
+    // offer a control that cannot be saved — a field that 403s on submit is
+    // worse than no field.
+    asSomebodyElse({ ...ME_ADMIN, privileges: ['requests.read', 'selection.write'] });
+    const user = userEvent.setup();
+    const dlg = await openSelect(user);
+
+    dlg.getByLabelText(/bay agreed with the requester/i);
+    expect(dlg.queryByLabelText(/fee agreed with the requester/i)).toBeNull();
+  });
+
+  test('holding it without finance.write is enough — which is the case it exists for', async () => {
+    asSomebodyElse({
+      ...ME_ADMIN,
+      privileges: ['requests.read', 'selection.write', 'concession.write'],
+    });
+    const user = userEvent.setup();
+    const dlg = await openSelect(user);
+
+    expect(dlg.getByLabelText(/fee agreed with the requester/i)).toBeTruthy();
+  });
+
+  test('an ashram request is never offered it — billed internally', async () => {
+    installFetch(stubs({ requestType: 'ASHRAM' }));
     const user = userEvent.setup();
     const dlg = await openSelect(user);
 

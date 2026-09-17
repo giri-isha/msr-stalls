@@ -50,6 +50,7 @@ export const STALL_PRIVILEGES = [
   'onboarding.write',
   'finance.read',
   'finance.write',
+  'concession.write',
   'refunds.write',
   'checkin.read',
   'checkin.write',
@@ -228,6 +229,30 @@ export const PRIVILEGE_CATEGORIES: readonly PrivilegeCategory[] = [
         label: 'Confirm payments',
         kind: 'action',
         description: 'Match a credit to a request and confirm it.',
+      },
+      {
+        /** 🔴 Its OWN privilege, and not part of `finance.write`.
+         *
+         *  Agreeing the fee is not the same act as confirming a payment.
+         *  "For A3 the cost is 10,000 — for the coconut wala, probably we will
+         *  give that stall at 5,000" is a judgement made by whoever is
+         *  negotiating with the trader, in the same conversation as the bay and
+         *  the number of stalls. Matching a credit against a bank statement is
+         *  a different job done by different people, and folding the two
+         *  together meant the person who actually agrees the figure could not
+         *  record it without also being handed the payment ledger.
+         *
+         *  ⚠️ It implies NO read — see `IMPLIED_READ`. Every other write there
+         *  unlocks its own screen, and the screen this one would unlock is
+         *  `finance.read`, which is `sensitive`: it carries a requester's bank
+         *  account. Conceding one figure is not a reason to be shown that, and
+         *  the roles that hold this privilege hold `finance.read` on their own
+         *  terms where they need it. */
+        code: 'concession.write',
+        label: 'Agree a different fee for one stall',
+        kind: 'action',
+        description:
+          'Record the fee agreed with one requester where it differs from the rate card, and the reason it was reduced. The quoted figure is kept beside it.',
       },
       {
         code: 'refunds.write',
@@ -473,6 +498,12 @@ const LEAD_PRIVILEGES = [
   'onboarding.read',
   'onboarding.write',
   'finance.read',
+  // 🔴 The one finance WRITE a lead holds, and deliberately not the others. A
+  // lead runs the selection, and the fee is agreed in that same conversation —
+  // before this existed the figure had to be carried to Finance afterwards,
+  // which meant it was usually not recorded at all. Confirming payments and
+  // issuing refunds remain Finance's.
+  'concession.write',
   // ⚠️ Reads, no writes — which is exactly what a lead had before the split.
   // Both counter screens were gated on `requests.read`, so a lead could always
   // see them and could never work them; leaving these out would have taken
@@ -550,7 +581,13 @@ export const SEED_ROLES: readonly SeedRole[] = [
     name: 'Finance',
     description: 'Payment confirmation and refunds',
     parentKey: 'stalls_lead',
-    privileges: ['requests.read', 'finance.read', 'finance.write', 'onboarding.read'],
+    privileges: [
+      'requests.read',
+      'finance.read',
+      'finance.write',
+      'concession.write',
+      'onboarding.read',
+    ],
     allPrivileges: false,
     canAssignSameLevel: false,
     requestTypeScope: null,
@@ -579,6 +616,15 @@ export const SEED_ROLES: readonly SeedRole[] = [
       'requests.write',
       'selection.read',
       'finance.read',
+      // 🔴 The team in the quote. `setDiscretionaryFee` is documented as "the
+      // concession the local welfare team agreed on one stall — the judgement
+      // is theirs, per trader", and this is that judgement being writable by
+      // the people who make it.
+      //
+      // ⚠️ Contained by `requestTypeScope: ['LOCAL_WELFARE']` and the route's
+      // own `requireRequestScope`: this team can concede on their own villages'
+      // stalls and on nothing else.
+      'concession.write',
       'comms.read',
       'onboarding.read',
       // Both counter screens, read-only and NARROWED to this team's own

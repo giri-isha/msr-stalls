@@ -1451,7 +1451,12 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     { schema: { params: IdParams, body: SetDiscretionaryFeeInput } },
     async (req, reply) => {
       const caller = await requireBackoffice(req, prisma);
-      requirePrivilege(caller, 'finance.write');
+      // 🔴 `concession.write`, not `finance.write`. Agreeing the fee happens in
+      // the negotiation — a lead on the Select dialog, the local welfare team
+      // for their own villages — while confirming a credit against a bank
+      // statement is Finance's separate job. Gating both on one privilege meant
+      // the people who actually agree the figure could not record it.
+      requirePrivilege(caller, 'concession.write');
       await requireRequestScope(caller, prisma, req.params.id);
       await finance.setDiscretionaryFee(prisma, req.params.id, req.body, caller.personId);
       reply.status(204);
