@@ -60,6 +60,26 @@ const CHANNEL_OF: Record<AuditActor['kind'], StallAuditChannel> = {
   SYSTEM: 'SYSTEM',
 };
 
+/** 🔴 The name is looked up ONLY for a ref shaped like an id, and a ref that
+ *  matches nothing falls back to itself.
+ *
+ *  The audit row must never be the thing that fails a write. A `by` that is
+ *  not a person — a seeded constant, a fixture's `'lead-1'`, a stale id whose
+ *  row is gone — would otherwise raise inside `findUnique` and, because the
+ *  call runs in the caller's transaction, roll back the very write it was
+ *  recording. Same rule as `rbac.ts`'s unknown role key: an actor nobody can
+ *  name reads as that name, not as a 500. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function nameOf(ref: string, look: () => Promise<{ displayName: string } | null>) {
+  if (!UUID.test(ref)) return ref;
+  try {
+    return (await look())?.displayName ?? ref;
+  } catch {
+    return ref;
+  }
+}
+
 async function resolveActor(
   db: Db,
   actor: AuditActor,
@@ -68,24 +88,22 @@ async function resolveActor(
   if (actor.kind === 'BACKOFFICE') {
     const name =
       actor.name ??
-      (
-        await db.person.findUnique({
+      (await nameOf(actor.personId, () =>
+        db.person.findUnique({
           where: { personId: actor.personId },
           select: { displayName: true },
-        })
-      )?.displayName ??
-      actor.personId;
+        }),
+      ));
     return { kind: 'BACKOFFICE', ref: actor.personId, name };
   }
   const name =
     actor.name ??
-    (
-      await db.stallAccount.findUnique({
+    (await nameOf(actor.accountId, () =>
+      db.stallAccount.findUnique({
         where: { id: actor.accountId },
         select: { displayName: true },
-      })
-    )?.displayName ??
-    actor.accountId;
+      }),
+    ));
   return { kind: 'REQUESTER', ref: actor.accountId, name };
 }
 
@@ -105,8 +123,12 @@ export async function audit(db: Db, input: AuditInput): Promise<void> {
           })
         )?.editionId ?? null)
       : null);
-  const accountId =
+  // ⚠️ A relation column, so only a real id may go in it. An actor ref that is
+  // not one still names the actor in `actor_ref`, which is text — the row says
+  // who without claiming a row that is not there.
+  const claimed =
     input.accountId ?? (input.actor.kind === 'REQUESTER' ? input.actor.accountId : null);
+  const accountId = claimed && UUID.test(claimed) ? claimed : null;
   const detail = input.detail ?? {};
 
   await db.stallAuditEvent.create({

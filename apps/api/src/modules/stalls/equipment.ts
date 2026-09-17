@@ -1,7 +1,13 @@
 import type { Prisma, PrismaClient, StallEquipmentIssue } from '@prisma/client';
-import type { ChallanView, EquipmentAction, EquipmentPatch, EquipmentRow } from '@stalls/core';
+import type {
+  AuditAction,
+  ChallanView,
+  EquipmentAction,
+  EquipmentPatch,
+  EquipmentRow,
+} from '@stalls/core';
 import { equipmentDeduction } from '@stalls/core';
-import { recordActivity } from '../../activity';
+import { actorFrom, audit } from './audit';
 import { chargesFor } from './config';
 import type { Db } from './editions';
 import { UnknownRequestError } from './errors';
@@ -169,11 +175,10 @@ export async function patchEquipment(
     data: { extraChargePaise: extraCharge(updated, rates) },
   });
 
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_equipment.updated',
-    subjectRef: requestId,
+    requestId: requestId,
     detail: patch as Record<string, unknown>,
   });
   return toRow(await load(db, requestId), withCharge, rates);
@@ -198,11 +203,10 @@ export async function actOnEquipment(
   }[action];
 
   const updated = await db.stallEquipmentIssue.update({ where: { requestId }, data });
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
-    action: `stall_equipment.${action.toLowerCase()}`,
-    subjectRef: requestId,
+  await audit(db, {
+    actor: actorFrom(by),
+    action: `stall_equipment.${action.toLowerCase()}` as AuditAction,
+    requestId: requestId,
   });
   return toRow(await load(db, requestId), updated, await ratesFor(db, r.editionId, r.requestType));
 }

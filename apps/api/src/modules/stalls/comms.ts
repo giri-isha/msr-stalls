@@ -15,7 +15,7 @@ import {
   renderTemplate,
   virtualAccountFor,
 } from '@stalls/core';
-import { recordActivity } from '../../activity';
+import { actorFrom, audit } from './audit';
 import { mintAccessLink } from './accounts';
 import type { StallsDeps } from './deps';
 import type { Db } from './editions';
@@ -104,11 +104,11 @@ export async function updateTemplate(
     where: { editionId_key: { editionId, key } },
     data: { ...patch, updatedAt: new Date(), updatedBy: by },
   });
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_email_template.updated',
-    subjectRef: `${editionId}:${key}`,
+    subject: { type: 'email_template', ref: `${editionId}:${key}` },
+    editionId: editionId,
   });
 }
 
@@ -461,11 +461,10 @@ export async function sendTemplate(
 
     if (input.templateKey === 'PAYMENT_DETAILS') await freezePaymentPlan(db, r.id);
     await refreshStage(db, r.id);
-    await recordActivity(db, {
-      actorRef: by,
-      moduleKey: MODULE_KEY,
+    await audit(db, {
+      actor: actorFrom(by),
       action: 'stall_message.sent',
-      subjectRef: r.id,
+      requestId: r.id,
       detail: { templateKey: input.templateKey, channels: todo, failures },
     });
     sent.push(id);
@@ -521,11 +520,10 @@ export async function clearSendLog(
 ): Promise<void> {
   const deleted = await db.stallMessageLog.deleteMany({ where: { requestId, templateKey: key } });
   if (deleted.count === 0) throw new WrongTemplateError(key, 'has not been sent to this request');
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_email.unsent',
-    subjectRef: requestId,
+    requestId: requestId,
     detail: { templateKey: key },
   });
 }
@@ -580,11 +578,10 @@ export async function logReminder(
   await db.stallReminderCall.create({
     data: { requestId, kind: input.kind, note: input.note ?? null, calledBy: by },
   });
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_reminder.logged',
-    subjectRef: requestId,
+    requestId: requestId,
     detail: { kind: input.kind },
   });
 }

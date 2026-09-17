@@ -5,7 +5,7 @@ import {
   type SignatureView,
   needsSignature,
 } from '@stalls/core';
-import { recordActivity } from '../../activity';
+import { actorFrom, audit } from './audit';
 import type { StallsDeps } from './deps';
 import type { Db } from './editions';
 import { SignatureProviderError, UnknownRequestError, WrongTemplateError } from './errors';
@@ -127,11 +127,10 @@ export async function sendForSignature(
       error: null,
     },
   });
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_signature.sent',
-    subjectRef: requestId,
+    requestId: requestId,
     detail: { documentId: handle.documentId },
   });
   return toSignatureView(row);

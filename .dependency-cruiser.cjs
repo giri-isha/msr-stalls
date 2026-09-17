@@ -61,6 +61,22 @@ module.exports = {
       },
     },
     {
+      // The host's activity trail is reached through ONE file. `audit.ts`
+      // writes the module's own log and forwards to the host's; a second
+      // importer would be a write the module's own screens never see.
+      name: 'stalls-trail-through-audit-only',
+      comment:
+        'Only apps/api/src/modules/stalls/audit.ts may import ../../activity. ' +
+        "Everything else records through audit(), so the module's own log and " +
+        "the host's trail cannot disagree about what happened.",
+      severity: 'error',
+      from: {
+        path: '^apps/api/src/modules/stalls/',
+        pathNot: '^apps/api/src/modules/stalls/audit\\.ts$',
+      },
+      to: { path: '^apps/api/src/activity\\.ts$' },
+    },
+    {
       // The web module owns its own screens and data access. It may use the
       // shared UI primitives (which exist in the host too, same paths) but must
       // not import the standalone shell's routing or layout.

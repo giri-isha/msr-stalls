@@ -15,7 +15,7 @@ import {
   lookupRate,
   rupeesToPaise,
 } from '@stalls/core';
-import { recordActivity } from '../../activity';
+import { actorFrom, audit } from './audit';
 import { seedBankDeclarations, seedDeclarations } from './declarations';
 import { publicFormsFor, seedFormDefinitions } from './form-builder';
 import { type Db, activeEdition } from './editions';
@@ -168,11 +168,11 @@ export async function createEdition(
       data: { year: input.year, name: input.name, isActive: input.activate },
     });
     await ensureEditionDefaults(tx, edition.id);
-    await recordActivity(tx, {
-      actorRef: by,
-      moduleKey: MODULE_KEY,
+    await audit(tx, {
+      actor: actorFrom(by),
       action: 'stall_edition.created',
-      subjectRef: edition.id,
+      subject: { type: 'edition', ref: edition.id },
+      editionId: edition.id,
       detail: { year: input.year },
     });
     return edition;
@@ -348,11 +348,11 @@ export async function updateZone(
   const zone = await db.stallZone.findUnique({ where: { editionId_code: { editionId, code } } });
   if (!zone) throw new UnknownZoneError(code);
   const updated = await db.stallZone.update({ where: { id: zone.id }, data: patch });
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_zone.updated',
-    subjectRef: zone.id,
+    subject: { type: 'zone', ref: zone.id },
+    editionId: editionId,
     detail: patch,
   });
   return updated;
@@ -378,11 +378,11 @@ export async function createZone(
   const zone = await db.stallZone.create({
     data: { editionId, ...input, sortOrder: (last?.sortOrder ?? -1) + 1 },
   });
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_zone.created',
-    subjectRef: zone.id,
+    subject: { type: 'zone', ref: zone.id },
+    editionId: editionId,
     detail: { code: input.code },
   });
   return zone;
@@ -403,11 +403,11 @@ export async function deleteZone(db: PrismaClient, editionId: string, code: stri
   if (zone._count.stalls > 0) throw new ZoneInUseError(code, zone._count.stalls);
   await db.stallZone.delete({ where: { id: zone.id } });
   await db.stallRateCard.deleteMany({ where: { editionId, zoneCode: code } });
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_zone.deleted',
-    subjectRef: zone.id,
+    subject: { type: 'zone', ref: zone.id },
+    editionId: editionId,
     detail: { code },
   });
 }
@@ -441,11 +441,11 @@ export async function replacePlanCategories(
         update: { name: c.name, isFood: c.isFood, sortOrder: c.sortOrder },
       });
     }
-    await recordActivity(tx, {
-      actorRef: by,
-      moduleKey: MODULE_KEY,
+    await audit(tx, {
+      actor: actorFrom(by),
       action: 'stall_plan_category.replaced',
-      subjectRef: editionId,
+      subject: { type: 'edition', ref: editionId },
+      editionId: editionId,
       detail: { keys: categories.map((c) => c.key) },
     });
   });
@@ -473,13 +473,11 @@ export async function updateEditionSettings(
     // that 404s.
     data: { ...input, termsUrl: input.termsUrl?.trim() || null },
   });
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_edition.settings_updated',
-    subjectRef: editionId,
-    // The prefixes are not secret — they are printed on every payment letter —
-    // but recording them is what answers "which account was this edition's".
+    subject: { type: 'edition', ref: editionId },
+    editionId: editionId,
     detail: input,
   });
   return updated;
@@ -508,11 +506,11 @@ export async function replaceRateCard(
         },
       });
     }
-    await recordActivity(tx, {
-      actorRef: by,
-      moduleKey: MODULE_KEY,
+    await audit(tx, {
+      actor: actorFrom(by),
       action: 'stall_rate_card.replaced',
-      subjectRef: editionId,
+      subject: { type: 'edition', ref: editionId },
+      editionId: editionId,
       detail: { entries },
     });
   });
@@ -526,11 +524,11 @@ export async function updateCharges(
   by: string,
 ) {
   const updated = await db.stallChargeConfig.update({ where: { editionId }, data: input });
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_charges.updated',
-    subjectRef: editionId,
+    subject: { type: 'edition', ref: editionId },
+    editionId: editionId,
     detail: input,
   });
   return updated;
@@ -551,11 +549,11 @@ export async function updateFlow(
     create: { editionId, ...input },
     update: input,
   });
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_flow.updated',
-    subjectRef: editionId,
+    subject: { type: 'edition', ref: editionId },
+    editionId: editionId,
     detail: input,
   });
   return updated;
@@ -576,11 +574,11 @@ export async function upsertFineType(
     create: { editionId, ...input },
     update: { defaultAmountPaise: input.defaultAmountPaise, isActive: input.isActive },
   });
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_fine_type.upserted',
-    subjectRef: row.id,
+    subject: { type: 'fine_type', ref: row.id },
+    editionId: editionId,
     detail: input,
   });
   return row;

@@ -1,6 +1,5 @@
 import { Prisma, type PrismaClient, type StallRequestStatus } from '@prisma/client';
-import { parseStallNumber } from '@stalls/core';
-import { recordActivity } from '../../activity';
+import { type AuditAction, parseStallNumber } from '@stalls/core';
 import {
   InvalidTransitionError,
   StallAlreadyAllocatedError,
@@ -10,6 +9,7 @@ import {
   UnknownStallError,
   UnknownZoneError,
 } from './errors';
+import { actorFrom, audit } from './audit';
 import { MODULE_KEY } from './roles';
 
 /** The selection status machine. Anything not listed is an
@@ -48,11 +48,10 @@ async function transition(
     if (req.status === 'SELECTED' && to !== 'SELECTED') {
       await releaseAllForRequest(tx, id, by);
     }
-    await recordActivity(tx, {
-      actorRef: by,
-      moduleKey: MODULE_KEY,
-      action: `stall_request.${to.toLowerCase()}`,
-      subjectRef: id,
+    await audit(tx, {
+      actor: actorFrom(by),
+      action: `stall_request.${to.toLowerCase()}` as AuditAction,
+      requestId: id,
       detail: { from: req.status, ...extra },
     });
   });
@@ -149,11 +148,10 @@ export async function selectRequest(
       }
 
       await tx.stallRequest.update({ where: { id: req.id }, data: { status: 'SELECTED' } });
-      await recordActivity(tx, {
-        actorRef: by,
-        moduleKey: MODULE_KEY,
+      await audit(tx, {
+        actor: actorFrom(by),
         action: 'stall_request.selected',
-        subjectRef: req.id,
+        requestId: req.id,
         detail: {
           from: req.status,
           stalls: allocated,
@@ -228,11 +226,10 @@ export async function moveAllocation(
         },
       });
       await tx.stall.update({ where: { id: target.id }, data: { status: 'ALLOCATED' } });
-      await recordActivity(tx, {
-        actorRef: by,
-        moduleKey: MODULE_KEY,
+      await audit(tx, {
+        actor: actorFrom(by),
         action: 'stall_allocation.moved',
-        subjectRef: a.requestId,
+        requestId: a.requestId,
         detail: { from: a.stall.number, to: stallNumber },
       });
       return { stallNumber };
@@ -257,11 +254,10 @@ export async function releaseAllocation(db: PrismaClient, allocationId: string, 
       data: { activeStallId: null, releasedAt: new Date(), releasedBy: by },
     });
     await tx.stall.update({ where: { id: a.stallId }, data: { status: 'AVAILABLE' } });
-    await recordActivity(tx, {
-      actorRef: by,
-      moduleKey: MODULE_KEY,
+    await audit(tx, {
+      actor: actorFrom(by),
       action: 'stall_allocation.released',
-      subjectRef: a.requestId,
+      requestId: a.requestId,
       detail: { stall: a.stall.number },
     });
   });

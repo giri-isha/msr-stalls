@@ -12,6 +12,7 @@ import {
   isSelfServe,
   virtualAccountFor,
 } from '@stalls/core';
+import { requesterActor } from './audit';
 import { findAccountByContact, mintAccessLink } from './accounts';
 import { flowFor } from './config';
 import { claimsFor } from './payment-claims';
@@ -419,9 +420,9 @@ export async function stepLink(
  * ⚠️ SELECTED only. A coupon on a request still under review would be a
  * decision this route is not entitled to leak.
  *
- * The trail records the REQUEST as its own actor, following the bank form:
- * the vendor acted, and attributing it to whichever admin opens the record next
- * would be a lie about who asked.
+ * The trail records the ACCOUNT as the actor: the requester asked for this,
+ * and attributing it to whichever admin opens the record next would be a lie
+ * about who did.
  */
 export async function couponFor(
   db: PrismaClient,
@@ -439,7 +440,7 @@ export async function couponFor(
     request.id,
     request.stallName,
     request.edition.year,
-    request.id,
+    requesterActor(accountId),
   );
   return { code: coupon.code };
 }

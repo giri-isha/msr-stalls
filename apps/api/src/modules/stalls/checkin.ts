@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import type { CheckInRow } from '@stalls/core';
-import { recordActivity } from '../../activity';
+import { actorFrom, audit } from './audit';
 import { flowFor } from './config';
 import type { Db } from './editions';
 import { UnknownRequestError } from './errors';
@@ -114,11 +114,10 @@ export async function checkIn(
     // CHECKED_IN is the one stage that is recorded rather than derived, so it
     // is written here and `refreshStage` leaves it alone afterwards.
     await tx.stallRequest.update({ where: { id: requestId }, data: { stage: 'CHECKED_IN' } });
-    await recordActivity(tx, {
-      actorRef: by,
-      moduleKey: MODULE_KEY,
+    await audit(tx, {
+      actor: actorFrom(by),
       action: 'stall_request.checked_in',
-      subjectRef: requestId,
+      requestId: requestId,
       detail: note ? { note } : {},
     });
   });
@@ -148,11 +147,10 @@ export async function undoCheckIn(
   // `refreshStage` sees CHECKED_IN and declines to touch it.
   await db.stallRequest.update({ where: { id: requestId }, data: { stage: 'NEW' } });
   await refreshStage(db, requestId);
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_request.check_in_undone',
-    subjectRef: requestId,
+    requestId: requestId,
   });
 
   const fresh = await db.stallRequest.findUniqueOrThrow({

@@ -96,6 +96,8 @@ export const AUDIT_ACTION_INFO = {
   // ── Money ──────────────────────────────────────────────────────────────
   'stall_payment.confirmed': info('Payment Confirmed', 'money', 'rupee', 'ok'),
   'stall_payment.removed': info('Payment Record Removed', 'money', 'trash', 'warn'),
+  'stall_payment_plan.concession_set': info('Concession Agreed', 'money', 'rupee', 'warn'),
+  'stall_payment_plan.concession_cleared': info('Concession Cleared', 'money', 'undo', 'neutral'),
   'stall_refund.submitted': info('Refund Sent to Finance', 'money', 'send', 'info'),
   'stall_refund.paid': info('Refund Voucher Recorded', 'money', 'circle-check', 'ok'),
   // ── Communication ──────────────────────────────────────────────────────

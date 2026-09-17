@@ -28,7 +28,7 @@ import {
   needsNewVersion,
   sameValueShape,
 } from '@stalls/core';
-import { recordActivity } from '../../activity';
+import { actorFrom, audit } from './audit';
 import type { Db } from './editions';
 import { SameEditionCopyError } from './errors';
 import { MODULE_KEY } from './roles';
@@ -931,11 +931,11 @@ export async function applyCopy(
       overwritten: plan.overwrite.length,
       skipped: plan.skip.length,
     };
-    await recordActivity(tx, {
-      actorRef: by,
-      moduleKey: MODULE_KEY,
+    await audit(tx, {
+      actor: actorFrom(by),
       action: 'stall_edition.copied',
-      subjectRef: into.id,
+      subject: { type: 'edition', ref: into.id },
+      editionId: into.id,
       detail: {
         section,
         sectionLabel: COPY_SECTION_LABELS[section],

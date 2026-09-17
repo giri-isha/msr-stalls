@@ -10,8 +10,8 @@ import {
   equipmentDeduction,
   needsPaymentStep,
 } from '@stalls/core';
-import { recordActivity } from '../../activity';
 import { ValidationFailedError } from '../../errors';
+import { actorFrom, audit } from './audit';
 import { chargesFor } from './config';
 import type { Db } from './editions';
 import { DuplicatePaymentError, RefundAlreadySubmittedError, UnknownRequestError } from './errors';
@@ -195,14 +195,13 @@ export async function setDiscretionaryFee(
   });
 
   await refreshStage(db, requestId);
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action:
       input.discretionaryFeePaise === null
         ? 'stall_payment_plan.concession_cleared'
         : 'stall_payment_plan.concession_set',
-    subjectRef: requestId,
+    requestId: requestId,
     detail: {
       quotedPaise: q.feeTotalPaise,
       agreedPaise: input.discretionaryFeePaise,
@@ -251,11 +250,10 @@ export async function confirmPayment(
   }
 
   await refreshStage(db, requestId);
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_payment.confirmed',
-    subjectRef: requestId,
+    requestId: requestId,
     detail: {
       purpose: input.purpose,
       referenceNo: input.referenceNo,
@@ -269,11 +267,10 @@ export async function deletePayment(db: PrismaClient, id: string, by: string): P
   if (!row) throw new UnknownRequestError(id);
   await db.stallPaymentRecord.delete({ where: { id } });
   await refreshStage(db, row.requestId);
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_payment.removed',
-    subjectRef: row.requestId,
+    requestId: row.requestId,
     detail: { referenceNo: row.referenceNo, amountPaise: row.amountPaise },
   });
 }
@@ -459,11 +456,10 @@ export async function submitRefund(
       submittedBy: by,
     },
   });
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_refund.submitted',
-    subjectRef: requestId,
+    requestId: requestId,
     detail: {
       refundDuePaise: computed.refundDuePaise,
       deductionPaise: computed.totalDeductionPaise,
@@ -489,11 +485,10 @@ export async function setVoucherRef(
   const row = await db.stallRefund.findUnique({ where: { requestId } });
   if (!row) throw new UnknownRequestError(requestId);
   await db.stallRefund.update({ where: { requestId }, data: { voucherRef } });
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_refund.paid',
-    subjectRef: requestId,
+    requestId: requestId,
     detail: { voucherRef },
   });
 }

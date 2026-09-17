@@ -17,7 +17,6 @@ import {
   assignableRoleKeys,
   cannotAssign,
 } from '@stalls/core';
-import { recordActivity } from '../../activity';
 import {
   PrivilegeEscalationError,
   RoleAboveYouError,
@@ -27,6 +26,7 @@ import {
   SystemRoleError,
   UnknownRoleError,
 } from './errors';
+import { actorFrom, audit } from './audit';
 import { MODULE_KEY, type BackofficeCaller, assignableRolesFor, roleTree } from './roles';
 
 /** One role, opened for editing. */
@@ -230,11 +230,10 @@ export async function createRole(
   });
   await setPrivileges(db, role.id, bundleFor(input));
 
-  await recordActivity(db, {
-    actorRef: caller.personId,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(caller.personId),
     action: 'stall_role.created',
-    subjectRef: role.id,
+    subject: { type: 'role', ref: role.id },
     detail: { roleKey: input.roleKey, privileges: bundleFor(input) },
   });
   return getRole(db, caller, input.roleKey);
@@ -273,11 +272,10 @@ export async function updateRole(
   });
   await setPrivileges(db, role.id, bundleFor(input));
 
-  await recordActivity(db, {
-    actorRef: caller.personId,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(caller.personId),
     action: 'stall_role.updated',
-    subjectRef: role.id,
+    subject: { type: 'role', ref: role.id },
     detail: { roleKey, privileges: bundleFor(input) },
   });
   return getRole(db, caller, roleKey);
@@ -305,11 +303,10 @@ export async function deleteRole(
   // out loud here because it is the surprising half of this operation.
   await db.stallRole.delete({ where: { roleKey } });
 
-  await recordActivity(db, {
-    actorRef: caller.personId,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(caller.personId),
     action: 'stall_role.deleted',
-    subjectRef: role.id,
+    subject: { type: 'role', ref: role.id },
     detail: { roleKey, orphanedChildren: role._count.children },
   });
 }

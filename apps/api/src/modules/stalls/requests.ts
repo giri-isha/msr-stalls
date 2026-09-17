@@ -7,7 +7,7 @@ import type {
   RequestPage,
   RequestSummary,
 } from '@stalls/core';
-import { recordActivity } from '../../activity';
+import { actorFrom, audit } from './audit';
 import type { Db } from './editions';
 import { UnknownRequestError, UnknownZoneError } from './errors';
 import { MODULE_KEY } from './roles';
@@ -242,11 +242,10 @@ export async function patchRequest(
         });
       }
     }
-    await recordActivity(tx, {
-      actorRef: by,
-      moduleKey: MODULE_KEY,
+    await audit(tx, {
+      actor: actorFrom(by),
       action: 'stall_request.amended',
-      subjectRef: id,
+      requestId: id,
       detail: { fields: Object.keys(input) },
     });
   });
@@ -261,11 +260,10 @@ export async function flagRequest(db: PrismaClient, id: string, reason: string, 
     where: { id },
     data: { flaggedAt: new Date(), flagReason: reason },
   });
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_request.flagged',
-    subjectRef: id,
+    requestId: id,
     detail: { reason },
   });
 }
@@ -274,11 +272,10 @@ export async function unflagRequest(db: PrismaClient, id: string, by: string) {
   const exists = await db.stallRequest.findUnique({ where: { id }, select: { id: true } });
   if (!exists) throw new UnknownRequestError(id);
   await db.stallRequest.update({ where: { id }, data: { flaggedAt: null, flagReason: null } });
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_request.unflagged',
-    subjectRef: id,
+    requestId: id,
   });
 }
 

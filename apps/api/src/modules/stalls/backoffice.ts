@@ -8,7 +8,7 @@ import {
   cannotAssign,
   cannotEdit,
 } from '@stalls/core';
-import { recordActivity } from '../../activity';
+import { actorFrom, audit } from './audit';
 import { normalizeEmail } from './accounts';
 import type { Db } from './editions';
 import {
@@ -261,14 +261,10 @@ export async function grantRole(
       // the one failure nobody would look for.
       update: { editionScope, zoneScope },
     });
-    await recordActivity(tx, {
-      actorRef: by,
-      moduleKey: MODULE_KEY,
+    await audit(tx, {
+      actor: actorFrom(by),
       action: 'stall_backoffice_role.granted',
-      subjectRef: target.personId,
-      // Recorded because it is the interesting half: this grant went to a human
-      // nobody has verified yet, and the trail should say so rather than read
-      // like an ordinary assignment to somebody the Foundation already knew.
+      subject: { type: 'person', ref: target.personId },
       detail: {
         roleKey: input.roleKey,
         editionScope,
@@ -329,11 +325,10 @@ export async function updatePersonDetails(
   if (Object.keys(changed).length === 0) return;
 
   await db.person.update({ where: { personId: personRef }, data: next });
-  await recordActivity(db, {
-    actorRef: caller.personId,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(caller.personId),
     action: 'person.updated',
-    subjectRef: personRef,
+    subject: { type: 'person', ref: personRef },
     detail: changed,
   });
 }
@@ -363,11 +358,10 @@ export async function revokeRole(
     await tx.stallBackofficeRole.deleteMany({
       where: { personRef: input.personRef, roleKey: input.roleKey },
     });
-    await recordActivity(tx, {
-      actorRef: by,
-      moduleKey: MODULE_KEY,
+    await audit(tx, {
+      actor: actorFrom(by),
       action: 'stall_backoffice_role.revoked',
-      subjectRef: input.personRef,
+      subject: { type: 'person', ref: input.personRef },
       detail: { roleKey: input.roleKey },
     });
   });

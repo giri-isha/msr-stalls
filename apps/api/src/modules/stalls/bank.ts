@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { type BankFormView, type SubmitBankDetailsInput, validateAgainstForm } from '@stalls/core';
 import { ValidationFailedError } from '../../errors';
-import { recordActivity } from '../../activity';
+import { audit, requesterActor } from './audit';
 import { flowFor } from './config';
 import { declarationsForForm, recordConsent, sameDeclarations } from './declarations';
 import { allowedCustomValues, replaceCustomValues } from './custom-values';
@@ -197,13 +197,12 @@ export async function submitBankDetails(
       });
     }
 
-    await recordActivity(tx, {
-      // The vendor acted, not a backoffice member. The trail records the request as
-      // its own actor rather than attributing this to whoever looks at it next.
-      actorRef: requestId,
-      moduleKey: MODULE_KEY,
+    await audit(tx, {
+      // The requester acted, from their own link — not whoever opens the
+      // record next. The account is the actor; the request is the subject.
+      actor: requesterActor(r.accountId),
       action: 'stall_bank_detail.submitted',
-      subjectRef: requestId,
+      requestId,
       detail: { gst: (input.gstNumber ?? '').toUpperCase() !== 'NONE' },
     });
   });

@@ -790,7 +790,10 @@ describe('editing a requester', () => {
 
     const [entry] = await trailFor(account.id);
     expect(entry.actorRef).toBe(admin.personId);
-    expect(entry.detail).toEqual({
+    // `toMatchObject`, not `toEqual`: the forward to the host trail also carries
+    // the subject's TYPE, because `subjectRef` alone does not say which table a
+    // uuid came from. What this test is about is the change itself.
+    expect(entry.detail).toMatchObject({
       email: { from: 'priya@greenleaf.example', to: 'priya@greenleaf.co.in' },
     });
   });

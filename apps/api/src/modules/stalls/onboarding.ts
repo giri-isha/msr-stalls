@@ -14,8 +14,8 @@ import {
   normalizeCouponCode,
 } from '@stalls/core';
 import { ValidationFailedError } from '../../errors';
-import { recordActivity } from '../../activity';
 import type { MediaStore } from '../../storage/media-namespace';
+import { type AuditActor, actorFrom, audit } from './audit';
 import { flowFor } from './config';
 import { declarationsForForm, recordConsent, sameDeclarations } from './declarations';
 import { allowedCustomValues, replaceCustomValues } from './custom-values';
@@ -27,7 +27,7 @@ import {
   UnknownCouponError,
   UnknownRequestError,
 } from './errors';
-import { DEFAULT_STAFF_COUPON_CAPACITY, validateAgainstForm } from '@stalls/core';
+import { DEFAULT_STAFF_COUPON_CAPACITY, SYSTEM_ACTOR_REF, validateAgainstForm } from '@stalls/core';
 import {
   allocatedNumbers,
   factsInclude,
@@ -58,6 +58,22 @@ export function liveCoupons(db: Db, requestId: string): Promise<StallStaffCoupon
   });
 }
 
+/** A coupon is minted by a member pressing a button, and also by a REQUESTER
+ *  asking for their own from the portal — so `by` is either a person id or an
+ *  actor the caller has already resolved. */
+const asActor = (by: string | AuditActor): AuditActor =>
+  typeof by === 'string' ? actorFrom(by) : by;
+
+/** What `issued_by` records. A requester-issued coupon records their account,
+ *  which is what the column has always held for one (it held the REQUEST id
+ *  before the audit log gave the act a real actor). */
+const issuedBy = (by: string | AuditActor): string => {
+  if (typeof by === 'string') return by;
+  if (by.kind === 'BACKOFFICE') return by.personId;
+  if (by.kind === 'REQUESTER') return by.accountId;
+  return SYSTEM_ACTOR_REF;
+};
+
 /** Mints a coupon on first use and returns the existing one afterwards.
  *
  *  Idempotent by design: the coupon is printed in two different letters and
@@ -70,7 +86,7 @@ export async function ensureCoupon(
   requestId: string,
   stallName: string,
   year: number,
-  by: string,
+  by: string | AuditActor,
 ): Promise<StallStaffCoupon> {
   const [existing] = await liveCoupons(db, requestId);
   if (existing) return existing;
@@ -96,7 +112,7 @@ export async function issueCoupon(
   requestId: string,
   stallName: string,
   year: number,
-  by: string,
+  by: string | AuditActor,
 ): Promise<StallStaffCoupon> {
   // A collision is vanishingly unlikely at 40 bits over a few hundred coupons,
   // but `code` is a unique column and a retry is three lines.
@@ -104,13 +120,12 @@ export async function issueCoupon(
     const code = formatCouponCode(stallName, year, randomBytes(COUPON_RANDOM_LENGTH));
     try {
       const created = await db.stallStaffCoupon.create({
-        data: { requestId, code, issuedBy: by, capacity: DEFAULT_STAFF_COUPON_CAPACITY },
+        data: { requestId, code, issuedBy: issuedBy(by), capacity: DEFAULT_STAFF_COUPON_CAPACITY },
       });
-      await recordActivity(db, {
-        actorRef: by,
-        moduleKey: MODULE_KEY,
+      await audit(db, {
+        actor: asActor(by),
         action: 'stall_staff_coupon.issued',
-        subjectRef: requestId,
+        requestId: requestId,
         detail: { code },
       });
       return created;
@@ -215,11 +230,10 @@ export async function setCouponCapacity(
     where: { id: couponId },
     data: { capacity },
   });
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_staff_coupon.capacity_set',
-    subjectRef: coupon.requestId,
+    requestId: coupon.requestId,
     detail: { code: coupon.code, from: coupon.capacity, to: capacity },
   });
   return updated;
@@ -336,11 +350,10 @@ export async function removeStaff(db: PrismaClient, id: string, by: string): Pro
   if (!row) throw new UnknownRequestError(id);
   await db.stallVendorStaff.delete({ where: { id } });
   await refreshStage(db, row.requestId);
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_vendor_staff.removed',
-    subjectRef: row.requestId,
+    requestId: row.requestId,
     detail: { name: row.name },
   });
 }
@@ -420,11 +433,10 @@ export async function verifyFssai(
     where: { requestId },
     data: { verifiedAt: verified ? new Date() : null, verifiedBy: verified ? by : null },
   });
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: verified ? 'stall_fssai.verified' : 'stall_fssai.unverified',
-    subjectRef: requestId,
+    requestId: requestId,
   });
 }
 

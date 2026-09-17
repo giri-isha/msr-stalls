@@ -18,7 +18,7 @@ import {
   type SubmitPaymentClaimInput,
   payableFeePaise,
 } from '@stalls/core';
-import { recordActivity } from '../../activity';
+import { actorFrom, audit } from './audit';
 import type { Db } from './editions';
 import {
   ClaimAlreadyReviewedError,
@@ -226,11 +226,10 @@ export async function reviewPaymentClaim(
       where: { id: claimId },
       data: { status: 'REJECTED', rejectReason: reason, reviewedAt: new Date(), reviewedBy: by },
     });
-    await recordActivity(db, {
-      actorRef: by,
-      moduleKey: MODULE_KEY,
-      subjectRef: claim.requestId,
+    await audit(db, {
+      actor: actorFrom(by),
       action: 'stall_payment_claim.rejected',
+      requestId: claim.requestId,
       detail: { purpose: claim.purpose, referenceNo: claim.referenceNo, reason },
     });
     return;

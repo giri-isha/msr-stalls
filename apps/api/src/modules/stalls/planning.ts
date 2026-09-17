@@ -9,7 +9,7 @@ import {
   planTotals,
   suggestStallCount,
 } from '@stalls/core';
-import { recordActivity } from '../../activity';
+import { actorFrom, audit } from './audit';
 import { chargesFor, listZones, planCategoriesFor } from './config';
 import type { Db } from './editions';
 import { UnknownCategoryError, UnknownZoneError } from './errors';
@@ -117,11 +117,11 @@ export async function writePlan(
         });
       }
     }
-    await recordActivity(tx, {
-      actorRef: by,
-      moduleKey: MODULE_KEY,
+    await audit(tx, {
+      actor: actorFrom(by),
       action: 'stall_plan.written',
-      subjectRef: editionId,
+      subject: { type: 'edition', ref: editionId },
+      editionId: editionId,
       detail: { zones: input.rows.length, crowdPerStall: input.crowdPerStall },
     });
   });
@@ -206,11 +206,11 @@ export async function applyPlan(
         result.created.push(number);
       }
     }
-    await recordActivity(tx, {
-      actorRef: by,
-      moduleKey: MODULE_KEY,
+    await audit(tx, {
+      actor: actorFrom(by),
       action: 'stall_plan.applied',
-      subjectRef: editionId,
+      subject: { type: 'edition', ref: editionId },
+      editionId: editionId,
       detail: {
         created: result.created.length,
         removed: result.removed.length,

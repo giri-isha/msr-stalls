@@ -5,7 +5,7 @@ import {
   isPlaceholderEmail,
   parseContact,
 } from '@stalls/core';
-import { recordActivity } from '../../activity';
+import { actorFrom, audit } from './audit';
 import { normalizeEmail } from './accounts';
 import { clearLockout, setAccountPassword } from './credentials';
 import type { Db } from './editions';
@@ -107,11 +107,11 @@ export async function updateAccount(
   if (Object.keys(changed).length === 0) return;
 
   await db.stallAccount.update({ where: { id: account.id }, data: next });
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_account.updated',
-    subjectRef: account.id,
+    subject: { type: 'account', ref: account.id },
+    accountId: account.id,
     detail: changed,
   });
 }
@@ -132,11 +132,11 @@ export async function unlockAccount(
   }
   const cleared = await clearLockout(db, account.id);
   if (cleared === 0) throw new NothingToSendError('this login is not locked');
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_account.unlocked',
-    subjectRef: account.id,
+    subject: { type: 'account', ref: account.id },
+    accountId: account.id,
     detail: { credentials: cleared },
   });
 }
@@ -151,11 +151,11 @@ export async function sendAccountAccessLink(
 ): Promise<void> {
   const account = await accountOr404(db, accountId);
   await deliverAccessLink(db, deps, account);
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_account.access_link_sent',
-    subjectRef: account.id,
+    subject: { type: 'account', ref: account.id },
+    accountId: account.id,
     detail: {},
   });
 }
@@ -237,13 +237,11 @@ export async function setRequesterPassword(
   }
 
   await endAllSessions(db, account.id);
-  await recordActivity(db, {
-    actorRef: by,
-    moduleKey: MODULE_KEY,
+  await audit(db, {
+    actor: actorFrom(by),
     action: 'stall_account.password_set',
-    subjectRef: account.id,
-    // ⚠️ The password is NOT here and must never be. What the trail answers is
-    // who handed one out, to whom, and whether it was a new login or a reset.
+    subject: { type: 'account', ref: account.id },
+    accountId: account.id,
     detail: { created, loginKind: contact.kind },
   });
 }
