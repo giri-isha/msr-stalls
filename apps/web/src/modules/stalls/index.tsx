@@ -25,6 +25,7 @@ import { Users } from './backoffice/access/Users';
 import { CheckIn } from './backoffice/CheckIn';
 import { Communication } from './backoffice/Communication';
 import { Dashboard } from './backoffice/Dashboard';
+import { FileRequest } from './backoffice/FileRequest';
 import { Documentation } from './backoffice/Documentation';
 import { Electrical } from './backoffice/Electrical';
 import { Equipment } from './backoffice/Equipment';
@@ -78,6 +79,8 @@ export const stallsPublicRoutes: RouteObject[] = [
 export const stallsBackofficeRoutes: RouteObject[] = [
   { index: true, element: <Landing /> },
   { path: 'requests', element: <Requests /> },
+  // Before `requests/:id`, so the static segment is never read as an id.
+  { path: 'requests/new', element: <FileRequest /> },
   // One record, one page, hanging one segment under the list — so the back
   // link is the pathname with the id taken off, and the URL is something a
   // coordinator can paste to a colleague.

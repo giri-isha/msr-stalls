@@ -12,6 +12,7 @@ import {
   hasStage,
 } from '../components/StatusPill';
 import { formatDate, useLoad } from '../hooks';
+import { useMe } from '../me';
 import {
   Btn,
   Card,
@@ -69,6 +70,7 @@ const COLUMNS: ColumnDef[] = [
  *  answer depended on a stage they were trying to look up in the first place.
  *  Triage is what the filters are FOR, so it is a filter now, not an address. */
 export function Requests() {
+  const { can } = useMe();
   const [params, setParams] = useSearchParams();
   const q = params.get('q') ?? '';
   const requestType = params.get('requestType') ?? '';
@@ -157,6 +159,14 @@ export function Requests() {
         sub='Every request in the pipeline. Click one to see its full application.'
         actions={
           <>
+            {can('filing.request') && (
+              <Link to='/m/stalls/requests/new' style={{ textDecoration: 'none' }}>
+                <Btn kind='primary'>
+                  <Icon name='plus' size={14} />
+                  File a Request
+                </Btn>
+              </Link>
+            )}
             {/* ⚠️ Only with the table. The cards are a fixed layout — they read
                 the same fields whatever the picker says — so offering it there
                 would be a control that changes nothing on the screen it is
