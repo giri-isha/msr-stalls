@@ -1,7 +1,12 @@
-import type { RequestDetail } from '@stalls/core';
+import {
+  type RequestDetail,
+  type StallRequestType,
+  needsPaymentStep,
+  rupeesToPaise,
+} from '@stalls/core';
 import { useState } from 'react';
 import { ApiError } from '../api-client';
-import { availableStalls, listZones, patchRequest, select } from '../api';
+import { availableStalls, listZones, patchRequest, select, setDiscretionaryFee } from '../api';
 import { useLoad } from '../hooks';
 import { useMe } from '../me';
 import { Btn, Dialog, Icon, Input, Select, useToast } from '../ui';
@@ -47,6 +52,20 @@ export function SelectDialog({
    *  ⚠️ Not required, and left alone it changes nothing: blank means "whatever
    *  the form said", not zero. */
   const [countText, setCountText] = useState(String(r.numStallsRequested));
+  /** 🔴 The agreed fee, asked here for the same reason the bay and the count
+   *  are: it is settled in the same phone call. "For A3 the cost is 10,000 —
+   *  for the coconut wala, probably we will give that stall at 5,000." Until
+   *  it was here, recording it meant going to Finance afterwards, which is a
+   *  second screen for one number decided on this one.
+   *
+   *  ⚠️ The SAME writer Finance uses — `setDiscretionaryFee`. Two paths each
+   *  writing the plan would be two figures that can disagree about what a
+   *  trader owes. This is a second door, not a second record.
+   *
+   *  ⚠️ Left blank it changes nothing. Clearing an existing concession is
+   *  Finance's "back to the quoted fee", not an empty box here. */
+  const [feeText, setFeeText] = useState('');
+  const [feeReason, setFeeReason] = useState('');
   const [busy, setBusy] = useState(false);
 
   const bays = zones ?? [];
@@ -65,6 +84,20 @@ export function SelectDialog({
       : parsed >= 1 && parsed < held
         ? `This request already holds ${held}. Release one first.`
         : 'A number between 1 and 20.';
+  // Only vendors and local welfare traders are billed through this flow; an
+  // ashram department is billed internally and has no fee to concede.
+  // ⚠️ `requestType` is a plain string on the summary contract. The narrowing
+  // is safe — the column is the enum — and `needsPaymentStep` answers false for
+  // anything that is not one of the three in any case.
+  const canPrice = needsPaymentStep(r.requestType as StallRequestType) && can('finance.write');
+  const feeTyped = feeText.trim();
+  const feeRupees = Number(feeTyped);
+  const feeOk = feeTyped === '' || (Number.isFinite(feeRupees) && feeRupees >= 0);
+  const feeError = !feeOk
+    ? 'An amount in rupees, or leave it blank.'
+    : feeTyped !== '' && feeReason.trim().length === 0
+      ? 'Say why the amount was reduced.'
+      : null;
   const wanted = countOk ? parsed : r.numStallsRequested;
   const remaining = Math.max(0, wanted - held);
   const stalls = data ?? [];
@@ -84,6 +117,32 @@ export function SelectDialog({
         await patchRequest(r.id, { numStallsRequested: parsed });
       }
       const out = await select(r.id, picked, agreedZone || undefined);
+      // ⚠️ AFTER the select, and it has to be. The plan is built from the live
+      // quote, which reads the agreed bay and the stall count written above —
+      // conceding first would discount a figure the selection is about to
+      // change.
+      //
+      // ⚠️ Its failure does not fail the selection, which already happened. An
+      // exempt or unpriced stall is refused by the API, and saying "something
+      // went wrong" here would have the reader redo a selection that stands.
+      if (canPrice && feeTyped !== '') {
+        try {
+          await setDiscretionaryFee(r.id, {
+            discretionaryFeePaise: rupeesToPaise(feeRupees),
+            reason: feeReason.trim(),
+          });
+        } catch (e) {
+          toast.fail(
+            new Error(
+              `Selected, but the agreed fee was not saved${
+                e instanceof ApiError ? `: ${e.message}` : ''
+              }. Set it on Finance.`,
+            ),
+          );
+          onDone();
+          return;
+        }
+      }
       toast.ok(
         out.allocated.length > 0
           ? `Allocated ${out.allocated.join(', ')}`
@@ -118,7 +177,12 @@ export function SelectDialog({
           <Btn onClick={onClose}>Cancel</Btn>
           <Btn
             kind='primary'
-            disabled={busy || countError !== null || (picked.length === 0 && !agreedZone)}
+            disabled={
+              busy ||
+              countError !== null ||
+              feeError !== null ||
+              (picked.length === 0 && !agreedZone)
+            }
             onClick={confirm}
           >
             <Icon name='check' size={14} />
@@ -182,6 +246,38 @@ export function SelectDialog({
             <span style={{ fontSize: 11, color: countError ? 'var(--des-fg)' : 'var(--mfg)' }}>
               {countError ??
                 `They asked for ${r.numStallsRequested}. Change it only if the team agreed a different number.`}
+            </span>
+          </div>
+        )}
+
+        {canPrice && (
+          <div style={{ display: 'grid', gap: 4 }}>
+            <label
+              htmlFor='agreed-fee'
+              style={{ fontSize: 11, fontWeight: 700, color: 'var(--mfg)' }}
+            >
+              Fee Agreed with the Requester <span style={{ fontWeight: 600 }}>(optional)</span>
+            </label>
+            <Input
+              id='agreed-fee'
+              type='number'
+              min={0}
+              placeholder='Rupees'
+              value={feeText}
+              onChange={(e) => setFeeText(e.target.value)}
+              style={{ width: 'auto', minWidth: 140 }}
+            />
+            {feeText.trim() !== '' && (
+              <Input
+                aria-label='Why the fee was reduced'
+                placeholder='Why the fee was reduced'
+                value={feeReason}
+                onChange={(e) => setFeeReason(e.target.value)}
+              />
+            )}
+            <span style={{ fontSize: 11, color: feeError ? 'var(--des-fg)' : 'var(--mfg)' }}>
+              {feeError ??
+                'Leave blank to charge the card rate. The quoted figure is kept either way — this is what they are asked for.'}
             </span>
           </div>
         )}

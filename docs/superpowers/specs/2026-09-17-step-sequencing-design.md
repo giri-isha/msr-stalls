@@ -1,7 +1,7 @@
 # The steps open in an order the edition chooses
 
 Date: 2026-09-17
-Status: Approved
+Status: Built
 
 ## The problem
 
@@ -100,6 +100,31 @@ Overview is the road; the tabs are the doors that are actually unlocked.
 This keeps the portal's existing rule intact: which tabs exist is read off the
 API and never decided on the page. The API now says one more thing about each
 step, and the page still only draws what it is told.
+
+## Asking about the stage, not about the list
+
+⚠️ Found while building, and it is the one place the "lowest pending stage"
+rule is not enough on its own.
+
+`STAFF_REGISTRATION` is absent from `pendingSteps` until a coupon has been
+issued — nobody can register against a code that does not exist. So a check that
+asked "is this step in the gated list, and is it locked" would answer **not
+locked** for exactly the request whose Get Your Coupon button is about to mint
+that coupon, and the ordering would be walked straight past by the one button
+that starts the step.
+
+So there are two questions, and the callers are split between them:
+
+- `isStepOpen` — is this step outstanding AND unlocked. What the bank and FSSAI
+  form mint asks, because a step already satisfied is not a thing to do again.
+- `isStepLocked` — is this step's STAGE above the open stage, whether or not the
+  step is currently in the pending list. What the coupon route, the staff
+  registration route and the letters ask, because each of them is a way of
+  STARTING a step rather than continuing one.
+
+Both are built on `openStage` (the lowest stage still outstanding, or null) and
+`blockingSteps` (the outstanding steps of that stage). `isStepLocked` is false
+when nothing at all is outstanding — there is nothing left to wait for.
 
 ## Hiding is not refusing
 
@@ -206,6 +231,11 @@ already in the contracts — the question is simply absent from one form.
 So it is added to `LOCAL_WELFARE_FIELDS`, after `passes4w`, required with a
 floor of zero like its neighbours.
 
+⚠️ A test asserted the opposite — *"asks for vehicle passes but not staff
+passes — the 2025 form did not"* — on a transcription that had missed the
+question. The printed sheet asks it, between the vehicle passes and the caution
+deposit. The test is corrected along with the seed, and carries why.
+
 ⚠️ The seed reaches no existing edition — `seedFormDefinitions` skips a form
 definition that already exists, which is the whole point of forms being rows.
 So the migration also inserts the field into every existing local welfare
@@ -229,6 +259,21 @@ Finance. The same function, the same audit action, the same requirement that a
 concession says why it was given — one writer, two doors. Two paths that each
 wrote the plan would be two figures that can disagree.
 
+⚠️ It runs **after** the select, not before. The plan is built from the live
+quote, which reads the agreed bay and the stall count the same dialog writes;
+conceding first would discount a figure the selection is about to change. Its
+failure does not fail the selection, which has already happened — an exempt or
+unpriced stall is refused by the API, and reporting that as "something went
+wrong" would have the reader redo a selection that stands.
+
+🔴 **The field is drawn only for `finance.write`,** which is what the route
+requires — showing a control that 403s on submit is worse than not showing it.
+The **Lead role does not hold `finance.write`** (it holds `finance.read`), so a
+lead doing the selection will not see the field. Whether leads should be granted
+`finance.write`, or the concession route should also accept `selection.write`,
+is a privileges decision rather than a matter for this change, and it is left as
+it stands.
+
 ## Tests
 
 `packages/stalls` — `gatedSteps`: all-`1` opens everything; `1,2,3,4` opens one
@@ -245,5 +290,14 @@ coupon while staff is locked; `statusView` carrying `open` and `blockedBy`;
 carrying `passesStaff`.
 
 `apps/web` — the Flow grid saving stages and the two presets filling a column;
-a locked step drawing no tab and a greyed Overview row with its reason; an open
-step unchanged.
+a disabled cell where a step does not apply; a locked step drawing no tab and a
+greyed Overview row with its reason; an open step unchanged; the agreed fee
+reaching `setDiscretionaryFee` after the select, absent when left blank, refused
+without a reason, and not offered to a lead.
+
+⚠️ The portal reads `open !== false` rather than `open`, and the Admin grid
+falls back to all-at-once when `stages` is absent. The web and the API deploy
+separately, so a page served ahead of an API that does not send these fields
+must keep behaving as it did rather than locking everything or failing to
+render. The existing portal fixtures deliberately omit `open` and are what holds
+that.
