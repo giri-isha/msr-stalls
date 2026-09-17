@@ -12,6 +12,7 @@ import {
 } from '@stalls/core';
 import { StatusPill, TYPE_LABEL } from '../components/StatusPill';
 import { PaymentClaim } from './PaymentClaim';
+import { Copyable, Panel, Row } from './portal-ui';
 import { formatDate } from '../hooks';
 import { Btn, Card, Icon, Tag, useIsMobile, useToast } from '../ui';
 
@@ -640,109 +641,5 @@ function Coupon({ coupon, sole }: { coupon: CouponSummary; sole: boolean }) {
         <Row k='On this code' v={`${coupon.registered} registered, up to ${coupon.capacity}`} />
       )}
     </div>
-  );
-}
-
-/** The plate a step's detail sits on — one look for the payment figures and the
- *  coupon, so the card reads as one thing rather than two panels that grew
- *  separately. */
-function Panel({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        display: 'grid',
-        gap: 6,
-        justifyItems: 'start',
-        width: '100%',
-        // Wider than the 460 it was, because the public side is no longer a
-        // 760px column — the payment figures and the coupon rows are label and
-        // value pairs, and a 460 plate on a 1060 page wrapped them for no
-        // reason. Capped rather than full-width: a row whose label sits a
-        // hand's width from its value is not a row a reader can follow.
-        maxWidth: 560,
-        padding: '12px 14px',
-        borderRadius: 'var(--r2)',
-        background: 'var(--mut)',
-        border: '1px solid var(--bd)',
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-/** A label and its value.
- *
- *  ⚠️ STACKED on a phone, side by side above it. Beside each other the label
- *  takes a fixed 132px rail, which is what lines the rows up into a column a
- *  reader can scan — and on a 390px screen leaves too little for a coupon code,
- *  so the value wrapped under a label that was still vertically centred against
- *  it. Label over value is the same information in the space there is. */
-function Row({ k, v, strong }: { k: string; v: React.ReactNode; strong?: boolean }) {
-  const mobile = useIsMobile();
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: mobile ? 'column' : 'row',
-        gap: mobile ? 2 : 10,
-        width: '100%',
-        fontSize: 12.5,
-        alignItems: mobile ? 'stretch' : 'center',
-      }}
-    >
-      <div style={{ width: mobile ? undefined : 132, flex: 'none', color: 'var(--mfg)' }}>{k}</div>
-      <div style={{ flex: 1, minWidth: 0, fontWeight: strong ? 700 : 600 }}>{v}</div>
-    </div>
-  );
-}
-
-/**
- * A value a requester has to get somewhere else exactly right — an account
- * number they will type into their bank, a coupon they will forward to their
- * team. Both are transcription errors waiting to happen, and a wrong account
- * number means money that has to be traced.
- *
- * ⚠️ The clipboard is not always there — an insecure origin, an older browser,
- * a denied permission — so a failure falls back to telling them to copy it by
- * hand rather than silently doing nothing. The value is on screen either way;
- * the button is a convenience, never the only way to get at it.
- */
-function Copyable({ value, label }: { value: string; label: string }) {
-  const toast = useToast();
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      toast.ok(`${label} copied.`);
-    } catch {
-      toast.fail(
-        new Error(`Could not copy. Please select the ${label.toLowerCase()} and copy it.`),
-      );
-    }
-  };
-
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-      <span style={{ fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace' }}>{value}</span>
-      <button
-        type='button'
-        onClick={() => void copy()}
-        aria-label={`Copy ${label.toLowerCase()}`}
-        title={`Copy ${label.toLowerCase()}`}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          padding: 4,
-          borderRadius: 'var(--r1)',
-          border: '1px solid var(--bd)',
-          background: 'var(--bg)',
-          color: 'var(--mfg)',
-          cursor: 'pointer',
-        }}
-      >
-        <Icon name='copy' size={12} />
-      </button>
-    </span>
   );
 }
