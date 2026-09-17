@@ -1,5 +1,8 @@
 import { z } from 'zod';
+import { CALL_OUTCOMES, CALL_QUESTION_TYPES } from './call-form';
 import type { Declaration } from './declarations';
+import type { DateWindow } from './field-rules';
+import type { FieldOption } from './forms';
 import type { BuilderForm, BuiltForm } from './form-builder';
 import { AUTHORABLE_FIELD_TYPES } from './form-builder';
 import { SELF_SERVE_STEPS } from './access';
@@ -1747,9 +1750,36 @@ export interface CommRecipient {
 export const ReminderKind = z.enum(['BANK', 'PAYMENT']);
 export type ReminderKind = z.infer<typeof ReminderKind>;
 
+/** ⚠️ Read from `CALL_OUTCOMES` rather than spelled again — the lesson
+ *  `AddFormFieldInput.fieldType` already learned, where a retyped list drifted
+ *  from the picker that filled it. */
+export const CallOutcomeValue = z.enum(CALL_OUTCOMES);
+export type CallOutcomeValue = z.infer<typeof CallOutcomeValue>;
+
+/** One calendar day, as every date on the wire in this module is written. */
+const DayString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected a date as YYYY-MM-DD');
+
+/**
+ * What a caller records once the call is over.
+ *
+ * 🔴 `note` is unchanged and still optional — every row logged before the call
+ * form existed has one or has nothing, and a required field here would have
+ * made this a breaking change to a button that has been in use all edition.
+ *
+ * ⚠️ `outcome` is optional for exactly that window and no longer: the dialog
+ * always sends one. See `stall_reminder_call.outcome`, which is nullable for
+ * the rows logged before there was anything to ask.
+ */
 export const LogReminderInput = z.object({
   kind: ReminderKind,
   note: z.string().trim().max(500).optional(),
+  outcome: CallOutcomeValue.optional(),
+  /** Set when the outcome is `CALLBACK`; refused on every other one, because a
+   *  day to ring back on a call that was refused is a date nobody will read. */
+  callbackDate: DayString.nullable().optional(),
+  /** Keyed by question id. Shape only — which questions were asked, and what
+   *  their limits are, is `checkCallAnswers` on both sides of the wire. */
+  answers: z.record(z.string(), z.unknown()).optional(),
 });
 
 export interface ReminderRow {
@@ -1762,7 +1792,124 @@ export interface ReminderRow {
   kind: ReminderKind;
   callCount: number;
   lastCalledAt: string | null;
+  /** How the LAST call went, so the list answers "has anyone got through" at a
+   *  glance. Null on a row whose only calls predate the outcome being asked. */
+  lastOutcome: CallOutcomeValue | null;
+  /** The day the vendor asked to be rung back on, from the last call that
+   *  named one. Past-dated is the useful case — it is the row to ring today. */
+  callbackDate: string | null;
 }
+
+/* ── The call form ─────────────────────────────────────────────────────────*/
+
+/** One question on a call form, as the wire carries it. */
+export interface CallQuestionView {
+  id: string;
+  ordinal: number;
+  label: string;
+  help: string | null;
+  fieldType: string;
+  isRequired: boolean;
+  isActive: boolean;
+  options: FieldOption[] | null;
+  min: number | null;
+  max: number | null;
+  minLen: number | null;
+  maxLen: number | null;
+  decimals: number | null;
+  pattern: string | null;
+  patternHint: string | null;
+  window: DateWindow | null;
+  showIfQuestionId: string | null;
+  showIfValue: string | null;
+  showOnOutcomes: CallOutcomeValue[];
+  /** How many calls have answered it. What decides whether the builder offers
+   *  Delete or only Switch off — see `canDeleteCallQuestion`. */
+  answerCount: number;
+}
+
+/** One reminder kind's whole form. */
+export interface CallFormView {
+  kind: ReminderKind;
+  script: string;
+  /** When the script was last reworded, and by whom. Null while it is still
+   *  the empty one an edition starts with. */
+  scriptUpdatedAt: string | null;
+  questions: CallQuestionView[];
+}
+
+/** One call already logged, with what was said. Read by the call history. */
+export interface ReminderCallView {
+  id: string;
+  kind: ReminderKind;
+  calledAt: string;
+  calledBy: string;
+  outcome: CallOutcomeValue | null;
+  callbackDate: string | null;
+  note: string | null;
+  /** The questions this call answered, labelled as they were asked. A question
+   *  reworded since is shown as it reads NOW; the alternative is versioning
+   *  every question, which buys a fidelity nobody on this screen has asked for
+   *  and costs a table. */
+  answers: Array<{ questionId: string; label: string; value: string }>;
+}
+
+export const CallScriptPatch = z.object({
+  script: z.string().trim().max(4000),
+});
+export type CallScriptPatch = z.infer<typeof CallScriptPatch>;
+
+/**
+ * A question as the builder adds it.
+ *
+ * ⚠️ No `ordinal`: a new question goes to the END of its form, and the API is
+ * what decides where that is. A body that could name its own position is a
+ * body that could collide with one.
+ */
+export const AddCallQuestionInput = z.object({
+  label: z.string().trim().min(1).max(200),
+  help: z.string().trim().max(600).nullable().default(null),
+  fieldType: z.enum(CALL_QUESTION_TYPES),
+  isRequired: z.boolean().default(false),
+  options: z.array(FieldOptionInput).max(60).nullable().default(null),
+  min: RuleFields.min,
+  max: RuleFields.max,
+  minLen: RuleFields.minLen,
+  maxLen: RuleFields.maxLen,
+  decimals: RuleFields.decimals,
+  pattern: RuleFields.pattern,
+  patternHint: RuleFields.patternHint,
+  window: RuleFields.window,
+  showIfQuestionId: z.uuid().nullable().default(null),
+  showIfValue: z.string().trim().max(100).nullable().default(null),
+  /** Empty is not "never": it is the default set, `SPOKEN_OUTCOMES`. */
+  showOnOutcomes: z.array(CallOutcomeValue).max(CALL_OUTCOMES.length).default([]),
+});
+export type AddCallQuestionInput = z.infer<typeof AddCallQuestionInput>;
+
+export const CallQuestionPatch = z.object({
+  label: z.string().trim().min(1).max(200).optional(),
+  help: z.string().trim().max(600).nullable().optional(),
+  fieldType: z.enum(CALL_QUESTION_TYPES).optional(),
+  isRequired: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+  /** Where the question sits, 1-based. The builder's up and down arrows send
+   *  this and nothing else. */
+  ordinal: z.number().int().min(1).max(500).optional(),
+  options: z.array(FieldOptionInput).max(60).nullable().optional(),
+  min: RuleFields.min.unwrap().optional(),
+  max: RuleFields.max.unwrap().optional(),
+  minLen: RuleFields.minLen.unwrap().optional(),
+  maxLen: RuleFields.maxLen.unwrap().optional(),
+  decimals: RuleFields.decimals.unwrap().optional(),
+  pattern: RuleFields.pattern.unwrap().optional(),
+  patternHint: RuleFields.patternHint.unwrap().optional(),
+  window: RuleFields.window.unwrap().optional(),
+  showIfQuestionId: z.uuid().nullable().optional(),
+  showIfValue: z.string().trim().max(100).nullable().optional(),
+  showOnOutcomes: z.array(CallOutcomeValue).max(CALL_OUTCOMES.length).optional(),
+});
+export type CallQuestionPatch = z.infer<typeof CallQuestionPatch>;
 
 // ── Bank details (public, vendors only) ─────────────────────────────────────
 
@@ -2056,7 +2203,22 @@ export interface PaymentRecordView {
   mode: string;
   note: string | null;
   confirmedAt: string;
+  /** 🔴 Set means this credit was entered in error and WITHDRAWN. It counts
+   *  towards nothing from that moment — not what has been received, not whether
+   *  the stall is settled, not the deposit a refund is measured against — but
+   *  it is still returned, because the screen has to be able to show that the
+   *  entry existed and was taken back. */
+  voidedAt: string | null;
+  voidReason: string | null;
 }
+
+/** ⚠️ The reason is REQUIRED. An entry withdrawn with nothing beside it is
+ *  indistinguishable from one deleted by accident, which is the state this
+ *  whole step exists to get away from. */
+export const VoidPaymentInput = z.object({
+  reason: z.string().trim().min(1).max(200),
+});
+export type VoidPaymentInput = z.infer<typeof VoidPaymentInput>;
 
 export interface PaymentRow {
   requestId: string;
@@ -2396,11 +2558,26 @@ export const EquipmentPatch = z.object({
   extraTables: z.number().int().min(0).max(500).optional(),
   missingChairs: z.number().int().min(0).max(500).optional(),
   missingTables: z.number().int().min(0).max(500).optional(),
-  damaged: z.boolean().optional(),
+  damagedChairs: z.number().int().min(0).max(500).optional(),
+  damagedTables: z.number().int().min(0).max(500).optional(),
   note: z.string().trim().max(500).optional(),
   flagged: z.boolean().optional(),
 });
 export type EquipmentPatch = z.infer<typeof EquipmentPatch>;
+
+/** What the counter found when the stack came back, counted in front of the
+ *  vendor. It rides WITH the collect action rather than being saved first and
+ *  marked collected second: those were two requests over a field network, and
+ *  the pair that only half landed left either a collected row with nobody's
+ *  figures on it or figures on a row that still reads as out. */
+export const EquipmentFound = z.object({
+  missingChairs: z.number().int().min(0).max(500),
+  missingTables: z.number().int().min(0).max(500),
+  damagedChairs: z.number().int().min(0).max(500),
+  damagedTables: z.number().int().min(0).max(500),
+  note: z.string().trim().max(500).optional(),
+});
+export type EquipmentFound = z.infer<typeof EquipmentFound>;
 
 export const EquipmentAction = z.enum([
   'DISTRIBUTE',
@@ -2410,6 +2587,15 @@ export const EquipmentAction = z.enum([
   'UNCOLLECT',
 ]);
 export type EquipmentAction = z.infer<typeof EquipmentAction>;
+
+/** ⚠️ `found` is read on COLLECT and ignored everywhere else. Undoing a
+ *  collection does not erase what was found — the figures stay on the row for
+ *  whoever re-collects it, and the log says both happened. */
+export const EquipmentActionInput = z.object({
+  action: EquipmentAction,
+  found: EquipmentFound.optional(),
+});
+export type EquipmentActionInput = z.infer<typeof EquipmentActionInput>;
 
 export interface EquipmentRow {
   requestId: string;
@@ -2432,7 +2618,10 @@ export interface EquipmentRow {
   collectedAt: string | null;
   missingChairs: number;
   missingTables: number;
-  damaged: boolean;
+  /** Returned broken, counted per item — the refund charges the damage penalty
+   *  once per chair or table, not once per stall. */
+  damagedChairs: number;
+  damagedTables: number;
   /** Priced from the admin's replacement rates; feeds the refund screen. */
   deductionPaise: number;
   note: string | null;

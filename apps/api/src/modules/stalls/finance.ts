@@ -6,6 +6,7 @@ import {
   type RefundRow,
   type SetDiscretionaryFeeInput,
   type SubmitRefundInput,
+  type VoidPaymentInput,
   computeRefund,
   equipmentDeduction,
   needsPaymentStep,
@@ -43,6 +44,8 @@ function recordView(p: {
   mode: string;
   note: string | null;
   confirmedAt: Date;
+  voidedAt: Date | null;
+  voidReason: string | null;
 }): PaymentRecordView {
   return {
     id: p.id,
@@ -55,6 +58,8 @@ function recordView(p: {
     mode: p.mode,
     note: p.note,
     confirmedAt: p.confirmedAt.toISOString(),
+    voidedAt: p.voidedAt?.toISOString() ?? null,
+    voidReason: p.voidReason,
   };
 }
 
@@ -63,8 +68,14 @@ async function toPaymentRow(
   ctx: Awaited<ReturnType<typeof quoteContext>>,
 ): Promise<PaymentRow> {
   const quote = r.paymentPlan ? planToView(r.paymentPlan) : toQuoteView(quoteFor(r, ctx));
+  // 🔴 `voidedAt === null`. This is the ONE place that reads withdrawn records
+  // at all — `listPayments` widens the include so the screen can show that an
+  // entry was taken back — so it is also the one place that has to remember not
+  // to count them. Everywhere else they are filtered out at the query.
   const sum = (purpose: 'RENT' | 'DEPOSIT') =>
-    r.payments.filter((p) => p.purpose === purpose).reduce((t, p) => t + p.amountPaise, 0);
+    r.payments
+      .filter((p) => p.purpose === purpose && p.voidedAt === null)
+      .reduce((t, p) => t + p.amountPaise, 0);
   const receivedRentPaise = sum('RENT');
   const receivedDepositPaise = sum('DEPOSIT');
   return {
@@ -122,7 +133,11 @@ export async function listPayments(
       status: 'SELECTED',
       requestType: { in: payingTypes(scope) },
     },
-    include: factsInclude,
+    // ⚠️ `payments: true` overrides the filter `factsInclude` carries. Finance
+    // is the only screen entitled to see a withdrawn entry — everywhere else it
+    // is money that never arrived — and it needs to, because "recorded on the
+    // 14th, withdrawn on the 16th" is the answer to the phone call.
+    include: { ...factsInclude, payments: true },
     orderBy: [{ requestType: 'asc' }, { stallName: 'asc' }],
   });
   const ctx = await quoteContext(db, editionId);
@@ -261,16 +276,48 @@ export async function confirmPayment(
   });
 }
 
-export async function deletePayment(db: PrismaClient, id: string, by: string): Promise<void> {
+/**
+ * Withdraw a credit entered in error.
+ *
+ * 🔴 Not a delete. The row stays and stops counting: the stage is recomputed
+ * from what is left, a refund measures the deposit against what is left, and
+ * the finance screen shows the entry struck through with the reason beside it.
+ * Deleting made the vendor's question — "why has my payment disappeared?" —
+ * answerable only by somebody who could read the audit log.
+ *
+ * ⚠️ Withdrawing frees the reference number. The correction almost always
+ * carries the same UTR, because the mistake was the amount, the date or the
+ * purpose rather than the transfer — see `stall_payment_record_live_reference`.
+ */
+export async function voidPayment(
+  db: PrismaClient,
+  id: string,
+  input: VoidPaymentInput,
+  by: string,
+): Promise<void> {
   const row = await db.stallPaymentRecord.findUnique({ where: { id } });
   if (!row) throw new UnknownRequestError(id);
-  await db.stallPaymentRecord.delete({ where: { id } });
+  // Withdrawing twice would overwrite the first reason and the first date with
+  // a second person's, losing the only account of what actually happened.
+  if (row.voidedAt !== null) {
+    throw new ValidationFailedError([
+      { row: 0, fieldKey: 'reason', message: 'that entry has already been withdrawn' },
+    ]);
+  }
+  await db.stallPaymentRecord.update({
+    where: { id },
+    data: { voidedAt: new Date(), voidedBy: by, voidReason: input.reason },
+  });
   await refreshStage(db, row.requestId);
   await audit(db, {
     actor: actorFrom(by),
-    action: 'stall_payment.removed',
+    action: 'stall_payment.withdrawn',
     requestId: row.requestId,
-    detail: { referenceNo: row.referenceNo, amountPaise: row.amountPaise },
+    detail: {
+      referenceNo: row.referenceNo,
+      amountPaise: row.amountPaise,
+      reason: input.reason,
+    },
   });
 }
 
@@ -312,7 +359,8 @@ async function toRefundRow(
         {
           missingChairs: r.equipment.missingChairs,
           missingTables: r.equipment.missingTables,
-          damaged: r.equipment.damaged,
+          damagedChairs: r.equipment.damagedChairs,
+          damagedTables: r.equipment.damagedTables,
         },
         {
           chairReplacementPaise: charges.chairReplacementPaise,

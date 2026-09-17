@@ -306,11 +306,13 @@ const SCREENS: ScreenDoc[] = [
       'Templates: edit the subject and body for this edition and attach one file. Placeholders such as {{stallNumbers}} are filled per recipient, and the editor warns about a placeholder it does not recognise.',
       'Send letters: pick the letter, tick the recipients — one, or two hundred — and send. The template suggested on each row is the one that fits where that request has reached.',
       'A row that has already had this letter shows its sent stamp instead of a tick box.',
-      'Reminder calls: the two chase lists, pending bank details and pending payment, with a log of who called whom and when.',
+      'Reminder calls: the two chase lists, pending bank details and pending payment. Log Call opens the form your edition asks for — the call status, the day they asked to be rung back on, the scripted questions, and your own remarks.',
+      'The Calls Logged number on a row opens what was actually said on each of those calls, newest first.',
     ],
     notes: [
       'Bulk and individual send are the same operation — a list of one is an individual send — so the "once only" rule has one place to be right.',
       'An admin can arm Allow re-send on a row, which clears the record for that letter. Two clicks and admin-only, on purpose: it is for the day an address was wrong, not a second Send button.',
+      'What a call asks is set in Admin → Call Log Form, per edition and per chase list. A question is only put to you when the call status you picked allows it — nothing scripted is asked about a phone that rang out.',
     ],
   },
   {
@@ -338,14 +340,16 @@ const SCREENS: ScreenDoc[] = [
     requires: 'finance.read',
     purpose: 'What is due, what has landed, and what goes back.',
     steps: [
-      'Payment details: the quote per selected request — stall fee, plug points, chairs and tables, GST on the fee, then the refundable deposit kept separate. Send the payment letter from here; the figures freeze at that moment.',
-      'Payment confirmation: record a credit with its reference number, amount and date. Several credits can settle one request, and the row shows what is still short.',
+      'Payment applications: every selected request with its quote — stall fee, plug points, chairs and tables, GST on the fee, then the refundable deposit kept separate — beside what has been paid and what is still remaining. Send the payment letter from here (the figures freeze at that moment), and record a credit against the row it settles.',
+      'Reported payments: what requesters say they transferred, checked against the statement.',
+      'Payment confirmation: every credit confirmed so far, newest first, with its reference number, amount and date. Several credits can settle one request.',
+      'A credit entered in error is marked as a wrong entry, not deleted. It stops counting at once — towards what the stall has paid, whether it is settled, and the deposit its refund is measured against — and stays on the list, struck through, with the reason beside it.',
       'Refunds & deductions: the deposit, less what chairs and tables cost in shortfalls or damage, less any penalty, each itemised. Submit it, then record the voucher reference once Finance has paid it.',
     ],
     notes: [
       'No money is collected in the app. Payment is NEFT, exactly as in 2025; this screen records what a bank statement already shows.',
       'GST applies to the fee and never to the deposit — a taxed deposit would refund more than was taken.',
-      'The same reference number cannot be recorded twice against one request. A pasted duplicate would double-count and shrink the refund.',
+      'The same reference number cannot be recorded twice against one request. A pasted duplicate would double-count and shrink the refund. Marking an entry as a wrong entry frees its reference, so the corrected row can carry the same UTR — which is the usual case, because the mistake is normally the amount, the date or the purpose rather than the transfer.',
       'A refund is never negative. Deductions beyond the deposit floor it at zero and surface as a shortfall to chase separately.',
     ],
   },
@@ -391,7 +395,8 @@ const SCREENS: ScreenDoc[] = [
       'Distribute, and it moves to the issued list.',
       'Extras are charged at the counter: enter the extra chairs or tables, take the cash, and mark it collected.',
       'Print the two-part challan — vendor copy and office copy.',
-      'After the event, collect: record anything short or damaged, which becomes a deduction on that vendor’s refund.',
+      'After the event, press Collect: count what came back — chairs and tables missing, chairs and tables damaged — and the row is collected and priced in one step. What is short becomes a deduction on that vendor’s refund.',
+      'Edit corrects the details afterwards; the clock on the row shows who did what, and what they changed.',
       'Flag a row that still needs chasing.',
     ],
     notes: [
@@ -407,6 +412,7 @@ const SCREENS: ScreenDoc[] = [
     steps: [
       'Bays, Planning Columns, Rates, Charges and Fines are not here any more — they are tabs on Planning & Zones, beside the grid that counts the stalls they describe.',
       'Form builder: what each of the four request forms asks, and in what order. Reword a question, add a heading, mark something required, or switch a question off. A question whose answer has a record of its own is marked Built in — it can be reworded, moved and switched off, but not retyped or removed.',
+      'Call log form: the script a caller reads out and the questions they answer, one set for pending bank details and one for pending payment. A question carries which call statuses it is asked on, and can be hung off an earlier answer — “what reason did they give” only when “did they pick up” was Yes.',
       'Declarations: the wording a requester ticks when they apply. Each form shows its own variant if it has one, otherwise the default. Changing the text creates a new version and archives the old one.',
       'Flow: two grids. Which steps are asked — a tick per step per requester type, so an ashram need not be asked for FSSAI while a vendor still is — and when each step opens.',
       'Users: grant a backoffice member one of the four roles.',
@@ -417,6 +423,7 @@ const SCREENS: ScreenDoc[] = [
       'Editing a form changes THIS edition only. The four 2025 forms are written into each new edition when it is created, so next year starts from the printed originals again rather than from whatever this year was edited into.',
       'A declaration is never edited in place once the wording changes, and never deleted once somebody has agreed to it — a consent is worth exactly what the person saw when they gave it. Retire it with the Active switch instead. The old versions stay on screen because "what did this say in January?" is the question the history exists to answer.',
       'The four base forms are coded from the 2025 PDFs and cannot be rebuilt here — a question added in the Form Builder appends to them.',
+      'A call question that somebody has already answered can be switched off but not removed. The answer is the only record of what that vendor said, and the question it answers has to stay readable beside it.',
     ],
   },
 ];
@@ -851,7 +858,8 @@ const LETTERS: FlowItem[] = [
     actor: 'backoffice',
     glyph: 'phone',
     title: 'Whoever has not come back is called',
-    detail: 'Communication → Reminder calls keeps the log: who rang whom, and when.',
+    detail:
+      'Communication → Reminder calls keeps the log: who rang whom, when, the call status, and the answers to whatever the edition’s call form asks.',
   },
 ];
 
@@ -1001,7 +1009,8 @@ const SETTLE: FlowItem[] = [
     actor: 'volunteer',
     glyph: 'arrow-left-right',
     title: 'Equipment collected back',
-    detail: 'Anything short or damaged is recorded on the row it went out on.',
+    detail:
+      'Counted at the Collect step, on the row it went out on, with the vendor standing there.',
   },
   {
     actor: 'backoffice',
@@ -1423,7 +1432,7 @@ function VendorPanel() {
           items={[
             '“I have lost my link.” — There is nothing to reset. Send them to /stalls/status, where an email address or mobile number gets the link emailed back to them. If the address on the account is itself wrong, find them in All Requests and re-send the letter (an admin arms Allow re-send first).',
             '“What is my reference?” — The prefix says which form they used: VEN for vendor, LWS for local welfare, ASH for ashram, AFD for ashram food.',
-            '“Has my payment reached you?” — Finance → Payment confirmation shows every credit recorded against the request, and what is still short.',
+            '“Has my payment reached you?” — Finance → Payment confirmation lists every credit recorded, searchable by reference; Payment applications shows what that request has paid and what is still short.',
             '“What else do you need from me?” — Their status page lists it, and so does their row in Vendor Onboarding. Both are computed by the same rule, so they cannot disagree.',
           ]}
         />

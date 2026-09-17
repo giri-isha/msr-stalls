@@ -7,6 +7,7 @@ import { ensureCoupon } from '../src/modules/stalls/onboarding';
 import {
   actOnEquipment,
   challan,
+  equipmentHistory,
   listEquipment,
   patchEquipment,
 } from '../src/modules/stalls/equipment';
@@ -201,12 +202,18 @@ describe('chairs and tables', () => {
     const row = await patchEquipment(
       prisma,
       requestId,
-      { missingChairs: 1, missingTables: 1, damaged: true, note: '1 chair broken', flagged: true },
+      {
+        missingChairs: 1,
+        missingTables: 1,
+        damagedChairs: 2,
+        note: '2 chairs broken',
+        flagged: true,
+      },
       SYSTEM,
     );
-    expect(row.deductionPaise).toBe(rupeesToPaise(400 + 900 + 250));
+    expect(row.deductionPaise).toBe(rupeesToPaise(400 + 900 + 2 * 250));
     expect(row.flagged).toBe(true);
-    expect(row.note).toBe('1 chair broken');
+    expect(row.note).toBe('2 chairs broken');
   });
 
   test('the challan carries both what was ordered and what was taken at the counter', async () => {
@@ -220,6 +227,69 @@ describe('chairs and tables', () => {
     expect(slip.extraChairs).toBe(2);
     expect(slip.extraChargePaise).toBe(rupeesToPaise(2 * 50 + 150));
     expect(slip.editionName).toBe('Stalls 2026');
+  });
+
+  // 🔴 The count and the collection are ONE write. Two requests over the
+  // marquee's wifi, and the half that lands alone leaves either a collected row
+  // with nobody's figures on it or figures against a row still reading as out —
+  // which the refund screen would price anyway.
+  test('what was found comes back with the collection, in one act', async () => {
+    const { requestId } = await selected(['C1-1'], { chairsNeeded: 6, tablesNeeded: 2 });
+    await actOnEquipment(prisma, requestId, 'DISTRIBUTE', SYSTEM);
+    const row = await actOnEquipment(prisma, requestId, 'COLLECT', SYSTEM, {
+      missingChairs: 1,
+      missingTables: 0,
+      damagedChairs: 3,
+      damagedTables: 0,
+      note: '3 chairs broken',
+    });
+
+    expect(row.collectedAt).not.toBeNull();
+    expect(row.missingChairs).toBe(1);
+    expect(row.damagedChairs).toBe(3);
+    expect(row.note).toBe('3 chairs broken');
+    expect(row.deductionPaise).toBe(rupeesToPaise(400 + 3 * 250));
+  });
+
+  // ⚠️ Undoing a collection does not erase what was found. The figures stay for
+  // whoever re-collects the row, and the log carries both events.
+  test('an undo leaves the figures where the counter put them', async () => {
+    const { requestId } = await selected(['C1-1'], { chairsNeeded: 6 });
+    await actOnEquipment(prisma, requestId, 'DISTRIBUTE', SYSTEM);
+    await actOnEquipment(prisma, requestId, 'COLLECT', SYSTEM, {
+      missingChairs: 2,
+      missingTables: 0,
+      damagedChairs: 0,
+      damagedTables: 0,
+    });
+    const row = await actOnEquipment(prisma, requestId, 'UNCOLLECT', SYSTEM);
+
+    expect(row.collectedAt).toBeNull();
+    expect(row.missingChairs).toBe(2);
+  });
+
+  test('the counter’s own trail says what happened, what changed and who', async () => {
+    const { requestId } = await selected(['C1-1'], { chairsNeeded: 6 });
+    await actOnEquipment(prisma, requestId, 'DISTRIBUTE', SYSTEM);
+    await actOnEquipment(prisma, requestId, 'COLLECT', SYSTEM, {
+      missingChairs: 1,
+      missingTables: 0,
+      damagedChairs: 0,
+      damagedTables: 0,
+    });
+    await patchEquipment(prisma, requestId, { missingChairs: 3 }, SYSTEM);
+
+    const history = await equipmentHistory(prisma, requestId);
+    // Newest first, and nothing from the rest of the request's life.
+    expect(history.map((e) => e.action)).toEqual([
+      'stall_equipment.updated',
+      'stall_equipment.collect',
+      'stall_equipment.distribute',
+    ]);
+    // 🔴 What CHANGED, not what was sent: the correction reads 1 → 3 rather
+    // than repeating every field the dialog happened to hold.
+    expect(history[0].changes).toEqual([{ field: 'missingChairs', before: 1, after: 3 }]);
+    expect(history[1].changes).toContainEqual({ field: 'missingChairs', before: 0, after: 1 });
   });
 
   test('an undo puts the counter back where it was', async () => {

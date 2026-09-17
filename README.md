@@ -44,6 +44,13 @@ The whole requirement, from stall request to check-in and refund.
 - **Communication**: editable letters per edition, bulk or individual send with
   an attachment, and a log of the calls chasing what has not come back. A letter
   goes out once — enforced by a unique constraint, not a flag.
+- **The call log form**: what a caller is asked while logging one of those calls
+  is an admin's, not an engineer's. A script to read out and a question list per
+  reminder kind, built in Admin → Call Log Form with the module's own field
+  types and limits, plus two conditions a request form has no need of: which
+  call statuses a question is asked on, and which earlier answer it hangs off.
+  Every call then records its status, the day agreed, the remarks and the
+  answers.
 - **Bank, GST and contract**: the vendor's own form, reached from the selection
   email. Documents are presigned and uploaded straight to object storage; the
   API never sees the bytes.

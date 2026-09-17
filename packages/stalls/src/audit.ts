@@ -95,7 +95,10 @@ export const AUDIT_ACTION_INFO = {
   'stall_signature.sent': info('Agreement Sent for Signature', 'onboarding', 'scroll', 'info'),
   // ── Money ──────────────────────────────────────────────────────────────
   'stall_payment.confirmed': info('Payment Confirmed', 'money', 'rupee', 'ok'),
+  // ⚠️ Kept for the editions already audited under it. Nothing writes it any
+  // more — a mistaken credit is WITHDRAWN now, and the row survives.
   'stall_payment.removed': info('Payment Record Removed', 'money', 'trash', 'warn'),
+  'stall_payment.withdrawn': info('Payment Entry Withdrawn', 'money', 'undo', 'warn'),
   'stall_payment_plan.concession_set': info('Concession Agreed', 'money', 'rupee', 'warn'),
   'stall_payment_plan.concession_cleared': info('Concession Cleared', 'money', 'undo', 'neutral'),
   'stall_refund.submitted': info('Refund Sent to Finance', 'money', 'send', 'info'),
@@ -105,6 +108,10 @@ export const AUDIT_ACTION_INFO = {
   'stall_email.unsent': info('Letter Marked Unsent', 'comms', 'undo', 'warn'),
   'stall_email_template.updated': info('Letter Template Edited', 'comms', 'pencil', 'neutral'),
   'stall_reminder.logged': info('Reminder Call Logged', 'comms', 'phone-call', 'neutral'),
+  'stall_call_form.script_updated': info('Call Script Edited', 'comms', 'pencil', 'neutral'),
+  'stall_call_question.added': info('Call Question Added', 'comms', 'plus', 'info'),
+  'stall_call_question.updated': info('Call Question Edited', 'comms', 'pencil', 'neutral'),
+  'stall_call_question.deleted': info('Call Question Removed', 'comms', 'trash', 'warn'),
   // ── Event operations ───────────────────────────────────────────────────
   'stall_request.checked_in': info('Checked In', 'checkin', 'circle-check', 'ok'),
   'stall_request.check_in_undone': info('Check-In Undone', 'checkin', 'undo', 'warn'),

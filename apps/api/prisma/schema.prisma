@@ -331,6 +331,7 @@ model StallEdition {
   requests        StallRequest[]
   sequences       StallReferenceSequence[]
   templates       StallEmailTemplate[]
+  callForms       StallCallForm[]
 
   @@map("stall_edition")
   @@schema("stalls")
@@ -1386,6 +1387,23 @@ enum StallReminderKind {
   @@schema("stalls")
 }
 
+/// The call status — how one reminder call went.
+///
+/// ⚠️ About the CALL, not about the vendor. Whether the bank form has arrived
+/// is what puts the row on the list in the first place; asking a caller to
+/// restate it is how the two come to disagree. See `CALL_OUTCOMES`, whose
+/// order is the order of the dropdown.
+enum StallCallOutcome {
+  CALL_COMPLETED
+  NOT_ANSWERED
+  NOT_REACHABLE
+  CALLBACK
+  WRONG_NUMBER
+  NA
+
+  @@schema("stalls")
+}
+
 enum StallIdType {
   AADHAAR
   VOTER_ID
@@ -1545,14 +1563,151 @@ model StallReminderCall {
   id        String            @id @default(uuid()) @db.Uuid
   requestId String            @map("request_id") @db.Uuid
   kind      StallReminderKind
+  /// The caller's own remarks. Was here before anything else on this row was
+  /// asked for, and no screen ever wrote to it — the Log Call dialog is what
+  /// finally does.
   note      String?
   calledAt  DateTime          @default(now()) @map("called_at") @db.Timestamptz
   calledBy  String            @map("called_by")
 
-  request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  /// The call status.
+  ///
+  /// 🔴 NULLABLE for one reason only: the calls logged before there was
+  /// anything to ask. Those rows are a date and a person and nothing else, and
+  /// a backfilled guess about a conversation nobody recorded would be worse
+  /// than the gap — the screen says "—" and means it. The dialog always sends
+  /// one, so the null shrinks rather than growing. Same shape, same reason, as
+  /// `stall_account.requester_type`.
+  outcome StallCallOutcome?
+
+  /// The day the vendor asked to be rung back on.
+  ///
+  /// ⚠️ A DAY, not a timestamp. "Tuesday" is what is agreed on a phone call;
+  /// storing it as an instant would make it move across a timezone and give a
+  /// precision nobody said.
+  callbackDate DateTime? @map("callback_date") @db.Date
+
+  request StallRequest      @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  answers StallCallAnswer[]
 
   @@index([requestId, kind])
   @@map("stall_reminder_call")
+  @@schema("stalls")
+}
+
+/// The script and the questions for one reminder kind, in one edition.
+///
+/// 🔴 Per EDITION, like the letters and the request forms beside it. What to
+/// ask while chasing a bank form is a stall-team decision that changes between
+/// years, and an edition whose call form is last year's is one the team cannot
+/// correct without a deploy. `copyEdition` carries it over; see `copyCallForms`.
+///
+/// ⚠️ One row per (edition, kind) and CREATED ON DEMAND. An edition made before
+/// this existed has none, and every read seeds it — the same arrangement
+/// `ensureTemplates` already uses, for the same reason: a migration that
+/// back-filled rows would have had to invent a script.
+model StallCallForm {
+  id        String            @id @default(uuid()) @db.Uuid
+  editionId String            @map("edition_id") @db.Uuid
+  kind      StallReminderKind
+  /// Read aloud at the top of the call. Empty until somebody writes one, and
+  /// the dialog then shows no quotation rather than an empty box.
+  script    String            @default("")
+  updatedAt DateTime?         @map("updated_at") @db.Timestamptz
+  updatedBy String?           @map("updated_by")
+
+  edition   StallEdition        @relation(fields: [editionId], references: [id], onDelete: Cascade)
+  questions StallCallQuestion[]
+
+  @@unique([editionId, kind])
+  @@map("stall_call_form")
+  @@schema("stalls")
+}
+
+/// One question a caller is asked while logging a call.
+///
+/// 🔴 The columns are `stall_form_field`'s, deliberately: `field_type`, the
+/// same limit columns, the same option list. A "promised date" on a call form
+/// and a "date of arrival" on the vendor form are the same question, checked by
+/// the same `checkFieldValue`, and a second set of limit columns with their own
+/// spelling is how the second one ends up missing the rule the first one grew.
+///
+/// 🔴 What this table has that `stall_form_field` does not is the two
+/// conditions: `show_if_*` and `show_on_outcomes`. A request form is filled
+/// once by somebody with the page in front of them; a call form is filled in
+/// thirty seconds with a phone at an ear, so a question that does not apply
+/// must not be on the screen at all.
+model StallCallQuestion {
+  id      String @id @default(uuid()) @db.Uuid
+  formId  String @map("form_id") @db.Uuid
+  ordinal Int
+
+  label      String
+  help       String?
+  fieldType  String  @map("field_type")
+  isRequired Boolean @default(false) @map("is_required")
+  /// Switched off rather than deleted once a call has answered it — see
+  /// `canDeleteCallQuestion`. An answer from February is evidence of what a
+  /// vendor said, and it must not lose the question that produced it.
+  isActive   Boolean @default(true) @map("is_active")
+
+  /// `[{ value, label, labelTa }]` for a dropdown or a choice list.
+  options Json?
+
+  /// What the answer accepts, read exactly as `stall_form_field` reads them —
+  /// `ruleKindOf` decides which meaning applies from `field_type`.
+  min         Int?
+  max         Int?
+  minLen      Int?    @map("min_len")
+  maxLen      Int?    @map("max_len")
+  decimals    Int?
+  pattern     String?
+  patternHint String? @map("pattern_hint")
+  dateWindow  Json?   @map("date_window")
+
+  /// Asked only when `showIfQuestion` was answered `showIfValue`. Both null
+  /// means asked whenever the outcome allows it.
+  ///
+  /// ⚠️ `onDelete: SetNull`, so removing the question a branch depends on
+  /// leaves the branched question ASKED rather than orphaned. A question that
+  /// silently stopped appearing is the failure nobody notices; one that appears
+  /// too often is one the next caller reports.
+  showIfQuestionId String? @map("show_if_question_id") @db.Uuid
+  showIfValue      String? @map("show_if_value")
+
+  /// The outcomes this question is asked on, as a JSON array of
+  /// `StallCallOutcome` names. EMPTY IS NOT NEVER — it means the default set,
+  /// `SPOKEN_OUTCOMES`, which is the four outcomes where somebody was actually
+  /// spoken to.
+  showOnOutcomes Json @map("show_on_outcomes")
+
+  form           StallCallForm       @relation(fields: [formId], references: [id], onDelete: Cascade)
+  showIfQuestion StallCallQuestion?  @relation("CallQuestionBranch", fields: [showIfQuestionId], references: [id], onDelete: SetNull)
+  branches       StallCallQuestion[] @relation("CallQuestionBranch")
+  answers        StallCallAnswer[]
+
+  @@index([formId, ordinal])
+  @@map("stall_call_question")
+  @@schema("stalls")
+}
+
+/// One caller's answer to one question, on one call.
+///
+/// ⚠️ Text, whatever the control was — a tick box lands here as the two words
+/// somebody reading the call history expects to see. There is no reader that
+/// computes on these; they are read back to a person.
+model StallCallAnswer {
+  id         String @id @default(uuid()) @db.Uuid
+  callId     String @map("call_id") @db.Uuid
+  questionId String @map("question_id") @db.Uuid
+  value      String
+
+  call     StallReminderCall @relation(fields: [callId], references: [id], onDelete: Cascade)
+  question StallCallQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([callId, questionId])
+  @@index([questionId])
+  @@map("stall_call_answer")
   @@schema("stalls")
 }
 
@@ -1633,13 +1788,31 @@ model StallPaymentRecord {
   confirmedAt  DateTime            @default(now()) @map("confirmed_at") @db.Timestamptz
   confirmedBy  String              @map("confirmed_by")
 
+  /// 🔴 A credit entered in error is WITHDRAWN, never deleted. It stops
+  /// counting the instant this is set — the money it claimed was never there —
+  /// but the row stays, because "this reference was recorded and withdrawn" and
+  /// "this reference was never seen" are different facts, and the vendor who
+  /// rang about it is owed the first one. A delete leaves only an audit line
+  /// nobody on the finance screen can see.
+  voidedAt   DateTime? @map("voided_at") @db.Timestamptz
+  voidedBy   String?   @map("voided_by")
+  /// ⚠️ Required once withdrawn, enforced by a CHECK rather than by application
+  /// code — `stall_payment_record_void_reason`. An entry withdrawn with no
+  /// reason is one nobody can reconcile against the statement later.
+  voidReason String?   @map("void_reason")
+
   request StallRequest        @relation(fields: [requestId], references: [id], onDelete: Cascade)
   claims  StallPaymentClaim[]
 
   /// One reference number is one credit. Entering it twice — the same NEFT
   /// pasted into two rows on a busy afternoon — would double-count what the
   /// vendor paid and shrink their refund.
-  @@unique([requestId, referenceNo])
+  ///
+  /// ⚠️ The real constraint is a PARTIAL unique index Prisma cannot express —
+  /// `stall_payment_record_live_reference`, over (request, reference) where the
+  /// record is not withdrawn. A withdrawn entry keeps its reference so the trail
+  /// stays readable, and the correction almost always carries the SAME UTR: the
+  /// mistake was the amount, the date or the purpose, not the transfer.
   @@index([requestId])
   @@map("stall_payment_record")
   @@schema("stalls")
@@ -1789,7 +1962,12 @@ model StallEquipmentIssue {
   collectedBy      String?   @map("collected_by")
   missingChairs    Int       @default(0) @map("missing_chairs")
   missingTables    Int       @default(0) @map("missing_tables")
-  damaged          Boolean   @default(false)
+  /// Returned, but broken. Counted rather than ticked: the counter is looking
+  /// at a stack of chairs and knows how many of them are unusable, and the
+  /// refund is charged per item, so "damaged" as a single flag priced three
+  /// broken chairs the same as one.
+  damagedChairs    Int       @default(0) @map("damaged_chairs")
+  damagedTables    Int       @default(0) @map("damaged_tables")
   note             String?
   flagged          Boolean   @default(false)
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz

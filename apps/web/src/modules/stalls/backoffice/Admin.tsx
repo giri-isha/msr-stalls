@@ -38,6 +38,7 @@ import {
   useToast,
 } from '../ui';
 import { Declarations } from './Declarations';
+import { CallFormBuilder } from './CallFormBuilder';
 import { FormBuilder } from './FormBuilder';
 
 /** ⚠️ Five tabs shorter than it was. Bays, Planning Columns, Rates, Charges and
@@ -46,6 +47,12 @@ import { FormBuilder } from './FormBuilder';
  *  is left here is the paperwork and the years themselves. */
 const TABS = [
   { label: 'Form Builder', glyph: 'clipboard-list' },
+  /** ⚠️ Its own tab, beside the Form Builder rather than inside it. Both build
+   *  forms, and the resemblance is the trap: a question on the Form Builder is
+   *  asked of a VENDOR filling a form, and one here is asked of a CALLER with
+   *  that vendor on the phone. A single picker over both would put "Items
+   *  Selling" and "What reason did they give" in one list. */
+  { label: 'Call Log Form', glyph: 'phone-call' },
   { label: 'Declarations', glyph: 'scroll' },
   { label: 'Flow', glyph: 'arrow-left-right' },
   { label: 'Editions', glyph: 'calendar' },
@@ -167,6 +174,10 @@ export function Admin() {
       {/* ⚠️ Reads its own data rather than taking `c`. The config payload is
           what is LIVE; this screen shows every version including the archived
           ones, which is a different question and a different query. */}
+      {tab === 'Call Log Form' && (
+        <CallFormBuilder writable={writable} editionId={viewing || undefined} />
+      )}
+
       {tab === 'Declarations' && (
         <Declarations writable={writable} editionId={viewing || undefined} />
       )}

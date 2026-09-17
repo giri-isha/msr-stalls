@@ -8,6 +8,9 @@ import {
   type CopyPlan,
   type CopyResult,
   CopyEditionInput,
+  CallQuestionPatch,
+  CallScriptPatch,
+  type CallFormView,
   CheckInInput,
   ConfirmPaymentInput,
   type CouponView,
@@ -16,6 +19,7 @@ import {
   ReviewPaymentClaimInput,
   CreateEditionInput,
   CreateZoneInput,
+  AddCallQuestionInput,
   AddFormFieldInput,
   AddSectionInput,
   DeclarationInput,
@@ -28,7 +32,7 @@ import {
   type DeclarationRow,
   type ListDeclarationsResponse,
   EditionSettingsInput,
-  EquipmentAction,
+  EquipmentActionInput,
   EquipmentPatch,
   FineTypeInput,
   FlagRequestInput,
@@ -56,6 +60,7 @@ import {
   RateCardInput,
   RejectRequestInput,
   ReminderKind,
+  type ReminderCallView,
   RequesterLookupQuery,
   SelectRequestInput,
   SendEmailInput,
@@ -68,6 +73,7 @@ import {
   UpdatePersonInput,
   SetRequesterPasswordInput,
   UpdateTemplateInput,
+  VoidPaymentInput,
   ZoneCodeValue,
   ZoneInput,
   ZonePlanInput,
@@ -75,6 +81,7 @@ import {
 import { prisma } from '../../prisma';
 import type { ZodTypeProvider } from '../../zod-validation';
 import * as checkin from './checkin';
+import * as callForm from './call-form';
 import * as comms from './comms';
 import * as config from './config';
 import * as declarations from './declarations';
@@ -881,6 +888,88 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     reply.status(204);
   });
 
+  /* ── The call log form ───────────────────────────────────────────────────*/
+
+  /** Both kinds' scripts and questions, for the Admin tab.
+   *
+   *  ⚠️ `config.read`, like every other tab on that screen — and NOT the gate
+   *  the Log Call dialog goes through, which is `comms.read`. Writing the
+   *  questions is admin work; answering them is the caller's. */
+  zod.get(
+    '/config/call-forms',
+    { schema: { querystring: EditionQuery } },
+    async (req): Promise<{ forms: CallFormView[] }> => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'config.read');
+      const edition = await editionFor(prisma, caller, req.query.editionId);
+      return { forms: await callForm.listCallForms(prisma, edition.id) };
+    },
+  );
+
+  zod.put(
+    '/config/call-forms/:kind/script',
+    { schema: { params: z.object({ kind: ReminderKind }), body: CallScriptPatch } },
+    async (req, reply) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'config.write');
+      const edition = await activeEditionFor(prisma, caller);
+      await callForm.updateCallScript(
+        prisma,
+        edition.id,
+        req.params.kind,
+        req.body.script,
+        caller.personId,
+      );
+      reply.status(204);
+    },
+  );
+
+  zod.post(
+    '/config/call-forms/:kind/questions',
+    { schema: { params: z.object({ kind: ReminderKind }), body: AddCallQuestionInput } },
+    async (req, reply) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'config.write');
+      const edition = await activeEditionFor(prisma, caller);
+      reply.status(201);
+      return callForm.addCallQuestion(
+        prisma,
+        edition.id,
+        req.params.kind,
+        req.body,
+        caller.personId,
+      );
+    },
+  );
+
+  zod.patch(
+    '/config/call-questions/:id',
+    { schema: { params: IdParams, body: CallQuestionPatch } },
+    async (req, reply) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'config.write');
+      const edition = await activeEditionFor(prisma, caller);
+      await callForm.updateCallQuestion(
+        prisma,
+        edition.id,
+        req.params.id,
+        req.body,
+        caller.personId,
+      );
+      reply.status(204);
+    },
+  );
+
+  /** ⚠️ Refuses a question a call has answered — the builder offers Switch off
+   *  instead, and this is what makes that a rule rather than a suggestion. */
+  zod.delete('/config/call-questions/:id', { schema: { params: IdParams } }, async (req, reply) => {
+    const caller = await requireBackoffice(req, prisma);
+    requirePrivilege(caller, 'config.write');
+    const edition = await activeEditionFor(prisma, caller);
+    await callForm.deleteCallQuestion(prisma, edition.id, req.params.id, caller.personId);
+    reply.status(204);
+  });
+
   /* ── Declarations ────────────────────────────────────────────────────────*/
 
   /** Every VERSION, not just what is live — the screen shows the history
@@ -1213,6 +1302,34 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     },
   );
 
+  /** The script and the questions this call will ask.
+   *
+   *  ⚠️ `comms.read`, not `config.read`. A caller working the list has to SEE
+   *  the form to fill it, and gating the read on the admin privilege would mean
+   *  only admins could log a call — which is the opposite of who does. */
+  zod.get(
+    '/comms/call-form',
+    { schema: { querystring: z.object({ kind: ReminderKind }) } },
+    async (req): Promise<CallFormView> => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'comms.read');
+      const edition = await activeEditionFor(prisma, caller);
+      return callForm.getCallForm(prisma, edition.id, req.query.kind);
+    },
+  );
+
+  /** What has already been said to this vendor, newest first. */
+  zod.get(
+    '/requests/:id/reminders',
+    { schema: { params: IdParams, querystring: z.object({ kind: ReminderKind }) } },
+    async (req): Promise<ReminderCallView[]> => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'comms.read');
+      await requireRequestScope(caller, prisma, req.params.id);
+      return comms.listReminderCalls(prisma, req.params.id, req.query.kind);
+    },
+  );
+
   zod.post(
     '/requests/:id/reminders',
     { schema: { params: IdParams, body: LogReminderInput } },
@@ -1426,20 +1543,31 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     },
   );
 
-  // ⚠️ `:id` is the credit record's here, not the request's — unlike the POST
-  // above it, which is addressed by request.
-  zod.delete('/finance/payments/:id', { schema: { params: IdParams } }, async (req, reply) => {
-    const caller = await requireBackoffice(req, prisma);
-    requirePrivilege(caller, 'finance.write');
-    await requireOwnerScope(caller, prisma, () =>
-      prisma.stallPaymentRecord.findUnique({
-        where: { id: req.params.id },
-        select: { requestId: true },
-      }),
-    );
-    await finance.deletePayment(prisma, req.params.id, caller.personId);
-    reply.status(204);
-  });
+  /** Withdraw a credit entered in error.
+   *
+   *  🔴 A POST, not a DELETE. The row is kept and marked — see
+   *  `finance.voidPayment`. There is no route that destroys a confirmed credit:
+   *  a deleted one leaves the vendor's "why has my payment disappeared?"
+   *  answerable only from the audit log.
+   *
+   *  ⚠️ `:id` is the credit record's here, not the request's — unlike the POST
+   *  above it, which is addressed by request. */
+  zod.post(
+    '/finance/payments/:id/void',
+    { schema: { params: IdParams, body: VoidPaymentInput } },
+    async (req, reply) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'finance.write');
+      await requireOwnerScope(caller, prisma, () =>
+        prisma.stallPaymentRecord.findUnique({
+          where: { id: req.params.id },
+          select: { requestId: true },
+        }),
+      );
+      await finance.voidPayment(prisma, req.params.id, req.body, caller.personId);
+      reply.status(204);
+    },
+  );
 
   /** The concession the local welfare team agreed on one stall — "for A3 the
    *  cost is 10,000; for the coconut wala, probably we will give that at
@@ -1561,14 +1689,29 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
 
   zod.post(
     '/equipment/:id/action',
-    { schema: { params: IdParams, body: z.object({ action: EquipmentAction }) } },
+    { schema: { params: IdParams, body: EquipmentActionInput } },
     async (req) => {
       const caller = await requireBackoffice(req, prisma);
       requirePrivilege(caller, 'equipment.write');
       await requireRequestScope(caller, prisma, req.params.id);
-      return equipment.actOnEquipment(prisma, req.params.id, req.body.action, caller.personId);
+      return equipment.actOnEquipment(
+        prisma,
+        req.params.id,
+        req.body.action,
+        caller.personId,
+        req.body.found,
+      );
     },
   );
+
+  /** ⚠️ `equipment.read`, not `audit.read`. It returns this stall's
+   *  chairs-and-tables events and nothing else — see `equipmentHistory`. */
+  zod.get('/equipment/:id/history', { schema: { params: IdParams } }, async (req) => {
+    const caller = await requireBackoffice(req, prisma);
+    requirePrivilege(caller, 'equipment.read');
+    await requireRequestScope(caller, prisma, req.params.id);
+    return equipment.equipmentHistory(prisma, req.params.id);
+  });
 
   zod.get('/equipment/:id/challan', { schema: { params: IdParams } }, async (req) => {
     const caller = await requireBackoffice(req, prisma);

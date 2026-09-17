@@ -1,13 +1,19 @@
-import type { ChallanView, EquipmentAction, EquipmentRow } from '@stalls/core';
+import type { ChallanView, EquipmentAction, EquipmentFound, EquipmentRow } from '@stalls/core';
 import { formatInr } from '@stalls/core';
 import { useMemo, useState } from 'react';
-import { equipmentAction, getChallan, listEquipment, patchEquipment } from '../api';
+import {
+  equipmentAction,
+  equipmentHistory,
+  getChallan,
+  listEquipment,
+  patchEquipment,
+} from '../api';
+import { ActivityTimeline } from './ActivityTimeline';
 import { useLoad } from '../hooks';
 import { useMe } from '../me';
 import {
   Btn,
   Card,
-  Checkbox,
   Dialog,
   Empty,
   ErrorBox,
@@ -69,9 +75,11 @@ export function Equipment() {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<'all' | 'todo' | 'out' | 'flagged'>('all');
   const [challan, setChallan] = useState<ChallanView | null>(null);
-  // ⚠️ The page holds it, not the row: a dialog is a <div>, and a <div> inside
-  // a <tr> is markup React will not have.
+  // ⚠️ The page holds them, not the row: a dialog is a <div>, and a <div>
+  // inside a <tr> is markup React will not have.
   const [editing, setEditing] = useState<EquipmentRow | null>(null);
+  const [collecting, setCollecting] = useState<EquipmentRow | null>(null);
+  const [history, setHistory] = useState<EquipmentRow | null>(null);
   const mobile = useIsMobile();
   const canWrite = can('equipment.write');
   const columns = useColumns('equipment', COLUMNS);
@@ -163,6 +171,8 @@ export function Equipment() {
               canWrite={canWrite}
               onRun={run}
               onEdit={() => setEditing(r)}
+              onCollect={() => setCollecting(r)}
+              onHistory={() => setHistory(r)}
               onChallan={() => openChallan(r.requestId)}
             />
           ))}
@@ -247,6 +257,8 @@ export function Equipment() {
                       canWrite={canWrite}
                       onRun={run}
                       onEdit={() => setEditing(r)}
+                      onCollect={() => setCollecting(r)}
+                      onHistory={() => setHistory(r)}
                       onChallan={() => openChallan(r.requestId)}
                     />
                   </TD>
@@ -258,6 +270,10 @@ export function Equipment() {
       )}
 
       {editing && <CounterDialog row={editing} onRun={run} onClose={() => setEditing(null)} />}
+      {collecting && (
+        <CollectDialog row={collecting} onRun={run} onClose={() => setCollecting(null)} />
+      )}
+      {history && <HistoryDialog row={history} onClose={() => setHistory(null)} />}
       {challan && <ChallanDialog data={challan} onClose={() => setChallan(null)} />}
     </div>
   );
@@ -297,25 +313,27 @@ function StageTag({ row }: { row: EquipmentRow }) {
  * handful that did not look exactly like the ones that did.
  */
 function ConditionSummary({ row }: { row: EquipmentRow }) {
-  const missing = [
-    row.missingChairs > 0 ? `${row.missingChairs} ch` : null,
-    row.missingTables > 0 ? `${row.missingTables} tb` : null,
-  ].filter(Boolean);
-  const clean = missing.length === 0 && !row.damaged && !row.note;
+  const counts = (chairs: number, tables: number) =>
+    [chairs > 0 ? `${chairs} ch` : null, tables > 0 ? `${tables} tb` : null]
+      .filter(Boolean)
+      .join(' / ');
+  const missing = counts(row.missingChairs, row.missingTables);
+  const damaged = counts(row.damagedChairs, row.damagedTables);
+  const clean = !missing && !damaged && !row.note;
 
   if (clean) return <span style={{ color: 'var(--mfg)' }}>—</span>;
 
   return (
     <div style={{ display: 'grid', gap: 4, minWidth: 180 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-        {missing.length > 0 && (
+        {missing && (
           <Tag tone='warn' size='sm'>
-            {missing.join(' / ')} missing
+            {missing} missing
           </Tag>
         )}
-        {row.damaged && (
+        {damaged && (
           <Tag tone='des' size='sm'>
-            Damaged
+            {damaged} damaged
           </Tag>
         )}
       </div>
@@ -330,7 +348,171 @@ function ConditionSummary({ row }: { row: EquipmentRow }) {
 }
 
 /**
- * Everything the counter writes down, in one box.
+ * The four figures the counter reads off the returned stack, and the note.
+ *
+ * 🔴 ONE set of fields, used by the dialog that takes them at collection and
+ * the dialog that corrects them afterwards. Two copies of this form is how the
+ * collect screen and the edit screen start asking for different things — and
+ * the deduction is priced off whichever one was open.
+ *
+ * Held as strings while they are typed: a half-typed figure is not a number
+ * yet, and the value the vendor is charged must not pass through one.
+ */
+interface FoundDraft {
+  missingChairs: string;
+  missingTables: string;
+  damagedChairs: string;
+  damagedTables: string;
+  note: string;
+}
+
+const COUNTS = ['missingChairs', 'missingTables', 'damagedChairs', 'damagedTables'] as const;
+
+const draftOf = (row: EquipmentRow): FoundDraft => ({
+  missingChairs: String(row.missingChairs),
+  missingTables: String(row.missingTables),
+  damagedChairs: String(row.damagedChairs),
+  damagedTables: String(row.damagedTables),
+  note: row.note ?? '',
+});
+
+const num = (s: string) => {
+  const x = Number(s);
+  return Number.isInteger(x) && x >= 0 && x <= 500 ? x : null;
+};
+
+const foundValid = (d: FoundDraft) => COUNTS.every((k) => num(d[k]) !== null);
+
+const foundOf = (d: FoundDraft): EquipmentFound => ({
+  missingChairs: num(d.missingChairs) ?? 0,
+  missingTables: num(d.missingTables) ?? 0,
+  damagedChairs: num(d.damagedChairs) ?? 0,
+  damagedTables: num(d.damagedTables) ?? 0,
+  note: d.note.trim(),
+});
+
+/** 🔴 Missing and damaged are counted APART, and each is counted per chair and
+ *  per table. Damaged used to be one tick for the whole stall: the counter
+ *  standing over a stack with three broken chairs could say only that
+ *  something was broken, and the refund charged the penalty once. Two piles
+ *  come back — what never came back at all, and what came back unusable — and
+ *  the counter is looking at both. */
+function FoundFields({
+  value,
+  onChange,
+}: {
+  value: FoundDraft;
+  onChange: (d: FoundDraft) => void;
+}) {
+  const field = (k: (typeof COUNTS)[number]) => ({
+    type: 'number' as const,
+    min: 0,
+    value: value[k],
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
+      onChange({ ...value, [k]: e.target.value }),
+  });
+  return (
+    <>
+      <Pair>
+        <FormField id='eq-mch' label='Chairs Missing'>
+          <Input id='eq-mch' {...field('missingChairs')} />
+        </FormField>
+        <FormField id='eq-mtb' label='Tables Missing'>
+          <Input id='eq-mtb' {...field('missingTables')} />
+        </FormField>
+      </Pair>
+      <Pair>
+        <FormField id='eq-dch' label='Chairs Damaged'>
+          <Input id='eq-dch' {...field('damagedChairs')} />
+        </FormField>
+        <FormField id='eq-dtb' label='Tables Damaged'>
+          <Input id='eq-dtb' {...field('damagedTables')} />
+        </FormField>
+      </Pair>
+      <FormField id='eq-note' label='Condition Note'>
+        <Input
+          id='eq-note'
+          value={value.note}
+          placeholder='e.g. 1 chair broken'
+          onChange={(e) => onChange({ ...value, note: e.target.value })}
+        />
+      </FormField>
+    </>
+  );
+}
+
+/**
+ * Collecting: count the stack, then mark it in — one act, one write.
+ *
+ * 🔴 The figures belong to THIS step, not to an edit somebody remembers to
+ * make afterwards. Collect used to be a bare button that stamped the time, so
+ * what came back short was recorded — if at all — later, from memory, by
+ * whoever opened the row next. The vendor is standing there while the chairs
+ * are counted; that is the only moment the count is free.
+ *
+ * ⚠️ Zeroes are the answer for almost every stall, so the dialog opens ready
+ * to be confirmed: two taps for a complete return, and the fields are there
+ * for the few that are not.
+ */
+function CollectDialog({
+  row,
+  onRun,
+  onClose,
+}: {
+  row: EquipmentRow;
+  onRun: Run;
+  onClose: () => void;
+}) {
+  const [v, setV] = useState(draftOf(row));
+  const [saving, setSaving] = useState(false);
+  const outChairs = row.chairsRequested + row.extraChairs;
+  const outTables = row.tablesRequested + row.extraTables;
+
+  const collect = async () => {
+    setSaving(true);
+    const ok = await onRun(
+      () => equipmentAction(row.requestId, 'COLLECT', foundOf(v)),
+      'Collected.',
+    );
+    if (ok) onClose();
+    else setSaving(false);
+  };
+
+  return (
+    <Dialog
+      title={`Collect — ${row.stallName}`}
+      note={`${row.stallNumbers.join(', ') || 'No stall number'} · ${outChairs} chairs and ${outTables} tables went out.`}
+      onClose={onClose}
+      width={520}
+      footer={
+        <>
+          <Btn onClick={onClose}>Cancel</Btn>
+          <Btn kind='primary' onClick={collect} disabled={saving || !foundValid(v)}>
+            <Icon name='package' size={14} />
+            Collect
+          </Btn>
+        </>
+      }
+    >
+      <div style={{ display: 'grid', gap: 14 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--mfg)' }}>
+          Count what came back against what went out. Leave the figures at zero if everything
+          returned whole.
+        </div>
+        <FoundFields value={v} onChange={setV} />
+        <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
+          What is missing is priced at the admin’s replacement rate and what came back damaged at
+          the damage penalty, per item; both are deducted from this stall’s deposit on the refund
+          screen.
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+/**
+ * The details of the row, corrected: the extras taken at the counter, and —
+ * once the stall has been collected — the figures that collection recorded.
  *
  * 🔴 One PATCH, not six. These were six inline controls that each fired on its
  * own blur or tick, so a counter correcting an entry — two chairs missing, no,
@@ -338,6 +520,11 @@ function ConditionSummary({ row }: { row: EquipmentRow }) {
  * a figure nobody meant. Worse, the extras are CHARGED: a half-typed "12" used
  * to leave the counter as a 1 before it left as a 12. Here the figures are
  * settled first and sent once.
+ *
+ * ⚠️ What was found on return is NOT offered before the stall is collected.
+ * Filling it in here would leave the deduction priced against a row that still
+ * reads as out — furniture nobody has confirmed is back — and the counter
+ * would have no way to tell which rows they had actually walked to.
  */
 function CounterDialog({
   row,
@@ -351,26 +538,25 @@ function CounterDialog({
   const [v, setV] = useState({
     extraChairs: String(row.extraChairs),
     extraTables: String(row.extraTables),
-    missingChairs: String(row.missingChairs),
-    missingTables: String(row.missingTables),
-    damaged: row.damaged,
-    note: row.note ?? '',
+    ...draftOf(row),
   });
   const [saving, setSaving] = useState(false);
 
-  const num = (s: string) => {
-    const x = Number(s);
-    return Number.isInteger(x) && x >= 0 && x <= 500 ? x : null;
-  };
-  const counts = [v.extraChairs, v.extraTables, v.missingChairs, v.missingTables];
-  const valid = counts.every((s) => num(s) !== null);
+  const collected = row.collectedAt !== null;
+  const valid = num(v.extraChairs) !== null && num(v.extraTables) !== null && foundValid(v);
 
   // ⚠️ The extras are frozen once the cash has been taken. Re-pricing a charge
   // the vendor has already paid at the counter would leave the money in the
   // drawer disagreeing with the figure on the screen.
   const extrasLocked = row.extraCollectedAt !== null;
 
-  const field = (k: 'extraChairs' | 'extraTables' | 'missingChairs' | 'missingTables') => ({
+  // Cash taken and not yet collected: every figure on this row is either paid
+  // for or not yet counted, so there is nothing here to save. Saving anyway
+  // would file an edit that changed nothing, and the history is worth more than
+  // the rows nobody caused.
+  const editable = !extrasLocked || collected;
+
+  const extraField = (k: 'extraChairs' | 'extraTables') => ({
     type: 'number' as const,
     min: 0,
     value: v[k],
@@ -385,10 +571,7 @@ function CounterDialog({
           ...(extrasLocked
             ? {}
             : { extraChairs: num(v.extraChairs) ?? 0, extraTables: num(v.extraTables) ?? 0 }),
-          missingChairs: num(v.missingChairs) ?? 0,
-          missingTables: num(v.missingTables) ?? 0,
-          damaged: v.damaged,
-          note: v.note.trim(),
+          ...(collected ? foundOf(v) : {}),
         }),
       'Saved.',
     );
@@ -405,7 +588,7 @@ function CounterDialog({
       footer={
         <>
           <Btn onClick={onClose}>Cancel</Btn>
-          <Btn kind='primary' onClick={save} disabled={saving || !valid}>
+          <Btn kind='primary' onClick={save} disabled={saving || !valid || !editable}>
             <Icon name='check' size={14} />
             Save
           </Btn>
@@ -423,57 +606,62 @@ function CounterDialog({
           ) : (
             <Pair>
               <FormField id='eq-xch' label='Extra Chairs'>
-                <Input id='eq-xch' {...field('extraChairs')} />
+                <Input id='eq-xch' {...extraField('extraChairs')} />
               </FormField>
               <FormField id='eq-xtb' label='Extra Tables'>
-                <Input id='eq-xtb' {...field('extraTables')} />
+                <Input id='eq-xtb' {...extraField('extraTables')} />
               </FormField>
             </Pair>
           )}
         </Section>
 
-        <Section title='Found on Return'>
-          <Pair>
-            <FormField id='eq-mch' label='Chairs Missing'>
-              <Input id='eq-mch' {...field('missingChairs')} />
-            </FormField>
-            <FormField id='eq-mtb' label='Tables Missing'>
-              <Input id='eq-mtb' {...field('missingTables')} />
-            </FormField>
-          </Pair>
-          <FormField id='eq-note' label='Condition Note'>
-            <Input
-              id='eq-note'
-              value={v.note}
-              placeholder='e.g. 1 chair broken'
-              onChange={(e) => setV({ ...v, note: e.target.value })}
-            />
-          </FormField>
-          {/* biome-ignore lint/a11y/noLabelWithoutControl: the label WRAPS its control,
-              which associates them implicitly; the rule cannot see the input inside
-              <Checkbox>. */}
-          <label
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              fontSize: 13,
-              cursor: 'pointer',
-            }}
-          >
-            <Checkbox
-              checked={v.damaged}
-              onChange={(e) => setV({ ...v, damaged: e.target.checked })}
-            />
-            Damaged
-          </label>
-        </Section>
-
-        <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
-          What is missing or damaged is priced from the admin’s replacement rates and deducted from
-          this stall’s deposit on the refund screen.
-        </div>
+        {collected ? (
+          <Section title='Found on Return'>
+            <div style={{ fontSize: 12.5, color: 'var(--mfg)' }}>
+              Recorded when this stall was collected. Correcting a figure here changes the
+              deduction, and the history says who changed it.
+            </div>
+            <FoundFields value={v} onChange={(d) => setV({ ...v, ...d })} />
+          </Section>
+        ) : (
+          <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
+            What came back is counted on the Collect step, with the vendor standing there.
+          </div>
+        )}
       </div>
+    </Dialog>
+  );
+}
+
+/**
+ * Everything that has happened to this stall's furniture, newest first.
+ *
+ * 🔴 The counter's OWN trail, not the request's. It is read with
+ * `equipment.read`, so the volunteer at the table can see it — they are the
+ * one being asked "we returned those chairs this morning, who took them?" —
+ * while the rest of the request's log, which they have no business with, stays
+ * behind `audit.read` on the request page.
+ */
+function HistoryDialog({ row, onClose }: { row: EquipmentRow; onClose: () => void }) {
+  const { data, error, loading } = useLoad(() => equipmentHistory(row.requestId), [row.requestId]);
+
+  return (
+    <Dialog
+      title='Counter History'
+      note={`${row.stallName} · ${row.stallNumbers.join(', ') || 'No stall number'}`}
+      onClose={onClose}
+      width={560}
+      footer={<Btn onClick={onClose}>Close</Btn>}
+    >
+      {loading && !data ? (
+        <Loading />
+      ) : error ? (
+        <ErrorBox>{error.message}</ErrorBox>
+      ) : !data || data.length === 0 ? (
+        <Empty>Nothing has happened at this counter yet.</Empty>
+      ) : (
+        <ActivityTimeline events={data} />
+      )}
     </Dialog>
   );
 }
@@ -518,12 +706,16 @@ function Actions({
   canWrite,
   onRun,
   onEdit,
+  onCollect,
+  onHistory,
   onChallan,
 }: {
   row: EquipmentRow;
   canWrite: boolean;
   onRun: Run;
   onEdit: () => void;
+  onCollect: () => void;
+  onHistory: () => void;
   onChallan: () => void;
 }) {
   const act = (action: EquipmentAction, message: string) =>
@@ -532,6 +724,9 @@ function Actions({
   return (
     <RowActions wrap>
       {canWrite && <IconBtn label={`Edit ${row.stallName}`} glyph='pencil' onClick={onEdit} />}
+      {/* Readable by anyone who can see the page: settling "who collected this
+          already" is the counter's question, not the auditor's. */}
+      <IconBtn label={`History for ${row.stallName}`} glyph='clock' onClick={onHistory} />
       {canWrite &&
         (row.distributedAt ? (
           <Btn onClick={() => act('UNDISTRIBUTE', 'Marked not distributed.')}>
@@ -558,7 +753,9 @@ function Actions({
             Undo Collect
           </Btn>
         ) : (
-          <Btn onClick={() => act('COLLECT', 'Collected.')}>
+          // Opens the count rather than stamping the time: what came back is
+          // recorded with the vendor there, not remembered afterwards.
+          <Btn onClick={onCollect}>
             <Icon name='package' size={14} />
             Collect
           </Btn>
@@ -585,12 +782,16 @@ function EquipmentCard({
   canWrite,
   onRun,
   onEdit,
+  onCollect,
+  onHistory,
   onChallan,
 }: {
   row: EquipmentRow;
   canWrite: boolean;
   onRun: Run;
   onEdit: () => void;
+  onCollect: () => void;
+  onHistory: () => void;
   onChallan: () => void;
 }) {
   return (
@@ -627,7 +828,15 @@ function EquipmentCard({
         )}
         <ConditionSummary row={row} />
       </div>
-      <Actions row={row} canWrite={canWrite} onRun={onRun} onEdit={onEdit} onChallan={onChallan} />
+      <Actions
+        row={row}
+        canWrite={canWrite}
+        onRun={onRun}
+        onEdit={onEdit}
+        onCollect={onCollect}
+        onHistory={onHistory}
+        onChallan={onChallan}
+      />
     </Card>
   );
 }

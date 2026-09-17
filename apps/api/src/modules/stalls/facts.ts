@@ -26,7 +26,15 @@ export const factsInclude = {
     include: { stall: { include: { zone: true, category: { select: { key: true } } } } },
   },
   bankDetail: true,
-  payments: true,
+  // 🔴 LIVE credits only. A credit entered in error and withdrawn is money that
+  // never arrived, and it must not hold a stall's stage open or count towards a
+  // refund. Filtering at the include is what makes that true everywhere at once
+  // — `paymentConfirmed` below, the deposit a refund is measured against, the
+  // payment reminders — rather than in each of them, where one would be missed.
+  //
+  // ⚠️ `listPayments` deliberately overrides this: the finance screen is the one
+  // place that shows a withdrawn entry, and it sums the live ones itself.
+  payments: { where: { voidedAt: null } },
   fssai: { include: { files: true } },
   // ⚠️ LIVE coupons only. A retired code must not keep contributing capacity —
   // that is the whole point of retiring it — while the people who registered on

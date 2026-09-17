@@ -1,12 +1,11 @@
-import type { CommRecipient, ReminderKind, TemplateKeyValue } from '@stalls/core';
-import { unknownPlaceholders } from '@stalls/core';
+import type { CommRecipient, ReminderKind, ReminderRow, TemplateKeyValue } from '@stalls/core';
+import { CALL_OUTCOME_LABEL, DEFAULT_TEMPLATES, unknownPlaceholders } from '@stalls/core';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   clearSent,
   getTemplates,
   listRecipients,
   listReminders,
-  logReminder,
   putTemplate,
   putTemplateAttachment,
   presignBackofficeUpload,
@@ -15,6 +14,7 @@ import {
   uploadFile,
 } from '../api';
 import { TYPE_LABEL, TypeBadge } from '../components/StatusPill';
+import { CallHistoryDialog, LogCallDialog } from './LogCallDialog';
 import { formatDateTime, useLoad } from '../hooks';
 import { useMe } from '../me';
 import {
@@ -30,6 +30,7 @@ import {
   Search,
   Select,
   Tag,
+  type Tone,
   TBody,
   TD,
   TH,
@@ -105,6 +106,24 @@ const TEMPLATE_LABEL: Record<string, string> = {
   ONBOARDING_FSSAI_STAFF: 'FSSAI and Staff Registration',
 };
 
+/**
+ * Which requester types each letter is written for.
+ *
+ * 🔴 The same fact the send path refuses a mismatch on — an ashram department
+ * must never be handed the vendor letter with its bank-form link. It was only
+ * enforced at the end, so the screen offered every selected requester for every
+ * letter and the mismatch came back as a row of skips AFTER the send. Read from
+ * the seeds rather than the loaded templates because `appliesTo` is a property
+ * of the letter's PURPOSE, not of its wording: the API serves it from the same
+ * seeds, and an admin editing the body cannot move it.
+ */
+const TEMPLATE_TYPES = new Map<string, ReadonlySet<string>>(
+  DEFAULT_TEMPLATES.map((t) => [t.key, new Set<string>(t.appliesTo)]),
+);
+
+const appliesToText = (types: ReadonlySet<string>) =>
+  [...types].map((t) => TYPE_LABEL[t] ?? t).join(', ');
+
 function SendPanel() {
   const { can } = useMe();
   const canSend = can('comms.write');
@@ -122,9 +141,21 @@ function SendPanel() {
     [templateKey],
   );
 
+  // The types this letter is for. An unknown key applies to nobody rather than
+  // to everybody: a letter the screen cannot vouch for is the one that must not
+  // be offered against every requester in the edition.
+  const forTypes = useMemo(
+    () => TEMPLATE_TYPES.get(templateKey) ?? new Set<string>(),
+    [templateKey],
+  );
+
   const rows = useMemo(() => {
     const term = q.trim().toLowerCase();
     return (data ?? []).filter((r) => {
+      // ⚠️ Before the search and the sent filter, because this one is not a
+      // preference — a row the letter cannot go to is not a row this screen has
+      // anything to say about.
+      if (!forTypes.has(r.requestType)) return false;
       if (
         term &&
         !r.stallName.toLowerCase().includes(term) &&
@@ -142,7 +173,7 @@ function SendPanel() {
       if (sentFilter === 'unsent') return sentAt(r) === null;
       return true;
     });
-  }, [data, q, sentFilter, sentAt]);
+  }, [data, q, sentFilter, sentAt, forTypes]);
 
   // A row already sent this letter cannot be ticked — the send would skip it,
   // and offering the tick would make the result read as a failure.
@@ -212,6 +243,18 @@ function SendPanel() {
             </option>
           ))}
         </Select>
+        {/* Why the list below is shorter than the edition. The filtering is
+            silent otherwise, and a reader looking for an ashram stall under the
+            vendor letter would read the absence as missing data rather than as
+            a letter that was never written for them. */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 11.5, color: 'var(--mfg)' }}>Goes to</span>
+          {[...forTypes].map((t) => (
+            <Tag key={t} size='sm'>
+              {TYPE_LABEL[t] ?? t}
+            </Tag>
+          ))}
+        </div>
         <Search value={q} onChange={setQ} placeholder='Search vendors…' />
         <Select
           aria-label='Sent'
@@ -253,7 +296,9 @@ function SendPanel() {
       </div>
 
       {rows.length === 0 ? (
-        <Empty>No selected vendors yet. Letters go out once a request is selected.</Empty>
+        <Empty>
+          {`No selected ${appliesToText(forTypes).toLowerCase()} requests. This letter only goes to ${appliesToText(forTypes)} requests, and only once one is selected.`}
+        </Empty>
       ) : mobile ? (
         <div style={{ display: 'grid', gap: 10 }}>
           {rows.map((r) => (
@@ -666,9 +711,13 @@ function AttachmentControl({
 function ReminderPanel() {
   const { can } = useMe();
   const canLog = can('comms.write');
-  const toast = useToast();
   const [kind, setKind] = useState<ReminderKind>('BANK');
   const { data, error, loading, reload } = useLoad(() => listReminders(kind), [kind]);
+  // The row being logged, and the row whose history is open. Two pieces of
+  // state rather than one mode, because opening the history from a row and then
+  // logging a call on it is the ordinary sequence.
+  const [logging, setLogging] = useState<ReminderRow | null>(null);
+  const [showing, setShowing] = useState<ReminderRow | null>(null);
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
@@ -705,6 +754,7 @@ function ReminderPanel() {
                 <TH>Contact</TH>
                 <TH align='right'>Calls Logged</TH>
                 <TH>Last Call</TH>
+                <TH>Call Status</TH>
                 <TH> </TH>
               </TR>
             </THead>
@@ -718,23 +768,55 @@ function ReminderPanel() {
                   <TD mono style={{ fontSize: 12 }}>
                     {r.contactNumber}
                   </TD>
-                  <TD align='right'>{r.callCount}</TD>
+                  <TD align='right'>
+                    {/* The count is the way in to what was actually SAID. A
+                        number nobody can open is the state this screen was in
+                        before the call form existed. */}
+                    {r.callCount > 0 ? (
+                      <button
+                        type='button'
+                        onClick={() => setShowing(r)}
+                        style={{
+                          border: 0,
+                          background: 'none',
+                          padding: 0,
+                          cursor: 'pointer',
+                          color: 'var(--pri)',
+                          fontSize: 13,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {r.callCount}
+                      </button>
+                    ) : (
+                      r.callCount
+                    )}
+                  </TD>
                   <TD muted style={{ fontSize: 11.5, whiteSpace: 'nowrap' }}>
                     {r.lastCalledAt ? formatDateTime(r.lastCalledAt) : '—'}
                   </TD>
+                  <TD>
+                    {r.lastOutcome ? (
+                      <div style={{ display: 'grid', gap: 3 }}>
+                        <Tag tone={OUTCOME_TONE[r.lastOutcome] ?? 'neutral'} size='sm'>
+                          {CALL_OUTCOME_LABEL[r.lastOutcome]}
+                        </Tag>
+                        {/* ⚠️ The day they ASKED to be rung, shown whether or
+                            not it has passed — a callback nobody made is the
+                            one this list exists to surface. */}
+                        {r.callbackDate && (
+                          <span style={{ fontSize: 11, color: 'var(--mfg)' }}>
+                            back on {r.callbackDate}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 11.5, color: 'var(--mfg)' }}>—</span>
+                    )}
+                  </TD>
                   <TD align='right'>
                     {canLog && (
-                      <Btn
-                        onClick={async () => {
-                          try {
-                            await logReminder(r.requestId, kind);
-                            toast.ok(`Call logged for ${r.stallName}.`);
-                            reload();
-                          } catch (e) {
-                            toast.fail(e);
-                          }
-                        }}
-                      >
+                      <Btn onClick={() => setLogging(r)}>
                         <Icon name='phone-call' size={13} />
                         Log Call
                       </Btn>
@@ -746,6 +828,38 @@ function ReminderPanel() {
           </Table>
         </Card>
       )}
+
+      {logging && (
+        <LogCallDialog
+          requestId={logging.requestId}
+          stallName={logging.stallName}
+          kind={kind}
+          onClose={() => setLogging(null)}
+          onLogged={() => {
+            setLogging(null);
+            reload();
+          }}
+        />
+      )}
+      {showing && (
+        <CallHistoryDialog
+          requestId={showing.requestId}
+          stallName={showing.stallName}
+          kind={kind}
+          onClose={() => setShowing(null)}
+        />
+      )}
     </div>
   );
 }
+
+/** ⚠️ Keyed by the outcome NAME rather than by `statusTone`, which reads
+ *  English words — "DONE" is not a word that function knows. */
+const OUTCOME_TONE: Record<string, Tone> = {
+  CALL_COMPLETED: 'ok',
+  CALLBACK: 'warn',
+  WRONG_NUMBER: 'des',
+  NOT_REACHABLE: 'neutral',
+  NOT_ANSWERED: 'neutral',
+  NA: 'neutral',
+};

@@ -1,7 +1,14 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { ME_ADMIN, checkInRow, equipmentRow, installFetch, renderAt } from '../test-utils';
+import {
+  ME_ADMIN,
+  auditEvent,
+  checkInRow,
+  equipmentRow,
+  installFetch,
+  renderAt,
+} from '../test-utils';
 import { CheckIn } from './CheckIn';
 import { Electrical } from './Electrical';
 import { Equipment } from './Equipment';
@@ -198,10 +205,18 @@ describe('chairs and tables', () => {
   // so a counter correcting an entry sent a request per change — and the extras
   // are CHARGED, so a half-typed "12" left as a real 1 on its way to 12.
   test('the counter’s figures cross the wire once, not once per field', async () => {
+    const collected = {
+      distributedAt: '2026-02-13T09:00:00.000Z',
+      collectedAt: '2026-02-14T09:00:00.000Z',
+    };
     const fetch = installFetch([
       ['GET', /\/me$/, () => ME_ADMIN],
-      ['GET', /\/equipment$/, () => [equipmentRow()]],
-      ['PATCH', /\/equipment\//, () => equipmentRow({ extraChairs: 12, extraChargePaise: 60_000 })],
+      ['GET', /\/equipment$/, () => [equipmentRow(collected)]],
+      [
+        'PATCH',
+        /\/equipment\//,
+        () => equipmentRow({ ...collected, extraChairs: 12, extraChargePaise: 60_000 }),
+      ],
     ]);
     render();
     const user = userEvent.setup();
@@ -226,10 +241,127 @@ describe('chairs and tables', () => {
         extraTables: 0,
         missingChairs: 1,
         missingTables: 0,
-        damaged: false,
+        damagedChairs: 0,
+        damagedTables: 0,
         note: '',
       });
     });
+  });
+
+  // ⚠️ A row that has not been collected has no figures to correct. Offering
+  // them here would price a deduction against furniture nobody has confirmed
+  // is back, on a row the counter has not walked to.
+  test('the edit box offers the return figures only once the stall is collected', async () => {
+    installFetch([
+      ['GET', /\/me$/, () => ME_ADMIN],
+      ['GET', /\/equipment$/, () => [equipmentRow({ distributedAt: '2026-02-13T09:00:00.000Z' })]],
+    ]);
+    render();
+    const user = userEvent.setup();
+
+    await screen.findByText('6 ch / 2 tb');
+    await user.click(screen.getByLabelText('Edit Green Leaf Organics'));
+
+    const box = within(screen.getByRole('dialog'));
+    expect(box.queryByLabelText('Chairs Missing')).not.toBeInTheDocument();
+    expect(box.getByText(/counted on the Collect step/)).toBeInTheDocument();
+  });
+
+  // 🔴 Collect used to be a bare button that stamped the time, so what came
+  // back short was recorded later, from memory, by whoever opened the row next.
+  // The count and the collection are one act at the counter and one write here.
+  //
+  // Damaged was also ONE TICK for the whole stall, and the penalty is charged
+  // per item — so three broken chairs were deducted as one.
+  test('collecting counts what came back, in the same write', async () => {
+    const out = { distributedAt: '2026-02-13T09:00:00.000Z' };
+    const fetch = installFetch([
+      ['GET', /\/me$/, () => ME_ADMIN],
+      ['GET', /\/equipment$/, () => [equipmentRow(out)]],
+      [
+        'POST',
+        /\/equipment\/.+\/action$/,
+        () =>
+          equipmentRow({
+            ...out,
+            collectedAt: '2026-02-14T09:00:00.000Z',
+            missingChairs: 1,
+            damagedChairs: 3,
+            damagedTables: 1,
+          }),
+      ],
+    ]);
+    render();
+    const user = userEvent.setup();
+
+    await screen.findByText('6 ch / 2 tb');
+    await user.click(screen.getByRole('button', { name: 'Collect' }));
+
+    const box = within(screen.getByRole('dialog'));
+    // What went out is on the box, so the counter has something to count against.
+    expect(box.getByText(/6 chairs and 2 tables went out/)).toBeInTheDocument();
+    await user.clear(box.getByLabelText('Chairs Missing'));
+    await user.type(box.getByLabelText('Chairs Missing'), '1');
+    await user.clear(box.getByLabelText('Chairs Damaged'));
+    await user.type(box.getByLabelText('Chairs Damaged'), '3');
+    await user.clear(box.getByLabelText('Tables Damaged'));
+    await user.type(box.getByLabelText('Tables Damaged'), '1');
+    // Nothing is collected until the count is settled.
+    expect(fetch.calls.filter((c) => c.method === 'POST')).toHaveLength(0);
+
+    await user.click(box.getByRole('button', { name: 'Collect' }));
+
+    await waitFor(() => {
+      const posts = fetch.calls.filter((c) => c.method === 'POST');
+      expect(posts).toHaveLength(1);
+      expect(posts[0].body).toEqual({
+        action: 'COLLECT',
+        found: {
+          missingChairs: 1,
+          missingTables: 0,
+          damagedChairs: 3,
+          damagedTables: 1,
+          note: '',
+        },
+      });
+    });
+    // And the row says which, rather than only that something was broken.
+    expect(await screen.findByText('3 ch / 1 tb damaged')).toBeInTheDocument();
+    expect(await screen.findByText('Collected')).toBeInTheDocument();
+  });
+
+  // 🔴 `equipment.read`, not `audit.read`: the volunteer at the table is the
+  // one being asked "we returned those this morning, who took them?".
+  test('the counter can read its own trail on the row', async () => {
+    installFetch([
+      ['GET', /\/me$/, () => ({ ...ME_ADMIN, privileges: ['equipment.read'] })],
+      ['GET', /\/equipment$/, () => [equipmentRow()]],
+      [
+        'GET',
+        /\/equipment\/.+\/history$/,
+        () => [
+          auditEvent({
+            id: 'e1',
+            action: 'stall_equipment.collect',
+            label: 'Furniture Collected',
+            family: 'equipment',
+            glyph: 'circle-check',
+            tone: 'ok',
+            actorName: 'Kavya Nair',
+            changes: [{ field: 'missingChairs', before: 0, after: 1 }],
+          }),
+        ],
+      ],
+    ]);
+    render();
+    const user = userEvent.setup();
+
+    await screen.findByText('6 ch / 2 tb');
+    await user.click(screen.getByLabelText('History for Green Leaf Organics'));
+
+    const box = within(screen.getByRole('dialog'));
+    expect(await box.findByText('Furniture Collected')).toBeInTheDocument();
+    expect(box.getByText('Kavya Nair')).toBeInTheDocument();
   });
 
   // ⚠️ The extras are frozen once the cash is in the drawer. Re-pricing a charge
@@ -245,6 +377,8 @@ describe('chairs and tables', () => {
             extraChairs: 2,
             extraChargePaise: 10_000,
             extraCollectedAt: '2026-02-13T10:00:00.000Z',
+            distributedAt: '2026-02-13T09:00:00.000Z',
+            collectedAt: '2026-02-14T09:00:00.000Z',
           }),
         ],
       ],
@@ -271,7 +405,7 @@ describe('chairs and tables', () => {
         () => [
           equipmentRow({
             missingChairs: 2,
-            damaged: true,
+            damagedChairs: 1,
             deductionPaise: 105_000,
             flagged: true,
           }),

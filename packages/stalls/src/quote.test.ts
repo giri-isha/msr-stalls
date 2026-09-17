@@ -258,13 +258,13 @@ describe('refunds', () => {
 
   it('prices missing and damaged furniture', () => {
     const d = equipmentDeduction(
-      { missingChairs: 2, missingTables: 1, damaged: true },
+      { missingChairs: 2, missingTables: 1, damagedChairs: 3, damagedTables: 1 },
       {
         chairReplacementPaise: rupeesToPaise(400),
         tableReplacementPaise: rupeesToPaise(900),
         damagePenaltyPaise: rupeesToPaise(250),
       },
     );
-    expect(d).toBe(rupeesToPaise(2 * 400 + 900 + 250));
+    expect(d).toBe(rupeesToPaise(2 * 400 + 900 + 4 * 250));
   });
 });
