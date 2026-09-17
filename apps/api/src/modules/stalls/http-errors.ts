@@ -24,6 +24,7 @@ import {
   BadDeclarationKeyError,
   DeclarationExistsError,
   DeclarationsChangedError,
+  BuiltInCategoryError,
   BuiltInFieldLockedError,
   ClaimAlreadyReviewedError,
   MissingRejectReasonError,
@@ -39,7 +40,11 @@ import {
   UnknownFormError,
   UnknownCallQuestionError,
   UnknownFormFieldError,
+  UnknownNavCategoryError,
+  UnknownNavItemError,
+  UnknownReportError,
   UnknownRoleError,
+  UnknownWidgetError,
   SystemRoleError,
   NoActiveEditionError,
   NothingToSendError,
@@ -52,6 +57,7 @@ import {
   StepLockedError,
   StepNotOpenError,
   TooManyStallsError,
+  TooManyOpenRequestsError,
   TooManyStallsRequestedError,
   UnknownAccessLinkError,
   UnknownAccountError,
@@ -115,7 +121,9 @@ function statusFor(err: unknown): number | null {
     err instanceof UnknownCallQuestionError ||
     err instanceof UnknownAccountError ||
     err instanceof UnknownCouponError ||
-    err instanceof UnknownTemplateError
+    err instanceof UnknownTemplateError ||
+    err instanceof UnknownNavCategoryError ||
+    err instanceof UnknownReportError
   ) {
     return 404;
   }
@@ -155,6 +163,7 @@ function statusFor(err: unknown): number | null {
     err instanceof ZoneExistsError ||
     err instanceof ZoneInUseError ||
     err instanceof CategoryInUseError ||
+    err instanceof BuiltInCategoryError ||
     err instanceof SameEditionCopyError
   ) {
     return 409;
@@ -162,6 +171,10 @@ function statusFor(err: unknown): number | null {
   // A key the vocabulary will not take is a malformed request, not a conflict:
   // there is nothing on the server it collides with.
   if (err instanceof BadDeclarationKeyError) return 400;
+  // An arrangement naming an item or a card this role could never use. The
+  // screen never offers one, so this is a client out of step with the server.
+  if (err instanceof UnknownNavItemError) return 400;
+  if (err instanceof UnknownWidgetError) return 400;
   if (err instanceof UnauthorableFieldTypeError) return 400;
   if (err instanceof BadFieldMediaError) return 400;
   // A limit that cannot be met, or a retype the field's column cannot hold.
@@ -176,6 +189,7 @@ function statusFor(err: unknown): number | null {
   if (
     err instanceof TooManyStallsError ||
     err instanceof TooManyStallsRequestedError ||
+    err instanceof TooManyOpenRequestsError ||
     err instanceof ValidationFailedError
   ) {
     return 422;

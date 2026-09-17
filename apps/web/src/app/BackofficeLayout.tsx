@@ -19,7 +19,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import { apiFetch } from '@/modules/stalls/api-client';
 import { useTheme } from '@/modules/stalls/use-theme';
-import { MeProvider, STALLS_NAV, type StallsNavItem, navAllows, useMe } from '@/modules/stalls';
+import type { ResolvedNavGroup } from '@stalls/core';
+import { MeProvider, useMe } from '@/modules/stalls';
 import { InstallPrompt } from './UpdateToast';
 import {
   Frame,
@@ -44,19 +45,18 @@ function Sidebar({
   rail,
   narrow,
   open,
+  groups,
   onToggleRail,
   onNavigate,
 }: {
   rail: boolean;
   narrow: boolean;
   open: boolean;
+  /** Already resolved — see `useMe().nav`. This component filters nothing. */
+  groups: ResolvedNavGroup[];
   onToggleRail: () => void;
   onNavigate: () => void;
 }) {
-  const { can } = useMe();
-  const groups = [...new Set(STALLS_NAV.map((n) => n.group))];
-  const visible = (n: StallsNavItem) => navAllows(n, can);
-
   return (
     // ⚠️ A `<nav>`, where the module this chrome was copied from uses `<aside>`.
     // The look is identical; the role is not. An `<aside>` is `complementary` —
@@ -166,16 +166,16 @@ function Sidebar({
       </div>
 
       {groups.map((group) => {
-        const items = STALLS_NAV.filter((n) => n.group === group).filter(visible);
+        const items = group.items;
         if (items.length === 0) return null;
         return (
-          <div key={group ?? 'root'} style={{ padding: '0 12px 14px' }}>
+          <div key={group.title} style={{ padding: '0 12px 14px' }}>
             {/* ⚠️ The heading becomes a RULE on a rail, not nothing. Glyphs in
                 one unbroken column lose the grouping, and the grouping is how
                 people find the one they want — a line keeps it at a width that
                 cannot hold the word. The ungrouped items at the top get
                 neither. */}
-            {group &&
+            {group.title &&
               (rail ? (
                 <div style={{ height: 1, background: 'var(--line)', margin: '0 6px 9px' }} />
               ) : (
@@ -189,12 +189,12 @@ function Sidebar({
                     padding: '0 8px 7px',
                   }}
                 >
-                  {group}
+                  {group.title}
                 </div>
               ))}
             {items.map((n) => (
               <NavLink
-                key={n.to}
+                key={n.key}
                 to={n.to}
                 end={n.end}
                 onClick={onNavigate}
@@ -447,7 +447,7 @@ function MenuItem({ icon, label, onClick }: { icon: string; label: string; onCli
 }
 
 function Gate() {
-  const { me, status, reload } = useMe();
+  const { me, status, reload, nav } = useMe();
   const { pathname } = useLocation();
   const narrow = useIsNarrow();
   const mobile = useIsMobile();
@@ -485,7 +485,17 @@ function Gate() {
     );
   }
 
-  const current = STALLS_NAV.find((n) => (n.end ? n.to === pathname : pathname.startsWith(n.to)));
+  // Which nav row the current path belongs to — for the breadcrumb and the
+  // title. Read from the RESOLVED nav, so the trail names the heading this
+  // caller's sidebar actually puts the screen under rather than the one the
+  // registry ships. A route with no row (a request record, a report) keeps its
+  // parent's crumb, which is the honest answer: it is inside that screen.
+  const current = nav
+    .flatMap((g) => g.items.map((item) => ({ item, title: g.title })))
+    .filter((n) => (n.item.end ? n.item.to === pathname : pathname.startsWith(n.item.to)))
+    // The longest match wins: `/m/stalls` prefixes every path in the module, and
+    // without this every screen would read "Home".
+    .sort((a, b) => b.item.to.length - a.item.to.length)[0];
 
   return (
     <Frame>
@@ -516,6 +526,7 @@ function Gate() {
           rail={rail}
           narrow={narrow}
           open={drawerOpen}
+          groups={nav}
           onToggleRail={toggleRail}
           onNavigate={closeDrawer}
         />
@@ -527,8 +538,8 @@ function Gate() {
             // dashboard walks out of the module, under a chevron that looks
             // like it moves you within it.
             onBack={pathname === '/m/stalls' ? null : () => history.back()}
-            crumb={current?.group ?? 'Stalls'}
-            title={current?.label ?? 'Stalls'}
+            crumb={current?.title ?? 'Stalls'}
+            title={current?.item.label ?? 'Stalls'}
           />
           {/* ⚠️ The backoffice only. An installed app is installed by the team
               who work it every day; a vendor fills one form once, from a link in

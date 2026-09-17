@@ -139,7 +139,9 @@ describe('getPublicConfig', () => {
       'declarations',
       'edition',
       'forms',
+      'maxOpenRequests',
       'maxStallsPerRequest',
+      'requestCapScope',
       'zones',
     ]);
   });

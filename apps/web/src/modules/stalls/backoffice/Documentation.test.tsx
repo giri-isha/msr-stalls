@@ -97,7 +97,10 @@ describe('the documentation screen', () => {
         .map((l) => l.getAttribute('href'));
       expect(hrefs).toContain('/m/stalls/requests');
       expect(hrefs).toContain('/m/stalls/finance');
-      expect(hrefs).toContain('/m/stalls/admin');
+      // ⚠️ `/config`, where this said `/admin`. Admin's five tabs are five tabs
+      // of Configs now, beside Home Page and Sidebar Layout.
+      expect(hrefs).toContain('/m/stalls/config');
+      expect(hrefs).toContain('/m/stalls/dashboards');
     });
   });
 

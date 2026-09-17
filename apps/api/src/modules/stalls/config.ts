@@ -16,6 +16,7 @@ import {
   DEFAULT_ZONES_2025,
   type PlanCategoryView,
   type PublicConfig,
+  type RequestCapScope,
   type RateCardEntry,
   type RateScope,
   STALL_REQUEST_TYPES,
@@ -337,6 +338,11 @@ export async function getPublicConfig(db: Db, scope: RateScope = 'VENDOR'): Prom
       gstPercent: charges.gstPercent,
     },
     maxStallsPerRequest: edition.maxStallsPerRequest,
+    // The other half of the same rule. Public so the form can say "you already
+    // have two" before a requester fills it in rather than only after — see the
+    // note on `PublicConfig`.
+    maxOpenRequests: edition.maxOpenRequests,
+    requestCapScope: edition.requestCapScope as RequestCapScope,
     // ⚠️ Nullable, and the page falls back to `FORM_DEFINITIONS` when it is
     // empty. An edition seeded before forms became data has no rows, and a
     // request form that renders nothing is worse than one rendering last year's
@@ -472,7 +478,8 @@ export async function replacePlanCategories(
 }
 
 /** The edition's own settings — the name, the two virtual-account prefixes
- *  Finance issues, the cap on stalls per request, and who the money goes to.
+ *  Finance issues, the two caps on what a requester may ask for, and who the
+ *  money goes to.
  *
  *  ⚠️ The beneficiary block is named FIELD BY FIELD rather than spread in.
  *  These columns are what the payment letter and the vendor's payment page both
@@ -487,6 +494,11 @@ export async function updateEditionSettings(
     virtualAccountRentPrefix: string | null;
     virtualAccountDepositPrefix: string | null;
     maxStallsPerRequest: number;
+    /** ⚠️ Optional, and an omitted one is LEFT ALONE rather than defaulted —
+     *  see the note on `EditionSettingsInput`. `data: { ...input }` below gives
+     *  that for free: Prisma skips an `undefined`. */
+    maxOpenRequests?: number;
+    requestCapScope?: RequestCapScope;
     termsUrl?: string | null;
     beneficiaryName?: string | null;
     beneficiaryAddress?: string | null;

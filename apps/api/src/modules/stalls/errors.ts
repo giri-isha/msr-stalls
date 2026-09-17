@@ -321,6 +321,28 @@ export class TooManyStallsRequestedError extends Error {
   }
 }
 
+/** An account already holding as many requests as the edition allows it to have
+ *  going at once. Mapped to 422, the same as the per-request stall cap.
+ *
+ *  ⚠️ The message names the RULE, not the requests. "You already have 2 requests
+ *  still open" is something the account can check for itself on My Requests; the
+ *  references are deliberately not listed, because this error is also raised on
+ *  a backoffice member filing FOR a requester and that member may not be able to
+ *  see every one of them. */
+export class TooManyOpenRequestsError extends Error {
+  constructor(
+    readonly open: number,
+    readonly max: number,
+    /** How the edition's scope reads, e.g. "still open". From
+     *  `REQUEST_CAP_SCOPE_LABEL` — never spelled out here, so the setting and
+     *  the refusal cannot drift apart. */
+    readonly scopeLabel: string,
+  ) {
+    super(`this account already has ${open} requests ${scopeLabel}; the limit is ${max} at a time`);
+    this.name = 'TooManyOpenRequestsError';
+  }
+}
+
 /** A requester type this backoffice member's roles do not reach. Mapped to 403.
  *
  *  Distinct from "no permission at all": the local welfare team holds real
@@ -870,5 +892,48 @@ export class CallbackDateWithoutCallbackError extends Error {
   constructor() {
     super('a callback day belongs only on a call whose outcome is "Callback requested"');
     this.name = 'CallbackDateWithoutCallbackError';
+  }
+}
+
+/** A sidebar item or a home card the arrangement named and the registry does
+ *  not have — or that the role has no privilege for. Mapped to 400: the screen
+ *  never offers one, so a body carrying one is a client out of step with the
+ *  server, not a conflict with anything stored. */
+export class UnknownNavItemError extends Error {
+  constructor(readonly key: string) {
+    super(`no sidebar item ${key} this role can use`);
+    this.name = 'UnknownNavItemError';
+  }
+}
+
+export class UnknownWidgetError extends Error {
+  constructor(readonly key: string) {
+    super(`no home card ${key} this role can use`);
+    this.name = 'UnknownWidgetError';
+  }
+}
+
+export class UnknownNavCategoryError extends Error {
+  constructor(readonly key: string) {
+    super(`no sidebar heading ${key}`);
+    this.name = 'UnknownNavCategoryError';
+  }
+}
+
+/** A shipped heading somebody tried to delete. Mapped to 409: the registry
+ *  would put it straight back on the next read, so the delete would appear to
+ *  work and change nothing. Renaming and moving one are both allowed. */
+export class BuiltInCategoryError extends Error {
+  constructor(readonly label: string) {
+    super(`${label} ships with the module — it can be renamed or moved, but not deleted`);
+    this.name = 'BuiltInCategoryError';
+  }
+}
+
+/** A report key the catalog does not have. Mapped to 404. */
+export class UnknownReportError extends Error {
+  constructor(readonly key: string) {
+    super(`no report ${key}`);
+    this.name = 'UnknownReportError';
   }
 }

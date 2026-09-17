@@ -36,6 +36,12 @@ import type {
   CouponSummary,
   CouponView,
   DashboardCounts,
+  HomeConfigResponse,
+  HomeResponse,
+  NavConfigResponse,
+  ReportView,
+  SaveHomeLayoutInput,
+  SaveNavLayoutInput,
   ElectricalSheet,
   EmailTemplateView,
   EquipmentAction,
@@ -100,6 +106,7 @@ import type {
   ZonePlanView,
   PaymentClaimView,
   PaymentClaimsResponse,
+  RequestCapScope,
   ReviewPaymentClaimInput,
   SubmitPaymentClaimInput,
   VoidPaymentInput,
@@ -210,6 +217,54 @@ export const deleteRole = (roleKey: string) =>
   apiFetch<void>(`${BASE}/roles/${roleKey}`, { method: 'DELETE' });
 export const getDashboard = () => apiFetch<DashboardCounts>(`${BASE}/dashboard`);
 
+// ── Home, reports, and the two layout configs ───────────────────────────────
+
+/** The caller's own home page: the cards they resolved to, already filled.
+ *
+ *  ⚠️ One request for the whole page. The registry is per card, which makes a
+ *  fetch per card tempting — and would open eight connections and repaint eight
+ *  times for a screen where six of the queries count rows in the same table. */
+export const getHome = () => apiFetch<HomeResponse>(`${BASE}/home`);
+
+/** The report catalog, narrowed to what this caller may open. Read from the
+ *  server rather than from the registry so a report added to the catalog reaches
+ *  the hub without the web being redeployed. */
+export const listReports = () =>
+  apiFetch<{
+    reports: Array<{ key: string; title: string; note: string; group: string; glyph: string }>;
+  }>(`${BASE}/reports`);
+
+export const getReport = (key: string) => apiFetch<ReportView>(`${BASE}/reports/${key}`);
+
+/** Where the browser goes to download the same table as a spreadsheet.
+ *
+ *  ⚠️ A URL handed to the browser, not a fetch. The response carries a
+ *  `content-disposition`, and a fetch would put the CSV in memory and leave the
+ *  page to re-create the download the browser already knows how to do. */
+export const reportCsvUrl = (key: string) => `${BASE}/reports/${key}?format=csv`;
+
+export const getNavConfig = () => apiFetch<NavConfigResponse>(`${BASE}/config/sidebar`);
+
+export const saveNavLayout = (roleKey: string, body: SaveNavLayoutInput) =>
+  apiFetch<{ shown: number }>(`${BASE}/config/sidebar/${roleKey}`, { method: 'PUT', json: body });
+
+export const getHomeConfig = () => apiFetch<HomeConfigResponse>(`${BASE}/config/home`);
+
+export const saveHomeLayout = (roleKey: string, body: SaveHomeLayoutInput) =>
+  apiFetch<{ shown: number }>(`${BASE}/config/home/${roleKey}`, { method: 'PUT', json: body });
+
+export const addNavHeading = (label: string) =>
+  apiFetch<{ key: string }>(`${BASE}/config/sidebar-headings`, { method: 'POST', json: { label } });
+
+export const renameNavHeading = (key: string, label: string) =>
+  apiFetch<void>(`${BASE}/config/sidebar-headings/${key}`, { method: 'PUT', json: { label } });
+
+export const deleteNavHeading = (key: string) =>
+  apiFetch<void>(`${BASE}/config/sidebar-headings/${key}`, { method: 'DELETE' });
+
+export const reorderNavHeadings = (keys: string[]) =>
+  apiFetch<void>(`${BASE}/config/sidebar-headings/order`, { method: 'PUT', json: { keys } });
+
 // ── Backoffice: requests ─────────────────────────────────────────────────────────
 
 export const listRequests = (q: Partial<ListRequestsQuery> = {}) =>
@@ -282,6 +337,8 @@ export interface BackofficeConfig {
     virtualAccountRentPrefix: string | null;
     virtualAccountDepositPrefix: string | null;
     maxStallsPerRequest: number;
+    maxOpenRequests: number;
+    requestCapScope: RequestCapScope;
     termsUrl: string | null;
   };
   zones: Array<ZoneView & { id: string }>;
@@ -380,6 +437,11 @@ export type EditionSettings = {
   virtualAccountRentPrefix: string | null;
   virtualAccountDepositPrefix: string | null;
   maxStallsPerRequest: number;
+  /** How many requests one account may have going at once, and which of its
+   *  requests count towards it. The two are one rule and are edited together —
+   *  a cap of 2 says nothing until you say two of what. */
+  maxOpenRequests: number;
+  requestCapScope: RequestCapScope;
   /** Where this edition's terms can be read, linked beside the acceptance
    *  tick-box on the bank form. Null until the legal team issues one. */
   termsUrl: string | null;

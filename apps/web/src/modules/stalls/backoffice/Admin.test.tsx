@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -9,12 +9,16 @@ import {
   installFetch,
   renderAt,
 } from '../test-utils';
-import { Admin } from './Admin';
+// ⚠️ `Configs`, not `Admin`. The five panels this file exercises are five tabs
+// of Configs now, and the STRIP that switches between them moved there with
+// them — so a test that mounted `AdminPanels` directly could no longer press a
+// tab, which is how every case below reaches the panel it is about.
+import { Configs } from './Configs';
 
 beforeEach(() => vi.unstubAllGlobals());
 
-const routes = [{ path: '/m/stalls/admin', element: <Admin /> }];
-const render = () => renderAt('/m/stalls/admin', routes, { me: true });
+const routes = [{ path: '/m/stalls/config', element: <Configs /> }];
+const render = () => renderAt('/m/stalls/config', routes, { me: true });
 
 const base = (extra: ReadonlyArray<readonly [string, RegExp, unknown]> = []) =>
   installFetch([
@@ -54,6 +58,38 @@ describe('edition settings', () => {
         // Never issued, and sent as null rather than an empty string — the API
         // reads null as "Finance has not issued one for this edition".
         virtualAccountDepositPrefix: null,
+        maxStallsPerRequest: 3,
+      });
+    });
+  });
+
+  /** 🔴 "Only two requests at a time" is TWO settings, and the screen sends
+   *  both. The number alone is not a rule until the scope says two of what —
+   *  under "awaiting a decision" a vendor already selected for two bays may
+   *  keep applying, and under "every request" two rejections use up their
+   *  year. */
+  test('sends the cap on requests at a time together with the rule for which count', async () => {
+    const fetch = base([['PATCH', /\/editions\/e1\/settings$/, () => ({})]]);
+    render();
+    const user = userEvent.setup();
+
+    await openEdition(user, 'Stalls 2026');
+    // ⚠️ `fireEvent.change` rather than clear-and-type. The field falls back to
+    // 1 on an empty box — a spinner that reads blank is not a cap — so clearing
+    // it first leaves a 1 behind and typing appends to it.
+    const cap = screen.getByLabelText('Requests at a Time');
+    fireEvent.change(cap, { target: { value: '3' } });
+    await user.click(screen.getByRole('combobox', { name: 'Which Requests Count' }));
+    await user.click(screen.getByRole('option', { name: 'Awaiting a decision' }));
+    await user.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => {
+      const call = fetch.calls.find((c) => c.method === 'PATCH');
+      expect(call?.body).toMatchObject({
+        maxOpenRequests: 3,
+        requestCapScope: 'UNDECIDED',
+        // The other cap is untouched — the two are separate rules and editing
+        // one must not quietly restate the other.
         maxStallsPerRequest: 3,
       });
     });

@@ -14,6 +14,8 @@ import { RATE_SCOPES } from './rates';
 import { MAX_STAFF_COUPON_CAPACITY } from './coupons';
 import { VIRTUAL_ACCOUNT_PREFIX_PATTERN } from './virtual-account';
 import { SIGNATURE_STATUSES } from './signing';
+import type { ResolvedNavGroup } from './nav';
+import type { WidgetSpan } from './widgets';
 
 /** The shapes that cross the network, shared by api and web so a rename breaks
  *  the build rather than production. Host convention: `@stalls/shared` publishes
@@ -72,6 +74,45 @@ export const CategoryValue = z
 
 export type RequestStatus = z.infer<typeof RequestStatus>;
 export type RequestStage = z.infer<typeof RequestStage>;
+
+/** Which of a requester's OWN existing requests count against the edition's cap
+ *  on how many they may have open at once — "only two requests at a time".
+ *
+ *  🔴 Three readings of "at a time", and the team picks one per edition rather
+ *  than the code picking for them. The difference is not cosmetic: under
+ *  `UNDECIDED` a vendor already selected for two bays may keep applying for
+ *  more ground, and under `ALL` two rejections use up their year.
+ *
+ *  - `UNDECIDED` — only requests the team has not ruled on yet: SUBMITTED and
+ *    SHORTLISTED. Being selected frees the slot.
+ *  - `OPEN` — everything still live: the two above plus SELECTED and BACKUP.
+ *    Only a rejection or a cancellation frees a slot.
+ *  - `ALL` — every request the account has filed this edition, decided or not.
+ *    A hard two-attempts-a-year cap; a rejection frees nothing. */
+export const REQUEST_CAP_SCOPES = ['UNDECIDED', 'OPEN', 'ALL'] as const;
+export const RequestCapScopeValue = z.enum(REQUEST_CAP_SCOPES);
+export type RequestCapScope = (typeof REQUEST_CAP_SCOPES)[number];
+
+/** The statuses each scope counts, as ONE table both the enforcement and the
+ *  Admin screen's explanation read.
+ *
+ *  ⚠️ `ALL` is spelled out rather than left undefined so a caller can always
+ *  filter on a status list and never has to special-case "no filter" — and so
+ *  that a status added to `RequestStatus` later fails the exhaustiveness of
+ *  this literal instead of silently slipping past a cap. */
+export const REQUEST_CAP_STATUSES: Record<RequestCapScope, readonly RequestStatus[]> = {
+  UNDECIDED: ['SUBMITTED', 'SHORTLISTED'],
+  OPEN: ['SUBMITTED', 'SHORTLISTED', 'SELECTED', 'BACKUP'],
+  ALL: ['SUBMITTED', 'SHORTLISTED', 'SELECTED', 'BACKUP', 'REJECTED', 'CANCELLED'],
+};
+
+/** How each scope reads on the Admin screen and in the refusal a requester
+ *  sees. One wording, so the setting and the error cannot drift apart. */
+export const REQUEST_CAP_SCOPE_LABEL: Record<RequestCapScope, string> = {
+  UNDECIDED: 'awaiting a decision',
+  OPEN: 'still open',
+  ALL: 'filed this edition',
+};
 
 // ── Public: submit ──────────────────────────────────────────────────────────
 
@@ -221,6 +262,16 @@ export interface PublicConfig {
    *  Wanting ground in a second bay is a second request, so the team can accept
    *  one and decline the other. */
   maxStallsPerRequest: number;
+  /** The cap on how many requests one account may have going at once, and which
+   *  of its requests count towards it.
+   *
+   *  ⚠️ Public because the form has to be able to say "you already have two"
+   *  BEFORE a requester fills in a long form, not only after they send it. It
+   *  discloses nothing about any account — it is the edition's rule, the same
+   *  for everyone, and the count it is checked against never leaves the
+   *  session that owns it. */
+  maxOpenRequests: number;
+  requestCapScope: RequestCapScope;
   customFields: PublicCustomField[];
   /** The four request forms, as the edition defines them.
    *
@@ -815,6 +866,20 @@ export const EditionSettingsInput = z.object({
   virtualAccountRentPrefix: VirtualAccountPrefix,
   virtualAccountDepositPrefix: VirtualAccountPrefix,
   maxStallsPerRequest: z.number().int().min(1).max(20),
+  /** How many requests one account may have going at once, and which of its
+   *  requests count towards that — see `REQUEST_CAP_SCOPES`.
+   *
+   *  ⚠️ The two travel together on the SCREEN, on purpose: a cap of 2 means
+   *  nothing until you say two of what, and a dialog that let the number be
+   *  saved without the rule would be a setting whose effect nobody can predict.
+   *
+   *  ⚠️ Optional on the WIRE, and omitting either leaves it alone — the same
+   *  reasoning as an omitted half of `FlowInput`. A settings page served before
+   *  this existed PUTs neither, and the web and the API deploy separately; a
+   *  default here would mean such a page silently resetting the cap every time
+   *  somebody corrected a bank branch. */
+  maxOpenRequests: z.number().int().min(1).max(20).optional(),
+  requestCapScope: RequestCapScopeValue.optional(),
   /** Where this edition's terms and conditions can be read, linked beside the
    *  tick-box on the bank form that records having accepted them.
    *
@@ -859,6 +924,8 @@ export interface EditionSettingsView {
   virtualAccountRentPrefix: string | null;
   virtualAccountDepositPrefix: string | null;
   maxStallsPerRequest: number;
+  maxOpenRequests: number;
+  requestCapScope: RequestCapScope;
   termsUrl: string | null;
   beneficiaryName: string | null;
   beneficiaryAddress: string | null;
@@ -1550,6 +1617,17 @@ export interface MeResponse {
    *  Welfare member is never shown a vendor form the API would refuse — a
    *  refusal after two pages of typing. */
   requestTypeScope: string[] | null;
+  /**
+   * The caller's OWN sidebar, already resolved: the registry narrowed by their
+   * privileges and then arranged by whatever an admin set for their roles.
+   *
+   * ⚠️ Served here rather than from a `/nav` of its own. The shell fetches `/me`
+   * before it can draw anything, and a second round trip would buy a sidebar
+   * that flickers in a frame later. A host that does not serve this gets an
+   * empty list and the shell falls back to the registry defaults — which is
+   * exactly the sidebar this module had before any of it was configurable.
+   */
+  nav: ResolvedNavGroup[];
 }
 
 /**
@@ -2644,3 +2722,129 @@ export interface ChallanView {
   editionName: string;
   printedAt: string;
 }
+
+// ── Home, the sidebar, and the two config screens ───────────────────────────
+
+/** One card on the home page: the registry's description of it, plus this
+ *  edition's figures. The API sends only the cards the caller resolved to, so a
+ *  client never has to ask whether it may draw one. */
+export interface HomeWidgetView {
+  key: string;
+  label: string;
+  glyph: string;
+  span: WidgetSpan;
+  /** Where the card's header link goes; absent when the card is not a way in. */
+  to?: string;
+  /**
+   * The card's figures, keyed by the card.
+   *
+   * ⚠️ `null` means the loader FAILED and the client says so in words. `{}`
+   * means there were no figures to load — a card that draws itself from
+   * something else, which Quick Links is. A card that never had figures must
+   * not wear the sentence about ones that could not be read.
+   */
+  data: Record<string, number | string | null> | null;
+}
+
+export interface HomeResponse {
+  /** The edition these figures are for, named, so a tab left open says so. */
+  editionLabel: string;
+  widgets: HomeWidgetView[];
+}
+
+/** One row of the Sidebar Layout editor. `shown` is the toggle; `category` is
+ *  which heading block the row currently sits in. */
+export interface NavConfigItem {
+  key: string;
+  label: string;
+  glyph: string;
+  meta: string;
+  to: string;
+  category: string;
+  shown: boolean;
+}
+
+/** One row of the Home Page editor. */
+export interface HomeConfigWidget {
+  key: string;
+  label: string;
+  description: string;
+  glyph: string;
+  span: WidgetSpan;
+  shown: boolean;
+}
+
+/** A role, as either config screen lists it.
+ *
+ *  ⚠️ `configured` is the whole rule made visible. A role with no rows takes the
+ *  registry defaults, so the editor opens with everything ON — and the caption
+ *  has to say that it is a default rather than a choice somebody made, or an
+ *  admin "fixes" a layout that was never broken. */
+export interface ConfigRoleLayout<T> {
+  roleKey: string;
+  name: string;
+  level: number;
+  configured: boolean;
+  shownCount: number;
+  total: number;
+  items: T[];
+}
+
+export interface NavConfigResponse {
+  categories: Array<{ key: string; label: string; ordinal: number; builtIn: boolean }>;
+  roles: ConfigRoleLayout<NavConfigItem>[];
+}
+
+export interface HomeConfigResponse {
+  roles: ConfigRoleLayout<HomeConfigWidget>[];
+}
+
+/**
+ * One role's sidebar, written whole.
+ *
+ * 🔴 A SET, never an upsert per row. "This role has rows" is what tells the
+ * resolver to stop applying registry defaults, so a partial write leaves a role
+ * reading from both sources at once — half an admin's arrangement and half the
+ * catalog, in an order neither of them chose.
+ */
+export const SaveNavLayoutInput = z.object({
+  items: z
+    .array(
+      z.object({
+        key: z.string().min(1).max(60),
+        category: z.string().min(1).max(60),
+        shown: z.boolean(),
+      }),
+    )
+    .max(200),
+});
+export type SaveNavLayoutInput = z.infer<typeof SaveNavLayoutInput>;
+
+/** One role's home page, written whole, for the same reason. */
+export const SaveHomeLayoutInput = z.object({
+  widgets: z.array(z.object({ key: z.string().min(1).max(60), shown: z.boolean() })).max(100),
+});
+export type SaveHomeLayoutInput = z.infer<typeof SaveHomeLayoutInput>;
+
+/** A heading an admin added or re-labelled. The KEY is generated by the API for
+ *  a new one and immutable after: it is what every role's rows point at. */
+export const NavCategoryInput = z.object({ label: z.string().trim().min(1).max(40) });
+export type NavCategoryInput = z.infer<typeof NavCategoryInput>;
+
+/** Where a heading sits. Sent on its own so moving a block never rewrites the
+ *  label somebody is halfway through typing. */
+export const NavCategoryOrderInput = z.object({
+  keys: z.array(z.string().min(1).max(60)).max(60),
+});
+export type NavCategoryOrderInput = z.infer<typeof NavCategoryOrderInput>;
+
+/** How a report is asked for. Both bounds are optional and inclusive; a report
+ *  that does not read dates ignores them rather than refusing. */
+export const ReportQuery = z.object({
+  from: z.string().date().optional(),
+  to: z.string().date().optional(),
+  requestType: RequestType.optional(),
+  /** `csv` streams the same table as a file. Anything else renders it. */
+  format: z.enum(['json', 'csv']).optional(),
+});
+export type ReportQuery = z.infer<typeof ReportQuery>;

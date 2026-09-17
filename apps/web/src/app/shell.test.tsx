@@ -16,16 +16,24 @@ import { PublicLayout } from './PublicLayout';
 import { BackofficeLayout } from './BackofficeLayout';
 
 const ME = ['GET', /\/m\/stalls\/me$/, () => ME_LEAD] as const;
-const DASH = [
+/** The landing's payload. ⚠️ `/home`, not `/dashboard` — the Dashboard stopped
+ *  being where a member lands when Home took the job, and its counts are on
+ *  Reports & Dashboards now. */
+const HOME = [
   'GET',
-  /\/m\/stalls\/dashboard$/,
+  /\/m\/stalls\/home$/,
   () => ({
-    total: 3,
-    byType: { VENDOR: 2, LOCAL_WELFARE: 1, ASHRAM: 0 },
-    byStatus: { SUBMITTED: 3 },
-    stallsPlanned: 10,
-    stallsAllocated: 1,
-    flagged: 0,
+    editionLabel: 'Mahashivarathri 2026',
+    widgets: [
+      {
+        key: 'requests_summary',
+        label: 'Request Pipeline',
+        glyph: 'clipboard-list',
+        span: 'full',
+        to: '/m/stalls/requests',
+        data: { total: 3, submitted: 3, shortlisted: 0, selected: 0, backup: 0, rejected: 0 },
+      },
+    ],
   }),
 ] as const;
 
@@ -63,7 +71,7 @@ describe('the backoffice shell', () => {
   test('shows the dev sign-in when there is no session, and the app once there is', async () => {
     installFetch([
       ['GET', /\/m\/stalls\/me$/, () => [401, { error: 'no session' }]],
-      DASH,
+      HOME,
       ['GET', /\/dev\/people$/, () => []],
     ]);
     renderBackoffice();
@@ -75,14 +83,17 @@ describe('the backoffice shell', () => {
   });
 
   test('mounts the nav, the breadcrumb and the dashboard behind it', async () => {
-    installFetch([ME, DASH]);
+    installFetch([ME, HOME]);
     renderBackoffice();
 
     const nav = await screen.findByRole('navigation', { name: 'Main Navigation' });
-    expect(within(nav).getByTitle('Dashboard')).toBeInTheDocument();
+    expect(within(nav).getByTitle('Home')).toBeInTheDocument();
+    expect(within(nav).getByTitle('Reports & Dashboards')).toBeInTheDocument();
     expect(within(nav).getByTitle('All Requests')).toBeInTheDocument();
-    // The crumb names the group and the title the route.
-    expect(await screen.findByText('Requests, selection and operations')).toBeInTheDocument();
+    // The crumb names the heading this caller's sidebar files the screen under,
+    // and the title names the screen.
+    expect(await screen.findByText('Overview')).toBeInTheDocument();
+    expect(await screen.findByText('Mahashivarathri 2026')).toBeInTheDocument();
   });
 
   test('hides the nav items the caller has no action for', async () => {
@@ -97,7 +108,7 @@ describe('the backoffice shell', () => {
         (a) => a !== 'planning.read' && a !== 'planning.write' && a !== 'config.read',
       ),
     };
-    installFetch([['GET', /\/m\/stalls\/me$/, () => noPlanning], DASH]);
+    installFetch([['GET', /\/m\/stalls\/me$/, () => noPlanning], HOME]);
     renderBackoffice();
 
     const nav = await screen.findByRole('navigation', { name: 'Main Navigation' });
@@ -110,15 +121,59 @@ describe('the backoffice shell', () => {
     // and the rate card — and those are tabs on Planning & Zones rather than on
     // Admin. One entry, gated on either action, is what that screen now is.
     const configOnly = { ...ME_LEAD, privileges: ['requests.read', 'config.read'] };
-    installFetch([['GET', /\/m\/stalls\/me$/, () => configOnly], DASH]);
+    installFetch([['GET', /\/m\/stalls\/me$/, () => configOnly], HOME]);
     renderBackoffice();
 
     const nav = await screen.findByRole('navigation', { name: 'Main Navigation' });
     expect(within(nav).getByTitle('Planning & Zones')).toBeInTheDocument();
   });
 
+  /** 🔴 The sidebar is SERVED now, not computed in the browser. When `/me`
+   *  carries an arrangement the shell draws that and nothing else — which is
+   *  what Configs › Sidebar Layout is for. */
+  test('draws the sidebar the server resolved, headings and order and all', async () => {
+    const arranged = {
+      ...ME_LEAD,
+      nav: [
+        {
+          title: 'Every Day',
+          items: [
+            {
+              key: 'checkin',
+              to: '/m/stalls/checkin',
+              label: 'Check-In',
+              glyph: 'circle-check',
+              meta: 'Arrivals',
+            },
+            {
+              key: 'home',
+              to: '/m/stalls',
+              label: 'Home',
+              glyph: 'home',
+              meta: 'Your cards',
+              end: true,
+            },
+          ],
+        },
+      ],
+    };
+    installFetch([['GET', /\/m\/stalls\/me$/, () => arranged], HOME]);
+    renderBackoffice();
+
+    const nav = await screen.findByRole('navigation', { name: 'Main Navigation' });
+    expect(within(nav).getByText('Every Day')).toBeInTheDocument();
+    // In the order the server sent, not the order the registry ships.
+    expect(
+      within(nav)
+        .getAllByRole('link')
+        .map((a) => a.getAttribute('title')),
+    ).toEqual(['Check-In', 'Home']);
+    // And nothing the arrangement left out, even though this caller holds it.
+    expect(within(nav).queryByTitle('All Requests')).not.toBeInTheDocument();
+  });
+
   test('the rail control collapses the sidebar and remembers the choice', async () => {
-    installFetch([ME, DASH]);
+    installFetch([ME, HOME]);
     const { unmount } = renderBackoffice();
 
     const collapse = await screen.findByRole('button', { name: 'Collapse sidebar' });
@@ -131,14 +186,14 @@ describe('the backoffice shell', () => {
     );
 
     unmount();
-    installFetch([ME, DASH]);
+    installFetch([ME, HOME]);
     renderBackoffice();
     // Read once at mount, from storage — the sidebar comes back collapsed.
     expect(await screen.findByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument();
   });
 
   test('the account menu carries the identity and the way out', async () => {
-    installFetch([ME, DASH]);
+    installFetch([ME, HOME]);
     renderBackoffice();
 
     const user = userEvent.setup();
@@ -148,7 +203,7 @@ describe('the backoffice shell', () => {
   });
 
   test('the theme control sits in the bar, not behind the account menu', async () => {
-    installFetch([ME, DASH]);
+    installFetch([ME, HOME]);
     renderBackoffice();
 
     const user = userEvent.setup();

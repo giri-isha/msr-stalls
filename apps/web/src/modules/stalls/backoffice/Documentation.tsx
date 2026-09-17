@@ -240,14 +240,37 @@ interface ScreenDoc {
 
 const SCREENS: ScreenDoc[] = [
   {
-    label: 'Dashboard',
+    label: 'Home',
     to: '/m/stalls',
     glyph: 'home',
-    purpose: 'One reading of where the edition stands.',
+    purpose: 'Where you land, with the cards your role is set up to see.',
     steps: [
-      'Read the tiles: how many requests came in, how they split across the four forms, and how far selection has got.',
-      'Every tile is a link — picking one opens the request list already filtered to it.',
-      'The flagged count is the queue to clear before a selection meeting.',
+      'Read the cards: the request pipeline, what is owed at each onboarding step, the money collected, the day’s check-in and furniture counts.',
+      'Every reading is a link — picking one opens the list already filtered to it.',
+      'Quick Links is your own sidebar as tiles, so nothing here can send you somewhere you cannot go.',
+      'Which cards you get, and in what order, is set per role on Configs → Home Page.',
+    ],
+    notes: [
+      'This was the Dashboard: one fixed screen of tiles, shown to anybody who could read requests and to nobody else. The counts are on Reports & Dashboards now, and this page is what your role actually needs.',
+      'A card whose figures cannot be read says so and takes only itself down. Seven good cards are still worth a morning.',
+      'A role nobody has arranged shows every card its privileges reach, which is why a new card appears for it and never for a role somebody has arranged.',
+    ],
+  },
+  {
+    label: 'Reports & Dashboards',
+    to: '/m/stalls/dashboards',
+    glyph: 'bar-chart',
+    requires: ['requests.read', 'planning.read', 'finance.read', 'checkin.read', 'equipment.read'],
+    purpose: 'The headline counts, and the tables behind them.',
+    steps: [
+      'The strip at the top is the edition at a glance — requests in, how they split by form, how far selection has got, and how much ground is planned and allocated.',
+      'Under it, the reports you may open: the selection funnel, requests by bay, onboarding progress, collections and dues, call outcomes, check-in by bay, and the chairs-and-tables ledger.',
+      'Open one for the table. Export CSV takes the same table away as a spreadsheet.',
+    ],
+    notes: [
+      'You are offered only the reports your role can read, and a report typed straight into the address bar is refused the same way.',
+      'Every report is narrowed to the requester types and bays your grant reaches — an aggregate is the easiest place to leak a row nobody notices.',
+      'Money is in rupees in the CSV, not paise. The figure in the spreadsheet is the figure on the screen.',
     ],
   },
   {
@@ -404,13 +427,16 @@ const SCREENS: ScreenDoc[] = [
     ],
   },
   {
-    label: 'Admin',
-    to: '/m/stalls/admin',
+    label: 'Configs',
+    to: '/m/stalls/config',
     glyph: 'settings',
     requires: 'config.read',
-    purpose: 'The paperwork an edition asks for, and the years themselves.',
+    purpose:
+      'What each role sees, the paperwork an edition asks for, and the years themselves — seven tabs, one screen.',
     steps: [
-      'Bays, Planning Columns, Rates, Charges and Fines are not here any more — they are tabs on Planning & Zones, beside the grid that counts the stalls they describe.',
+      'Home Page: which cards each role lands on, and in what order. Pick a role, move the cards, switch off what it does not need, Save.',
+      'Sidebar Layout: which links each role sees, under which heading, and in what order. Headings can be added, renamed and reordered; a heading you add is shared by every role.',
+      'Bays, Planning Columns, Rates, Charges and Fines are not here — they are tabs on Planning & Zones, beside the grid that counts the stalls they describe.',
       'Form builder: what each of the four request forms asks, and in what order. Reword a question, add a heading, mark something required, or switch a question off. A question whose answer has a record of its own is marked Built in — it can be reworded, moved and switched off, but not retyped or removed.',
       'Call log form: the script a caller reads out and the questions they answer, one set for pending bank details and one for pending payment. A question carries which call statuses it is asked on, and can be hung off an earlier answer — “what reason did they give” only when “did they pick up” was Yes.',
       'Declarations: the wording a requester ticks when they apply. Each form shows its own variant if it has one, otherwise the default. Changing the text creates a new version and archives the old one.',
@@ -419,6 +445,10 @@ const SCREENS: ScreenDoc[] = [
       'Editions: the year everything else hangs off. Each row carries that edition’s own settings — its name as letters print it, the two virtual-account prefixes Finance issues, the cap on stalls one request may ask for, and the terms link — changed with the pencil on the row.',
     ],
     notes: [
+      'This was Admin. The two layout tabs had nowhere to go but a third link beside it, and an admin arranging the app would have hunted the same job in three places. /m/stalls/admin still opens, on the Form Builder tab.',
+      'Arranging a role is not granting it anything. A link or a card can be hidden from the people who hold it; nothing here can show one to somebody whose privileges do not already reach it.',
+      'A role with no arrangement shows everything its privileges reach — which is why the screen says "not arranged" rather than showing you nine ticks somebody might think were chosen.',
+      'You can only arrange a role you could edit: the same hierarchy the Users and Roles screens use.',
       'Switching a step off is not the same as hiding it. The requester gets no tab, no link and no coupon, the letters leave it out, and the backoffice cannot file it on their behalf either — including a coupon code already sent, which stops working.',
       'Editing a form changes THIS edition only. The four 2025 forms are written into each new edition when it is created, so next year starts from the printed originals again rather than from whatever this year was edited into.',
       'A declaration is never edited in place once the wording changes, and never deleted once somebody has agreed to it — a consent is worth exactly what the person saw when they gave it. Retire it with the Active switch instead. The old versions stay on screen because "what did this say in January?" is the question the history exists to answer.',

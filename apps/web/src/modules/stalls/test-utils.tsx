@@ -118,6 +118,12 @@ export const ME_LEAD = {
   privileges: seeded('stalls_lead'),
   // `/me` publishes this now — the File a Request page reads it.
   requestTypeScope: null,
+  /** ⚠️ EMPTY, deliberately. `/me` also carries the caller's resolved sidebar,
+   *  and an empty one is how `MeProvider` is told to fall back to the registry
+   *  defaults — which is what the shell shows for a role nobody has arranged,
+   *  and therefore what most of these tests want. A test about an ARRANGED
+   *  sidebar stubs `/me` with its own groups. */
+  nav: [] as never[],
 };
 
 export const PUBLIC_CONFIG = {
@@ -191,6 +197,8 @@ export const PUBLIC_CONFIG = {
   // for the whole venue, which is what the form used to print in its header.
   charges: { gstPercent: 18 },
   maxStallsPerRequest: 3,
+  maxOpenRequests: 2,
+  requestCapScope: 'OPEN' as const,
   customFields: [
     {
       id: '11111111-1111-4111-8111-111111111111',
@@ -334,6 +342,7 @@ export const ME_ADMIN = {
    *  A privilege added in a later release reaches this fixture with no edit,
    *  which is exactly how it reaches a real admin. */
   privileges: [...STALL_PRIVILEGES],
+  nav: [] as never[],
   // An admin reaches every requester type, which is what `null` means.
   requestTypeScope: null,
 };
@@ -520,6 +529,8 @@ export const BACKOFFICE_CONFIG = {
     virtualAccountRentPrefix: null,
     virtualAccountDepositPrefix: null,
     maxStallsPerRequest: 3,
+    maxOpenRequests: 2,
+    requestCapScope: 'OPEN' as const,
   },
   zones: [
     {
@@ -603,6 +614,8 @@ const EDITION_SETTINGS = {
   virtualAccountRentPrefix: null,
   virtualAccountDepositPrefix: null,
   maxStallsPerRequest: 3,
+  maxOpenRequests: 2,
+  requestCapScope: 'OPEN' as const,
   termsUrl: null,
 };
 export const EDITIONS = [

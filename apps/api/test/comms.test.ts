@@ -229,6 +229,8 @@ describe('sending', () => {
         virtualAccountRentPrefix: edition.virtualAccountRentPrefix,
         virtualAccountDepositPrefix: edition.virtualAccountDepositPrefix,
         maxStallsPerRequest: edition.maxStallsPerRequest,
+        maxOpenRequests: edition.maxOpenRequests,
+        requestCapScope: edition.requestCapScope,
         beneficiaryName: 'ISHA FOUNDATION',
         bankName: 'HDFC Bank Ltd',
         bankIfsc: 'HDFC0004989',

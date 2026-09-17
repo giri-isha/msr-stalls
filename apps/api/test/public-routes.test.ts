@@ -53,7 +53,9 @@ describe('GET /public/config', () => {
       'declarations',
       'edition',
       'forms',
+      'maxOpenRequests',
       'maxStallsPerRequest',
+      'requestCapScope',
       'zones',
     ]);
   });

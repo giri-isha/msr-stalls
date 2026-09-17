@@ -115,6 +115,26 @@ enum StallRequestStatus {
   @@schema("stalls")
 }
 
+/// Which of an account's own requests count against `maxOpenRequests` — the
+/// edition's cap on how many it may have going at once.
+///
+/// 🔴 Three readings of "two requests at a time", and the team picks one per
+/// edition. UNDECIDED counts only SUBMITTED and SHORTLISTED, so being selected
+/// frees a slot; OPEN adds SELECTED and BACKUP, so only a rejection or a
+/// cancellation does; ALL counts every request filed this edition, so a
+/// rejection frees nothing and the cap is two attempts a year.
+///
+/// ⚠️ The status list for each lives in `REQUEST_CAP_STATUSES` in
+/// `@stalls/core` and nowhere else — the enforcement and the Admin screen's
+/// explanation of it read the same table.
+enum StallRequestCapScope {
+  UNDECIDED
+  OPEN
+  ALL
+
+  @@schema("stalls")
+}
+
 /// How far through onboarding a SELECTED request has travelled. The other axis.
 /// Phase 1 drives only NEW; the rest are modelled so Phases 2–3 add behaviour,
 /// not migrations that rewrite history.
@@ -279,7 +299,18 @@ model StallEdition {
   /// second bay is a second request, so the team can accept one and decline the
   /// other — "it will be easier for us to individually accept one and reject
   /// one".
-  maxStallsPerRequest Int @default(2) @map("max_stalls_per_request")
+  maxStallsPerRequest Int @default(10) @map("max_stalls_per_request")
+
+  /// How many requests one account may have going at once, and which of its
+  /// requests count towards that.
+  ///
+  /// 🔴 The two halves of one rule and they are set together. "Two at a time"
+  /// is the limit the team actually polices; the per-bay cap above limits how
+  /// much ground a single request can ask for, and on its own it never limited
+  /// how many requests an account could file. A vendor wanting six bays used to
+  /// be six unbounded requests.
+  maxOpenRequests Int                 @default(2)   @map("max_open_requests")
+  requestCapScope StallRequestCapScope @default(OPEN) @map("request_cap_scope")
 
   /// Who the money goes to, as the payment letter and the vendor's own payment
   /// page print it.
@@ -1027,6 +1058,8 @@ model StallRole {
 
   privileges StallRolePrivilege[]
   grants     StallBackofficeRole[]
+  navItems    StallRoleNavItem[]
+  homeWidgets StallRoleHomeWidget[]
   parent     StallRole?            @relation("StallRoleTree", fields: [parentKey], references: [roleKey], onDelete: SetNull, onUpdate: Cascade)
   children   StallRole[]           @relation("StallRoleTree")
 
@@ -2032,5 +2065,79 @@ model StallRefund {
   request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@map("stall_refund")
+  @@schema("stalls")
+}
+
+// ── The two layouts an admin arranges ───────────────────────────────────────
+//
+// Which links a role sees and which cards it lands on. Both tables follow the
+// same three rules, and the rules are what make them safe:
+//
+//   1. A role with NO rows takes the registry defaults, so an item added in a
+//      later release reaches every role nobody has arranged.
+//   2. A role WITH rows is fully described by them — a new item arrives hidden
+//      there rather than appearing unannounced in a layout somebody chose.
+//   3. 🔴 The privilege filter runs AFTER both, so a row can never show a link
+//      or a card the role has no privilege for. Configuration narrows; it never
+//      widens.
+//
+// Keyed on `role_key` rather than the role's uuid, like every other reference
+// in this module: `stall_backoffice_role` stores the key, the key is what a
+// grant carries, and a role may be re-labelled but never re-keyed.
+
+/// A heading in the sidebar — a built-in re-labelled or moved, or one an admin
+/// added.
+///
+/// ⚠️ Only OVERRIDES are stored. The seven built-ins live in the registry
+/// (`NAV_CATEGORIES` in `@stalls/core`) and a row here exists for one of them
+/// only once somebody has renamed or moved it, which is why the table is empty
+/// on a fresh install and why deleting a row restores the shipped heading
+/// rather than destroying it.
+model StallNavCategory {
+  key       String   @id
+  label     String
+  ordinal   Int
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("stall_nav_category")
+  @@schema("stalls")
+}
+
+/// One role's placement of one sidebar item.
+///
+/// ⚠️ `category_key` is deliberately NOT a foreign key to `stall_nav_category`:
+/// most placements name a built-in heading, which has no row there at all. A
+/// placement naming a heading that has since been deleted falls back to the
+/// item's registry category rather than vanishing — see `resolveNav`.
+model StallRoleNavItem {
+  roleKey     String  @map("role_key")
+  /// Registry id from `NAV_ITEMS`, not the label, which an admin may re-word.
+  itemKey     String  @map("item_key")
+  categoryKey String  @map("category_key")
+  ordinal     Int
+  isShown     Boolean @default(true) @map("is_shown")
+
+  role StallRole @relation(fields: [roleKey], references: [roleKey], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([roleKey, itemKey])
+  @@index([roleKey, ordinal])
+  @@map("stall_role_nav_item")
+  @@schema("stalls")
+}
+
+/// One role's placement of one home page card.
+model StallRoleHomeWidget {
+  roleKey   String  @map("role_key")
+  /// Registry id from `WIDGETS`.
+  widgetKey String  @map("widget_key")
+  ordinal   Int
+  isShown   Boolean @default(true) @map("is_shown")
+
+  role StallRole @relation(fields: [roleKey], references: [roleKey], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([roleKey, widgetKey])
+  @@index([roleKey, ordinal])
+  @@map("stall_role_home_widget")
   @@schema("stalls")
 }

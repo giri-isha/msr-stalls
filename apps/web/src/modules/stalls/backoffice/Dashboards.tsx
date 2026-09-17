@@ -1,9 +1,32 @@
+// REPORTS & DASHBOARDS — the KPI strip, and the catalog of reports under it.
+//
+// The KPI tiles ARE the old Dashboard screen, moved here whole. They were the
+// module's landing until Home took that job, and they were always the wrong
+// thing to land on: a wall of counts nobody had chosen, half of which most
+// callers could not read. They are exactly right as the top of a reports screen,
+// where somebody has come to look at numbers on purpose.
+//
+// ⚠️ The catalog below comes from the API, not from the registry the web can
+// see. A caller is shown the reports they may open, and the server is the only
+// reader that knows which those are.
 import { type RequestStatus, STALL_REQUEST_TYPES } from '@stalls/core';
 import { Link } from 'react-router';
-import { getDashboard } from '../api';
+import { getDashboard, listReports } from '../api';
 import { requestStatusTone, STATUS_LABEL, TYPE_LABEL } from '../components/StatusPill';
 import { useLoad } from '../hooks';
-import { card, ErrorBox, H1, Icon, Loading, TONE, type Tone, useIsMobile } from '../ui';
+import { useMe } from '../me';
+import {
+  card,
+  Card,
+  Empty,
+  ErrorBox,
+  H1,
+  Icon,
+  Loading,
+  TONE,
+  type Tone,
+  useIsMobile,
+} from '../ui';
 
 /**
  * One reading.
@@ -122,19 +145,18 @@ const STATUS_GLYPH: Record<RequestStatus, string> = {
   CANCELLED: 'ban',
 };
 
-export function Dashboard() {
+/** The counts, for a caller who may read requests. Their own component so the
+ *  report catalog below still renders for somebody who may not — a finance
+ *  officer scoped to the money has reports here and no business with the
+ *  pipeline. */
+function Kpis() {
   const { data, error, loading } = useLoad(getDashboard);
   if (loading) return <Loading />;
-  if (error || !data)
-    return <ErrorBox>{error?.message ?? 'Could not load the dashboard.'}</ErrorBox>;
+  if (error || !data) return <ErrorBox>{error?.message ?? 'Could not load the counts.'}</ErrorBox>;
 
   const s = data.byStatus;
   return (
-    <div>
-      <H1 icon={<Icon name='home' size={18} />} sub='Requests, selection and operations'>
-        Dashboard
-      </H1>
-
+    <>
       <Group title='Requests'>
         <Tile
           label='Total Requests'
@@ -193,13 +215,94 @@ export function Dashboard() {
           to='/m/stalls/requests?flagged=true'
         />
       </Group>
+    </>
+  );
+}
 
-      <Group title='Onboarding · Phase 2 and 3'>
-        <Tile label='Pending Bank Details' value='—' hint='Phase 2' glyph='file-text' />
-        <Tile label='Pending Payment' value='—' hint='Phase 2' glyph='ticket' />
-        <Tile label='FSSAI Pending' value='—' hint='Phase 3' glyph='shield' />
-        <Tile label='Not Checked In' value='—' hint='Phase 3' glyph='log-in' />
-      </Group>
+/** The report catalog, grouped as the catalog groups it. */
+function Catalog() {
+  const { data, error, loading } = useLoad(listReports);
+  if (loading) return <Loading />;
+  if (error || !data) return <ErrorBox>{error?.message ?? 'Could not load the reports.'}</ErrorBox>;
+  if (data.reports.length === 0) {
+    return <Empty>There are no reports your role can open.</Empty>;
+  }
+
+  // Grouped here rather than by the API, which sends the catalog flat: the
+  // grouping is presentation, and the order inside each group is the catalog's.
+  const groups: string[] = [];
+  for (const r of data.reports) if (!groups.includes(r.group)) groups.push(r.group);
+
+  return (
+    <>
+      {groups.map((group) => (
+        <Group key={group} title={group}>
+          {data.reports
+            .filter((r) => r.group === group)
+            .map((r) => (
+              <Link
+                key={r.key}
+                to={`/m/stalls/dashboards/${r.key}`}
+                className='stalls-lift'
+                style={{ ...card, padding: 15, display: 'block', color: 'inherit' }}
+              >
+                <div style={{ display: 'flex', gap: 11, alignItems: 'flex-start' }}>
+                  <div
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 'var(--r3)',
+                      background: 'var(--pri-t)',
+                      color: 'var(--fg)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flex: 'none',
+                    }}
+                  >
+                    <Icon name={r.glyph} size={16} />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: '-.2px' }}>
+                      {r.title}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: 'var(--mfg)', marginTop: 2 }}>
+                      {r.note}
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+        </Group>
+      ))}
+    </>
+  );
+}
+
+export function Dashboards() {
+  const { can } = useMe();
+  return (
+    <div>
+      <H1
+        icon={<Icon name='bar-chart' size={18} />}
+        sub='Where the edition stands, and the tables behind it'
+      >
+        Reports & Dashboards
+      </H1>
+
+      {can('requests.read') ? (
+        <Kpis />
+      ) : (
+        // Not an empty space and not an error: a caller who may open reports but
+        // not the pipeline is a real role — a finance officer, a check-in lead —
+        // and the sentence says which half of the screen is theirs.
+        <Card pad={14} style={{ marginBottom: 22, fontSize: 12.5, color: 'var(--mfg)' }}>
+          The headline counts read the request pipeline, which your role does not open. The reports
+          below are yours.
+        </Card>
+      )}
+
+      <Catalog />
     </div>
   );
 }

@@ -2,6 +2,9 @@ import type { Prisma, PrismaClient, StallRequestType } from '@prisma/client';
 import {
   formatReference,
   isPlaceholderEmail,
+  REQUEST_CAP_SCOPE_LABEL,
+  REQUEST_CAP_STATUSES,
+  type RequestCapScope,
   type SubmitRequestInput,
   validateAgainstForm,
 } from '@stalls/core';
@@ -14,6 +17,7 @@ import { ValidationFailedError } from '../../errors';
 import { type Db, activeEdition } from './editions';
 import {
   DeclarationsChangedError,
+  TooManyOpenRequestsError,
   TooManyStallsRequestedError,
   WrongRequesterTypeError,
 } from './errors';
@@ -128,6 +132,35 @@ export async function submitRequest(
     }
 
     const account = await tx.stallAccount.findUniqueOrThrow({ where: { id: accountId } });
+
+    // 🔴 The OTHER half of the rule: "up to 10 stalls in a request, but only two
+    // requests at a time." The cap above bounds one request; this bounds how
+    // many an account may have going at once, which nothing bounded before —
+    // a vendor wanting six bays filed six requests and every one of them stood.
+    //
+    // ⚠️ Counted inside the transaction, against this edition only. A count
+    // taken before it would let two submissions posted together both read 1 and
+    // both land; and last year's requests are last year's, not an allowance
+    // spent against this year.
+    //
+    // Which statuses count is the edition's own setting — see
+    // `REQUEST_CAP_STATUSES`. A rejection frees a slot under OPEN and does not
+    // under ALL, and that is the team's call to make per edition, not ours.
+    const scope = edition.requestCapScope as RequestCapScope;
+    const open = await tx.stallRequest.count({
+      where: {
+        editionId: edition.id,
+        accountId: account.id,
+        status: { in: [...REQUEST_CAP_STATUSES[scope]] },
+      },
+    });
+    if (open >= edition.maxOpenRequests) {
+      throw new TooManyOpenRequestsError(
+        open,
+        edition.maxOpenRequests,
+        REQUEST_CAP_SCOPE_LABEL[scope],
+      );
+    }
 
     // 🔴 The FORM this account is registered for, enforced on the write and not
     // only in the page that offers the tiles. A trader, a village welfare

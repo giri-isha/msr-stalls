@@ -53,7 +53,19 @@ import {
   type ListPrivilegesResponse,
   type ListRolesResponse,
   SaveRoleInput,
+  type HomeConfigResponse,
+  type HomeResponse,
   type MeResponse,
+  type NavConfigResponse,
+  NavCategoryInput,
+  NavCategoryOrderInput,
+  REPORT_BY_KEY,
+  ReportQuery,
+  SaveHomeLayoutInput,
+  SaveNavLayoutInput,
+  can,
+  reportCsv,
+  reportsFor,
   PatchRequestInput,
   PlanCategoryInput,
   PresignUploadInput,
@@ -100,6 +112,19 @@ import * as paymentClaims from './payment-claims';
 import * as onboarding from './onboarding';
 import { applyPlan, listAvailableStalls, readPlan, writePlan } from './planning';
 import { isOurKey, presignUpload } from './uploads';
+import { navFor, widgetsFor } from './layout';
+import { homeFor } from './home';
+import { runReport } from './reports';
+import {
+  addNavCategory,
+  deleteNavCategory,
+  homeConfig,
+  navConfig,
+  renameNavCategory,
+  reorderNavCategories,
+  saveHomeLayout,
+  saveNavLayout,
+} from './layout-config';
 import {
   dashboardCounts,
   flagRequest,
@@ -108,7 +133,7 @@ import {
   patchRequest,
   unflagRequest,
 } from './requests';
-import { UnknownAccessLinkError, UnknownRequestError } from './errors';
+import { UnknownAccessLinkError, UnknownReportError, UnknownRequestError } from './errors';
 import {
   type BackofficeCaller,
   requireAnyPrivilege,
@@ -195,7 +220,11 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     // filer two pages of typing. Every LIST still narrows on the server; this
     // is not a filter the web applies.
     const { personId, displayName, roleKeys, privileges, requestTypeScope } = caller;
-    return { personId, displayName, roleKeys, privileges, requestTypeScope };
+    // ⚠️ The sidebar rides along. The shell cannot draw anything until it knows
+    // who the caller is, so a `/nav` of its own would buy a second round trip
+    // and a sidebar that appears a frame late — see `MeResponse.nav`.
+    const nav = await navFor(prisma, caller);
+    return { personId, displayName, roleKeys, privileges, requestTypeScope, nav };
   });
 
   zod.get('/roles', async (req): Promise<ListRolesResponse> => {
@@ -261,6 +290,160 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     const edition = await activeEditionFor(prisma, caller);
     return dashboardCounts(prisma, edition.id, scopeOf(caller));
   });
+
+  /**
+   * The Home page: the cards this caller resolved to, with this edition's
+   * figures in them.
+   *
+   * ⚠️ No `requirePrivilege`. Home is where every member lands, and each card
+   * gates itself — `widgetsFor` returns only the ones the caller's privileges
+   * reach, which for somebody who holds nothing is the one card that reads
+   * nothing. A landing the shell refuses is indistinguishable from an app that
+   * is broken.
+   */
+  zod.get('/home', async (req): Promise<HomeResponse> => {
+    const caller = await requireBackoffice(req, prisma);
+    const edition = await activeEditionFor(prisma, caller);
+    const widgets = await widgetsFor(prisma, caller);
+    return homeFor(prisma, edition.id, edition.name, widgets, scopeOf(caller));
+  });
+
+  // ── Reports & Dashboards ──────────────────────────────────────────────────
+
+  /** The catalog, narrowed to what this caller may open. The hub draws itself
+   *  from this rather than from the registry, so a report added to the catalog
+   *  reaches the hub without the web being redeployed. */
+  zod.get('/reports', async (req) => {
+    const caller = await requireBackoffice(req, prisma);
+    return {
+      reports: reportsFor((p) => can(caller.privileges, p)).map((r) => ({
+        key: r.key,
+        title: r.title,
+        note: r.note,
+        group: r.group,
+        glyph: r.glyph,
+      })),
+    };
+  });
+
+  /**
+   * One report, rendered — or written out as a CSV of the same table.
+   *
+   * 🔴 Gated on the report's OWN privileges, any-of, and then narrowed by the
+   * caller's scope inside the loader. A report aggregates, so a row that should
+   * not have been in the count leaves no trace of itself in the output.
+   *
+   * ⚠️ Export carries no separate guard. The vocabulary has an `export` KIND and
+   * no export CODE; inventing one here would be a privilege no route enforces.
+   * Whoever may read these numbers may take them away with them.
+   */
+  zod.get(
+    '/reports/:key',
+    { schema: { params: z.object({ key: z.string().min(1).max(60) }), querystring: ReportQuery } },
+    async (req, reply) => {
+      const caller = await requireBackoffice(req, prisma);
+      const def = REPORT_BY_KEY.get(req.params.key);
+      if (!def) throw new UnknownReportError(req.params.key);
+      requireAnyPrivilege(caller, [...def.viewPrivileges]);
+
+      const edition = await activeEditionFor(prisma, caller);
+      const view = await runReport(prisma, def.key, edition.id, edition.name, scopeOf(caller));
+      if (req.query.format !== 'csv') return view;
+
+      // A filename with the edition and the report in it: these land in a
+      // Downloads folder beside eleven others and "report.csv" is not a name.
+      const file = `${def.key}-${edition.year}.csv`;
+      reply.header('content-type', 'text/csv; charset=utf-8');
+      reply.header('content-disposition', `attachment; filename="${file}"`);
+      return reportCsv(view);
+    },
+  );
+
+  // ── Configs › Sidebar Layout and Home Page ────────────────────────────────
+  //
+  // 🔴 `config.read` to look and `config.write` to save — NOT `roles.write`.
+  // Arranging what a role sees grants it nothing: both resolvers apply the
+  // privilege filter after the rows, so the worst a bad arrangement can do is
+  // hide a link from the people who hold it. The role HIERARCHY still applies,
+  // inside `saveNavLayout` and `saveHomeLayout`.
+
+  zod.get('/config/sidebar', async (req): Promise<NavConfigResponse> => {
+    const caller = await requireBackoffice(req, prisma);
+    requirePrivilege(caller, 'config.read');
+    return navConfig(prisma, caller);
+  });
+
+  zod.put(
+    '/config/sidebar/:roleKey',
+    { schema: { params: RoleKeyParams, body: SaveNavLayoutInput } },
+    async (req) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'config.write');
+      return saveNavLayout(prisma, caller, req.params.roleKey, req.body);
+    },
+  );
+
+  zod.get('/config/home', async (req): Promise<HomeConfigResponse> => {
+    const caller = await requireBackoffice(req, prisma);
+    requirePrivilege(caller, 'config.read');
+    return homeConfig(prisma, caller);
+  });
+
+  zod.put(
+    '/config/home/:roleKey',
+    { schema: { params: RoleKeyParams, body: SaveHomeLayoutInput } },
+    async (req) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'config.write');
+      return saveHomeLayout(prisma, caller, req.params.roleKey, req.body);
+    },
+  );
+
+  // The headings. Not per role — a heading is the sidebar's vocabulary, and a
+  // role's rows point at its key.
+  zod.post(
+    '/config/sidebar-headings',
+    { schema: { body: NavCategoryInput } },
+    async (req, reply) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'config.write');
+      reply.status(201);
+      return addNavCategory(prisma, caller, req.body.label);
+    },
+  );
+
+  zod.put(
+    '/config/sidebar-headings/order',
+    { schema: { body: NavCategoryOrderInput } },
+    async (req, reply) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'config.write');
+      await reorderNavCategories(prisma, caller, req.body.keys);
+      reply.status(204);
+    },
+  );
+
+  zod.put(
+    '/config/sidebar-headings/:key',
+    { schema: { params: z.object({ key: z.string().min(1).max(60) }), body: NavCategoryInput } },
+    async (req, reply) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'config.write');
+      await renameNavCategory(prisma, caller, req.params.key, req.body.label);
+      reply.status(204);
+    },
+  );
+
+  zod.delete(
+    '/config/sidebar-headings/:key',
+    { schema: { params: z.object({ key: z.string().min(1).max(60) }) } },
+    async (req, reply) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'config.write');
+      await deleteNavCategory(prisma, caller, req.params.key);
+      reply.status(204);
+    },
+  );
 
   // ── Requests ──────────────────────────────────────────────────────────────
   //

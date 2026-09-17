@@ -140,6 +140,13 @@ export const AUDIT_ACTION_INFO = {
   'stall_charges.updated': info('Charges Changed', 'config', 'rupee', 'neutral'),
   'stall_flow.updated': info('Onboarding Steps Changed', 'config', 'sliders', 'neutral'),
   'stall_fine_type.upserted': info('Fine Type Saved', 'config', 'alert-triangle', 'neutral'),
+  // ⚠️ The subject of these three is a ROLE, not a request — which is why they
+  // read "for <role>" in the log and why they are `config` rather than `access`.
+  // Arranging what a role SEES grants it nothing; the privilege filter still
+  // runs after, so no row written here can widen anybody's reach.
+  'stall_nav_layout.updated': info('Sidebar Layout Saved', 'config', 'list-view', 'neutral'),
+  'stall_home_layout.updated': info('Home Page Saved', 'config', 'home', 'neutral'),
+  'stall_nav_category.updated': info('Sidebar Heading Changed', 'config', 'layers', 'neutral'),
   // ── Access ─────────────────────────────────────────────────────────────
   'stall_role.created': info('Role Created', 'access', 'shield', 'info'),
   'stall_role.updated': info('Role Edited', 'access', 'shield', 'neutral'),

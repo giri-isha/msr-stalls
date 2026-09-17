@@ -1,6 +1,14 @@
-import { can as grants } from '@stalls/core';
-import type { MeResponse, StallPrivilege } from '@stalls/core';
-import { type ReactNode, createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { can as grants, defaultNav } from '@stalls/core';
+import type { MeResponse, ResolvedNavGroup, StallPrivilege } from '@stalls/core';
+import {
+  type ReactNode,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { ApiError } from './api-client';
 import { getMe } from './api';
 
@@ -9,6 +17,8 @@ interface MeState {
   status: 'loading' | 'ready';
   reload(): void;
   can(action: StallPrivilege): boolean;
+  /** The caller's sidebar, resolved. */
+  nav: ResolvedNavGroup[];
 }
 
 const MeContext = createContext<MeState | null>(null);
@@ -52,7 +62,21 @@ export function MeProvider({ children }: { children: ReactNode }) {
    *  shows up as a nav item missing from the one person it is for. */
   const can = useCallback((action: StallPrivilege) => grants(me?.privileges ?? [], action), [me]);
 
-  return <MeContext.Provider value={{ me, status, reload, can }}>{children}</MeContext.Provider>;
+  /**
+   * The sidebar the API resolved for this caller — the registry narrowed by
+   * their privileges and then arranged by whatever an admin set for their roles.
+   *
+   * ⚠️ Falls back to the REGISTRY DEFAULTS when the response carries no nav.
+   * That is not defensive padding: this module is written to be mounted in a
+   * host, and a host serving an older `/me` would otherwise render a shell with
+   * no navigation in it at all. The default is exactly the sidebar the module
+   * had before any of it was configurable.
+   */
+  const nav = useMemo(() => (me?.nav?.length ? me.nav : defaultNav(can)), [me, can]);
+
+  return (
+    <MeContext.Provider value={{ me, status, reload, can, nav }}>{children}</MeContext.Provider>
+  );
 }
 
 export function useMe(): MeState {

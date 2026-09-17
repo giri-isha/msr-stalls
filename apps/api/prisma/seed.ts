@@ -577,7 +577,9 @@ async function main() {
       name: edition.name,
       virtualAccountRentPrefix: 'MSRRENT',
       virtualAccountDepositPrefix: 'MSRDEP',
-      maxStallsPerRequest: 2,
+      maxStallsPerRequest: 10,
+      maxOpenRequests: 2,
+      requestCapScope: 'OPEN',
       beneficiaryName: 'ISHA FOUNDATION',
       beneficiaryAddress:
         'Isha Yoga Center, Velliangiri Foothills, Semmedu Post, Coimbatore 641114',

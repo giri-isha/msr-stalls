@@ -127,6 +127,8 @@ describe('what a selected requester is told about paying', () => {
         virtualAccountRentPrefix: edition.virtualAccountRentPrefix,
         virtualAccountDepositPrefix: edition.virtualAccountDepositPrefix,
         maxStallsPerRequest: edition.maxStallsPerRequest,
+        maxOpenRequests: edition.maxOpenRequests,
+        requestCapScope: edition.requestCapScope,
         beneficiaryName: 'ISHA FOUNDATION',
         bankName: 'HDFC Bank Ltd',
         bankIfsc: 'HDFC0004989',

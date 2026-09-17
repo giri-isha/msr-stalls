@@ -4,11 +4,15 @@
 // reached: the bay agreed with a requester ("we may have to talk to them saying
 // that side is already filled up — why don't you look at this side"), and the
 // cap on how many stalls one request may ask for in one bay.
+import type { StallRequestStatus } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { SubmitRequestInput } from '@stalls/core';
 import { buildApp } from '../src/app';
-import { TooManyStallsRequestedError } from '../src/modules/stalls/errors';
+import {
+  TooManyOpenRequestsError,
+  TooManyStallsRequestedError,
+} from '../src/modules/stalls/errors';
 import { submitRequest } from '../src/modules/stalls/submit';
 import {
   accountFor,
@@ -62,7 +66,14 @@ const patch = (backoffice: Backoffice, id: string, payload: Record<string, unkno
   });
 
 describe('the cap on stalls in one bay', () => {
+  // ⚠️ Set here rather than taken from the default. The edition ships at ten —
+  // "users can choose up to 10 stalls in a request" — and a test that read the
+  // default would be asserting the seed rather than the rule.
+  const capAt = (n: number) =>
+    prisma.stallEdition.update({ where: { id: editionId }, data: { maxStallsPerRequest: n } });
+
   test('a request above the edition’s cap is refused with a 422', async () => {
+    await capAt(2);
     const res = await app.inject({
       method: 'POST',
       url: '/api/m/stalls/public/requests',
@@ -75,24 +86,138 @@ describe('the cap on stalls in one bay', () => {
   });
 
   test('the cap is the edition’s, so raising it in Admin admits the same request', async () => {
-    await prisma.stallEdition.update({
-      where: { id: editionId },
-      data: { maxStallsPerRequest: 5 },
-    });
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/m/stalls/public/requests',
-      payload: vendorBody({ numStallsRequested: 5 }),
-      cookies: (await seedRequester(app)).cookies,
-    });
-    expect(res.statusCode).toBe(201);
+    const { cookies } = await seedRequester(app);
+    const send = () =>
+      app.inject({
+        method: 'POST',
+        url: '/api/m/stalls/public/requests',
+        payload: vendorBody({ numStallsRequested: 5 }),
+        cookies,
+      });
+    await capAt(2);
+    expect((await send()).statusCode).toBe(422);
+
+    await capAt(5);
+    expect((await send()).statusCode).toBe(201);
   });
 
   test('at the cap exactly is accepted', async () => {
+    await capAt(2);
     await expect(submit({ numStallsRequested: 2 })).resolves.toBeTruthy();
     await expect(submit({ numStallsRequested: 3, email: 'b@x.com' })).rejects.toBeInstanceOf(
       TooManyStallsRequestedError,
     );
+  });
+
+  test('a new edition ships at ten, so a request for ten stalls stands', async () => {
+    // The rule the team stated, asserted against the default an edition is
+    // actually created with — not against a figure the test sets itself.
+    const edition = await prisma.stallEdition.findUniqueOrThrow({ where: { id: editionId } });
+    expect(edition.maxStallsPerRequest).toBe(10);
+    await expect(submit({ numStallsRequested: 10 })).resolves.toBeTruthy();
+  });
+});
+
+/**
+ * "Only two requests at a time" — the half of the rule that had no enforcement
+ * at all. The per-bay cap bounds ONE request; nothing bounded how many an
+ * account could file, so a vendor wanting six bays filed six and every one of
+ * them stood.
+ */
+describe('the cap on requests at a time', () => {
+  const capScope = (scope: 'UNDECIDED' | 'OPEN' | 'ALL', max = 2) =>
+    prisma.stallEdition.update({
+      where: { id: editionId },
+      data: { requestCapScope: scope, maxOpenRequests: max },
+    });
+
+  /** The same account each time — `accountFor` keys off the body's email, and
+   *  the cap is per account, so these have to share one. */
+  const mine = (body: Record<string, unknown> = {}) => submit({ email: 'same@x.com', ...body });
+
+  const setStatus = async (reference: string, status: StallRequestStatus) => {
+    await prisma.stallRequest.update({ where: { reference }, data: { status } });
+  };
+
+  test('a third request is refused once two are open', async () => {
+    await mine();
+    await mine();
+    await expect(mine()).rejects.toBeInstanceOf(TooManyOpenRequestsError);
+    expect(await prisma.stallRequest.count()).toBe(2);
+  });
+
+  test('the refusal is a 422 naming the rule, not the requests', async () => {
+    const requester = await seedRequester(app);
+    const send = () =>
+      app.inject({
+        method: 'POST',
+        url: '/api/m/stalls/public/requests',
+        payload: vendorBody(),
+        cookies: requester.cookies,
+      });
+    expect((await send()).statusCode).toBe(201);
+    expect((await send()).statusCode).toBe(201);
+    const third = await send();
+    expect(third.statusCode).toBe(422);
+    expect(third.json().error).toContain('the limit is 2 at a time');
+    // Which requests they are is on My Requests. A backoffice member filing for
+    // a requester raises this too and may not be able to see all of them.
+    expect(third.json().error).not.toContain('MSR');
+  });
+
+  test('another account is unaffected — the cap is per account, not per edition', async () => {
+    await mine();
+    await mine();
+    await expect(submit({ email: 'other@x.com' })).resolves.toBeTruthy();
+  });
+
+  test('under OPEN a rejection frees a slot and a selection does not', async () => {
+    await capScope('OPEN');
+    const first = await mine();
+    await mine();
+    await expect(mine()).rejects.toBeInstanceOf(TooManyOpenRequestsError);
+
+    // Selected is still live — it holds its slot.
+    await setStatus(first.reference, 'SELECTED');
+    await expect(mine()).rejects.toBeInstanceOf(TooManyOpenRequestsError);
+
+    await setStatus(first.reference, 'REJECTED');
+    await expect(mine()).resolves.toBeTruthy();
+  });
+
+  test('under UNDECIDED being selected frees the slot', async () => {
+    await capScope('UNDECIDED');
+    const first = await mine();
+    await mine();
+    await expect(mine()).rejects.toBeInstanceOf(TooManyOpenRequestsError);
+
+    await setStatus(first.reference, 'SELECTED');
+    await expect(mine()).resolves.toBeTruthy();
+  });
+
+  test('under ALL a rejection frees nothing — the cap is attempts a year', async () => {
+    await capScope('ALL');
+    const first = await mine();
+    await mine();
+    await setStatus(first.reference, 'REJECTED');
+    await expect(mine()).rejects.toBeInstanceOf(TooManyOpenRequestsError);
+  });
+
+  test('the cap is the edition’s, so raising it in Admin admits the third', async () => {
+    await mine();
+    await mine();
+    await expect(mine()).rejects.toBeInstanceOf(TooManyOpenRequestsError);
+    await capScope('OPEN', 3);
+    await expect(mine()).resolves.toBeTruthy();
+  });
+
+  test('last year’s requests are not spent against this year’s allowance', async () => {
+    await mine();
+    await mine();
+    // A second edition, activated — the count is scoped to the edition being
+    // filed into, so the two above are history rather than an allowance used up.
+    await seedEdition(2027);
+    await expect(mine()).resolves.toBeTruthy();
   });
 });
 

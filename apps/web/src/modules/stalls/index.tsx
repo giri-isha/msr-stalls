@@ -1,8 +1,12 @@
-// The module's public surface for a host router: two route trees and a nav
-// list. The host mounts `stallsBackofficeRoutes` under its /m/stalls and
-// `stallsPublicRoutes` wherever it serves public pages. Nothing here knows
-// which shell it is inside.
-import type { StallPrivilege } from '@stalls/core';
+// The module's public surface for a host router: two route trees. The host
+// mounts `stallsBackofficeRoutes` under its /m/stalls and `stallsPublicRoutes`
+// wherever it serves public pages. Nothing here knows which shell it is inside.
+//
+// ⚠️ The NAV used to be here too — a `STALLS_NAV` literal this file exported.
+// It is in `@stalls/core` now (`NAV_ITEMS`), because the API resolves each
+// caller's sidebar against what an admin arranged and cannot import a React
+// module to do it. The route list and the registry are checked against each
+// other by a test, so a screen can never be routed without a way to reach it.
 import { Navigate, type RouteObject, useLocation, useParams } from 'react-router';
 import { AccessLink } from './public/AccessLink';
 import { BankForm } from './public/BankForm';
@@ -16,15 +20,15 @@ import { ResetPassword } from './public/ResetPassword';
 import { StaffRegistration } from './public/StaffRegistration';
 import { StatusPage } from './public/StatusPage';
 import { Submitted } from './public/Submitted';
-import { Empty } from './ui';
-import { useMe } from './me';
-import { Admin } from './backoffice/Admin';
 import { AuditLog } from './backoffice/AuditLog';
 import { RolesPrivileges } from './backoffice/access/RolesPrivileges';
 import { Users } from './backoffice/access/Users';
 import { CheckIn } from './backoffice/CheckIn';
 import { Communication } from './backoffice/Communication';
-import { Dashboard } from './backoffice/Dashboard';
+import { Dashboards } from './backoffice/Dashboards';
+import { Home } from './backoffice/Home';
+import { Report } from './backoffice/Report';
+import { Configs } from './backoffice/Configs';
 import { FileRequest } from './backoffice/FileRequest';
 import { Documentation } from './backoffice/Documentation';
 import { Electrical } from './backoffice/Electrical';
@@ -98,7 +102,17 @@ export const stallsBackofficeRoutes: RouteObject[] = [
   { path: 'checkin', element: <CheckIn /> },
   { path: 'equipment', element: <Equipment /> },
   { path: 'finance', element: <Finance /> },
-  { path: 'admin', element: <Admin /> },
+  // Reports & Dashboards: the hub, and one viewer for any report in the
+  // catalog. ⚠️ The viewer takes the key from the URL deliberately — a report is
+  // a bookmark somebody sends a colleague, and a screen per report would be
+  // eight components that differ only in a string.
+  { path: 'dashboards', element: <Dashboards /> },
+  { path: 'dashboards/:key', element: <Report /> },
+  // Configs: seven tabs, one screen. ⚠️ `/admin` was five of those seven and is
+  // in bookmarks and at least one email, so it redirects onto the tab it used to
+  // open rather than 404ing.
+  { path: 'config', element: <Configs /> },
+  { path: 'admin', element: <Navigate to='/m/stalls/config?tab=forms' replace /> },
   // Access: who may reach the module, and what each role may do. Two screens
   // rather than two tabs inside Admin — each is a full page with its own
   // toolbar, and Admin's strip had grown to ten items.
@@ -111,34 +125,20 @@ export const stallsBackofficeRoutes: RouteObject[] = [
 /**
  * Where a signed-in member lands.
  *
- * 🔴 The Dashboard, for anybody who may read requests — which was everybody,
- * until the check-in and chairs-and-tables volunteer stopped needing
- * `requests.read` to work their own counters. Landing them on a screen the API
- * refuses would make "your access was set up" and "the app is broken"
- * indistinguishable from the first frame.
+ * 🔴 It is HOME, for everybody. It used to be the Dashboard for anybody holding
+ * `requests.read` and the first reachable nav item for everybody else — a
+ * fallback that existed because the Dashboard was one fixed screen the API
+ * would refuse to fill for a check-in volunteer. Home has no such problem: its
+ * cards are resolved per role and each gates itself, so the landing is the same
+ * route for every member and the screen itself says what it has for them.
  *
- * So the landing is the first screen in the nav that this caller can actually
- * open. The nav is already the list of what they may reach, in the order the
- * event runs, so the volunteer lands on Check-in and the electrical team lands
- * on their sheet — without this file knowing either of those facts.
+ * ⚠️ Which is why there is no redirect here any more. A caller whose privileges
+ * reach no card gets a sentence on Home saying their access was set up with
+ * nothing in it — an answer, where a redirect to "the first thing you can open"
+ * would have bounced them somewhere arbitrary and told them nothing.
  */
 function Landing() {
-  const { can } = useMe();
-  if (can('requests.read')) return <Dashboard />;
-
-  const first = STALLS_NAV.find((n) => !n.end && navAllows(n, can));
-  // ⚠️ Not an error page when there is nothing. A person with a stalls grant
-  // that reaches no screen is somebody whose access was set up wrong, and the
-  // sentence has to say that rather than blaming them for arriving.
-  if (!first) {
-    return (
-      <Empty>
-        Your stalls access does not reach any screen yet. Ask whoever set it up to grant a role with
-        something in it.
-      </Empty>
-    );
-  }
-  return <Navigate to={first.to} replace />;
+  return <Home />;
 }
 
 /** A permanent move that keeps the query string.
@@ -157,160 +157,6 @@ function RedirectRecord() {
   const { id } = useParams();
   return <RedirectKeepingQuery to={`/m/stalls/requests/${id}`} />;
 }
-
-export interface StallsNavItem {
-  label: string;
-  to: string;
-  /**
-   * A NAME from the shared icon registry (`ui/icons.tsx`), never a component.
-   *
-   * ⚠️ The nav is data the host reads, and a glyph imported here would make
-   * this module's route list carry presentation into whatever renders it. An
-   * unknown name draws a generic dot rather than throwing, so a typo is visible
-   * without being fatal.
-   */
-  glyph: string;
-  group?: string;
-  end?: boolean;
-  /**
-   * Hidden unless the caller holds this action — or, given several, ANY of
-   * them.
-   *
-   * ⚠️ A list, because Planning & Zones is reached by two different people for
-   * two different reasons: a coordinator planning stalls holds `planning.read`,
-   * and an admin setting the bays and the rate card holds `config.read`. The
-   * screen shows each of them only the tabs they hold, so one entry gated on
-   * either action is the honest description of it.
-   */
-  requires?: StallPrivilege | StallPrivilege[];
-}
-
-/**
- * Whether a nav item is reachable by someone.
- *
- * 🔴 Takes `can` rather than a privilege LIST, and both readers of the nav go
- * through it. A write implies its read (`IMPLIED_READ` in `@stalls/core`), so a
- * plain `privileges.includes(...)` hides a screen from the one person it is
- * for — the sidebar did exactly that until this was shared.
- */
-export const navAllows = (n: StallsNavItem, can: (a: StallPrivilege) => boolean) =>
-  !n.requires || (Array.isArray(n.requires) ? n.requires.some(can) : can(n.requires));
-
-/** The whole of the prototype's nav, grouped by where in the event timeline a
- *  screen is used: requests and selection before the event, onboarding and
- *  money between, operations on the day. */
-export const STALLS_NAV: StallsNavItem[] = [
-  // ⚠️ Every entry below carries a `requires` now, including the four that
-  // carried none. An ungated item is a link to a screen the API then refuses —
-  // and since the check-in and chairs-and-tables volunteer stopped holding
-  // `requests.read`, three of those four would have been exactly that.
-  { label: 'Dashboard', to: '/m/stalls', glyph: 'home', end: true, requires: 'requests.read' },
-  // ⚠️ ONE entry, where there were two. "Stall Requests" (triage) and "All
-  // Requests" (the pipeline) were the same rows behind two presets, and the
-  // split cost a reader the question "which list is my request in?" every time
-  // they went looking. The triage preset survives as a filter on this one.
-  {
-    label: 'All Requests',
-    to: '/m/stalls/requests',
-    glyph: 'list-view',
-    group: 'Requests & Selection',
-    requires: 'requests.read',
-  },
-  {
-    label: 'Planning & Zones',
-    to: '/m/stalls/planning',
-    glyph: 'layers',
-    group: 'Requests & Selection',
-    // ⚠️ Either action. The bays, the grid's columns, the rates, the charges
-    // and the fines are tabs on this screen now rather than on Admin, and they
-    // are `config.read` — so an admin who holds no planning action still has a
-    // reason to be here, and the screen gates each tab on its own.
-    requires: ['planning.read', 'config.read'],
-  },
-  {
-    label: 'Communication',
-    to: '/m/stalls/communication',
-    glyph: 'megaphone',
-    group: 'Onboarding & Money',
-    requires: 'comms.read',
-  },
-  {
-    label: 'Vendor Onboarding',
-    to: '/m/stalls/onboarding',
-    glyph: 'clipboard-list',
-    group: 'Onboarding & Money',
-    requires: 'onboarding.read',
-  },
-  {
-    label: 'Finance',
-    to: '/m/stalls/finance',
-    glyph: 'bar-chart',
-    group: 'Onboarding & Money',
-    requires: 'finance.read',
-  },
-  {
-    label: 'Electrical & Venue',
-    to: '/m/stalls/electrical',
-    glyph: 'sliders',
-    group: 'Event Operations',
-    // Its own action, so the electrical and venue-prep teams can be given the
-    // sheet without the planning grid and every requester's details with it.
-    requires: 'electrical.read',
-  },
-  {
-    label: 'Check-In',
-    to: '/m/stalls/checkin',
-    glyph: 'circle-check',
-    group: 'Event Operations',
-    requires: 'checkin.read',
-  },
-  {
-    label: 'Chairs & Tables',
-    to: '/m/stalls/equipment',
-    glyph: 'layout-grid',
-    group: 'Event Operations',
-    requires: 'equipment.read',
-  },
-  {
-    label: 'Admin',
-    to: '/m/stalls/admin',
-    glyph: 'settings',
-    group: 'Configuration',
-    requires: 'config.read',
-  },
-  // ⚠️ Gated on `config.read`, not on `roles.write` or `users.write`. Both
-  // screens are readable before they are writable — the catalogue is reference
-  // material and the directory names who holds what — and each hides its own
-  // writes behind the privilege that authorises them.
-  {
-    label: 'Roles & Privileges',
-    to: '/m/stalls/access/roles',
-    glyph: 'shield',
-    group: 'Access',
-    requires: 'config.read',
-  },
-  {
-    label: 'Users',
-    to: '/m/stalls/access/users',
-    glyph: 'users',
-    group: 'Access',
-    requires: 'config.read',
-  },
-  {
-    label: 'Audit Logs',
-    to: '/m/stalls/audit',
-    glyph: 'scroll',
-    group: 'Access',
-    // ⚠️ Its own `sensitive` privilege, not the `config.read` the two screens
-    // above take: the log shows change sets, including what a bank form said
-    // before it was corrected.
-    requires: 'audit.read',
-  },
-  // ⚠️ No `requires`. The manual is the one screen everybody gets: a volunteer
-  // who holds only `checkin:write` is exactly the reader who has never seen the
-  // rest of the pipeline and most needs to know where their counter sits in it.
-  { label: 'Documentation', to: '/m/stalls/docs', glyph: 'file-text', group: 'Help' },
-];
 
 export { MeProvider, useMe } from './me';
 export { RequesterProvider, useRequester } from './requester';

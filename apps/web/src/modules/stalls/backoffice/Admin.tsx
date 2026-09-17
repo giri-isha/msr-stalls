@@ -3,6 +3,9 @@ import {
   ALL_ASKED,
   ALL_AT_ONCE,
   type OnboardingStep,
+  REQUEST_CAP_SCOPE_LABEL,
+  REQUEST_CAP_SCOPES,
+  type RequestCapScope,
   type StallRequestType,
   needsBankStep,
   needsPaymentStep,
@@ -21,7 +24,6 @@ import {
   EditBtn,
   ErrorBox,
   FormField,
-  H1,
   Icon,
   Input,
   Loading,
@@ -33,7 +35,6 @@ import {
   THead,
   TR,
   Table,
-  Tabs,
   Tag,
   useToast,
 } from '../ui';
@@ -41,32 +42,30 @@ import { Declarations } from './Declarations';
 import { CallFormBuilder } from './CallFormBuilder';
 import { FormBuilder } from './FormBuilder';
 
-/** ⚠️ Five tabs shorter than it was. Bays, Planning Columns, Rates, Charges and
- *  Fines configure an EDITION'S STALLS, and they are on Planning & Zones now —
- *  beside the grid that counts them, rather than a nav group away from it. What
- *  is left here is the paperwork and the years themselves. */
-const TABS = [
-  { label: 'Form Builder', glyph: 'clipboard-list' },
-  /** ⚠️ Its own tab, beside the Form Builder rather than inside it. Both build
-   *  forms, and the resemblance is the trap: a question on the Form Builder is
-   *  asked of a VENDOR filling a form, and one here is asked of a CALLER with
-   *  that vendor on the phone. A single picker over both would put "Items
-   *  Selling" and "What reason did they give" in one list. */
-  { label: 'Call Log Form', glyph: 'phone-call' },
-  { label: 'Declarations', glyph: 'scroll' },
-  { label: 'Flow', glyph: 'arrow-left-right' },
-  { label: 'Editions', glyph: 'calendar' },
-] as const;
-type Tab = (typeof TABS)[number]['label'];
+/** The five tabs this file draws.
+ *
+ *  ⚠️ **The STRIP is not here any more.** It was a `TABS` literal and a `Tabs`
+ *  rail at the top of this screen; both live on `Configs.tsx` now, where they
+ *  carry these five beside Home Page and Sidebar Layout. An admin arranging the
+ *  app was hunting the same job in two places, and a second rail under the first
+ *  one reads as a broken one.
+ *
+ *  ⚠️ Five tabs shorter than it once was, too. Bays, Planning Columns, Rates,
+ *  Charges and Fines configure an EDITION'S STALLS, and they are on Planning &
+ *  Zones now — beside the grid that counts them, rather than a nav group away
+ *  from it. What is left here is the paperwork and the years themselves. */
+export type AdminTab = 'forms' | 'call-form' | 'declarations' | 'flow' | 'editions';
 
-export function Admin() {
+/** The five paperwork tabs of Configs. Renders the panel it is given and the
+ *  edition selector above it — never a heading or a tab strip, both of which
+ *  belong to the screen that mounts this. */
+export function AdminPanels({ tab }: { tab: AdminTab }) {
   const { can } = useMe();
   const toast = useToast();
   // ⚠️ Which edition is being LOOKED AT. Empty means the active one, which is
   // what the screen opens on and what every write goes to regardless — see
   // `viewing` below.
   const [viewing, setViewing] = useState('');
-  const [tab, setTab] = useState<Tab>('Form Builder');
   const cfg = useLoad(() => api.getConfig(viewing || undefined), [viewing]);
   const editions = useLoad(api.listEditions);
 
@@ -100,19 +99,14 @@ export function Admin() {
 
   return (
     <div>
-      <H1
-        icon={<Icon name='settings' size={18} />}
-        sub={
-          <>
-            {c.edition.name} ·{' '}
-            <Tag tone={writable ? 'ok' : 'neutral'} size='sm'>
-              {past ? 'past edition · read only' : writable ? 'you can edit' : 'read only'}
-            </Tag>
-          </>
-        }
-      >
-        Admin
-      </H1>
+      {/* The edition this screen is pointed at, and whether it can be edited.
+          Was the subtitle under a heading this file no longer draws. */}
+      <div style={{ marginBottom: 14, fontSize: 12.5, color: 'var(--mfg)' }}>
+        {c.edition.name} ·{' '}
+        <Tag tone={writable ? 'ok' : 'neutral'} size='sm'>
+          {past ? 'past edition · read only' : writable ? 'you can edit' : 'read only'}
+        </Tag>
+      </div>
 
       {/* The edition being looked at. Beside the title rather than inside a
           panel: it changes what every panel below is showing, and a control
@@ -152,36 +146,24 @@ export function Admin() {
         </div>
       )}
 
-      {/* The shared underlined rail. This screen used to draw its own row of
-          `toolBtnStyle` pills, as four other screens each did — see
-          `ui/components/Tabs.tsx` for why page sections are not pills. */}
-      <Tabs
-        label='Configuration Sections'
-        tabs={TABS.map((t) => ({ key: t.label, label: t.label, glyph: t.glyph }))}
-        active={tab}
-        onPick={(k) => setTab(k as Tab)}
-      />
-
       {/* ⚠️ Reads its own data rather than taking `c`. `c.customFields` is the
           appended questions only, and this screen is about the whole form.
           There used to be a Custom fields tab beside it listing exactly those
           appended rows — the same `stall_form_field` records, minus the context
           that says where on the form they are asked. Two screens editing one
           table, and the shorter one could not reorder. */}
-      {tab === 'Form Builder' && (
-        <FormBuilder writable={writable} editionId={viewing || undefined} />
-      )}
+      {tab === 'forms' && <FormBuilder writable={writable} editionId={viewing || undefined} />}
       {/* ⚠️ Reads its own data rather than taking `c`. The config payload is
           what is LIVE; this screen shows every version including the archived
           ones, which is a different question and a different query. */}
-      {tab === 'Call Log Form' && (
+      {tab === 'call-form' && (
         <CallFormBuilder writable={writable} editionId={viewing || undefined} />
       )}
 
-      {tab === 'Declarations' && (
+      {tab === 'declarations' && (
         <Declarations writable={writable} editionId={viewing || undefined} />
       )}
-      {tab === 'Flow' && <Flow c={c} writable={writable} run={run} reload={cfg.reload} />}
+      {tab === 'flow' && <Flow c={c} writable={writable} run={run} reload={cfg.reload} />}
       {/* ⚠️ Users and Roles used to be two tabs here. They are screens of their
           own under Access now — each one a full page with its own toolbar,
           rather than a page inside a strip that had grown to ten items. */}
@@ -190,7 +172,7 @@ export function Admin() {
           edited on its own row here — which is the one thing on this screen
           that is not about the year the selector is pointed at, and the reason
           the panel below reads its own list rather than taking `c`. */}
-      {tab === 'Editions' && <Editions writable={can('config.write')} run={run} />}
+      {tab === 'editions' && <Editions writable={can('config.write')} run={run} />}
     </div>
   );
 }
@@ -496,6 +478,7 @@ function Editions({ writable, run }: { writable: boolean; run: PanelProps['run']
               <TH>Year</TH>
               <TH>Name</TH>
               <TH>Stalls per Request</TH>
+              <TH>Requests at a Time</TH>
               <TH>Virtual Accounts</TH>
               <TH>Active</TH>
               <TH />
@@ -508,6 +491,15 @@ function Editions({ writable, run }: { writable: boolean; run: PanelProps['run']
                 <TD>{e.name}</TD>
                 <TD align='right' style={{ fontVariantNumeric: 'tabular-nums' }}>
                   {e.maxStallsPerRequest}
+                </TD>
+                {/* The number alone is half the rule — two of WHAT is the other
+                    half — so the scope rides beside it rather than being a
+                    setting you can only see by opening the dialog. */}
+                <TD align='right' style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {e.maxOpenRequests}{' '}
+                  <span style={{ color: 'var(--mfg)', fontVariantNumeric: 'normal' }}>
+                    {REQUEST_CAP_SCOPE_LABEL[e.requestCapScope]}
+                  </span>
                 </TD>
                 {/* ⚠️ The two prefixes read together or not at all: a payment
                     letter needs the rent account AND the deposit account, so a
@@ -570,6 +562,25 @@ function Editions({ writable, run }: { writable: boolean; run: PanelProps['run']
   );
 }
 
+/** The three scopes as the Admin screen offers them, and what each one means
+ *  in the team's own terms.
+ *
+ *  ⚠️ Wording only. `REQUEST_CAP_STATUSES` in `@stalls/core` is what actually
+ *  decides which statuses count, and the API enforces from that same table —
+ *  so a scope described here and enforced somewhere else cannot happen. */
+const CAP_SCOPE_OPTION: Record<RequestCapScope, string> = {
+  UNDECIDED: 'Awaiting a decision',
+  OPEN: 'Still open',
+  ALL: 'Every request this edition',
+};
+
+const CAP_SCOPE_HELP: Record<RequestCapScope, string> = {
+  UNDECIDED:
+    'Only requests nobody has ruled on yet — submitted and shortlisted. Selecting a request frees the slot, so a selected vendor may keep applying for more ground.',
+  OPEN: 'Everything still live — submitted, shortlisted, selected and backup. Only a rejection or a cancellation frees a slot.',
+  ALL: 'Every request the account has filed this edition, decided or not. A rejection frees nothing: the cap is that many attempts a year.',
+};
+
 type EditionRow = Awaited<ReturnType<typeof api.listEditions>>[number];
 
 /**
@@ -602,6 +613,8 @@ function EditionDialog({
     virtualAccountRentPrefix: e.virtualAccountRentPrefix ?? '',
     virtualAccountDepositPrefix: e.virtualAccountDepositPrefix ?? '',
     maxStallsPerRequest: e.maxStallsPerRequest,
+    maxOpenRequests: e.maxOpenRequests,
+    requestCapScope: e.requestCapScope,
     termsUrl: e.termsUrl ?? '',
     beneficiaryName: e.beneficiaryName ?? '',
     beneficiaryAddress: e.beneficiaryAddress ?? '',
@@ -620,6 +633,8 @@ function EditionDialog({
         virtualAccountRentPrefix: v.virtualAccountRentPrefix.trim() || null,
         virtualAccountDepositPrefix: v.virtualAccountDepositPrefix.trim() || null,
         maxStallsPerRequest: v.maxStallsPerRequest,
+        maxOpenRequests: v.maxOpenRequests,
+        requestCapScope: v.requestCapScope,
         termsUrl: v.termsUrl.trim() || null,
         beneficiaryName: v.beneficiaryName.trim() || null,
         beneficiaryAddress: v.beneficiaryAddress.trim() || null,
@@ -636,7 +651,7 @@ function EditionDialog({
   return (
     <Dialog
       title={`${e.year} settings`}
-      note='The edition’s name as it appears on every letter, the two virtual-account prefixes Finance issues for it, the cap on how many stalls one request may ask for in a single bay, where this edition’s terms can be read, and the beneficiary the payment letter and the vendor’s payment page both name.'
+      note='The edition’s name as it appears on every letter, the two virtual-account prefixes Finance issues for it, the two caps on what a requester may ask for, where this edition’s terms can be read, and the beneficiary the payment letter and the vendor’s payment page both name.'
       onClose={onClose}
       footer={<DialogButtons onClose={onClose} onSave={save} disabled={saving || !v.name.trim()} />}
     >
@@ -649,7 +664,11 @@ function EditionDialog({
               onChange={(ev) => setV({ ...v, name: ev.target.value })}
             />
           </FormField>
-          <FormField id='ed-max' label='Stalls per Request'>
+          <FormField
+            id='ed-max'
+            label='Stalls per Request'
+            help='How many stalls one request may ask for in a single bay. Ground in a second bay is a second request.'
+          >
             <Input
               id='ed-max'
               type='number'
@@ -658,6 +677,43 @@ function EditionDialog({
               value={v.maxStallsPerRequest}
               onChange={(ev) => setV({ ...v, maxStallsPerRequest: Number(ev.target.value) || 1 })}
             />
+          </FormField>
+          {/* 🔴 The number and the scope are ONE rule and sit side by side. A
+              cap of two says nothing until you say two of what — and the three
+              readings differ in a way the team feels: under “awaiting a
+              decision” a vendor already selected for two bays may keep
+              applying, and under “filed this edition” two rejections use up
+              their year. */}
+          <FormField
+            id='ed-open'
+            label='Requests at a Time'
+            help='How many requests one account may have going at once. A request above this is refused when it is sent.'
+          >
+            <Input
+              id='ed-open'
+              type='number'
+              min={1}
+              max={20}
+              value={v.maxOpenRequests}
+              onChange={(ev) => setV({ ...v, maxOpenRequests: Number(ev.target.value) || 1 })}
+            />
+          </FormField>
+          <FormField
+            id='ed-scope'
+            label='Which Requests Count'
+            help={CAP_SCOPE_HELP[v.requestCapScope]}
+          >
+            <Select
+              id='ed-scope'
+              value={v.requestCapScope}
+              onChange={(val) => setV({ ...v, requestCapScope: val as RequestCapScope })}
+            >
+              {REQUEST_CAP_SCOPES.map((scope) => (
+                <option key={scope} value={scope}>
+                  {CAP_SCOPE_OPTION[scope]}
+                </option>
+              ))}
+            </Select>
           </FormField>
           <FormField id='ed-rent' label='Virtual Account Prefix — Rent'>
             <Input
