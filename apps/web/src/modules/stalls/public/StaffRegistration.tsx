@@ -2,15 +2,15 @@ import type { CouponView, RegisterStaffInput } from '@stalls/core';
 import { asFormField, formFields } from '@stalls/core';
 import { type ReactNode, useEffect, useState } from 'react';
 import { useParams } from 'react-router';
+import { getCoupon, registerStaff } from '../api';
 import { fieldErrorsFrom } from '../api-client';
 import { DeclarationConsent, allTicked } from '../components/DeclarationConsent';
 import { FieldControl } from '../components/FormFields';
-import { getCoupon, registerStaff } from '../api';
-import { BackToRequests } from './portal-ui';
-import { formatDate } from '../hooks';
+import { formatDate, useLoad } from '../hooks';
 import {
   Btn,
   Card,
+  Dialog,
   Empty,
   ErrorBox,
   FormField,
@@ -22,6 +22,7 @@ import {
   Tag,
   useToast,
 } from '../ui';
+import { BackToRequests } from './portal-ui';
 
 /**
  * Vendor staff registration, on a coupon.
@@ -152,36 +153,132 @@ export function StaffRegistration() {
 
           <Card pad={18} style={{ display: 'grid', gap: 10 }}>
             <div style={{ fontSize: 14, fontWeight: 700 }}>Registered so far</div>
-            {coupon.staff.length === 0 ? (
-              <Empty>Nobody yet.</Empty>
-            ) : (
-              <div style={{ display: 'grid', gap: 6 }}>
-                {coupon.staff.map((s) => (
-                  <div
-                    key={`${s.name}-${s.registeredAt}`}
-                    style={{ display: 'flex', gap: 10, fontSize: 13, alignItems: 'baseline' }}
-                  >
-                    <span style={{ fontWeight: 600 }}>{s.name}</span>
-                    <span
-                      style={{
-                        color: 'var(--mfg)',
-                        fontFamily: 'ui-monospace,Menlo,monospace',
-                        fontSize: 12,
-                      }}
-                    >
-                      {s.mobile}
-                    </span>
-                    <span style={{ color: 'var(--mfg)', fontSize: 11.5, marginLeft: 'auto' }}>
-                      {formatDate(s.registeredAt)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+            <Roster staff={coupon.staff} />
           </Card>
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Who has registered, masked as the API sends them.
+ *
+ * ⚠️ Drawn the same on the coupon page, in the portal's dialog and on the
+ * portal's Staff section. The roster is how the person at the keyboard knows
+ * whether their cook is already in, and a list that disagreed with itself
+ * between the three ways in would be worse than any of them.
+ *
+ * ⚠️ MASKED, and it stays that way here. Anyone holding the coupon can see
+ * this list — that is the vendor's whole team — and a full column of mobile
+ * numbers is not theirs to collect. The stalls team reads the unmasked list
+ * on Onboarding.
+ *
+ * ⚠️ A name can be null, on a registration taken before the form asked for
+ * one. The row still has to draw, because the person still holds a pass.
+ */
+export function Roster({ staff }: { staff: CouponView['staff'] }) {
+  if (staff.length === 0) return <Empty>Nobody yet.</Empty>;
+  return (
+    <div style={{ display: 'grid', gap: 6, width: '100%' }}>
+      {staff.map((s) => (
+        <div
+          key={`${s.mobile}-${s.registeredAt}`}
+          style={{ display: 'flex', gap: 10, fontSize: 13, alignItems: 'baseline' }}
+        >
+          <span style={{ fontWeight: 600 }}>{s.name ?? 'Name not recorded'}</span>
+          <span
+            style={{
+              color: 'var(--mfg)',
+              fontFamily: 'ui-monospace,Menlo,monospace',
+              fontSize: 12,
+            }}
+          >
+            {s.mobile}
+          </span>
+          <span style={{ color: 'var(--mfg)', fontSize: 11.5, marginLeft: 'auto' }}>
+            {formatDate(s.registeredAt)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Registering somebody without leaving the portal.
+ *
+ * 🔴 A DIALOG, for the vendor who is already signed in and looking at their own
+ * Staff section. Registering was a whole-page navigation onto the coupon URL —
+ * the page below was thrown away, the coupon was looked up again from a code
+ * the portal had just shown, and the way back was a link at the top of a page
+ * most people met on a phone. A vendor putting their own four people in did
+ * that round trip four times.
+ *
+ * ⚠️ The PAGE stays, and is still the real front door. The coupon URL is what
+ * gets forwarded to a kitchen team who have no account and no portal, and it
+ * has to keep working for somebody holding nothing but that link. This is a
+ * shortcut for the one person who does not need it.
+ *
+ * ⚠️ Closing RELOADS the request, because the count under the ticket and the
+ * warn mark on the section are read off the request the portal loaded before
+ * any of this — and a vendor who has just registered three people and sees
+ * "Registered 0" concludes it did not work.
+ */
+export function StaffRegisterDialog({ code, onClose }: { code: string; onClose: () => void }) {
+  const { data, error, loading, setData } = useLoad(() => getCoupon(code), [code]);
+  const coupon = data ?? null;
+  const full = coupon !== null && coupon.maxStaff > 0 && coupon.registered >= coupon.maxStaff;
+
+  return (
+    <Dialog
+      title='Register staff'
+      note='Everyone working on the stall must be registered before they can be given a pass. Register one person at a time.'
+      width={560}
+      onClose={onClose}
+      footer={<Btn onClick={onClose}>Done</Btn>}
+    >
+      {loading ? (
+        <Loading />
+      ) : error || !coupon ? (
+        <ErrorBox>
+          That coupon could not be opened. Please try the Register Staff link again.
+        </ErrorBox>
+      ) : (
+        <div style={{ display: 'grid', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, fontWeight: 700 }}>{coupon.stallName}</span>
+            <Tag tone={full ? 'des' : 'ok'} size='sm'>
+              {coupon.registered}
+              {coupon.maxStaff > 0 ? ` of ${coupon.maxStaff}` : ''} registered
+            </Tag>
+          </div>
+
+          {full ? (
+            <ErrorBox>
+              All {coupon.maxStaff} staff registrations for this stall have been used. Please ask
+              the stalls team if you need another pass.
+            </ErrorBox>
+          ) : (
+            <StaffFormBody
+              bare
+              coupon={coupon}
+              submit={(body) => registerStaff({ ...body, couponCode: code })}
+              // ⚠️ Kept open after each person. A vendor registers their whole
+              // team in one sitting, and the form clears itself for the next.
+              onRegistered={setData}
+            />
+          )}
+
+          <div
+            style={{ display: 'grid', gap: 8, paddingTop: 12, borderTop: '1px solid var(--line)' }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 700 }}>Registered so far</div>
+            <Roster staff={coupon.staff} />
+          </div>
+        </div>
+      )}
+    </Dialog>
   );
 }
 
@@ -200,6 +297,7 @@ export function StaffFormBody({
   beforeSubmit,
   ready: readyProp = true,
   onRegistered,
+  bare,
 }: {
   coupon: CouponView;
   submit: (body: Omit<RegisterStaffInput, 'couponCode'>) => Promise<CouponView>;
@@ -207,6 +305,9 @@ export function StaffFormBody({
   beforeSubmit?: ReactNode;
   ready?: boolean;
   onRegistered?: (next: CouponView) => void;
+  /** Without the card around it, for a caller that is already a surface —
+   *  the portal's dialog. A card inside a dialog is a box inside a box. */
+  bare?: boolean;
 }) {
   const toast = useToast();
   const [name, setName] = useState('');
@@ -271,8 +372,10 @@ export function StaffFormBody({
     !!idNumber.trim() &&
     allTicked(coupon.declarations, ticked);
 
+  const Frame = bare ? BareFrame : CardFrame;
+
   return (
-    <Card pad={18} style={{ display: 'grid', gap: 14 }}>
+    <Frame>
       <FormField id='staff-name' label='Full Name' required error={errors.name}>
         <Input
           id='staff-name'
@@ -354,6 +457,18 @@ export function StaffFormBody({
           {busy ? 'Registering…' : submitLabel}
         </Btn>
       </div>
+    </Frame>
+  );
+}
+
+function CardFrame({ children }: { children: ReactNode }) {
+  return (
+    <Card pad={18} style={{ display: 'grid', gap: 14 }}>
+      {children}
     </Card>
   );
+}
+
+function BareFrame({ children }: { children: ReactNode }) {
+  return <div style={{ display: 'grid', gap: 14 }}>{children}</div>;
 }

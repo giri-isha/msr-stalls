@@ -576,7 +576,7 @@ function RequestPanel({
             ) : (
               <FssaiDone fssai={r.fssai} />
             ))}
-          {tab === 'staff' && <StaffTab request={r} getCoupon={getCoupon} />}
+          {tab === 'staff' && <StaffTab request={r} getCoupon={getCoupon} reload={reload} />}
           {tab === 'submitted' && <SubmittedTab sections={r.submitted ?? []} />}
         </div>
       </div>

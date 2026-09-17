@@ -171,10 +171,23 @@ const PAYMENT = {
   },
 };
 
+/** What the coupon resolves to when the Register Staff modal opens it. */
+const COUPON = {
+  stallName: 'Green Leaf Organics',
+  reference: 'VEN-2026-0001',
+  stallNumbers: ['C1-4'],
+  registered: 0,
+  maxStaff: 8,
+  staff: [],
+  form: null,
+  declarations: [],
+};
+
 const signedIn = (requests: unknown) =>
   installFetch([
     ['GET', /\/public\/session$/, () => SESSION],
     ['GET', /\/public\/requests$/, () => requests],
+    ['GET', /\/public\/staff-registration\//, () => COUPON],
   ]);
 
 const tab = (name: RegExp) => screen.getByRole('tab', { name });
@@ -737,10 +750,17 @@ describe('MyRequests', () => {
     // owes. Reading it as a quota is the misreading this wording exists to stop.
     expect(screen.getByText('up to 8 people')).toBeInTheDocument();
     expect(screen.queryByText('0 of 8')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Register Staff/ })).toHaveAttribute(
-      'href',
-      '/stalls/staff/GLO-2026-K7Q4M2X9',
-    );
+
+    // 🔴 A MODAL, where this used to be a link onto the coupon page. The vendor
+    // is signed in and already looking at their own Staff section; sending them
+    // to the coupon URL threw the portal away and left them to find the way
+    // back. The page itself is still there for the team they forward the code
+    // to — that is what `PublicOnboarding` covers.
+    await userEvent.click(screen.getByRole('button', { name: /Register Staff/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Register staff' });
+    expect(within(dialog).getByLabelText(/Full Name/)).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/Mobile Number/)).toBeInTheDocument();
   });
 
   test('offers a coupon to a vendor who has none, without inventing a chore', async () => {
@@ -772,11 +792,12 @@ describe('MyRequests', () => {
     await userEvent.click(screen.getByRole('button', { name: /Get Your Coupon/ }));
 
     expect(await screen.findByText('GLO-2026-K7Q4M2X9')).toBeInTheDocument();
-    expect(fx.last().body).toEqual({ reference: 'VEN-2026-0001' });
-    expect(screen.getByRole('link', { name: /Register Staff/ })).toHaveAttribute(
-      'href',
-      '/stalls/staff/GLO-2026-K7Q4M2X9',
-    );
+    // ⚠️ The MINT, found by name rather than taken as the last call: the
+    // section reads the roster off the coupon once it has one, so the newest
+    // request on the wire is that read, not this one.
+    const mint = fx.calls.find((c) => c.method === 'POST' && c.url.includes('/coupon'));
+    expect(mint?.body).toEqual({ reference: 'VEN-2026-0001' });
+    expect(screen.getByRole('button', { name: /Register Staff/ })).toBeInTheDocument();
   });
 
   test('a stall holding two codes gets a way in for each of them', async () => {
@@ -801,10 +822,12 @@ describe('MyRequests', () => {
     expect(screen.getByText('GLO-2026-K7Q4M2X9')).toBeInTheDocument();
     expect(screen.getByText('GLO-2026-B4K2M7PW')).toBeInTheDocument();
 
-    const links = screen.getAllByRole('link', { name: /Register Staff/ });
-    expect(links.map((a) => a.getAttribute('href'))).toEqual([
-      '/stalls/staff/GLO-2026-K7Q4M2X9',
-      '/stalls/staff/GLO-2026-B4K2M7PW',
+    // ⚠️ Each button names its own code, so the vendor forwarding one to their
+    // kitchen and the other to a caterer can tell which they are opening.
+    const buttons = screen.getAllByRole('button', { name: /Register Staff/ });
+    expect(buttons.map((b) => b.textContent)).toEqual([
+      'Register Staff · GLO-2026-K7Q4M2X9',
+      'Register Staff · GLO-2026-B4K2M7PW',
     ]);
 
     // Each code's own usage, and the stall's ceiling as the two added up.

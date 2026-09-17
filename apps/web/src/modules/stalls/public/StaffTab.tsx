@@ -1,7 +1,9 @@
-import type { CouponSummary, PublicRequestStatus } from '@stalls/core';
+import type { CouponSummary, CouponView, PublicRequestStatus } from '@stalls/core';
 import { useState } from 'react';
-import { Link } from 'react-router';
-import { Btn, Icon, Tag, useIsMobile, useToast } from '../ui';
+import { getCoupon } from '../api';
+import { useLoad } from '../hooks';
+import { Btn, Icon, Loading, Tag, useIsMobile, useToast } from '../ui';
+import { Roster, StaffRegisterDialog } from './StaffRegistration';
 import { Panel, PanelTitle, Row } from './portal-ui';
 
 /**
@@ -37,14 +39,22 @@ import { Panel, PanelTitle, Row } from './portal-ui';
 export function StaffTab({
   request,
   getCoupon,
+  reload,
 }: {
   request: PublicRequestStatus;
   getCoupon(reference: string): Promise<{ code: string }>;
+  /** Re-reads the request after the dialog has registered somebody — the count
+   *  under the ticket and the mark on the section are read off it. */
+  reload(): void;
 }) {
   const mobile = useIsMobile();
   const toast = useToast();
   const [issued, setIssued] = useState<CouponSummary[]>([]);
   const [busy, setBusy] = useState(false);
+  // Which coupon the modal is filling in against, or nothing.
+  const [registering, setRegistering] = useState<string | null>(null);
+  // Bumped when the modal closes, to re-read the roster below it.
+  const [round, setRound] = useState(0);
 
   const staff = request.staff;
   if (!staff) return null;
@@ -99,6 +109,7 @@ export function StaffTab({
                   coupon={c}
                   sole={coupons.length === 1}
                   stall={request.stallName}
+                  onRegister={() => setRegistering(c.code)}
                 />
               ))}
             </div>
@@ -141,7 +152,111 @@ export function StaffTab({
           </p>
         </Panel>
       </div>
+      {coupons.length > 0 && (
+        <RegisteredStaff
+          coupons={coupons}
+          capacity={staff.capacity}
+          round={round}
+          onAdd={() => setRegistering(coupons[0].code)}
+        />
+      )}
+      {registering && (
+        <StaffRegisterDialog
+          code={registering}
+          onClose={() => {
+            setRegistering(null);
+            setRound((n) => n + 1);
+            reload();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * The people who are actually registered against this stall.
+ *
+ * 🔴 The section said "Registered: 3" and nothing else, which is the one fact
+ * about their own team a vendor cannot check: whether the three are the three
+ * they meant, whether the cook they told to register did, whether somebody
+ * registered twice. The number was also the whole answer to a question the
+ * counter asks them at check-in.
+ *
+ * ⚠️ Read from the COUPONS, not from the request. The request's staff block
+ * carries the count and the capacity; the roster hangs off the coupon route,
+ * which the portal may call because it is holding the codes already. Nothing
+ * is sent that the vendor could not read by opening the coupon link they
+ * forward to their own team, and it arrives masked either way.
+ *
+ * ⚠️ POOLED across codes. A stall holding a vendor's code and a caterer's has
+ * one team, and the count beside it is the stall's. Newest last, the order
+ * they walked up in.
+ *
+ * ⚠️ A failure here draws NOTHING rather than an error. The count and the
+ * coupon are already on screen and still true; a red box about a list that
+ * was extra to begin with would read as something being wrong with the
+ * registrations themselves.
+ */
+function RegisteredStaff({
+  coupons,
+  capacity,
+  round,
+  onAdd,
+}: {
+  coupons: CouponSummary[];
+  capacity: number;
+  /** Changes when the modal has been used, to re-read the list. */
+  round: number;
+  onAdd(): void;
+}) {
+  const codes = coupons.map((c) => c.code).join(',');
+  const { data, error, loading } = useLoad(
+    () => Promise.all(coupons.map((c) => getCoupon(c.code))),
+    [codes, round],
+  );
+
+  if (loading) return <Loading />;
+  if (error || !data) return null;
+
+  const people = data
+    .flatMap((c: CouponView) => c.staff)
+    .sort((a, b) => a.registeredAt.localeCompare(b.registeredAt));
+  const full = capacity > 0 && people.length >= capacity;
+
+  return (
+    <Panel>
+      <PanelTitle icon='users'>Who is registered</PanelTitle>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          flexWrap: 'wrap',
+          width: '100%',
+          marginBottom: 2,
+        }}
+      >
+        <Tag tone={people.length > 0 ? 'ok' : 'neutral'} size='sm'>
+          {people.length} registered
+          {capacity > 0 ? ` of up to ${capacity}` : ''}
+        </Tag>
+        {/* ⚠️ Offered against the FIRST code where a stall holds several. The
+            tickets above are where a vendor picks between them; this is the
+            shortcut from the list they are already looking at. */}
+        {!full && (
+          <Btn onClick={onAdd}>
+            <Icon name='user-plus' size={14} />
+            Register Someone
+          </Btn>
+        )}
+      </div>
+      <Roster staff={people} />
+      <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--mfg)', lineHeight: 1.6 }}>
+        Mobile numbers are shown in part only. Everyone here has to carry the ID they registered
+        with to the counter.
+      </p>
+    </Panel>
   );
 }
 
@@ -164,7 +279,17 @@ function registerUrl(code: string): string {
  * a denied permission — so a failure says to copy it by hand rather than doing
  * nothing. The code is on screen either way.
  */
-function Ticket({ coupon, sole, stall }: { coupon: CouponSummary; sole: boolean; stall: string }) {
+function Ticket({
+  coupon,
+  sole,
+  stall,
+  onRegister,
+}: {
+  coupon: CouponSummary;
+  sole: boolean;
+  stall: string;
+  onRegister(): void;
+}) {
   const toast = useToast();
   const copy = async () => {
     try {
@@ -236,16 +361,16 @@ function Ticket({ coupon, sole, stall }: { coupon: CouponSummary; sole: boolean;
             Share on WhatsApp
           </Btn>
         </a>
-        {/* An in-app route, so a router push — the coupon page is the same
-            application and a full reload would throw away the session it is
-            already holding. */}
-        <Link to={`/stalls/staff/${encodeURIComponent(coupon.code)}`} style={{ color: 'inherit' }}>
-          <Btn kind='primary'>
-            Register Staff
-            {!sole && ` · ${coupon.code}`}
-            <Icon name='chevron-right' size={14} />
-          </Btn>
-        </Link>
+        {/* 🔴 A MODAL, not a page. The vendor is already signed in and looking
+            at the section this belongs to; sending them to the coupon URL threw
+            the portal away, looked the code up again, and left them to find
+            their way back. The page is still there for the team they forward
+            the coupon to — see `StaffRegisterDialog`. */}
+        <Btn kind='primary' onClick={onRegister}>
+          <Icon name='user-plus' size={14} />
+          Register Staff
+          {!sole && ` · ${coupon.code}`}
+        </Btn>
       </div>
     </div>
   );

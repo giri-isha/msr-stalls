@@ -94,8 +94,12 @@ describe('StatusPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /Get Your Coupon/ }));
 
     expect(await screen.findByText('GLO-2026-K7Q4M2X9')).toBeInTheDocument();
-    expect(fx.last().url).toContain(`/public/status/${token}/coupon`);
-    expect(fx.last().body).toEqual({ reference: 'VEN-2026-0001' });
+    // ⚠️ The MINT, found by name rather than taken as the last call: the
+    // section reads the roster off the coupon once it has one, so the newest
+    // request on the wire is that read, not this one.
+    const mint = fx.calls.find((c) => c.method === 'POST' && c.url.includes('/coupon'));
+    expect(mint?.url).toContain(`/public/status/${token}/coupon`);
+    expect(mint?.body).toEqual({ reference: 'VEN-2026-0001' });
   });
 
   test('a 404 renders a plain "not valid" page with no detail', async () => {
