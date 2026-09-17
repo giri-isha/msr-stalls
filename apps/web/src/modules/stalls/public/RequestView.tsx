@@ -122,7 +122,11 @@ export function RequestView({ requests, openStep, getCoupon, reload }: RequestVi
   };
 
   return (
-    <div style={{ display: 'grid', gap: 14 }}>
+    // ⚠️ `minmax(0, 1fr)`, not a bare grid. A grid item's minimum width is its
+    // content's, so the tab strip — which scrolls sideways on a phone rather
+    // than wrapping — would otherwise widen the card past the screen instead
+    // of scrolling inside it.
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 14 }}>
       {requests.length > 1 && (
         <Switcher requests={requests} current={current.reference} onPick={pick} />
       )}
@@ -365,8 +369,15 @@ function Overview({
           <Panel>
             <PanelTitle icon='clock'>Still to do</PanelTitle>
             <div style={{ display: 'grid', width: '100%' }}>
-              {r.pending.map((p) => (
-                <StepRow key={p.step} step={p} busy={busy} onOpen={onOpen} onPick={onPick} />
+              {r.pending.map((p, i) => (
+                <StepRow
+                  key={p.step}
+                  step={p}
+                  last={i === r.pending.length - 1}
+                  busy={busy}
+                  onOpen={onOpen}
+                  onPick={onPick}
+                />
               ))}
             </div>
           </Panel>
@@ -381,11 +392,13 @@ function Overview({
 
 function StepRow({
   step,
+  last,
   busy,
   onOpen,
   onPick,
 }: {
   step: PendingStep;
+  last: boolean;
   busy: string | null;
   onOpen(step: 'BANK_FORM' | 'FSSAI'): Promise<void>;
   onPick(tab: PortalTab): void;
@@ -420,7 +433,9 @@ function StepRow({
         gap: 10,
         width: '100%',
         padding: '10px 0',
-        borderBottom: '1px solid var(--bd)',
+        // A rule between rows, not under the last one — a lone step would
+        // otherwise sit over a line dividing it from nothing.
+        borderBottom: last ? 'none' : '1px solid var(--bd)',
       }}
     >
       <Tag tone='warn' size='sm'>
