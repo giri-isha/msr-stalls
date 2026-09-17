@@ -472,7 +472,13 @@ export async function replacePlanCategories(
 }
 
 /** The edition's own settings — the name, the two virtual-account prefixes
- *  Finance issues, and the cap on stalls per request. */
+ *  Finance issues, the cap on stalls per request, and who the money goes to.
+ *
+ *  ⚠️ The beneficiary block is named FIELD BY FIELD rather than spread in.
+ *  These columns are what the payment letter and the vendor's payment page both
+ *  print, and a settings write that silently carried whatever the caller
+ *  happened to send is how a field nobody declared ends up in the bank block a
+ *  vendor transfers against. */
 export async function updateEditionSettings(
   db: PrismaClient,
   editionId: string,
@@ -482,6 +488,12 @@ export async function updateEditionSettings(
     virtualAccountDepositPrefix: string | null;
     maxStallsPerRequest: number;
     termsUrl?: string | null;
+    beneficiaryName?: string | null;
+    beneficiaryAddress?: string | null;
+    bankAccountType?: string | null;
+    bankName?: string | null;
+    bankIfsc?: string | null;
+    bankBranch?: string | null;
   },
   by: string,
 ) {

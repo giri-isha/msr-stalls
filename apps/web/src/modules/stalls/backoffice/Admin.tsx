@@ -592,6 +592,12 @@ function EditionDialog({
     virtualAccountDepositPrefix: e.virtualAccountDepositPrefix ?? '',
     maxStallsPerRequest: e.maxStallsPerRequest,
     termsUrl: e.termsUrl ?? '',
+    beneficiaryName: e.beneficiaryName ?? '',
+    beneficiaryAddress: e.beneficiaryAddress ?? '',
+    bankAccountType: e.bankAccountType ?? '',
+    bankName: e.bankName ?? '',
+    bankIfsc: e.bankIfsc ?? '',
+    bankBranch: e.bankBranch ?? '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -604,6 +610,12 @@ function EditionDialog({
         virtualAccountDepositPrefix: v.virtualAccountDepositPrefix.trim() || null,
         maxStallsPerRequest: v.maxStallsPerRequest,
         termsUrl: v.termsUrl.trim() || null,
+        beneficiaryName: v.beneficiaryName.trim() || null,
+        beneficiaryAddress: v.beneficiaryAddress.trim() || null,
+        bankAccountType: v.bankAccountType.trim() || null,
+        bankName: v.bankName.trim() || null,
+        bankIfsc: v.bankIfsc.trim() || null,
+        bankBranch: v.bankBranch.trim() || null,
       }),
     );
     if (ok) onSaved();
@@ -613,7 +625,7 @@ function EditionDialog({
   return (
     <Dialog
       title={`${e.year} settings`}
-      note='The edition’s name as it appears on every letter, the two virtual-account prefixes Finance issues for it, the cap on how many stalls one request may ask for in a single bay, and where this edition’s terms can be read.'
+      note='The edition’s name as it appears on every letter, the two virtual-account prefixes Finance issues for it, the cap on how many stalls one request may ask for in a single bay, where this edition’s terms can be read, and the beneficiary the payment letter and the vendor’s payment page both name.'
       onClose={onClose}
       footer={<DialogButtons onClose={onClose} onSave={save} disabled={saving || !v.name.trim()} />}
     >
@@ -673,6 +685,70 @@ function EditionDialog({
             value={v.termsUrl}
             placeholder='https://…'
             onChange={(ev) => setV({ ...v, termsUrl: ev.target.value })}
+          />
+        </FormField>
+        {/* 🔴 Who the money goes to. This used to be prose inside the payment
+            letter, which was fine while the letter was the only place a vendor
+            read it — the team changes banks without a deploy, and an editable
+            template is what let them. It stopped working the day the vendor's
+            own payment page had to print the same table: a page that knows the
+            account number and not the IFSC is a page nobody can transfer from,
+            and a second copy of a bank identity is one bank change away from a
+            letter and a page naming different beneficiaries.
+
+            ⚠️ Blank on a new edition, and that is deliberate — a page must
+            print nothing rather than last year's bank. */}
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--mfg)', marginTop: 4 }}>
+          Beneficiary — who vendors transfer to
+        </div>
+        <Grid>
+          <FormField id='ed-ben-name' label='Account Name'>
+            <Input
+              id='ed-ben-name'
+              value={v.beneficiaryName}
+              placeholder='Not set'
+              onChange={(ev) => setV({ ...v, beneficiaryName: ev.target.value })}
+            />
+          </FormField>
+          <FormField id='ed-ben-type' label='Account Type'>
+            <Input
+              id='ed-ben-type'
+              value={v.bankAccountType}
+              placeholder='Savings'
+              onChange={(ev) => setV({ ...v, bankAccountType: ev.target.value })}
+            />
+          </FormField>
+          <FormField id='ed-ben-bank' label='Bank Name'>
+            <Input
+              id='ed-ben-bank'
+              value={v.bankName}
+              placeholder='Not set'
+              onChange={(ev) => setV({ ...v, bankName: ev.target.value })}
+            />
+          </FormField>
+          <FormField id='ed-ben-ifsc' label='RTGS / NEFT / IFSC Code'>
+            <Input
+              id='ed-ben-ifsc'
+              value={v.bankIfsc}
+              placeholder='HDFC0004989'
+              onChange={(ev) => setV({ ...v, bankIfsc: ev.target.value.toUpperCase() })}
+            />
+          </FormField>
+        </Grid>
+        <FormField id='ed-ben-addr' label='Beneficiary Address'>
+          <Input
+            id='ed-ben-addr'
+            value={v.beneficiaryAddress}
+            placeholder='Not set'
+            onChange={(ev) => setV({ ...v, beneficiaryAddress: ev.target.value })}
+          />
+        </FormField>
+        <FormField id='ed-ben-branch' label='Branch'>
+          <Input
+            id='ed-ben-branch'
+            value={v.bankBranch}
+            placeholder='Not set'
+            onChange={(ev) => setV({ ...v, bankBranch: ev.target.value })}
           />
         </FormField>
       </div>

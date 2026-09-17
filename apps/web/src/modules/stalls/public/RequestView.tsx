@@ -1,4 +1,10 @@
-import { type GatedStep, type PublicRequestStatus, isSelfServe } from '@stalls/core';
+import {
+  type GatedStep,
+  type PublicBankDetails,
+  type PublicFssaiDetails,
+  type PublicRequestStatus,
+  isSelfServe,
+} from '@stalls/core';
 import { type ReactNode, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { StatusPill, TYPE_LABEL } from '../components/StatusPill';
@@ -7,7 +13,7 @@ import { Btn, Card, Icon, Tabs, type TabDef, Tag, useIsMobile, useToast } from '
 import { PaymentTab } from './PaymentTab';
 import { StaffTab } from './StaffTab';
 import { SubmittedTab } from './SubmittedTab';
-import { Panel, PanelTitle } from './portal-ui';
+import { Panel, PanelTitle, Row } from './portal-ui';
 
 /**
  * A requester's own request, drawn the same way whichever credential got them
@@ -58,10 +64,18 @@ const STATUS_COPY: Record<string, string> = {
 /**
  * Which tabs a request has, read off what the API sent.
  *
- * ⚠️ A step tab is present only while the API says the step is outstanding, or
- * has sent data for it. Bank details and FSSAI therefore vanish once done —
- * the API does not tell "done" from "not applicable" for those, and a green
- * tick invented here would be this page deciding.
+ * ⚠️ A step tab is present while the API says the step is outstanding, or has
+ * sent what the requester submitted for it.
+ *
+ * 🔴 Bank details and FSSAI used to VANISH once done, and that was this page
+ * reading "not outstanding" as "nothing to say". It covered two different
+ * facts — you have sent it, and we never asked you — and for the first of them
+ * a vendor who wanted to check which account their deposit would be refunded
+ * to, or whether the certificate had actually gone through, had the same one
+ * place to look as before any of this: the form they no longer had. The API
+ * now sends the answers back, so the tab stays with a green mark and reads
+ * them out. A step never asked still has no tab, because there is still
+ * nothing to say.
  *
  * 🔴 And only while the step is OPEN. An edition may open its steps in an
  * order, and a step the ordering has not reached yet gets no tab at all — a
@@ -85,8 +99,16 @@ export function portalTabs(r: PublicRequestStatus): Array<TabDef & { key: Portal
   const tabs: Array<TabDef & { key: PortalTab }> = [
     { key: 'overview', label: 'Overview', glyph: 'layout-grid' },
   ];
-  if (pending.has('BANK_FORM')) {
-    tabs.push({ key: 'bank', label: 'Bank Details', glyph: 'file-text', mark: 'warn' });
+  if (pending.has('BANK_FORM') || r.bank) {
+    tabs.push({
+      key: 'bank',
+      label: 'Bank Details',
+      glyph: 'file-text',
+      // The marks are facts: amber is "we are waiting on this", green is "we
+      // have it". Not a claim that the details are correct — that is what the
+      // read-back under the tab is for.
+      mark: pending.has('BANK_FORM') ? 'warn' : 'ok',
+    });
   }
   if (r.payment || pending.has('PAYMENT') || claims.length > 0) {
     tabs.push({
@@ -100,8 +122,13 @@ export function portalTabs(r: PublicRequestStatus): Array<TabDef & { key: Portal
           : undefined,
     });
   }
-  if (pending.has('FSSAI')) {
-    tabs.push({ key: 'fssai', label: 'FSSAI', glyph: 'shield', mark: 'warn' });
+  if (pending.has('FSSAI') || r.fssai) {
+    tabs.push({
+      key: 'fssai',
+      label: 'FSSAI',
+      glyph: 'shield',
+      mark: pending.has('FSSAI') ? 'warn' : 'ok',
+    });
   }
   // ⚠️ `open !== false`, for the deploy-skew reason above — but the field is
   // why this tab reads it rather than `pending`. STAFF_REGISTRATION is not in
@@ -331,28 +358,37 @@ function RequestPanel({
         {tab === 'overview' && (
           <Overview request={r} busy={busy} onOpen={open} onPick={setActive} />
         )}
-        {tab === 'bank' && (
-          <StepTab
-            step={r.pending.find((p) => p.step === 'BANK_FORM')}
-            busy={busy === 'BANK_FORM'}
-            onOpen={() => void open('BANK_FORM')}
-          >
-            Your bank details, GST number and the name to invoice, so Finance can raise the invoice
-            and return your deposit to the right account after the event. Only vendors are asked for
-            this.
-          </StepTab>
-        )}
+        {/* ⚠️ Outstanding wins over submitted. A vendor asked to redo this —
+            the step reopened — must be given the form, not a read-back of the
+            details that are being replaced. */}
+        {tab === 'bank' &&
+          (r.pending.some((p) => p.step === 'BANK_FORM') || !r.bank ? (
+            <StepTab
+              step={r.pending.find((p) => p.step === 'BANK_FORM')}
+              busy={busy === 'BANK_FORM'}
+              onOpen={() => void open('BANK_FORM')}
+            >
+              Your bank details, GST number and the name to invoice, so Finance can raise the
+              invoice and return your deposit to the right account after the event. Only vendors are
+              asked for this.
+            </StepTab>
+          ) : (
+            <BankDone bank={r.bank} />
+          ))}
         {tab === 'payment' && <PaymentTab request={r} reload={reload} />}
-        {tab === 'fssai' && (
-          <StepTab
-            step={r.pending.find((p) => p.step === 'FSSAI')}
-            busy={busy === 'FSSAI'}
-            onOpen={() => void open('FSSAI')}
-          >
-            A stall selling food needs its FSSAI certificate on file before check-in. Upload a photo
-            or scan of it — up to five pages, if it was photographed a page at a time.
-          </StepTab>
-        )}
+        {tab === 'fssai' &&
+          (r.pending.some((p) => p.step === 'FSSAI') || !r.fssai ? (
+            <StepTab
+              step={r.pending.find((p) => p.step === 'FSSAI')}
+              busy={busy === 'FSSAI'}
+              onOpen={() => void open('FSSAI')}
+            >
+              A stall selling food needs its FSSAI certificate on file before check-in. Upload a
+              photo or scan of it — up to five pages, if it was photographed a page at a time.
+            </StepTab>
+          ) : (
+            <FssaiDone fssai={r.fssai} />
+          ))}
         {tab === 'staff' && <StaffTab request={r} getCoupon={getCoupon} />}
         {tab === 'submitted' && <SubmittedTab sections={r.submitted ?? []} />}
       </div>
@@ -489,6 +525,98 @@ function StepRow({
       </Tag>
       <span style={{ flex: 1 }} />
       {action}
+    </div>
+  );
+}
+
+/**
+ * The bank details we hold, read back to the vendor who sent them.
+ *
+ * 🔴 This is the answer to "what happened to it". A step that was done left no
+ * trace on this page: the tab disappeared, and a vendor checking which account
+ * their deposit would come back to had only the form they no longer had. The
+ * questions they actually come back with are all here — is that the right
+ * account, did the IFSC go in correctly, did the GST number reach you.
+ *
+ * ⚠️ The account number and the PAN arrive masked from the API, and are
+ * rendered as they arrive. The last four is what a person checks their own
+ * account against; this page is reached by a link that sits in an inbox for a
+ * year and gets forwarded, which is a poor place to keep the other ten digits.
+ *
+ * ⚠️ Rows with nothing in them are DROPPED, not drawn empty. Which questions
+ * the form asks is the edition's to decide, and a blank beside "GST number"
+ * reads as something missing rather than something never asked.
+ */
+function BankDone({ bank }: { bank: PublicBankDetails }) {
+  const rows: Array<[string, string | null]> = [
+    ['Account holder', bank.accountHolder],
+    ['Account number', bank.accountNumberMasked],
+    ['IFSC', bank.ifsc],
+    ['Bank', bank.bankName],
+    ['Branch', bank.branch],
+    ['Invoice to', bank.invoiceName],
+    ['GST number', bank.gstNumber],
+    ['PAN', bank.panMasked],
+  ];
+  return (
+    <div style={{ display: 'grid', gap: 12, justifyItems: 'start' }}>
+      <Tag tone='ok' size='sm'>
+        <Icon name='circle-check' size={12} /> Received {formatDate(bank.submittedAt)}
+      </Tag>
+      <Panel>
+        <PanelTitle icon='file-text'>What we have on file</PanelTitle>
+        {rows.map(([k, v]) => (v ? <Row key={k} k={k} v={v} /> : null))}
+        <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--mfg)', lineHeight: 1.6 }}>
+          Your account number and PAN are shown in part only. If anything here is wrong, please tell
+          the stall team — this is the account your refundable deposit is returned to.
+        </p>
+      </Panel>
+    </div>
+  );
+}
+
+/**
+ * The FSSAI certificate on file, read back.
+ *
+ * ⚠️ Two different states, and the difference matters to the reader: received,
+ * and verified by the team. A vendor whose certificate is uploaded but not yet
+ * checked has nothing to do and nothing to worry about, which is worth saying
+ * rather than leaving them to guess from a tick.
+ *
+ * ⚠️ File NAMES, not links. The uploads are served from a private store the
+ * backoffice reads through its own authorisation; a link here would make a
+ * read-back into a second door onto it.
+ */
+function FssaiDone({ fssai }: { fssai: PublicFssaiDetails }) {
+  return (
+    <div style={{ display: 'grid', gap: 12, justifyItems: 'start' }}>
+      <Tag tone='ok' size='sm'>
+        <Icon name='circle-check' size={12} />{' '}
+        {fssai.verified ? 'Verified' : `Received ${formatDate(fssai.submittedAt)}`}
+      </Tag>
+      <Panel>
+        <PanelTitle icon='shield'>Your certificate</PanelTitle>
+        {fssai.ownerName && <Row k='Licence holder' v={fssai.ownerName} />}
+        {fssai.mobile && <Row k='Mobile' v={fssai.mobile} />}
+        <Row k='Uploaded' v={formatDate(fssai.submittedAt)} />
+        {fssai.files.length > 0 && (
+          <Row
+            k={fssai.files.length > 1 ? 'Pages' : 'File'}
+            v={
+              <span style={{ display: 'grid', gap: 2 }}>
+                {fssai.files.map((f) => (
+                  <span key={f.fileName}>{f.fileName}</span>
+                ))}
+              </span>
+            }
+          />
+        )}
+        <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--mfg)', lineHeight: 1.6 }}>
+          {fssai.verified
+            ? 'The stall team has checked your certificate. Nothing further is needed.'
+            : 'We have your certificate. The stall team will check it before the event — there is nothing for you to do.'}
+        </p>
+      </Panel>
     </div>
   );
 }

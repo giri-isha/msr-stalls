@@ -281,6 +281,29 @@ model StallEdition {
   /// one".
   maxStallsPerRequest Int @default(2) @map("max_stalls_per_request")
 
+  /// Who the money goes to, as the payment letter and the vendor's own payment
+  /// page print it.
+  ///
+  /// 🔴 Configuration, where this was prose inside the PAYMENT_DETAILS template.
+  /// The team changes banks without a deploy and the template being editable is
+  /// what let them; but a vendor cannot make an NEFT transfer from a page that
+  /// knows the account number and not the IFSC, so the portal needed the same
+  /// facts. Two copies of a bank identity is one bank change away from a page
+  /// and a letter naming different beneficiaries — and a transfer into the old
+  /// account is money that has to be traced. So it lives here once, and both
+  /// read it.
+  ///
+  /// ⚠️ Every one nullable, and a page prints nothing rather than last year's
+  /// bank. A new edition starts blank on purpose: `copyEdition` does not carry
+  /// these over, for the same reason it does not carry the virtual-account
+  /// prefixes — Finance issues them per edition.
+  beneficiaryName    String? @map("beneficiary_name")
+  beneficiaryAddress String? @map("beneficiary_address")
+  bankAccountType    String? @map("bank_account_type")
+  bankName           String? @map("bank_name")
+  bankIfsc           String? @map("bank_ifsc")
+  bankBranch         String? @map("bank_branch")
+
   /// Where this edition's terms and conditions can be read.
   ///
   /// 🔴 The bank form records `agreedTermsAt` against a tick-box, and the 2025

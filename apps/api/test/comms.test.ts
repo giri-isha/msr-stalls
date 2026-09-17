@@ -11,6 +11,7 @@ import {
 } from '../src/modules/stalls/comms';
 import { checkIn } from '../src/modules/stalls/checkin';
 import { WrongTemplateError } from '../src/modules/stalls/errors';
+import { updateEditionSettings } from '../src/modules/stalls/config';
 import { SYSTEM, prisma, resetDatabase, seedEdition } from './helpers/db';
 import { selected, type TestDeps, testDeps } from './helpers/onboarding';
 import { makeStalls } from './helpers/plan';
@@ -212,6 +213,40 @@ describe('sending', () => {
     });
     const after = await prisma.stallPaymentPlan.findUnique({ where: { requestId } });
     expect(after?.stallFeePaise).toBe(1_500_000);
+  });
+
+  test('the payment letter names the beneficiary the edition was configured with', async () => {
+    // 🔴 The bank identity used to be PROSE in the template body, which was
+    // fine while the letter was the only place a vendor read it. Their payment
+    // page prints the same table now, and two copies is one bank change away
+    // from a letter and a page naming different beneficiaries.
+    const { requestId } = await selected(['C1-1']);
+    await updateEditionSettings(
+      prisma,
+      edition.id,
+      {
+        name: edition.name,
+        virtualAccountRentPrefix: edition.virtualAccountRentPrefix,
+        virtualAccountDepositPrefix: edition.virtualAccountDepositPrefix,
+        maxStallsPerRequest: edition.maxStallsPerRequest,
+        beneficiaryName: 'ISHA FOUNDATION',
+        bankName: 'HDFC Bank Ltd',
+        bankIfsc: 'HDFC0004989',
+        bankBranch: 'Kanjurmarg Branch, Mumbai',
+      },
+      SYSTEM,
+    );
+
+    await send('PAYMENT_DETAILS', [requestId]);
+
+    const text = deps.mail.sent[0].text;
+    expect(text).toContain('ISHA FOUNDATION');
+    expect(text).toContain('HDFC0004989');
+    expect(text).toContain('Kanjurmarg Branch, Mumbai');
+    // ⚠️ No brace survives into an inbox. A placeholder the module cannot fill
+    // renders empty — a gap a reader can query, where a stray `{{oops}}` is a
+    // mistake they cannot act on.
+    expect(text).not.toContain('{{');
   });
 
   test('the onboarding letter mints one coupon and reuses it', async () => {

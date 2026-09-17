@@ -8,6 +8,7 @@
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { buildApp } from '../src/app';
+import { updateEditionSettings } from '../src/modules/stalls/config';
 import { confirmPayment, setDiscretionaryFee } from '../src/modules/stalls/finance';
 import { LogMailer, prisma, resetDatabase, seedEdition, seedRequester, SYSTEM } from './helpers/db';
 import { selected } from './helpers/onboarding';
@@ -59,6 +60,86 @@ describe('what a selected requester is told about paying', () => {
     expect(pending.map((p: { step: string }) => p.step)).toContain('PAYMENT');
     expect(payment.feePaise).toBeGreaterThan(0);
     expect(payment.totalPaise).toBe(payment.feePaise + payment.depositPaise);
+  });
+
+  test('carries the arithmetic behind the fee, not just the total', async () => {
+    // 🔴 A vendor querying their bill asks about the MULTIPLICATION — "why four
+    // thousand?" — and this page used to carry the summed figure alone, so the
+    // one question it exists to answer sent them back to the letter it
+    // replaced.
+    const { cookies } = await priyaWithAStall();
+
+    const { payment } = await firstRequest(cookies);
+    const keys = payment.breakdown.lines.map((l: { key: string }) => l.key);
+    expect(keys).toContain('stall');
+    expect(keys).toContain('plugs15a');
+    // Every line carries its own count and unit rate, which is what the
+    // multiplication is printed from.
+    const stall = payment.breakdown.lines.find((l: { key: string }) => l.key === 'stall');
+    expect(stall.count).toBeGreaterThan(0);
+    expect(stall.unitRatePaise).toBeGreaterThan(0);
+    // The lines and the GST add up to the fee above them.
+    expect(payment.breakdown.netPaise + payment.breakdown.gstPaise).toBe(payment.feePaise);
+    expect(payment.breakdown.gstPercent).toBe(18);
+    // And the deposit arrives split the way it is refunded — a fine comes off
+    // one half, unreturned furniture off the other.
+    expect(payment.stallDepositPaise + payment.equipmentDepositPaise).toBe(payment.depositPaise);
+  });
+
+  test('a concession suppresses the breakdown rather than showing what was quoted', async () => {
+    // 🔴 The lines add up to the CARD rate and `feePaise` is what the team
+    // agreed to take instead. Sending both shows a trader the figure they were
+    // talked down from — which is exactly what `payableFeePaise` exists to
+    // avoid — and a breakdown that does not sum to the total above it is worse
+    // than none.
+    const { cookies, requestId } = await priyaWithAStall();
+    expect((await firstRequest(cookies)).payment.breakdown).not.toBeNull();
+
+    await setDiscretionaryFee(
+      prisma,
+      requestId,
+      { discretionaryFeePaise: 500_000, reason: 'Local welfare — agreed by the department' },
+      SYSTEM,
+    );
+
+    const { payment } = await firstRequest(cookies);
+    expect(payment.feePaise).toBe(500_000);
+    expect(payment.breakdown).toBeNull();
+  });
+
+  test('names the beneficiary the payment letter names', async () => {
+    // 🔴 One copy of the bank identity, read by the letter and by this page.
+    // Two copies is one bank change away from a letter and a page naming
+    // different beneficiaries, and a transfer into a closed account is money
+    // somebody has to trace.
+    const { cookies } = await priyaWithAStall();
+    const edition = await prisma.stallEdition.findFirstOrThrow({ where: { isActive: true } });
+
+    // Nothing configured yet: the page names the accounts without inventing a
+    // bank to go with them.
+    expect((await firstRequest(cookies)).payment.beneficiary).toBeNull();
+
+    await updateEditionSettings(
+      prisma,
+      edition.id,
+      {
+        name: edition.name,
+        virtualAccountRentPrefix: edition.virtualAccountRentPrefix,
+        virtualAccountDepositPrefix: edition.virtualAccountDepositPrefix,
+        maxStallsPerRequest: edition.maxStallsPerRequest,
+        beneficiaryName: 'ISHA FOUNDATION',
+        bankName: 'HDFC Bank Ltd',
+        bankIfsc: 'HDFC0004989',
+      },
+      SYSTEM,
+    );
+
+    const { beneficiary } = (await firstRequest(cookies)).payment;
+    expect(beneficiary.accountName).toBe('ISHA FOUNDATION');
+    expect(beneficiary.ifsc).toBe('HDFC0004989');
+    // A line the team has not filled in is null, not a blank string — the page
+    // leaves the row out rather than drawing an empty one.
+    expect(beneficiary.branch).toBeNull();
   });
 
   test('asks for the agreed fee, not the rate the trader was talked down from', async () => {

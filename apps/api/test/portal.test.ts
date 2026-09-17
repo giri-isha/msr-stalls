@@ -180,6 +180,80 @@ describe('GET /public/status/:token', () => {
     expect(flat).not.toContain('GST number');
   });
 
+  /** 🔴 A finished step used to leave NO TRACE on this page. The tab vanished
+   *  when the details went in, because "not outstanding" covered both "you have
+   *  sent it" and "we never asked you" — so a vendor checking which account
+   *  their deposit comes back to had the form they no longer had, and nothing
+   *  else. */
+  test('reads the bank details back, with the account number and PAN masked', async () => {
+    const { requestId } = await selected(['C1-1']);
+    await prisma.stallBankDetail.create({
+      data: {
+        requestId,
+        accountHolder: 'Green Leaf Organics Pvt Ltd',
+        bankName: 'HDFC Bank',
+        branch: 'RS Puram',
+        accountNumber: '50100123456789',
+        ifsc: 'HDFC0001234',
+        panNumber: 'ABCDE1234F',
+        gstNumber: '33AABCU9603R1ZM',
+        agreedNeftAt: new Date(),
+        agreedTermsAt: new Date(),
+      },
+    });
+    mail.sent.length = 0;
+    await askForLink('priya@greenleaf.example');
+
+    const { bank } = (await statusOf(mailedToken())).json().requests[0];
+    expect(bank.accountHolder).toBe('Green Leaf Organics Pvt Ltd');
+    expect(bank.ifsc).toBe('HDFC0001234');
+    // ⚠️ The last four and nothing more. This page is reached by a link that
+    // lives in an inbox for a year and gets forwarded, and the last four is the
+    // whole of what a person checks their own account against.
+    expect(bank.accountNumberMasked).toBe('••••••••••6789');
+    expect(bank.panMasked).toBe('••••••234F');
+    expect(JSON.stringify(bank)).not.toContain('50100123456789');
+    expect(JSON.stringify(bank)).not.toContain('ABCDE1234F');
+  });
+
+  test('reads the FSSAI certificate back, and whether it has been verified', async () => {
+    const { requestId } = await selected(['C1-1']);
+    await prisma.stallFssaiCertificate.create({
+      data: {
+        requestId,
+        ownerName: 'Priya Venkat',
+        mobile: '9840012345',
+        files: { create: [{ fileKey: 'stalls/fssai/a.jpg', fileName: 'page-1.jpg' }] },
+      },
+    });
+    mail.sent.length = 0;
+    await askForLink('priya@greenleaf.example');
+
+    const { fssai } = (await statusOf(mailedToken())).json().requests[0];
+    expect(fssai.ownerName).toBe('Priya Venkat');
+    expect(fssai.files).toEqual([{ fileName: 'page-1.jpg', uploadedAt: expect.any(String) }]);
+    // Received is not the same as checked, and the difference is the whole of
+    // what the requester can do about it: nothing, either way, but only one of
+    // them is worth ringing up about.
+    expect(fssai.verified).toBe(false);
+    // ⚠️ No link to the file. The uploads are served from a private store the
+    // backoffice reads through its own authorisation, and a read-back must not
+    // become a second door onto it.
+    expect(JSON.stringify(fssai)).not.toContain('stalls/fssai/a.jpg');
+  });
+
+  test('sends nothing back for a step that was never submitted', async () => {
+    await selected(['C1-1']);
+    mail.sent.length = 0;
+    await askForLink('priya@greenleaf.example');
+
+    const request = (await statusOf(mailedToken())).json().requests[0];
+    // Null, not an empty object — "you have not sent it" is what keeps the tab
+    // showing the form rather than an empty read-back.
+    expect(request.bank).toBeNull();
+    expect(request.fssai).toBeNull();
+  });
+
   test('lists nothing outstanding for a request that has not been selected', async () => {
     await app.inject({
       method: 'POST',

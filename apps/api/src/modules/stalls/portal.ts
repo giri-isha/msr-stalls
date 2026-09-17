@@ -2,7 +2,11 @@ import type { PrismaClient, StallAccount } from '@prisma/client';
 import {
   type ContinueStepInput,
   type FlowConfig,
+  type PublicBankDetails,
+  type PublicBeneficiary,
+  type PublicFssaiDetails,
   type PublicPaymentDue,
+  type QuoteLine,
   type QuoteView,
   type PublicStaffCoupon,
   type PublicStatusResponse,
@@ -13,6 +17,7 @@ import {
   type SelfServeStepValue,
   isSelfServe,
   isStepAsked,
+  gstPercentOf,
   virtualAccountFor,
 } from '@stalls/core';
 import { audit, requesterActor } from './audit';
@@ -63,6 +68,12 @@ type PortalRequest = RequestWithFacts & {
   edition: {
     virtualAccountRentPrefix: string | null;
     virtualAccountDepositPrefix: string | null;
+    beneficiaryName: string | null;
+    beneficiaryAddress: string | null;
+    bankAccountType: string | null;
+    bankName: string | null;
+    bankIfsc: string | null;
+    bankBranch: string | null;
   };
   ashramDetail: AshramDetail | null;
   appliances: Array<{ name: string; watts: number }>;
@@ -179,7 +190,19 @@ export async function statusView(db: Db, account: StallAccount): Promise<PublicS
     include: {
       ...factsInclude,
       edition: {
-        select: { virtualAccountRentPrefix: true, virtualAccountDepositPrefix: true },
+        select: {
+          virtualAccountRentPrefix: true,
+          virtualAccountDepositPrefix: true,
+          // And WHO the transfer is made to. The prefixes alone name an account
+          // number; a vendor making an NEFT needs the bank and the IFSC beside
+          // it, and the letter has always printed them.
+          beneficiaryName: true,
+          beneficiaryAddress: true,
+          bankAccountType: true,
+          bankName: true,
+          bankIfsc: true,
+          bankBranch: true,
+        },
       },
       // The requester's own ANSWERS, so their page can read back what they
       // filled in. Local to this query for the same reason the edition is:
@@ -215,63 +238,139 @@ export async function statusView(db: Db, account: StallAccount): Promise<PublicS
   return {
     displayName: account.displayName,
     requests: await Promise.all(
-      requests.map(async (r) => ({
-        reference: r.reference,
-        requestType: r.requestType,
-        stallName: r.stallName,
-        status: r.status,
-        submittedAt: r.submittedAt.toISOString(),
-        // The AREA, once the team has settled it. This one IS told early — the
-        // rent depends on it, so a requester cannot be asked to pay without
-        // knowing it. A shortlist is internal and must not read as a promise,
-        // so nothing is shown before SELECTED.
-        allocatedZone:
-          r.status === 'SELECTED'
-            ? (r.allocations[0]?.stall.zone.code ?? r.agreedZoneCode ?? null)
-            : null,
-        // 🔴 The stall NUMBER within that area, and only once the stall has
-        // actually CHECKED IN.
-        //
-        // This is the thing the team asked not to happen early, and the reason
-        // is operational: "some of them come in advance, they look at where the
-        // stall is, they'll come and fight with you — I don't want this
-        // location". The number is handed over at the counter with the
-        // wristbands, which is also the moment somebody is standing there to
-        // have that conversation.
-        allocatedStalls: r.checkIn ? r.allocations.map((a) => a.stall.number) : [],
-        // 🔴 `gatedFor`, so each entry carries whether the requester may act
-        // on it yet. The WHOLE list, locked steps included: the portal draws a
-        // tab only for an open one and lists the rest greyed on the Overview,
-        // so the requester reads the whole road and can only walk their part of
-        // it. Onboarding and Check-in still read `pendingFor` and still see
-        // everything outstanding, which is the point of the two functions.
-        pending: r.status === 'SELECTED' ? gatedFor(r, await flowOf(r.editionId)) : [],
-        // Both blocks are null for anything not SELECTED, for the same reason
-        // `pending` is empty there: a requester still waiting on a decision has
-        // nothing to pay and nobody to register, and showing either would read
-        // as a decision already made.
-        payment:
-          r.status === 'SELECTED'
-            ? paymentDue(
-                r,
-                r.paymentPlan
-                  ? planToView(r.paymentPlan)
-                  : toQuoteView(quoteFor(r, await quoteCtxOf(r.editionId))),
-              )
-            : null,
-        // 🔴 Their own claims, INCLUDING rejected ones with the reason. That
-        // reason is the only thing telling them what to correct, and a
-        // rejection they never see returns them to the mailbox this replaced.
-        paymentClaims: r.status === 'SELECTED' ? await claimsFor(db, r.id) : [],
-        staff: r.status === 'SELECTED' ? staffView(r, await flowOf(r.editionId)) : null,
-        // 🔴 Whatever the status. The answers are the requester's own from the
-        // moment they pressed Submit, and a request still under review is
-        // exactly the one whose answers they come back to check — which they
-        // could not do before this, because the only copy was the form they no
-        // longer had.
-        submitted: submittedSections(answers(r)),
-      })),
+      requests.map(async (r) => {
+        // The quote is read once per request and handed to `paymentDue` whole,
+        // because the figures and the LINES behind them have to come from the
+        // same place: a frozen plan's total beside a live quote's arithmetic is
+        // a breakdown that does not add up to the figure above it.
+        const ctx = await quoteCtxOf(r.editionId);
+        const live = quoteFor(r, ctx);
+        const view = r.paymentPlan ? planToView(r.paymentPlan) : toQuoteView(live);
+        // 🔴 The FROZEN lines where the letter froze any — what the vendor was
+        // TOLD. A vendor who revised their plug points after the letter went
+        // out would otherwise read a breakdown that no longer sums to the total
+        // beside it. Plans frozen before the column existed have none, and the
+        // page falls back to the live lines, exactly as `comms.ts` does for the
+        // letter.
+        const frozen = (r.paymentPlan?.lines ?? null) as QuoteLine[] | null;
+        return {
+          reference: r.reference,
+          requestType: r.requestType,
+          stallName: r.stallName,
+          status: r.status,
+          submittedAt: r.submittedAt.toISOString(),
+          // The AREA, once the team has settled it. This one IS told early — the
+          // rent depends on it, so a requester cannot be asked to pay without
+          // knowing it. A shortlist is internal and must not read as a promise,
+          // so nothing is shown before SELECTED.
+          allocatedZone:
+            r.status === 'SELECTED'
+              ? (r.allocations[0]?.stall.zone.code ?? r.agreedZoneCode ?? null)
+              : null,
+          // 🔴 The stall NUMBER within that area, and only once the stall has
+          // actually CHECKED IN.
+          //
+          // This is the thing the team asked not to happen early, and the reason
+          // is operational: "some of them come in advance, they look at where the
+          // stall is, they'll come and fight with you — I don't want this
+          // location". The number is handed over at the counter with the
+          // wristbands, which is also the moment somebody is standing there to
+          // have that conversation.
+          allocatedStalls: r.checkIn ? r.allocations.map((a) => a.stall.number) : [],
+          // 🔴 `gatedFor`, so each entry carries whether the requester may act
+          // on it yet. The WHOLE list, locked steps included: the portal draws a
+          // tab only for an open one and lists the rest greyed on the Overview,
+          // so the requester reads the whole road and can only walk their part of
+          // it. Onboarding and Check-in still read `pendingFor` and still see
+          // everything outstanding, which is the point of the two functions.
+          pending: r.status === 'SELECTED' ? gatedFor(r, await flowOf(r.editionId)) : [],
+          // Both blocks are null for anything not SELECTED, for the same reason
+          // `pending` is empty there: a requester still waiting on a decision has
+          // nothing to pay and nobody to register, and showing either would read
+          // as a decision already made.
+          payment:
+            r.status === 'SELECTED'
+              ? paymentDue(r, view, {
+                  lines: frozen ?? live?.lines ?? null,
+                  gstPercent: ctx.rates.gstPercent,
+                })
+              : null,
+          // 🔴 Their own claims, INCLUDING rejected ones with the reason. That
+          // reason is the only thing telling them what to correct, and a
+          // rejection they never see returns them to the mailbox this replaced.
+          paymentClaims: r.status === 'SELECTED' ? await claimsFor(db, r.id) : [],
+          staff: r.status === 'SELECTED' ? staffView(r, await flowOf(r.editionId)) : null,
+          // 🔴 Whatever the status. The answers are the requester's own from the
+          // moment they pressed Submit, and a request still under review is
+          // exactly the one whose answers they come back to check — which they
+          // could not do before this, because the only copy was the form they no
+          // longer had.
+          submitted: submittedSections(answers(r)),
+          // 🔴 Whatever the status, and whether or not the step is still
+          // outstanding. These two blocks are the reason a finished step no
+          // longer vanishes off this page without trace — see `PublicRequestStatus.bank`.
+          bank: bankView(r),
+          fssai: fssaiView(r),
+        };
+      }),
     ),
+  };
+}
+
+/** The last four, and asterisks for the rest.
+ *
+ *  ⚠️ Not a redaction of somebody else's secret — it is the requester's own
+ *  account number, on their own page. It is masked because the page is reached
+ *  by a link that sits in an inbox for a year and gets forwarded, and because
+ *  the last four is the whole of what a person actually checks their own
+ *  account against. A short value is masked entirely rather than mostly shown.
+ */
+function maskTail(value: string | null): string | null {
+  const v = value?.trim();
+  if (!v) return null;
+  if (v.length <= 4) return '•'.repeat(v.length);
+  return `${'•'.repeat(v.length - 4)}${v.slice(-4)}`;
+}
+
+/** The bank details, read back to the requester who sent them.
+ *
+ *  Null where none were ever submitted, which is also how the page tells "not
+ *  sent" from "not asked": a request that is not asked for bank details has no
+ *  pending entry for the step either, so the tab appears for neither. */
+function bankView(r: PortalRequest): PublicBankDetails | null {
+  const b = r.bankDetail;
+  if (!b) return null;
+  return {
+    submittedAt: b.submittedAt.toISOString(),
+    accountHolder: b.accountHolder,
+    bankName: b.bankName,
+    branch: b.branch,
+    accountNumberMasked: maskTail(b.accountNumber),
+    ifsc: b.ifsc,
+    panMasked: maskTail(b.panNumber),
+    invoiceName: b.invoiceName,
+    gstNumber: b.gstNumber,
+  };
+}
+
+/** The FSSAI certificate on file, read back.
+ *
+ *  ⚠️ File NAMES, not links. The uploads are served from a private store the
+ *  backoffice reads through its own authorisation; handing the portal a URL
+ *  would make this read-back a second door onto that store, which is a bigger
+ *  change than showing somebody what they sent. */
+function fssaiView(r: PortalRequest): PublicFssaiDetails | null {
+  const f = r.fssai;
+  if (!f) return null;
+  return {
+    submittedAt: f.submittedAt.toISOString(),
+    ownerName: f.ownerName,
+    mobile: f.mobile,
+    files: f.files.map((file) => ({
+      fileName: file.fileName,
+      uploadedAt: file.uploadedAt.toISOString(),
+    })),
+    verified: f.verifiedAt !== null,
   };
 }
 
@@ -336,7 +435,11 @@ function answers(r: PortalRequest): SubmittedRequest {
  *  The account numbers come from `virtualAccountFor`, the call `comms.ts` makes
  *  when it writes the letter — the page and the letter cannot name different
  *  accounts. */
-function paymentDue(r: PortalRequest, quote: QuoteView): PublicPaymentDue | null {
+function paymentDue(
+  r: PortalRequest,
+  quote: QuoteView,
+  charges: { lines: QuoteLine[] | null; gstPercent: number },
+): PublicPaymentDue | null {
   if (quote.exempt || quote.unpriced) return null;
 
   const prefixes = {
@@ -351,9 +454,58 @@ function paymentDue(r: PortalRequest, quote: QuoteView): PublicPaymentDue | null
     depositPaise: quote.depositTotalPaise,
     // Already the payable fee plus the deposit — see `planToView`.
     totalPaise: quote.grandTotalPaise,
+    breakdown: breakdownOf(quote, charges),
+    // The two halves of the deposit, because they are refunded apart: a fine
+    // comes off the stall's, unreturned furniture off the furniture's.
+    stallDepositPaise: quote.stallDepositPaise,
+    equipmentDepositPaise: quote.equipmentDepositPaise,
     virtualAccountRent: virtualAccountFor(prefixes, r.contactNumber, 'RENT'),
     virtualAccountDeposit: virtualAccountFor(prefixes, r.contactNumber, 'DEPOSIT'),
+    beneficiary: beneficiaryOf(r.edition),
   };
+}
+
+/** The arithmetic behind the fee — or nothing, where showing it would mislead.
+ *
+ *  🔴 A CONCESSION suppresses it. The lines add up to what was quoted, and the
+ *  fee beside them is what the team agreed to take instead; printing the two
+ *  together shows a local welfare trader the figure they were talked down from,
+ *  which the whole `payableFeePaise` design exists to avoid, and printing a
+ *  breakdown that does not sum to the total above it is worse than printing
+ *  none. The figure they owe is on the page either way.
+ *
+ *  ⚠️ The GST percentage is DERIVED from the figures rather than read off
+ *  today's charge config, so a plan frozen at 18% is never relabelled 12%
+ *  because an admin changed the rate afterwards. The config is only the
+ *  fallback for a quote with nothing to divide by. */
+function breakdownOf(quote: QuoteView, charges: { lines: QuoteLine[] | null; gstPercent: number }) {
+  if (!charges.lines || charges.lines.length === 0) return null;
+  if (quote.discretionaryFeePaise !== null) return null;
+  return {
+    lines: charges.lines,
+    netPaise: quote.netPaise,
+    gstPaise: quote.gstPaise,
+    // `gstPercentOf` — the same derivation the letter's GST line is labelled
+    // with, so the page and the letter cannot print different rates against
+    // the same frozen plan.
+    gstPercent: quote.netPaise > 0 ? gstPercentOf(quote) : charges.gstPercent,
+    feeTotalPaise: quote.feeTotalPaise,
+  };
+}
+
+/** Who the money goes to. Null when the edition has been told none of it — a
+ *  page that named the accounts without the bank is still usable by somebody
+ *  who has the letter, and an empty table is not. */
+function beneficiaryOf(e: PortalRequest['edition']): PublicBeneficiary | null {
+  const b: PublicBeneficiary = {
+    accountName: e.beneficiaryName,
+    address: e.beneficiaryAddress,
+    accountType: e.bankAccountType,
+    bankName: e.bankName,
+    ifsc: e.bankIfsc,
+    branch: e.bankBranch,
+  };
+  return Object.values(b).some((v) => v !== null) ? b : null;
 }
 
 /** The stall's live coupons, or the fact that there are none yet.

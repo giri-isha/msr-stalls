@@ -4,6 +4,7 @@ import type { BuilderForm, BuiltForm } from './form-builder';
 import { AUTHORABLE_FIELD_TYPES } from './form-builder';
 import { SELF_SERVE_STEPS } from './access';
 import type { GatedStep, OnboardingStep } from './onboarding';
+import type { QuoteLine } from './quote';
 import type { SubmittedSection } from './submitted';
 import { CATEGORY_KEY_PATTERN, ZONE_CODE_PATTERN } from './zones';
 import { RATE_SCOPES } from './rates';
@@ -270,6 +271,33 @@ export interface PublicRequestStatus {
    *  ones greyed on the Overview — so the requester reads the whole road and
    *  can only walk the part that is theirs. See `gatedSteps`. */
   pending: GatedStep[];
+  /** The bank details this requester already sent us, read back.
+   *
+   *  🔴 A step that is DONE used to leave no trace on this page. The tab
+   *  vanished when the details went in — the API tells the portal what is
+   *  outstanding, and "not outstanding" covered both "you have sent it" and "we
+   *  never asked you". So a vendor who wanted to check which account their
+   *  deposit would be refunded to, or whether they had typed the IFSC right,
+   *  had the same one place to look they had before any of this: the form they
+   *  no longer had. This is that answer.
+   *
+   *  Null where nothing was ever submitted — which is still how the page tells
+   *  "not sent" from "not asked", because a request that is not asked has no
+   *  pending entry either.
+   *
+   *  ⚠️ The account number and the PAN arrive MASKED. Everything else on this
+   *  page is a decision about the request; these two are credentials of the
+   *  requester's own, and this page is reached by a link that lives in an inbox
+   *  for a year and gets forwarded. The last four digits are what somebody
+   *  checks their own account against, and are what a stranger holding the link
+   *  cannot do anything with. */
+  bank: PublicBankDetails | null;
+  /** The FSSAI certificate on file, read back, for the same reason as `bank` —
+   *  and with one fact the bank block has no equivalent of: whether the team
+   *  has actually verified it. A vendor whose certificate is uploaded but not
+   *  yet accepted is in a different position from one whose is, and only the
+   *  first of those is worth ringing up about. */
+  fssai: PublicFssaiDetails | null;
   /** What is owed and where to send it — the `PAYMENT_DETAILS` letter, as data.
    *
    *  🔴 Present as soon as the request is SELECTED and its zone has a rate —
@@ -316,6 +344,41 @@ export interface PublicRequestStatus {
   submitted: SubmittedSection[];
 }
 
+/** What a vendor sent on the bank details form, as their own page reads it
+ *  back. A SUBSET: the requirements half of that form — plug points, chairs,
+ *  passes — is read back by `submitted`, which is where every answer the
+ *  requester gave about the stall itself already lives. */
+export interface PublicBankDetails {
+  submittedAt: string;
+  accountHolder: string | null;
+  bankName: string | null;
+  branch: string | null;
+  /** ⚠️ MASKED to the last four — see the note on `bank`. Null where the form
+   *  did not ask for it. */
+  accountNumberMasked: string | null;
+  ifsc: string | null;
+  /** ⚠️ MASKED to the last four, for the same reason. */
+  panMasked: string | null;
+  invoiceName: string | null;
+  /** Stored as typed, including the literal "NONE" the form invites. */
+  gstNumber: string | null;
+}
+
+export interface PublicFssaiDetails {
+  submittedAt: string;
+  ownerName: string | null;
+  mobile: string | null;
+  /** The pages that were uploaded, named as the requester's own device named
+   *  them — enough to tell a certificate from a licence photographed by
+   *  mistake. The files themselves are not linked: they are served from a
+   *  private store the backoffice reads, and this page is a read-back, not a
+   *  second door onto it. */
+  files: Array<{ fileName: string; uploadedAt: string }>;
+  /** Whether the team has accepted it. `false` is "received, not yet checked",
+   *  which is not a thing to chase. */
+  verified: boolean;
+}
+
 export interface PublicPaymentDue {
   /** Fee including GST, after any concession. See the warning above. */
   feePaise: number;
@@ -323,11 +386,70 @@ export interface PublicPaymentDue {
    *  would mean refunding money that was never taken. */
   depositPaise: number;
   totalPaise: number;
+  /** The arithmetic behind `feePaise`, as the payment letter prints it.
+   *
+   *  🔴 The 2025 letter shows the multiplication — "15 Amp : 4 × 1000 :
+   *  ₹4,000.00" — and that is not decoration. A vendor querying their bill asks
+   *  about the multiplication, not the total; a summed figure cannot answer
+   *  "why four thousand?", so the reader takes it on trust or rings the office.
+   *  The portal had only the summed figure, which is why this is here.
+   *
+   *  ⚠️ NULL where a concession is in force. The lines add up to what was
+   *  QUOTED, and `feePaise` is what is owed; printing both would show a trader
+   *  the figure they were talked down from — which the rule above this
+   *  interface exists to prevent — and printing a breakdown that does not sum
+   *  to the total beside it is worse than printing none. */
+  breakdown: PublicChargeBreakdown | null;
+  /** The deposit, split the way it is REFUNDED — fines come off the stall's,
+   *  furniture losses off the furniture's. The letter prints both and a total,
+   *  and a vendor reading one figure cannot tell which half a deduction will
+   *  come out of. Zero for furniture where none was taken. */
+  stallDepositPaise: number;
+  equipmentDepositPaise: number;
   /** Null when the edition has no virtual-account prefix configured, or the
    *  contact number is not a mobile `virtualAccountFor` will build one from.
    *  The page then says where to ask rather than naming an account it guessed. */
   virtualAccountRent: string | null;
   virtualAccountDeposit: string | null;
+  /** Who the transfer is made to, from the edition's settings — the same rows
+   *  the letter's beneficiary block renders from, so the page and the letter
+   *  cannot name different banks.
+   *
+   *  ⚠️ Null until an admin has filled them in, and the page then names the
+   *  accounts without the bank rather than inventing one. */
+  beneficiary: PublicBeneficiary | null;
+}
+
+/** The charged items, their counts and their rates — see `QuoteLine`. */
+export interface PublicChargeBreakdown {
+  /** Every item the quote priced, ZEROES INCLUDED. The page drops them; the
+   *  quote keeps them so "asked for none" stays distinct from "not charged
+   *  for". */
+  lines: QuoteLine[];
+  /** "Total Before GST" on the 2025 sheet. */
+  netPaise: number;
+  gstPaise: number;
+  /** What the GST line is LABELLED with — "GST 18%".
+   *
+   *  ⚠️ Derived from the frozen figures where a plan exists, not read off
+   *  today's charge config. A plan quoted at one rate and relabelled with
+   *  another is a letter whose own arithmetic contradicts it. */
+  gstPercent: number;
+  /** The lines plus GST. Equal to `feePaise` — `breakdown` is null when they
+   *  would differ. */
+  feeTotalPaise: number;
+}
+
+/** The beneficiary of the transfer, as the letter's table prints it. Each line
+ *  nullable on its own: the team fills these in as Finance confirms them, and
+ *  a half-filled block naming what it knows beats one that waits for all six. */
+export interface PublicBeneficiary {
+  accountName: string | null;
+  address: string | null;
+  accountType: string | null;
+  bankName: string | null;
+  ifsc: string | null;
+  branch: string | null;
 }
 
 export interface PublicStaffCoupon {
@@ -662,6 +784,18 @@ const VirtualAccountPrefix = z
   .refine((v) => VIRTUAL_ACCOUNT_PREFIX_PATTERN.test(v), 'expected 2–12 letters or digits')
   .nullable();
 
+/** One line of the beneficiary identity. Blank clears it — an edition that has
+ *  not been told its bank prints nothing, and must never fall back to last
+ *  year's. */
+const BeneficiaryText = z
+  .string()
+  .trim()
+  .max(300)
+  .nullable()
+  .default(null)
+  // An empty box is "there is none", not a beneficiary line that is blank.
+  .transform((v) => v || null);
+
 export const CreateEditionInput = z.object({
   year: z.number().int().min(2020).max(2100),
   name: z.string().trim().min(1).max(100),
@@ -691,6 +825,28 @@ export const EditionSettingsInput = z.object({
     .refine((s) => s === '' || /^https?:\/\//i.test(s), 'expected an http:// or https:// link')
     .nullable()
     .default(null),
+  /** Who the money goes to. See `BeneficiaryView`. */
+  beneficiaryName: BeneficiaryText,
+  beneficiaryAddress: BeneficiaryText,
+  bankAccountType: BeneficiaryText,
+  bankName: BeneficiaryText,
+  /** ⚠️ Checked, unlike the free text beside it. A wrong IFSC is a failed NEFT
+   *  for every vendor of the edition at once, which is the one field here worth
+   *  refusing rather than printing. Its own copy of the pattern because `Ifsc`
+   *  below is defined after this and would be in its temporal dead zone. */
+  bankIfsc: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .max(11)
+    .refine(
+      (v) => v === '' || /^[A-Z]{4}0[A-Z0-9]{6}$/.test(v),
+      'expected an 11-character IFSC like HDFC0001234',
+    )
+    .nullable()
+    .default(null)
+    .transform((v) => v || null),
+  bankBranch: BeneficiaryText,
 });
 export type EditionSettingsInput = z.infer<typeof EditionSettingsInput>;
 
@@ -701,6 +857,12 @@ export interface EditionSettingsView {
   virtualAccountDepositPrefix: string | null;
   maxStallsPerRequest: number;
   termsUrl: string | null;
+  beneficiaryName: string | null;
+  beneficiaryAddress: string | null;
+  bankAccountType: string | null;
+  bankName: string | null;
+  bankIfsc: string | null;
+  bankBranch: string | null;
 }
 
 /* ── Copying a section from another edition ──────────────────────────────── */

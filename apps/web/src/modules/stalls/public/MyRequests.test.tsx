@@ -102,8 +102,73 @@ const PAYMENT = {
   feePaise: 11_800_000, // ₹1,18,000
   depositPaise: 2_000_000, // ₹20,000
   totalPaise: 13_800_000, // ₹1,38,000
+  // The arithmetic behind the fee — what a vendor querying their bill actually
+  // asks about. See `PublicPaymentDue.breakdown`.
+  breakdown: {
+    lines: [
+      {
+        key: 'stall',
+        group: 'stall',
+        label: 'Rent for the stall',
+        count: 1,
+        unitRatePaise: 9_000_000,
+        days: null,
+        amountPaise: 9_000_000,
+      },
+      {
+        key: 'plugs5a',
+        group: 'plugs',
+        label: '5 Amp',
+        count: 0,
+        unitRatePaise: 50_000,
+        days: null,
+        amountPaise: 0,
+      },
+      {
+        key: 'plugs15a',
+        group: 'plugs',
+        label: '15 Amp',
+        count: 4,
+        unitRatePaise: 100_000,
+        days: null,
+        amountPaise: 400_000,
+      },
+      {
+        key: 'chairs',
+        group: 'equipment',
+        label: 'Chair',
+        count: 2,
+        unitRatePaise: 10_000,
+        days: 1,
+        amountPaise: 20_000,
+      },
+      {
+        key: 'tables',
+        group: 'equipment',
+        label: 'Table',
+        count: 0,
+        unitRatePaise: 40_000,
+        days: 1,
+        amountPaise: 0,
+      },
+    ],
+    netPaise: 9_420_000,
+    gstPaise: 1_695_600,
+    gstPercent: 18,
+    feeTotalPaise: 11_115_600,
+  },
+  stallDepositPaise: 1_600_000, // ₹16,000
+  equipmentDepositPaise: 400_000, // ₹4,000
   virtualAccountRent: 'STALLR9840012345',
   virtualAccountDeposit: 'STALLD9840012345',
+  beneficiary: {
+    accountName: 'ISHA FOUNDATION',
+    address: 'Isha Yoga Center, Semmedu Post, Coimbatore 641114',
+    accountType: 'Savings',
+    bankName: 'HDFC Bank Ltd',
+    ifsc: 'HDFC0004989',
+    branch: 'Kanjurmarg Branch, Mumbai',
+  },
 };
 
 const signedIn = (requests: unknown) =>
@@ -237,7 +302,85 @@ describe('MyRequests', () => {
     await userEvent.click(await screen.findByRole('button', { name: /See Payment/ }));
 
     expect(screen.getByRole('tab', { name: /Payment/ })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByText('₹1,38,000')).toBeInTheDocument();
+    expect(screen.getByText('Total caution deposit')).toBeInTheDocument();
+  });
+
+  test('the Bank Details tab stays after the step is done, and reads the details back', async () => {
+    // 🔴 The tab used to VANISH when the details went in, because "not
+    // outstanding" covered both "you have sent it" and "we never asked you".
+    // A vendor checking which account their deposit comes back to had the form
+    // they no longer had, and nothing else.
+    signedIn(
+      withPending([], {
+        bank: {
+          submittedAt: '2026-09-10T10:00:00.000Z',
+          accountHolder: 'Green Leaf Organics Pvt Ltd',
+          bankName: 'HDFC Bank',
+          branch: 'RS Puram',
+          accountNumberMasked: '••••••••••6789',
+          ifsc: 'HDFC0001234',
+          panMasked: '••••••234F',
+          invoiceName: 'Green Leaf Organics Pvt Ltd',
+          gstNumber: '33AABCU9603R1ZM',
+        },
+      }),
+    );
+    render();
+
+    await userEvent.click(await screen.findByRole('tab', { name: /Bank Details/ }));
+
+    expect(screen.getByText('HDFC0001234')).toBeInTheDocument();
+    // ⚠️ Masked, and shown masked. The last four is what a person checks their
+    // own account against; this page is reached by a link that lives in an
+    // inbox for a year.
+    expect(screen.getByText('••••••••••6789')).toBeInTheDocument();
+    // And no form to fill, because there is nothing outstanding.
+    expect(screen.queryByRole('button', { name: /Open the Form/ })).not.toBeInTheDocument();
+  });
+
+  test('a reopened bank step offers the form rather than the old details', async () => {
+    // ⚠️ Outstanding beats submitted. A vendor asked to redo this must be given
+    // the form, not a read-back of what is being replaced.
+    signedIn(
+      withPending([{ step: 'BANK_FORM', label: 'Bank details pending' }], {
+        bank: {
+          submittedAt: '2026-09-10T10:00:00.000Z',
+          accountHolder: 'Green Leaf Organics Pvt Ltd',
+          bankName: 'HDFC Bank',
+          branch: null,
+          accountNumberMasked: '••••••••••6789',
+          ifsc: 'HDFC0001234',
+          panMasked: null,
+          invoiceName: null,
+          gstNumber: null,
+        },
+      }),
+    );
+    render();
+
+    await userEvent.click(await screen.findByRole('tab', { name: /Bank Details/ }));
+
+    expect(screen.getByRole('button', { name: /Open the Form/ })).toBeInTheDocument();
+    expect(screen.queryByText('••••••••••6789')).not.toBeInTheDocument();
+  });
+
+  test('the FSSAI tab says received, and says verified once it has been', async () => {
+    const fssai = {
+      submittedAt: '2026-09-11T10:00:00.000Z',
+      ownerName: 'Priya Venkat',
+      mobile: '9840012345',
+      files: [{ fileName: 'fssai-page-1.jpg', uploadedAt: '2026-09-11T10:00:00.000Z' }],
+      verified: false,
+    };
+    signedIn(withPending([], { fssai }));
+    render();
+
+    await userEvent.click(await screen.findByRole('tab', { name: /FSSAI/ }));
+
+    expect(screen.getByText('fssai-page-1.jpg')).toBeInTheDocument();
+    // "Received, not yet checked" is not a thing to chase, and saying so is the
+    // difference between a vendor who waits and one who rings the office.
+    expect(screen.getByText(/will check it before the event/)).toBeInTheDocument();
   });
 
   test('opens a step on the click, naming its own request', async () => {
@@ -293,11 +436,67 @@ describe('MyRequests', () => {
 
     await userEvent.click(await screen.findByRole('tab', { name: /Payment/ }));
 
-    expect(screen.getByText('₹1,18,000')).toBeInTheDocument();
+    // 🔴 The fee is the RENT panel's total and the deposit is the other
+    // panel's. There is deliberately no one figure summing the two: they go to
+    // two accounts, and a vendor who transfers the sum into either has paid an
+    // amount that reconciles against neither.
+    expect(screen.getAllByText('₹1,18,000').length).toBeGreaterThan(0);
     expect(screen.getByText('₹20,000')).toBeInTheDocument();
-    expect(screen.getByText('₹1,38,000')).toBeInTheDocument();
+    expect(screen.queryByText('₹1,38,000')).not.toBeInTheDocument();
     expect(screen.getByText('STALLR9840012345')).toBeInTheDocument();
     expect(screen.getByText('STALLD9840012345')).toBeInTheDocument();
+  });
+
+  test('shows the arithmetic behind the fee, the way the letter does', async () => {
+    // 🔴 A vendor querying their bill asks about the MULTIPLICATION, not the
+    // total. This page used to carry the total alone, so the one question it
+    // was built to answer sent them back to the letter it replaced.
+    signedIn(withPending([{ step: 'PAYMENT', label: 'Payment pending' }], { payment: PAYMENT }));
+    render();
+
+    await userEvent.click(await screen.findByRole('tab', { name: /Payment/ }));
+
+    expect(screen.getByText('15 Amp : 4 × 1000')).toBeInTheDocument();
+    expect(screen.getByText('Chair : 2 × 100')).toBeInTheDocument();
+    expect(screen.getByText('GST 18%')).toBeInTheDocument();
+    // ⚠️ Zero rows are dropped. A stall that took no tables must not read a
+    // line billing it nothing — a reader deciding whether ₹0 is a bug rings up.
+    expect(screen.queryByText(/^Table :/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^5 Amp :/)).not.toBeInTheDocument();
+  });
+
+  test('splits the deposit the way it is refunded, and names the bank', async () => {
+    signedIn(withPending([{ step: 'PAYMENT', label: 'Payment pending' }], { payment: PAYMENT }));
+    render();
+
+    await userEvent.click(await screen.findByRole('tab', { name: /Payment/ }));
+
+    // Two deposits, because a fine comes off one and unreturned furniture off
+    // the other — a vendor reading one figure cannot tell which is at risk.
+    expect(screen.getByText('Deposit — stall')).toBeInTheDocument();
+    expect(screen.getByText('Deposit — chairs and tables')).toBeInTheDocument();
+    // And who the transfer is actually made to. An account number without an
+    // IFSC is an account nobody can send an NEFT to.
+    expect(screen.getByText('HDFC0004989')).toBeInTheDocument();
+    expect(screen.getByText('ISHA FOUNDATION')).toBeInTheDocument();
+  });
+
+  test('a concession suppresses the breakdown rather than showing what was quoted', async () => {
+    // 🔴 The lines add up to the CARD rate; the fee beside them is what the
+    // team agreed to take instead. Printing both shows a trader the figure they
+    // were talked down from, and a breakdown that does not sum to the total
+    // above it is worse than none. The API sends `breakdown: null`.
+    signedIn(
+      withPending([{ step: 'PAYMENT', label: 'Payment pending' }], {
+        payment: { ...PAYMENT, breakdown: null, feePaise: 500_000 },
+      }),
+    );
+    render();
+
+    await userEvent.click(await screen.findByRole('tab', { name: /Payment/ }));
+
+    expect(screen.queryByText('15 Amp : 4 × 1000')).not.toBeInTheDocument();
+    expect(screen.getAllByText('₹5,000').length).toBeGreaterThan(0);
   });
 
   test('says where to ask rather than printing a blank account number', async () => {

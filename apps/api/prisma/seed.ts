@@ -14,7 +14,7 @@ import { createLoggingWhatsAppSender } from '../src/modules/stalls/whatsapp';
 import { submitBankDetails } from '../src/modules/stalls/bank';
 import { checkIn } from '../src/modules/stalls/checkin';
 import { logReminder, sendTemplate } from '../src/modules/stalls/comms';
-import { createEdition } from '../src/modules/stalls/config';
+import { createEdition, updateEditionSettings } from '../src/modules/stalls/config';
 import { hashPassword } from '../src/modules/stalls/credentials';
 import type { StallsDeps } from '../src/modules/stalls/deps';
 import { actOnEquipment, patchEquipment } from '../src/modules/stalls/equipment';
@@ -150,6 +150,7 @@ const lw = (o: Record<string, unknown>) => ({
   chairsNeeded: 2,
   passes2w: 1,
   passes4w: 0,
+  passesStaff: 2,
   ...o,
 });
 /** The ashram form has no vendor name or contact of its own; like the web
@@ -450,6 +451,29 @@ async function main() {
   const edition = await createEdition(
     prisma,
     { year: EDITION_YEAR, name: `Stalls ${EDITION_YEAR}`, activate: true },
+    SYSTEM,
+  );
+  // The two prefixes Finance issues, and who the money goes to. Both are blank
+  // on a new edition in production — Finance issues the prefixes and confirms
+  // the bank per year — but a dev database without them shows a payment page
+  // and a payment letter with no account to pay into and no bank named, which
+  // is the one part of this flow you cannot eyeball.
+  await updateEditionSettings(
+    prisma,
+    edition.id,
+    {
+      name: edition.name,
+      virtualAccountRentPrefix: 'MSRRENT',
+      virtualAccountDepositPrefix: 'MSRDEP',
+      maxStallsPerRequest: 2,
+      beneficiaryName: 'ISHA FOUNDATION',
+      beneficiaryAddress:
+        'Isha Yoga Center, Velliangiri Foothills, Semmedu Post, Coimbatore 641114',
+      bankAccountType: 'Savings',
+      bankName: 'HDFC Bank Ltd',
+      bankIfsc: 'HDFC0004989',
+      bankBranch: 'Kanjurmarg Branch, Mumbai',
+    },
     SYSTEM,
   );
   await writePlan(
