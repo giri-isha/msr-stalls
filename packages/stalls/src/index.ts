@@ -1,4 +1,5 @@
 export * from './access';
+export * from './audit';
 export * from './contracts';
 export * from './coupons';
 export * from './field-rules';
