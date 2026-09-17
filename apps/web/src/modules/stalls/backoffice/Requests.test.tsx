@@ -66,6 +66,41 @@ const base = () =>
     ['GET', /\/onboarding\/[^/]+$/, () => onboarding()],
     [
       'GET',
+      /\/requests\/[^/]+\/fssai-form$/,
+      () => ({
+        reference: 'VEN-2026-0001',
+        stallName: 'Green Leaf Organics',
+        requesterName: 'Priya Venkat',
+        uploadedAt: null,
+        verifiedAt: null,
+        files: [],
+        form: null,
+        declarations: [],
+      }),
+    ],
+    [
+      'POST',
+      /\/requests\/[^/]+\/payment-claim$/,
+      () => [
+        201,
+        {
+          id: 'c1',
+          purpose: 'RENT',
+          status: 'PENDING',
+          referenceNo: 'UTR1',
+          amountPaise: 100,
+          paidOn: '2026-09-01',
+          remitterName: null,
+          note: null,
+          submittedAt: '2026-09-17T00:00:00Z',
+          reviewedAt: null,
+          rejectReason: null,
+          hasReceipt: false,
+        },
+      ],
+    ],
+    [
+      'GET',
       /\/requests\/[^/]+\/audit$/,
       () => [
         auditEvent(),
@@ -347,5 +382,66 @@ describe('RequestDetail › Activity Log', () => {
     await screen.findByRole('tab', { name: /Application/ });
     expect(screen.queryByRole('tab', { name: /Activity Log/ })).not.toBeInTheDocument();
     expect(fx.calls.some((c) => c.url.endsWith('/audit'))).toBe(false);
+  });
+});
+
+describe('RequestDetail › on their behalf', () => {
+  test('the FSSAI tab offers to upload for the vendor while it is outstanding', async () => {
+    installFetch(base());
+    const user = userEvent.setup();
+    renderAt('/m/stalls/requests/22222222-2222-4222-8222-222222222222', routes, { me: true });
+    await user.click(await screen.findByRole('tab', { name: /FSSAI/ }));
+    await user.click(await screen.findByRole('button', { name: /Enter on Their Behalf/ }));
+    expect(await screen.findByText(/Filing for Priya Venkat/)).toBeInTheDocument();
+    // Nothing is filed until the filer attests they read the wording out.
+    expect(screen.getByRole('button', { name: /File on Their Behalf/ })).toBeDisabled();
+  });
+
+  test('a transfer the requester reported goes through the filing route, with no reference in the body', async () => {
+    // Only a SELECTED request has money owed on it, so only one offers this.
+    const fx = installFetch([
+      ...base().filter(([m, re]) => !(m === 'GET' && re.source.endsWith('[^/]+$'))),
+      ['GET', /\/requests\/[^/]+$/, () => detail({ status: 'SELECTED' })],
+    ]);
+    const user = userEvent.setup();
+    renderAt('/m/stalls/requests/22222222-2222-4222-8222-222222222222', routes, { me: true });
+    await user.click(
+      await screen.findByRole('button', { name: /Record a Transfer They Reported/ }),
+    );
+    await user.type(screen.getByLabelText(/UTR or reference number/), 'UTR1');
+    await user.type(screen.getByLabelText(/Amount transferred/), '1');
+    await user.type(screen.getByLabelText(/Date of transfer/), '2026-09-01');
+    await user.click(screen.getByRole('button', { name: /Record It/ }));
+    await waitFor(() =>
+      expect(fx.calls.some((c) => c.method === 'POST' && c.url.endsWith('/payment-claim'))).toBe(
+        true,
+      ),
+    );
+    // ⚠️ The POST itself, not `last()`: the record reloads after a claim, so
+    // the last call is that GET.
+    const posted = fx.calls.find((c) => c.method === 'POST' && c.url.endsWith('/payment-claim'));
+    expect(posted?.body).toMatchObject({ purpose: 'RENT', referenceNo: 'UTR1' });
+    // The PATH names the request; a reference in the body would be a second,
+    // disagreeing answer to which request this is about.
+    expect(posted?.body).not.toHaveProperty('reference');
+  });
+
+  test('without the filing privileges nothing is offered', async () => {
+    installFetch([
+      [
+        'GET',
+        /\/me$/,
+        () => ({
+          ...ME_LEAD,
+          privileges: ME_LEAD.privileges.filter((p) => !p.startsWith('filing.')),
+        }),
+      ],
+      ...base().slice(1),
+    ]);
+    renderAt('/m/stalls/requests/22222222-2222-4222-8222-222222222222', routes, { me: true });
+    await screen.findByRole('tab', { name: /Application/ });
+    expect(
+      screen.queryByRole('button', { name: /Record a Transfer They Reported/ }),
+    ).not.toBeInTheDocument();
   });
 });

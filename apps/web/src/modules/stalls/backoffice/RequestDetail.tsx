@@ -34,6 +34,7 @@ import {
 } from '../ui';
 import { ActivityTimeline } from './ActivityTimeline';
 import { AmendDialog } from './AmendDialog';
+import { FileForRequester, type OnBehalf } from './FileForRequester';
 import { MoveAllocationDialog } from './MoveAllocationDialog';
 import { SelectDialog } from './SelectDialog';
 
@@ -115,6 +116,7 @@ export function RequestDetail() {
   // page closes on Escape, and a dialog whose open state it cannot see would
   // be dismissed together with the record behind it.
   const [moving, setMoving] = useState<RequestAllocation | null>(null);
+  const [filing, setFiling] = useState<OnBehalf | null>(null);
   // ⚠️ The tab rides in the URL as `?tab=`. The Audit Logs page links a row to
   // `…/requests/:id?tab=activity`, and a coordinator sends a colleague "look at
   // the activity on this one" — both need the tab in the address.
@@ -140,7 +142,10 @@ export function RequestDetail() {
   // picker are `Dialog`s with their own Escape handler; without this gate one
   // key press closes both, so dismissing a confirm also walks off the record
   // behind it.
-  useEscape(() => navigate(listTo), reasonFor === null && !selecting && !amending && !moving);
+  useEscape(
+    () => navigate(listTo),
+    reasonFor === null && !selecting && !amending && !moving && filing === null,
+  );
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -337,6 +342,18 @@ export function RequestDetail() {
                 Amend
               </Btn>
             )}
+            {/* 🔴 A transfer the requester reported by phone. It lands PENDING
+                for Finance to verify, exactly as the requester's own claim
+                does — this is a way to take the reference down, not a way to
+                mark money received. */}
+            {can('filing.claim') &&
+              r.status === 'SELECTED' &&
+              (r.requestType === 'VENDOR' || r.requestType === 'LOCAL_WELFARE') && (
+                <Btn disabled={busy} onClick={() => setFiling('claim')}>
+                  <Icon name='rupee' size={14} />
+                  Record a Transfer They Reported
+                </Btn>
+              )}
             {canWrite &&
               (r.flagged ? (
                 <Btn
@@ -363,9 +380,45 @@ export function RequestDetail() {
 
           <Card pad={0}>
             {(active === 'application' || active === 'all') && <ApplicationPanel r={r} />}
-            {(active === 'bank' || active === 'all') && <BankPanel forms={forms} />}
-            {(active === 'fssai' || active === 'all') && <FssaiPanel forms={forms} />}
-            {(active === 'staff' || active === 'all') && <StaffPanel forms={forms} />}
+            {(active === 'bank' || active === 'all') && (
+              <BankPanel
+                forms={forms}
+                action={
+                  forms?.bankDetails === 'PENDING' && can('filing.bank') ? (
+                    <Btn onClick={() => setFiling('bank')}>
+                      <Icon name='pencil' size={13} />
+                      Enter on Their Behalf
+                    </Btn>
+                  ) : null
+                }
+              />
+            )}
+            {(active === 'fssai' || active === 'all') && (
+              <FssaiPanel
+                forms={forms}
+                action={
+                  forms?.fssai === 'PENDING' && can('filing.fssai') ? (
+                    <Btn onClick={() => setFiling('fssai')}>
+                      <Icon name='pencil' size={13} />
+                      Enter on Their Behalf
+                    </Btn>
+                  ) : null
+                }
+              />
+            )}
+            {(active === 'staff' || active === 'all') && (
+              <StaffPanel
+                forms={forms}
+                action={
+                  can('filing.staff') && r.status === 'SELECTED' ? (
+                    <Btn onClick={() => setFiling('staff')}>
+                      <Icon name='user-plus' size={13} />
+                      Register Staff on Their Behalf
+                    </Btn>
+                  ) : null
+                }
+              />
+            )}
             {active === 'activity' && (
               <Section
                 icon='scroll'
@@ -445,6 +498,19 @@ export function RequestDetail() {
           onDone={() => {
             setMoving(null);
             reload();
+          }}
+        />
+      )}
+
+      {r && filing && (
+        <FileForRequester
+          r={r}
+          which={filing}
+          onClose={() => setFiling(null)}
+          onDone={() => {
+            reload();
+            formsLoad.reload();
+            activity.reload();
           }}
         />
       )}
@@ -680,7 +746,14 @@ function NotYet({ what }: { what: string }) {
   return <Empty>{what} has been asked for and has not come back yet.</Empty>;
 }
 
-function BankPanel({ forms }: { forms: OnboardingDetail | null }) {
+function BankPanel({
+  forms,
+  action,
+}: {
+  forms: OnboardingDetail | null;
+  /** Offered while the form is outstanding and the caller may file it. */
+  action?: React.ReactNode;
+}) {
   const bank = forms?.bank;
   return (
     <Section icon='file-text' title='Bank Form' note='Submitted by the vendor for payment.' last>
@@ -706,7 +779,10 @@ function BankPanel({ forms }: { forms: OnboardingDetail | null }) {
           {bank.files.length > 0 && <FileLinks files={bank.files} />}
         </div>
       ) : (
-        <NotYet what='The bank form' />
+        <div style={{ display: 'grid', gap: 12, justifyItems: 'start' }}>
+          <NotYet what='The bank form' />
+          {action}
+        </div>
       )}
     </Section>
   );
@@ -719,7 +795,13 @@ const FSSAI_LABEL = {
   PENDING: 'Not Uploaded',
 } as const;
 
-function FssaiPanel({ forms }: { forms: OnboardingDetail | null }) {
+function FssaiPanel({
+  forms,
+  action,
+}: {
+  forms: OnboardingDetail | null;
+  action?: React.ReactNode;
+}) {
   const state = forms?.fssai;
   return (
     <Section icon='shield' title='FSSAI' note='The food licence, and who has checked it.' last>
@@ -738,7 +820,10 @@ function FssaiPanel({ forms }: { forms: OnboardingDetail | null }) {
           {forms.fssaiFiles.length > 0 ? (
             <FileLinks files={forms.fssaiFiles} />
           ) : (
-            <NotYet what='The certificate' />
+            <div style={{ display: 'grid', gap: 12, justifyItems: 'start' }}>
+              <NotYet what='The certificate' />
+              {action}
+            </div>
           )}
         </div>
       ) : (
@@ -748,7 +833,13 @@ function FssaiPanel({ forms }: { forms: OnboardingDetail | null }) {
   );
 }
 
-function StaffPanel({ forms }: { forms: OnboardingDetail | null }) {
+function StaffPanel({
+  forms,
+  action,
+}: {
+  forms: OnboardingDetail | null;
+  action?: React.ReactNode;
+}) {
   if (!forms) return null;
   return (
     <Section
@@ -769,6 +860,7 @@ function StaffPanel({ forms }: { forms: OnboardingDetail | null }) {
             ['Registered', `${forms.staffRegistered} (up to ${forms.staffExpected})`],
           ])}
         />
+        {action}
         {forms.staff.length === 0 ? (
           <NotYet what='Staff registration' />
         ) : (
