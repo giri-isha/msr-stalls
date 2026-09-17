@@ -378,6 +378,19 @@ const LOCAL_WELFARE_FIELDS: FormField[] = [
     max: 50,
   },
   {
+    // ⚠️ The 2025 local welfare sheet asks this and the seed did not. The
+    // vendor form asks it on the bank form and the ashram form asks it
+    // directly; `passes_staff` has always been a real column on
+    // `stall_request`, so only the question was missing.
+    name: 'passesStaff',
+    label: 'Number of Stall Staff Pass',
+    labelTa: null,
+    type: 'number',
+    required: true,
+    min: 0,
+    max: 200,
+  },
+  {
     name: 'depositAcknowledged',
     label: 'Refundable Caution Deposit',
     labelTa: 'திரும்பப்பெறக்கூடிய எச்சரிக்கை வைப்பு',

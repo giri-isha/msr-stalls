@@ -470,6 +470,33 @@ export class StepNotOpenError extends Error {
   }
 }
 
+/** A step that IS outstanding but that the edition's ordering has not reached
+ *  yet. Mapped to 409.
+ *
+ *  🔴 Kept apart from `StepNotOpenError`, which means "there is nothing to do
+ *  here" — already submitted, switched off, or not applicable to this requester
+ *  type. This one means "not yet, and here is what comes first", and a
+ *  requester who is told the wrong one of those two goes looking for a problem
+ *  that does not exist. So it names what is being waited on.
+ *
+ *  ⚠️ Raised by three paths, not one. The portal hides a locked step, but the
+ *  bank and FSSAI links, the coupon and the staff registration route each have
+ *  their own way in — a forwarded email, a saved URL — and a hidden button is a
+ *  suggestion. */
+export class StepLockedError extends Error {
+  constructor(
+    readonly step: string,
+    readonly blockedBy: readonly string[],
+  ) {
+    super(
+      blockedBy.length > 0
+        ? `the ${step} step opens once ${blockedBy.join(' and ')} is complete`
+        : `the ${step} step is not open yet`,
+    );
+    this.name = 'StepLockedError';
+  }
+}
+
 /** A refund already sent to Finance. Mapped to 409 — the figures are frozen
  *  because a voucher is being raised against them. */
 export class RefundAlreadySubmittedError extends Error {

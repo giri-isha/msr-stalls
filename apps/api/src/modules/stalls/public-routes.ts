@@ -78,7 +78,7 @@ import {
   setSessionCookie,
   startSession,
 } from './session';
-import { couponFor, sendAccessLink, statusView, stepLink } from './portal';
+import { assertStepUnlocked, couponFor, sendAccessLink, statusView, stepLink } from './portal';
 import { submitRequest } from './submit';
 import { isOurKey, presignUpload } from './uploads';
 
@@ -532,6 +532,12 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
     { schema: { params: z.object({ code: z.string().trim().min(6).max(40) }) } },
     async (req): Promise<CouponView> => {
       const { request, coupon } = await resolveCoupon(prisma, req.params.code);
+      // 🔴 Refused while the edition's ordering has not reached staff
+      // registration. This route is the reason hiding the portal tab is not
+      // enough: the coupon code is its own credential, so a code forwarded from
+      // a letter sent months ago reaches this form without the portal being
+      // involved at all.
+      await assertStepUnlocked(prisma, request.id, 'STAFF_REGISTRATION');
       // ⚠️ Scoped to the code that was typed. A stall can hold more than one,
       // and the team holding a caterer's code is not shown the vendor's roster.
       return toCouponView(prisma, request, coupon);
@@ -549,6 +555,10 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
       // A staff member registering themselves is the requester's own team
       // acting on the requester's behalf — there is no other account here.
       const { request } = await resolveCoupon(prisma, req.body.couponCode);
+      // The GET above already refuses, but a POST is not reached only through
+      // it — and the refusal has to be on the write, not on the page that
+      // offers it.
+      await assertStepUnlocked(prisma, request.id, 'STAFF_REGISTRATION');
       reply.status(201);
       return registerStaff(prisma, req.body, byRequester(request.accountId));
     },

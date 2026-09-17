@@ -2,6 +2,8 @@ import type { Prisma, PrismaClient, StallMessageChannel, StallTemplateKey } from
 import {
   type CommRecipient,
   DEFAULT_TEMPLATES,
+  type FlowConfig,
+  type OnboardingStep,
   type EmailTemplateView,
   type Quote,
   type QuoteLine,
@@ -20,7 +22,15 @@ import { mintAccessLink } from './accounts';
 import type { StallsDeps } from './deps';
 import type { Db } from './editions';
 import { UnknownRequestError, UnknownTemplateError, WrongTemplateError } from './errors';
-import { allocatedNumbers, allocatedZone, factsInclude, refreshStage } from './facts';
+import {
+  type RequestWithFacts,
+  allocatedNumbers,
+  allocatedZone,
+  factsInclude,
+  refreshStage,
+  stepLockedFor,
+} from './facts';
+import { flowFor } from './config';
 import { ensureCoupon } from './onboarding';
 import { planToView, quoteContext, quoteFor, toQuoteView } from './quotes';
 import { signatureLinkFor } from './signature';
@@ -181,6 +191,45 @@ export async function listRecipients(
 
 const LINK_TTL_DAYS = 180;
 
+/** Which onboarding steps a letter carries a way INTO, and whether that is all
+ *  the letter is for.
+ *
+ *  🔴 The team asked for the mails to be locked along with the forms, and the
+ *  shape that survives contact with these four templates is: a letter still
+ *  SENDS, each link or coupon inside it is DROPPED when its step is locked, and
+ *  a letter that is nothing but a locked step is refused.
+ *
+ *  ⚠️ `isOnlyThoseSteps` is the distinction that matters. `SELECTION_VENDOR`
+ *  IS the letter that tells a vendor they were selected and merely happens to
+ *  carry the bank-form link; refusing it because bank details are not open yet
+ *  would mean a selected vendor is never told they were selected, in the name
+ *  of not showing them a form. `PAYMENT_DETAILS` carries nothing else, so a
+ *  locked payment step leaves it with nothing to say.
+ *
+ *  A template that is not here carries no step and is never affected.
+ */
+const LETTER_STEPS: Partial<
+  Record<StallTemplateKey, { carries: OnboardingStep[]; isOnlyThoseSteps: boolean }>
+> = {
+  SELECTION_VENDOR: { carries: ['BANK_FORM'], isOnlyThoseSteps: false },
+  SELECTION_ASHRAM: { carries: ['STAFF_REGISTRATION'], isOnlyThoseSteps: false },
+  PAYMENT_DETAILS: { carries: ['PAYMENT'], isOnlyThoseSteps: true },
+  ONBOARDING_FSSAI_STAFF: {
+    carries: ['FSSAI', 'STAFF_REGISTRATION'],
+    isOnlyThoseSteps: true,
+  },
+};
+
+/** The steps of this letter the edition's ordering has not reached. */
+function lockedStepsFor(
+  r: RequestWithFacts,
+  flow: FlowConfig,
+  key: StallTemplateKey,
+): Set<OnboardingStep> {
+  const carries = LETTER_STEPS[key]?.carries ?? [];
+  return new Set(carries.filter((step) => stepLockedFor(r, flow, step)));
+}
+
 /** Builds every placeholder value for one request.
  *
  *  Minting the access links here, at send time, is deliberate: a bank-form link
@@ -193,6 +242,7 @@ async function templateVars(
   key: StallTemplateKey,
   deps: StallsDeps,
   by: string,
+  locked: Set<OnboardingStep>,
 ): Promise<Record<string, string>> {
   // 🔴 The stall number renders as a blank until the stall has CHECKED IN, and
   // the seeded letters do not ask for it before then. Telling a requester their
@@ -240,7 +290,12 @@ async function templateVars(
   });
   vars.statusUrl = deps.statusUrl(statusLink.token);
 
-  if (key === 'SELECTION_VENDOR' && r.requestType === 'VENDOR') {
+  // ⚠️ `!locked.has('BANK_FORM')`. The letter still goes out — it is the one
+  // that says the request was SELECTED — and the placeholder renders empty, the
+  // way `signatureUrl` already does where no provider is configured. What it
+  // must not do is mint a link to a form the portal and `stepLink` are both
+  // about to refuse.
+  if (key === 'SELECTION_VENDOR' && r.requestType === 'VENDOR' && !locked.has('BANK_FORM')) {
     const bank = await mintAccessLink(db, {
       accountId: r.accountId,
       requestId: r.id,
@@ -282,10 +337,17 @@ async function templateVars(
   }
 
   if (key === 'ONBOARDING_FSSAI_STAFF' || key === 'SELECTION_ASHRAM') {
-    const coupon = await ensureCoupon(db, r.id, r.stallName, r.edition.year, by);
-    vars.staffCouponCode = coupon.code;
-    vars.staffRegistrationUrl = deps.staffRegistrationUrl(coupon.code);
-    if (r.stallType === 'FOOD') {
+    // 🔴 No mint while staff registration is locked, not merely no code in the
+    // letter. `ensureCoupon` is a WRITE, and the coupon is its own credential:
+    // minting one and leaving it out of the letter creates a live code the
+    // staff route is about to refuse, and puts the stall on Onboarding as one
+    // that has been offered the step.
+    if (!locked.has('STAFF_REGISTRATION')) {
+      const coupon = await ensureCoupon(db, r.id, r.stallName, r.edition.year, by);
+      vars.staffCouponCode = coupon.code;
+      vars.staffRegistrationUrl = deps.staffRegistrationUrl(coupon.code);
+    }
+    if (r.stallType === 'FOOD' && !locked.has('FSSAI')) {
       const fssai = await mintAccessLink(db, {
         accountId: r.accountId,
         requestId: r.id,
@@ -338,6 +400,9 @@ export async function sendTemplate(
 
   const rows = await loadForSend(db, input.requestIds);
   const byId = new Map(rows.map((r) => [r.id, r]));
+  // One lookup: every request in a send is in the edition the send was made
+  // against, and the ordering belongs to the edition.
+  const flow = await flowFor(db, editionId);
 
   const sent: string[] = [];
   const skipped: SendEmailResult['skipped'] = [];
@@ -376,7 +441,21 @@ export async function sendTemplate(
       continue;
     }
 
-    const vars = await templateVars(db, r, input.templateKey, deps, by);
+    // 🔴 The letters follow the same ordering the forms do. A locked step's
+    // link is dropped; a letter that is nothing BUT locked steps is not sent at
+    // all, and says so, so the Communication screen reports a skip rather than
+    // a letter that went out empty.
+    const locked = lockedStepsFor(r, flow, input.templateKey);
+    const letter = LETTER_STEPS[input.templateKey];
+    if (letter?.isOnlyThoseSteps && locked.size === letter.carries.length) {
+      skipped.push({
+        requestId: id,
+        reason: `the ${letter.carries.join(' and ')} step is not open for this request yet`,
+      });
+      continue;
+    }
+
+    const vars = await templateVars(db, r, input.templateKey, deps, by, locked);
     const subject = renderTemplate(template.subject, vars);
 
     let anySent = false;

@@ -2,7 +2,11 @@ import type { Prisma } from '@prisma/client';
 import {
   type FlowConfig,
   type OnboardingFacts,
+  type OnboardingStep,
+  blockingSteps,
   deriveStage,
+  gatedSteps,
+  isStepLocked,
   payableFeePaise,
   pendingSteps,
 } from '@stalls/core';
@@ -125,6 +129,35 @@ export function selectionEmailSent(r: RequestWithFacts): boolean {
 
 export function pendingFor(r: RequestWithFacts, flow: FlowConfig) {
   return pendingSteps(factsOf(r), flow);
+}
+
+/** `pendingFor`, with the edition's ordering applied.
+ *
+ *  🔴 A SECOND function, not a replacement. `pendingFor` is what Onboarding,
+ *  Check-in and `deriveStage` read, and they must keep seeing everything a
+ *  stall still owes — a stall waiting behind an unpaid step reads as "nothing
+ *  else outstanding" the moment the gate is applied there, and `READY` starts
+ *  meaning "done so far". This one is the requester's door. */
+export function gatedFor(r: RequestWithFacts, flow: FlowConfig) {
+  return gatedSteps(factsOf(r), flow);
+}
+
+/** Whether the edition's ordering has not reached this step for this request.
+ *
+ *  ⚠️ Asks about the step's STAGE, not its presence in the pending list — so it
+ *  answers for `STAFF_REGISTRATION` before any coupon exists, which is the case
+ *  the Get Your Coupon button walks straight into. See `isStepLocked`. */
+export function stepLockedFor(
+  r: RequestWithFacts,
+  flow: FlowConfig,
+  step: OnboardingStep,
+): boolean {
+  return isStepLocked(factsOf(r), flow, step);
+}
+
+/** What a locked step on this request is waiting for. */
+export function blockedByFor(r: RequestWithFacts, flow: FlowConfig): OnboardingStep[] {
+  return blockingSteps(factsOf(r), flow);
 }
 
 /** Recomputes `stage` from the facts and writes it if it moved.

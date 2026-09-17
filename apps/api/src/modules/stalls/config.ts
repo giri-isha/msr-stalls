@@ -1,6 +1,12 @@
 import type { PrismaClient, StallEdition, StallRateScope } from '@prisma/client';
 import {
+  ALL_AT_ONCE,
   type ChargesInput,
+  type FlowInput,
+  type FlowStages,
+  ONBOARDING_STEPS,
+  type OnboardingStep,
+  type StallRequestType,
   DEFAULT_PLAN_CATEGORIES,
   DEFAULT_RATE_CARD_2025,
   DEFAULT_TEMPLATES,
@@ -108,6 +114,18 @@ export async function ensureEditionDefaults(db: Db, editionId: string): Promise<
     update: {},
   });
   await db.stallFlowConfig.upsert({ where: { editionId }, create: { editionId }, update: {} });
+  // The ordering, all at stage 1 — every step open at once, which is how the
+  // flow has always behaved. Written rather than left implicit so the Admin
+  // grid opens on real rows.
+  for (const requestType of STALL_REQUEST_TYPES) {
+    for (const step of ONBOARDING_STEPS) {
+      await db.stallFlowStep.upsert({
+        where: { editionId_requestType_step: { editionId, requestType, step } },
+        create: { editionId, requestType, step },
+        update: {},
+      });
+    }
+  }
   for (const f of FINES_2025) {
     await db.stallFineType.upsert({
       where: { editionId_reason: { editionId, reason: f.reason } },
@@ -533,21 +551,71 @@ export async function updateCharges(
   return updated;
 }
 
-export async function flowFor(db: Db, editionId: string) {
-  return db.stallFlowConfig.upsert({ where: { editionId }, create: { editionId }, update: {} });
+/** The edition's flow: three switches for WHETHER a step happens, and twelve
+ *  integers for WHEN.
+ *
+ *  ⚠️ A missing `stall_flow_step` row reads as stage 1, which is "not locked".
+ *  That is what lets the table be sparse and lets an edition created before
+ *  sequencing existed behave exactly as it did — so this never inserts rows on
+ *  a read path. The migration seeded the twelve for every existing edition and
+ *  `seedEdition` writes them for new ones; this only has to survive their
+ *  absence.
+ */
+export async function flowFor(db: Db, editionId: string): Promise<FlowConfigRow> {
+  const [config, rows] = await Promise.all([
+    db.stallFlowConfig.upsert({ where: { editionId }, create: { editionId }, update: {} }),
+    db.stallFlowStep.findMany({ where: { editionId } }),
+  ]);
+  return { ...config, stages: stagesFrom(rows) };
+}
+
+type FlowConfigRow = Awaited<ReturnType<typeof rawFlow>> & { stages: FlowStages };
+
+const rawFlow = (db: Db, editionId: string) =>
+  db.stallFlowConfig.upsert({ where: { editionId }, create: { editionId }, update: {} });
+
+/** Rows to the shape `gatedSteps` takes, filling every gap with stage 1. */
+function stagesFrom(
+  rows: Array<{ requestType: StallRequestType; step: OnboardingStep; stage: number }>,
+): FlowStages {
+  const out: FlowStages = {
+    VENDOR: { ...ALL_AT_ONCE },
+    LOCAL_WELFARE: { ...ALL_AT_ONCE },
+    ASHRAM: { ...ALL_AT_ONCE },
+  };
+  for (const r of rows) out[r.requestType][r.step] = r.stage;
+  return out;
 }
 
 export async function updateFlow(
   db: PrismaClient,
   editionId: string,
-  input: { bankStepEnabled: boolean; paymentStepEnabled: boolean; fssaiStepEnabled: boolean },
+  input: FlowInput,
   by: string,
 ) {
+  const { stages, ...switches } = input;
   const updated = await db.stallFlowConfig.upsert({
     where: { editionId },
-    create: { editionId, ...input },
-    update: input,
+    create: { editionId, ...switches },
+    update: switches,
   });
+
+  // ⚠️ Omitted stages leave the ordering alone. A caller flipping one switch
+  // must not silently reset the grid to all-at-once.
+  if (stages) {
+    await db.$transaction(
+      STALL_REQUEST_TYPES.flatMap((requestType) =>
+        ONBOARDING_STEPS.map((step) =>
+          db.stallFlowStep.upsert({
+            where: { editionId_requestType_step: { editionId, requestType, step } },
+            create: { editionId, requestType, step, stage: stages[requestType][step] },
+            update: { stage: stages[requestType][step] },
+          }),
+        ),
+      ),
+    );
+  }
+
   await audit(db, {
     actor: actorFrom(by),
     action: 'stall_flow.updated',

@@ -8,6 +8,7 @@ import {
   type RequestCouponInput,
   type SubmittedRequest,
   submittedSections,
+  type OnboardingStep,
   type SelfServeStepValue,
   isSelfServe,
   virtualAccountFor,
@@ -18,13 +19,15 @@ import { flowFor } from './config';
 import { claimsFor } from './payment-claims';
 import type { StallsDeps } from './deps';
 import type { Db } from './editions';
-import { StepNotOpenError, UnknownAccessLinkError } from './errors';
+import { StepLockedError, StepNotOpenError, UnknownAccessLinkError } from './errors';
 import {
   type RequestWithFacts,
+  blockedByFor,
   factsInclude,
-  pendingFor,
+  gatedFor,
   registeredOn,
   staffExpected,
+  stepLockedFor,
 } from './facts';
 import type { Mailer } from './mailer';
 import { ensureCoupon } from './onboarding';
@@ -234,7 +237,13 @@ export async function statusView(db: Db, account: StallAccount): Promise<PublicS
         // wristbands, which is also the moment somebody is standing there to
         // have that conversation.
         allocatedStalls: r.checkIn ? r.allocations.map((a) => a.stall.number) : [],
-        pending: r.status === 'SELECTED' ? pendingFor(r, await flowOf(r.editionId)) : [],
+        // 🔴 `gatedFor`, so each entry carries whether the requester may act
+        // on it yet. The WHOLE list, locked steps included: the portal draws a
+        // tab only for an open one and lists the rest greyed on the Overview,
+        // so the requester reads the whole road and can only walk their part of
+        // it. Onboarding and Check-in still read `pendingFor` and still see
+        // everything outstanding, which is the point of the two functions.
+        pending: r.status === 'SELECTED' ? gatedFor(r, await flowOf(r.editionId)) : [],
         // Both blocks are null for anything not SELECTED, for the same reason
         // `pending` is empty there: a requester still waiting on a decision has
         // nothing to pay and nobody to register, and showing either would read
@@ -391,8 +400,15 @@ export async function stepLink(
   if (request?.status !== 'SELECTED') throw new UnknownAccessLinkError();
 
   const flow = await flowFor(db, request.editionId);
-  const open = pendingFor(request, flow).some((p) => p.step === input.step && isSelfServe(p.step));
-  if (!open) throw new StepNotOpenError(input.step);
+  const gated = gatedFor(request, flow).find((g) => g.step === input.step);
+  // Nothing to do here at all — already submitted, switched off, or not asked
+  // of this requester type.
+  if (!gated || !isSelfServe(gated.step)) throw new StepNotOpenError(input.step);
+  // ⚠️ Outstanding, but the edition's ordering has not reached it. A different
+  // refusal from the one above, because it is a different thing to be told:
+  // "there is nothing to do" sends a requester looking for a problem, where
+  // "this opens once payment is confirmed" tells them to wait.
+  if (!gated.open) throw new StepLockedError(input.step, gated.blockedBy);
 
   const purpose = input.step === 'BANK_FORM' ? 'BANK_FORM' : 'FSSAI_UPLOAD';
   const { token } = await mintAccessLink(db, {
@@ -407,6 +423,25 @@ export async function stepLink(
     FSSAI: deps.fssaiUrl(token),
   };
   return { url: url[input.step] };
+}
+
+/** Refuses a step the edition's ordering has not reached yet.
+ *
+ *  ⚠️ Shared by the coupon route and the staff registration route because both
+ *  reach a step WITHOUT the portal: one mints the credential, the other is
+ *  entered with a code that may have been forwarded from a letter sent months
+ *  ago. Hiding a tab does nothing about either. */
+export async function assertStepUnlocked(
+  db: Db,
+  requestId: string,
+  step: OnboardingStep,
+): Promise<void> {
+  const r = await db.stallRequest.findUnique({ where: { id: requestId }, include: factsInclude });
+  if (!r) return;
+  const flow = await flowFor(db, r.editionId);
+  if (stepLockedFor(r, flow, step)) {
+    throw new StepLockedError(step, blockedByFor(r, flow));
+  }
 }
 
 /**
@@ -448,6 +483,18 @@ export async function couponFor(
     include: { edition: { select: { year: true } } },
   });
   if (request?.status !== 'SELECTED') throw new UnknownAccessLinkError();
+
+  // 🔴 Refused while STAFF_REGISTRATION is locked, and refused BEFORE the mint.
+  // `ensureCoupon` is a write: minting and then hiding the code would leave a
+  // live credential the staff route is about to refuse, and a stall holding a
+  // coupon nobody may use reads on Onboarding as one that was offered a step.
+  //
+  // ⚠️ `stepLockedFor`, NOT a lookup in the gated list. `staffExpected` is 0
+  // until a coupon exists, so `pendingSteps` says nothing about the step — and
+  // a check that looked for it there would answer "not locked" for exactly the
+  // request this button is about to mint a coupon for. The question is about
+  // the step's stage.
+  await assertStepUnlocked(db, request.id, 'STAFF_REGISTRATION');
 
   const coupon = await ensureCoupon(
     db,

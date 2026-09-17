@@ -45,6 +45,7 @@ import {
   RequestTypeForbiddenError,
   ZoneForbiddenError,
   EditionForbiddenError,
+  StepLockedError,
   StepNotOpenError,
   TooManyStallsError,
   TooManyStallsRequestedError,
@@ -134,6 +135,7 @@ function statusFor(err: unknown): number | null {
     err instanceof CouponFullError ||
     err instanceof BankDetailsLockedError ||
     err instanceof StepNotOpenError ||
+    err instanceof StepLockedError ||
     err instanceof RefundAlreadySubmittedError ||
     err instanceof DuplicatePaymentError ||
     err instanceof NothingToSendError ||

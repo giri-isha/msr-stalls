@@ -118,6 +118,20 @@ enum StallRequestStatus {
 /// How far through onboarding a SELECTED request has travelled. The other axis.
 /// Phase 1 drives only NEW; the rest are modelled so Phases 2–3 add behaviour,
 /// not migrations that rewrite history.
+/// The four steps a SELECTED request walks between selection and the event.
+/// Mirrors `ONBOARDING_STEPS` in `@stalls/core`.
+///
+/// ⚠️ An enum rather than a string because `stall_flow_step` gates on it: a
+/// typo would otherwise be a row that silently sequences nothing.
+enum StallOnboardingStep {
+  BANK_FORM
+  PAYMENT
+  FSSAI
+  STAFF_REGISTRATION
+
+  @@schema("stalls")
+}
+
 enum StallStage {
   NEW
   BANK_FORM_SENT
@@ -291,6 +305,7 @@ model StallEdition {
   customFields    StallFormField[]
   declarations    StallDeclaration[]
   flow            StallFlowConfig?
+  flowSteps       StallFlowStep[]
   requests        StallRequest[]
   sequences       StallReferenceSequence[]
   templates       StallEmailTemplate[]
@@ -739,6 +754,34 @@ model StallFlowConfig {
   edition StallEdition @relation(fields: [editionId], references: [id], onDelete: Cascade)
 
   @@map("stall_flow_config")
+  @@schema("stalls")
+}
+
+/// WHEN each step opens, where `StallFlowConfig` says WHETHER it happens.
+///
+/// One row per (edition, requester type, step) — twelve per edition. The lowest
+/// stage still outstanding is the one the requester may act on; everything
+/// numbered above it is locked until that stage clears. See `gatedSteps`.
+///
+/// 🔴 Stage 1 for everything is today's behaviour — nothing is ever locked —
+/// which is why it is the default and why a MISSING row reads as 1. The table
+/// may be sparse, and an edition created before sequencing existed behaves
+/// exactly as it did.
+///
+/// ⚠️ Kept apart from `StallFlowConfig` deliberately. Folded into one control,
+/// "off" and "last" become neighbours, which is how an admin switches a step
+/// off while meaning to defer it.
+model StallFlowStep {
+  id          String              @id @default(uuid()) @db.Uuid
+  editionId   String              @map("edition_id") @db.Uuid
+  requestType StallRequestType    @map("request_type")
+  step        StallOnboardingStep
+  stage       Int                 @default(1)
+
+  edition StallEdition @relation(fields: [editionId], references: [id], onDelete: Cascade)
+
+  @@unique([editionId, requestType, step])
+  @@map("stall_flow_step")
   @@schema("stalls")
 }
 

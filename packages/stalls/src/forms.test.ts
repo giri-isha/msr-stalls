@@ -54,10 +54,16 @@ describe('fieldsFor LOCAL_WELFARE', () => {
     expect(byName.get('depositAcknowledged')?.labelTa).toBe('திரும்பப்பெறக்கூடிய எச்சரிக்கை வைப்பு');
   });
 
-  test('asks for vehicle passes but not staff passes — the 2025 form did not', () => {
+  // ⚠️ This asserted the OPPOSITE of `passesStaff`, on a transcription that had
+  // missed it. The 2025 local welfare sheet asks "Number of Stall Staff Pass"
+  // between the vehicle passes and the caution deposit, and `passes_staff` has
+  // always been a real column on `stall_request` — the vendor form collects it
+  // on the bank form and the ashram form asks it directly. Only the question
+  // was missing, and only from this one form.
+  test('asks for vehicle passes and staff passes, as the 2025 form did', () => {
     expect(byName.has('passes2w')).toBe(true);
     expect(byName.has('passes4w')).toBe(true);
-    expect(byName.has('passesStaff')).toBe(false);
+    expect(byName.get('passesStaff')?.required).toBe(true);
   });
 
   // The choices are the edition's own zones, resolved at render time — see
