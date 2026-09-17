@@ -22,7 +22,8 @@
     "lint:boundaries": "depcruise apps/web/src apps/api/src --config .dependency-cruiser.cjs",
     "db:generate": "npm run db:generate --workspace=apps/api",
     "db:migrate": "npm run db:migrate --workspace=apps/api",
-    "db:seed": "npm run db:seed --workspace=apps/api"
+    "db:seed": "npm run db:seed --workspace=apps/api",
+    "db:reset": "npm run db:reset --workspace=apps/api"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.5",

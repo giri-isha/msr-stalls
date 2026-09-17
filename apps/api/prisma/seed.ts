@@ -4,7 +4,8 @@
 // — some shortlisted, some selected onto real stalls, one flagged.
 //
 // Refuses to run against a database that already has an edition, so it can
-// never double-seed. Pass --force to wipe the stalls tables first.
+// never double-seed. `npm run db:reset` passes --force, which wipes the
+// stalls tables first.
 import { randomUUID } from 'node:crypto';
 import { SubmitRequestInput, type ZoneCode } from '@stalls/core';
 import { LogMailer } from '../src/email';
@@ -404,7 +405,7 @@ async function main() {
   const existing = await prisma.stallEdition.count();
   if (existing > 0 && !force) {
     console.log(
-      `Database already has ${existing} edition(s). Pass --force to wipe stalls data and reseed.`,
+      `Database already has ${existing} edition(s). Run \`npm run db:reset\` to wipe stalls data and reseed.`,
     );
     return;
   }

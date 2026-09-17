@@ -13,6 +13,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:test:deploy": "tsx scripts/deploy-test-db.ts",
     "db:seed": "tsx prisma/seed.ts",
+    "db:reset": "tsx prisma/seed.ts --force",
     "dev:signin": "tsx scripts/dev-signin.ts",
     "dev:users": "tsx scripts/dev-users.ts"
   },
