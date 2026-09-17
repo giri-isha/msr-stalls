@@ -121,6 +121,55 @@ describe('sending the selection letter', () => {
     ).toBeInTheDocument();
   });
 
+  test('only the requester types the letter is written for are listed', async () => {
+    // 🔴 The send path refuses a mismatch, so offering an ashram department
+    // under the vendor letter could only ever end in a skip — after the send.
+    recipients = [
+      recipient(),
+      recipient({
+        id: 'ashram-id',
+        stallName: 'Annadanam Seva',
+        requestType: 'ASHRAM',
+        suggestedTemplate: 'SELECTION_ASHRAM',
+      }),
+    ];
+    stub();
+    render();
+    const user = userEvent.setup();
+
+    await screen.findByText('Green Leaf Organics');
+    expect(screen.queryByText('Annadanam Seva')).not.toBeInTheDocument();
+
+    await choose(user, screen.getByLabelText('Letter'), 'SELECTION_ASHRAM');
+
+    await screen.findByText('Annadanam Seva');
+    expect(screen.queryByText('Green Leaf Organics')).not.toBeInTheDocument();
+  });
+
+  test('"select all" cannot reach a row the letter is not for', async () => {
+    recipients = [
+      recipient(),
+      recipient({
+        id: 'ashram-id',
+        stallName: 'Annadanam Seva',
+        requestType: 'ASHRAM',
+        suggestedTemplate: 'SELECTION_ASHRAM',
+      }),
+    ];
+    const fetch = stub();
+    render();
+    const user = userEvent.setup();
+
+    await screen.findByText('Green Leaf Organics');
+    await user.click(screen.getByRole('button', { name: /Select All \(1\)/ }));
+    await user.click(screen.getByRole('button', { name: 'Send 1 selected' }));
+
+    await waitFor(() => {
+      const post = fetch.calls.find((c) => c.method === 'POST');
+      expect(post?.body).toMatchObject({ requestIds: [recipient().id] });
+    });
+  });
+
   test('switching the letter clears what was ticked', async () => {
     stub();
     render();

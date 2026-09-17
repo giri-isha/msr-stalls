@@ -1,5 +1,5 @@
 import type { CommRecipient, ReminderKind, TemplateKeyValue } from '@stalls/core';
-import { unknownPlaceholders } from '@stalls/core';
+import { DEFAULT_TEMPLATES, unknownPlaceholders } from '@stalls/core';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   clearSent,
@@ -105,6 +105,24 @@ const TEMPLATE_LABEL: Record<string, string> = {
   ONBOARDING_FSSAI_STAFF: 'FSSAI and Staff Registration',
 };
 
+/**
+ * Which requester types each letter is written for.
+ *
+ * 🔴 The same fact the send path refuses a mismatch on — an ashram department
+ * must never be handed the vendor letter with its bank-form link. It was only
+ * enforced at the end, so the screen offered every selected requester for every
+ * letter and the mismatch came back as a row of skips AFTER the send. Read from
+ * the seeds rather than the loaded templates because `appliesTo` is a property
+ * of the letter's PURPOSE, not of its wording: the API serves it from the same
+ * seeds, and an admin editing the body cannot move it.
+ */
+const TEMPLATE_TYPES = new Map<string, ReadonlySet<string>>(
+  DEFAULT_TEMPLATES.map((t) => [t.key, new Set<string>(t.appliesTo)]),
+);
+
+const appliesToText = (types: ReadonlySet<string>) =>
+  [...types].map((t) => TYPE_LABEL[t] ?? t).join(', ');
+
 function SendPanel() {
   const { can } = useMe();
   const canSend = can('comms.write');
@@ -122,9 +140,21 @@ function SendPanel() {
     [templateKey],
   );
 
+  // The types this letter is for. An unknown key applies to nobody rather than
+  // to everybody: a letter the screen cannot vouch for is the one that must not
+  // be offered against every requester in the edition.
+  const forTypes = useMemo(
+    () => TEMPLATE_TYPES.get(templateKey) ?? new Set<string>(),
+    [templateKey],
+  );
+
   const rows = useMemo(() => {
     const term = q.trim().toLowerCase();
     return (data ?? []).filter((r) => {
+      // ⚠️ Before the search and the sent filter, because this one is not a
+      // preference — a row the letter cannot go to is not a row this screen has
+      // anything to say about.
+      if (!forTypes.has(r.requestType)) return false;
       if (
         term &&
         !r.stallName.toLowerCase().includes(term) &&
@@ -142,7 +172,7 @@ function SendPanel() {
       if (sentFilter === 'unsent') return sentAt(r) === null;
       return true;
     });
-  }, [data, q, sentFilter, sentAt]);
+  }, [data, q, sentFilter, sentAt, forTypes]);
 
   // A row already sent this letter cannot be ticked — the send would skip it,
   // and offering the tick would make the result read as a failure.
@@ -212,6 +242,18 @@ function SendPanel() {
             </option>
           ))}
         </Select>
+        {/* Why the list below is shorter than the edition. The filtering is
+            silent otherwise, and a reader looking for an ashram stall under the
+            vendor letter would read the absence as missing data rather than as
+            a letter that was never written for them. */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 11.5, color: 'var(--mfg)' }}>Goes to</span>
+          {[...forTypes].map((t) => (
+            <Tag key={t} size='sm'>
+              {TYPE_LABEL[t] ?? t}
+            </Tag>
+          ))}
+        </div>
         <Search value={q} onChange={setQ} placeholder='Search vendors…' />
         <Select
           aria-label='Sent'
@@ -253,7 +295,9 @@ function SendPanel() {
       </div>
 
       {rows.length === 0 ? (
-        <Empty>No selected vendors yet. Letters go out once a request is selected.</Empty>
+        <Empty>
+          {`No selected ${appliesToText(forTypes).toLowerCase()} requests. This letter only goes to ${appliesToText(forTypes)} requests, and only once one is selected.`}
+        </Empty>
       ) : mobile ? (
         <div style={{ display: 'grid', gap: 10 }}>
           {rows.map((r) => (
