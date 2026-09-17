@@ -6,6 +6,8 @@
 // the same paths. The standalone `app.ts` passes stubs; the host's `app.ts`
 // passes the real thing. The module cannot tell the difference, by design.
 import type { FastifyInstance } from 'fastify';
+import { prisma } from '../../prisma';
+import { auditedMailer, auditedWhatsApp } from './audit-senders';
 import type { StallsDeps } from './deps';
 import { useStallsErrorHandler } from './http-errors';
 import { registerStallsPublicRoutes } from './public-routes';
@@ -17,16 +19,25 @@ import { registerStallsBackofficeRoutes } from './routes';
 export const STALLS_MANIFEST = { key: MODULE_KEY, name: MODULE_NAME } as const;
 
 export function registerStallsModule(app: FastifyInstance, deps: StallsDeps): void {
+  // Every letter the module sends is recorded, whichever transport the shell
+  // supplied — see `audit-senders.ts`. Wrapped HERE so no send site has to
+  // know, and so a shell that forgets cannot opt out.
+  const audited: StallsDeps = {
+    ...deps,
+    mail: auditedMailer(prisma, deps.mail),
+    whatsapp: auditedWhatsApp(prisma, deps.whatsapp),
+  };
   app.register(
     async (mod) => {
       useStallsErrorHandler(mod);
-      mod.register(async (pub) => registerStallsPublicRoutes(pub, deps), { prefix: '/public' });
-      registerStallsBackofficeRoutes(mod, deps);
+      mod.register(async (pub) => registerStallsPublicRoutes(pub, audited), { prefix: '/public' });
+      registerStallsBackofficeRoutes(mod, audited);
     },
     { prefix: `/api/m/${MODULE_KEY}` },
   );
 }
 
+export { auditBackofficeSignIn } from './audit';
 export type { StallsDeps } from './deps';
 export type { Mailer, OutboundMail } from './mailer';
 export { MODULE_KEY } from './roles';

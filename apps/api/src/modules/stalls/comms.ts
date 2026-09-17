@@ -418,11 +418,12 @@ export async function sendTemplate(
             subject,
             text,
             attachments: attachment ? [attachment] : undefined,
+            about: { requestId: r.id },
           });
         } else {
           // No attachment: WhatsApp carries the short wording, and the zone map
           // rides on the email that goes out beside it.
-          await deps.whatsapp.send({ to, text });
+          await deps.whatsapp.send({ to, text, about: { requestId: r.id } });
         }
       } catch {
         // Logged as sent and the transport failed. Undo the log so the row can

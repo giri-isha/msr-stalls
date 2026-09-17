@@ -10,7 +10,10 @@ import {
   auditBackofficeSignIn,
   requesterActor,
 } from '../src/modules/stalls/audit';
+import { SubmitRequestInput } from '@stalls/core';
 import { buildApp } from '../src/app';
+import { auditedMailer, auditedWhatsApp } from '../src/modules/stalls/audit-senders';
+import { submitRequest } from '../src/modules/stalls/submit';
 import { ensureCoupon, registerStaff, submitFssai } from '../src/modules/stalls/onboarding';
 import { submitPaymentClaim } from '../src/modules/stalls/payment-claims';
 import {
@@ -262,9 +265,7 @@ describe('the requester’s own actions are recorded against their account', () 
       requestId,
       {
         stallName: r.stallName,
-        files: [
-          { key: 'stalls/fssai/00000000-0000-4000-8000-000000000000.pdf', name: 'c.pdf' },
-        ],
+        files: [{ key: 'stalls/fssai/00000000-0000-4000-8000-000000000000.pdf', name: 'c.pdf' }],
         declarationIds: [],
       },
       who,
@@ -308,5 +309,87 @@ describe('the requester’s own actions are recorded against their account', () 
     const [staff] = await rows('stall_vendor_staff.registered');
     expect(staff.subjectType).toBe('vendor_staff');
     expect(staff.detail).toMatchObject({ mobile: '9840099999' });
+  });
+});
+
+describe('outbound mail and WhatsApp leave a row each', () => {
+  test('a sent email is OK and filed against the request it names', async () => {
+    await edition();
+    const { requestId } = await selected(['C1-1']);
+    const inner = new LogMailer();
+    const mail = auditedMailer(prisma, inner);
+    await mail.send({ to: 'v@example.org', subject: 'Hello', text: 'x', about: { requestId } });
+    expect(inner.sent).toHaveLength(1);
+    const [row] = await prisma.stallAuditEvent.findMany({ where: { action: 'stall_email.sent' } });
+    expect(row.requestId).toBe(requestId);
+    expect(row.actorKind).toBe('SYSTEM');
+    expect(row.outcome).toBe('OK');
+    expect(row.detail).toEqual({ to: 'v@example.org', subject: 'Hello' });
+  });
+
+  test('a failed send is FAILED, the row still lands, and the error still propagates', async () => {
+    await edition();
+    const failing = {
+      send: async () => {
+        throw new Error('smtp down');
+      },
+    };
+    const mail = auditedMailer(prisma, failing);
+    await expect(mail.send({ to: 'v@example.org', subject: 'Hello', text: 'x' })).rejects.toThrow(
+      'smtp down',
+    );
+    const [row] = await prisma.stallAuditEvent.findMany({
+      where: { action: 'stall_email.failed' },
+    });
+    expect(row.outcome).toBe('FAILED');
+    expect(row.detail).toEqual({ to: 'v@example.org', subject: 'Hello', error: 'smtp down' });
+  });
+
+  test('WhatsApp is recorded the same way, by number', async () => {
+    await edition();
+    const sent: unknown[] = [];
+    const wa = auditedWhatsApp(prisma, {
+      send: async (m) => {
+        sent.push(m);
+      },
+    });
+    await wa.send({ to: '9840012345', text: 'hi' });
+    expect(sent).toHaveLength(1);
+    const [row] = await prisma.stallAuditEvent.findMany({
+      where: { action: 'stall_whatsapp.sent' },
+    });
+    expect(row.detail).toEqual({ to: '9840012345' });
+  });
+
+  test('the receipt a submission sends is filed against the new request', async () => {
+    await edition();
+    const inner = new LogMailer();
+    const r = await submitRequest(
+      prisma,
+      SubmitRequestInput.parse(vendorBody()),
+      { mail: auditedMailer(prisma, inner), statusUrl: (t) => t },
+      await accountFor(),
+    );
+    const [row] = await prisma.stallAuditEvent.findMany({ where: { action: 'stall_email.sent' } });
+    expect(row.requestId).toBe(r.requestId);
+  });
+
+  test('the dev sign-in records a backoffice sign-in', async () => {
+    const signin = await buildApp({ logger: false, mail: new LogMailer(), files: fakeStore() });
+    try {
+      const lead = await seedBackoffice(['stalls_lead'], 'signin-lead@example.org');
+      const res = await signin.inject({
+        method: 'POST',
+        url: '/api/dev/signin',
+        payload: { email: 'signin-lead@example.org' },
+      });
+      expect(res.statusCode).toBe(200);
+      const [row] = await prisma.stallAuditEvent.findMany({
+        where: { action: 'stall_backoffice.signed_in' },
+      });
+      expect(row.actorRef).toBe(lead.personId);
+    } finally {
+      await signin.close();
+    }
   });
 });

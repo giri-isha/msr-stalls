@@ -14,7 +14,7 @@ import { SESSION_COOKIE, devLogin, getCurrentPerson } from './auth';
 import { LogMailer, type Mailer } from './email';
 import { type Signer, createUnconfiguredSigner } from './modules/stalls/signer';
 import { type WhatsAppSender, createLoggingWhatsAppSender } from './modules/stalls/whatsapp';
-import { registerStallsModule } from './modules/stalls';
+import { auditBackofficeSignIn, registerStallsModule } from './modules/stalls';
 import { prisma } from './prisma';
 import { DEV_MEDIA_ROUTE, DiskMediaStore, devMediaDir } from './storage/disk-media-store';
 import type { MediaStore } from './storage/media-namespace';
@@ -80,6 +80,14 @@ export async function buildApp(opts: BuildOptions = {}): Promise<FastifyInstance
       async (req, reply) => {
         const r = await devLogin(prisma, req.body.email);
         if (!r) return reply.status(404).send({ error: 'no such backoffice member' });
+        // The module records the sign-in. In the host this same call is made
+        // from the Isha SSO callback once the Person is resolved — see
+        // `docs/migration-to-host.md`; this route does not survive the move.
+        const person = await prisma.person.findUniqueOrThrow({
+          where: { personId: r.personId },
+          select: { personId: true, displayName: true },
+        });
+        await auditBackofficeSignIn(prisma, person);
         reply.setCookie(SESSION_COOKIE, r.token, {
           httpOnly: true,
           sameSite: 'lax',

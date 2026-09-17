@@ -311,12 +311,15 @@ export async function submitRequest(
   const statusUrl = deps.statusUrl(result.statusToken);
   try {
     if (!isPlaceholderEmail(result.account.email)) {
-      await deps.mail.send(receiptMail(result.account.email, input, result.reference, statusUrl));
+      await deps.mail.send(
+        receiptMail(result.account.email, input, result.reference, statusUrl, result.requestId),
+      );
     } else if (deps.whatsapp && result.account.phone) {
       // Registered on a mobile: there is no address to write to.
       await deps.whatsapp.send({
         to: result.account.phone,
         text: `Your stall request ${result.reference} has been received. ${statusUrl}`,
+        about: { requestId: result.requestId },
       });
     }
   } catch {
@@ -330,7 +333,13 @@ export async function submitRequest(
   };
 }
 
-function receiptMail(to: string, input: SubmitRequestInput, reference: string, statusUrl: string) {
+function receiptMail(
+  to: string,
+  input: SubmitRequestInput,
+  reference: string,
+  statusUrl: string,
+  requestId: string,
+) {
   const text = [
     `Your stall request has been received.`,
     ``,
@@ -347,7 +356,12 @@ function receiptMail(to: string, input: SubmitRequestInput, reference: string, s
     `Submission of a stall request does not guarantee allocation. Allocation is at the`,
     `sole discretion of the Isha Stall Team. Only selected stalls will be informed.`,
   ].join('\n');
-  return { to, subject: `Stall request received — ${reference}`, text };
+  return {
+    to,
+    subject: `Stall request received — ${reference}`,
+    text,
+    about: { requestId },
+  };
 }
 
 export type { Db };

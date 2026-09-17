@@ -18,6 +18,10 @@ export interface OutboundMail {
    *  does not travel through this process. The URL is short-lived, so a
    *  transport must fetch it when it sends, not days later. */
   attachments?: Array<{ filename: string; url: string }>;
+  /** What this letter is about, for the audit log — so a receipt or a payment
+   *  letter is filed against the request it concerns rather than floating.
+   *  Transports ignore it. */
+  about?: { requestId?: string; accountId?: string };
 }
 
 export interface Mailer {

@@ -142,7 +142,12 @@ function accessLinkMail(account: StallAccount, statusUrl: string) {
     `Please keep this link private — anyone with it can see your requests.`,
     `If you did not ask for it, you can ignore this email.`,
   ].join('\n');
-  return { to: account.email, subject: 'Your stall requests', text };
+  return {
+    to: account.email,
+    subject: 'Your stall requests',
+    text,
+    about: { accountId: account.id },
+  };
 }
 
 /** That vendor's own requests, and nothing else.

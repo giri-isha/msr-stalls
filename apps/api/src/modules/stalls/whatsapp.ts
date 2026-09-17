@@ -23,6 +23,10 @@ export interface OutboundWhatsApp {
    *  match the one the virtual account is built from. */
   to: string;
   text: string;
+  /** What this letter is about, for the audit log — so a receipt or a payment
+   *  letter is filed against the request it concerns rather than floating.
+   *  Transports ignore it. */
+  about?: { requestId?: string; accountId?: string };
 }
 
 export interface WhatsAppSender {
