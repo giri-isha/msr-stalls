@@ -607,6 +607,44 @@ describe('a step the edition has not opened yet', () => {
     expect(screen.queryByRole('button', { name: /see payment/i })).toBeNull();
   });
 
+  test('draws no Staff tab while the staff step is shut', async () => {
+    // 🔴 The one step `pending` cannot speak for. STAFF_REGISTRATION is silent
+    // there until a coupon has been issued, so this tab drew itself off `staff`
+    // alone — and its Get Your Coupon button pressed straight into the refusal
+    // the coupon route hands back for a locked step. The staff block carries
+    // the answer now, and the tab reads it like every other one.
+    signedIn(
+      withPending(
+        [{ step: 'BANK_FORM', label: 'Bank details pending', open: true, blockedBy: [] }],
+        {
+          staff: {
+            coupons: [],
+            capacity: 0,
+            registered: 0,
+            open: false,
+            blockedBy: ['BANK_FORM'],
+          },
+        },
+      ),
+    );
+    render();
+
+    await screen.findByRole('tab', { name: /bank details/i });
+    noTab(/staff/i);
+  });
+
+  test('the Staff tab is back, coupon offer and all, once the step is open', async () => {
+    signedIn(
+      withPending([], {
+        staff: { coupons: [], capacity: 0, registered: 0, open: true, blockedBy: [] },
+      }),
+    );
+    render();
+
+    await userEvent.click(await screen.findByRole('tab', { name: /staff/i }));
+    expect(screen.getByRole('button', { name: /Get Your Coupon/ })).toBeInTheDocument();
+  });
+
   test('all-at-once is unchanged — every step keeps its tab and its button', async () => {
     signedIn(
       withPending([

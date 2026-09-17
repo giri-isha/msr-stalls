@@ -212,6 +212,18 @@ describe('off means off on every way in', () => {
     });
     expect(res.statusCode).toBe(409);
   });
+
+  test('and the portal stops offering the button at all', async () => {
+    const { cookies } = await seedRequester(app);
+    await selected(['C1-1']);
+    await askOf('VENDOR', { STAFF_REGISTRATION: false });
+
+    const res = await app.inject({ method: 'GET', url: '/api/m/stalls/public/requests', cookies });
+    // ⚠️ `blockedBy` is EMPTY, not the open stage's steps. Nothing is coming, so
+    // nothing is being waited for — "opens once your bank details are in" would
+    // promise a step this requester type is never asked for.
+    expect(res.json().requests[0].staff).toMatchObject({ open: false, blockedBy: [] });
+  });
 });
 
 describe('the letters leave out what is not asked', () => {

@@ -103,7 +103,14 @@ export function portalTabs(r: PublicRequestStatus): Array<TabDef & { key: Portal
   if (pending.has('FSSAI')) {
     tabs.push({ key: 'fssai', label: 'FSSAI', glyph: 'shield', mark: 'warn' });
   }
-  if (r.staff) {
+  // ⚠️ `open !== false`, for the deploy-skew reason above — but the field is
+  // why this tab reads it rather than `pending`. STAFF_REGISTRATION is not in
+  // `pending` until a coupon has been issued, so this tab drew itself for a
+  // step the edition's ordering had not reached, and its Get Your Coupon
+  // button minted nothing: the coupon route refuses a locked step. A door that
+  // is not yet a door, again — hidden here, and named on the Overview's Still
+  // to do list as soon as there is a coupon for the pending list to see.
+  if (r.staff && r.staff.open !== false) {
     tabs.push({
       key: 'staff',
       label: 'Staff',

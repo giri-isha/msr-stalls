@@ -3,7 +3,7 @@ import type { Declaration } from './declarations';
 import type { BuilderForm, BuiltForm } from './form-builder';
 import { AUTHORABLE_FIELD_TYPES } from './form-builder';
 import { SELF_SERVE_STEPS } from './access';
-import type { GatedStep } from './onboarding';
+import type { GatedStep, OnboardingStep } from './onboarding';
 import type { SubmittedSection } from './submitted';
 import { CATEGORY_KEY_PATTERN, ZONE_CODE_PATTERN } from './zones';
 import { RATE_SCOPES } from './rates';
@@ -340,6 +340,22 @@ export interface PublicStaffCoupon {
   /** Every coupon's capacity added up. A CEILING, never a quota: a vendor who
    *  needs three people registers three and is done. */
   capacity: number;
+  /** Whether the requester may start this step at all: asked of their type,
+   *  and the edition's ordering has reached it.
+   *
+   *  🔴 Here rather than read off `pending`, because `pendingSteps` is silent
+   *  about STAFF_REGISTRATION until a coupon exists — so the one request the
+   *  Get Your Coupon button is about to mint for is exactly the one the pending
+   *  list cannot answer for. The portal drew the tab anyway, and the button
+   *  minted nothing: the coupon route refuses a step that is not asked or not
+   *  yet reached. `false` means there is no door here yet, and the portal draws
+   *  none. Same question `assertStepAvailable` asks before the mint, so a tab
+   *  can never offer what that would refuse. */
+  open: boolean;
+  /** The steps being waited on, when the ordering has simply not reached this
+   *  one. Empty when `open`, and empty when the step is not asked of this
+   *  requester type at all — nothing is coming, so nothing is awaited. */
+  blockedBy: OnboardingStep[];
 }
 
 export interface PublicStatusResponse {
