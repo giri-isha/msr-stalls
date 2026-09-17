@@ -10,7 +10,6 @@ import {
   UnknownZoneError,
 } from './errors';
 import { actorFrom, audit } from './audit';
-import { MODULE_KEY } from './roles';
 
 /** The selection status machine. Anything not listed is an
  *  `InvalidTransitionError`. Rejecting is allowed from any live status — the

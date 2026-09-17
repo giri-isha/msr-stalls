@@ -14,7 +14,6 @@ import {
   UnknownRequestError,
 } from './errors';
 import { allocatedNumbers, allocatedZone, factsInclude, refreshStage } from './facts';
-import { MODULE_KEY } from './roles';
 import { isOurKey } from './uploads';
 
 /** The Bank Details and Requirements form — the one Phase 2 surface a vendor

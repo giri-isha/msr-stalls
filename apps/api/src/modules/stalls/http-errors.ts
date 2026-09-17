@@ -2,6 +2,7 @@ import type { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from
 import { NotAuthorizedError, ValidationFailedError } from '../../errors';
 import {
   AccountEmailTakenError,
+  AmbiguousRequesterError,
   BankDetailsLockedError,
   CannotSetPasswordError,
   CategoryInUseError,
@@ -137,6 +138,7 @@ function statusFor(err: unknown): number | null {
     err instanceof DuplicatePaymentError ||
     err instanceof NothingToSendError ||
     err instanceof AccountEmailTakenError ||
+    err instanceof AmbiguousRequesterError ||
     err instanceof PersonEmailTakenError ||
     err instanceof CannotSetPasswordError ||
     // Configuration that cannot be applied because something already stands on

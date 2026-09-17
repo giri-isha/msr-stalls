@@ -116,6 +116,8 @@ export const ME_LEAD = {
   displayName: 'Deepa Ramanathan',
   roleKeys: ['stalls_lead'],
   privileges: seeded('stalls_lead'),
+  // `/me` publishes this now — the File a Request page reads it.
+  requestTypeScope: null,
 };
 
 export const PUBLIC_CONFIG = {
@@ -332,6 +334,8 @@ export const ME_ADMIN = {
    *  A privilege added in a later release reaches this fixture with no edit,
    *  which is exactly how it reaches a real admin. */
   privileges: [...STALL_PRIVILEGES],
+  // An admin reaches every requester type, which is what `null` means.
+  requestTypeScope: null,
 };
 
 /**

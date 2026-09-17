@@ -11,7 +11,6 @@ import { changeSet } from '@stalls/core';
 import { actorFrom, audit } from './audit';
 import type { Db } from './editions';
 import { UnknownRequestError, UnknownZoneError } from './errors';
-import { MODULE_KEY } from './roles';
 import { type RequestScope, UNSCOPED, narrowType, scopeWhere } from './scope';
 
 const summaryInclude = {

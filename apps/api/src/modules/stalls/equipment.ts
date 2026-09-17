@@ -12,7 +12,6 @@ import { chargesFor } from './config';
 import type { Db } from './editions';
 import { UnknownRequestError } from './errors';
 import { allocatedNumbers } from './facts';
-import { MODULE_KEY } from './roles';
 import { type RequestScope, UNSCOPED, scopeWhere } from './scope';
 
 /** The chairs-and-tables counter, over two days.

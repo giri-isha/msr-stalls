@@ -17,7 +17,6 @@ import {
   UnknownAccountError,
 } from './errors';
 import { type AccessLinkDeps, deliverAccessLink } from './portal';
-import { MODULE_KEY } from './roles';
 import { endAllSessions } from './session';
 
 /**

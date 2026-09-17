@@ -10,6 +10,8 @@ import {
   CopyEditionInput,
   CheckInInput,
   ConfirmPaymentInput,
+  type CouponView,
+  type PaymentClaimView,
   type PaymentClaimsResponse,
   ReviewPaymentClaimInput,
   CreateEditionInput,
@@ -30,6 +32,12 @@ import {
   EquipmentPatch,
   FineTypeInput,
   FlagRequestInput,
+  FileBankInput,
+  FileClaimInput,
+  FileFssaiInput,
+  FileRequestInput,
+  type FileRequestResponse,
+  FileStaffInput,
   FlowInput,
   GrantRoleInput,
   ListAuditQuery,
@@ -48,6 +56,7 @@ import {
   RateCardInput,
   RejectRequestInput,
   ReminderKind,
+  RequesterLookupQuery,
   SelectRequestInput,
   SendEmailInput,
   SetCouponCapacityInput,
@@ -83,7 +92,7 @@ import * as finance from './finance';
 import * as paymentClaims from './payment-claims';
 import * as onboarding from './onboarding';
 import { applyPlan, listAvailableStalls, readPlan, writePlan } from './planning';
-import { presignUpload } from './uploads';
+import { isOurKey, presignUpload } from './uploads';
 import {
   dashboardCounts,
   flagRequest,
@@ -92,8 +101,13 @@ import {
   patchRequest,
   unflagRequest,
 } from './requests';
-import { UnknownRequestError } from './errors';
-import { requirePrivilege, requireAnyPrivilege, requireBackoffice } from './roles';
+import { UnknownAccessLinkError, UnknownRequestError } from './errors';
+import {
+  type BackofficeCaller,
+  requireAnyPrivilege,
+  requireBackoffice,
+  requirePrivilege,
+} from './roles';
 import { requireOwnerScope, requireRequestScope, scopeOf } from './scope';
 import {
   backupRequest,
@@ -106,7 +120,10 @@ import {
   unshortlist,
 } from './selection';
 import * as signature from './signature';
+import { onBehalfOf } from './audit';
 import { listAudit, requestAudit } from './audit-read';
+import { getBankForm, submitBankDetails } from './bank';
+import { fileRequest, fssaiFormView, lookupRequester, staffFormView } from './filing';
 import { listUsers } from './directory';
 import { listPrivileges } from './privileges';
 import { createRole, deleteRole, getRole, updateRole } from './roles-admin';
@@ -268,6 +285,157 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     await requireRequestScope(caller, prisma, req.params.id);
     return requestAudit(prisma, req.params.id);
   });
+
+  // ── Filing on behalf of a requester ──────────────────────────────────────
+  //
+  // The same five writes the requester has, with a member as the actor. Each
+  // is gated on its OWN privilege, then on the request's scope; the seam
+  // validates, once, for both sides.
+
+  /** Resolves a contact to an account for the requester step.
+   *
+   *  ⚠️ On `filing.request`, NOT the Users directory: that needs `config.read`,
+   *  which a Local Welfare member does not hold. Returns who the account is and
+   *  how much they already have here — never a token. */
+  zod.get(
+    '/requests/file/lookup',
+    { schema: { querystring: RequesterLookupQuery } },
+    async (req) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'filing.request');
+      const edition = await activeEditionFor(prisma, caller);
+      return lookupRequester(prisma, edition.id, req.query.contact);
+    },
+  );
+
+  zod.post(
+    '/requests/file',
+    { schema: { body: FileRequestInput } },
+    async (req, reply): Promise<FileRequestResponse> => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'filing.request');
+      await activeEditionFor(prisma, caller);
+      reply.status(201);
+      return fileRequest(
+        prisma,
+        { mail: deps.mail, whatsapp: deps.whatsapp, statusUrl: deps.statusUrl },
+        caller,
+        req.body,
+      );
+    },
+  );
+
+  /** The request's account, for `onBehalfOf`. A request that is not there
+   *  raises the same 404 the route's own lookup would. */
+  const accountOf = async (id: string) => {
+    const r = await prisma.stallRequest.findUnique({
+      where: { id },
+      select: { accountId: true },
+    });
+    if (!r) throw new UnknownRequestError(id);
+    return r.accountId;
+  };
+  const filingFor = async (caller: BackofficeCaller, requestId: string) =>
+    onBehalfOf(
+      { personId: caller.personId, displayName: caller.displayName },
+      await accountOf(requestId),
+    );
+
+  zod.get('/requests/:id/bank-form', { schema: { params: IdParams } }, async (req) => {
+    const caller = await requireBackoffice(req, prisma);
+    requirePrivilege(caller, 'filing.bank');
+    await requireRequestScope(caller, prisma, req.params.id);
+    return getBankForm(prisma, req.params.id);
+  });
+
+  zod.post(
+    '/requests/:id/bank',
+    { schema: { params: IdParams, body: FileBankInput } },
+    async (req, reply) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'filing.bank');
+      await requireRequestScope(caller, prisma, req.params.id);
+      const { attestation: _attested, ...body } = req.body;
+      await submitBankDetails(prisma, req.params.id, body, await filingFor(caller, req.params.id));
+      reply.status(204);
+    },
+  );
+
+  zod.get('/requests/:id/fssai-form', { schema: { params: IdParams } }, async (req) => {
+    const caller = await requireBackoffice(req, prisma);
+    requirePrivilege(caller, 'filing.fssai');
+    await requireRequestScope(caller, prisma, req.params.id);
+    return fssaiFormView(prisma, req.params.id);
+  });
+
+  zod.post(
+    '/requests/:id/fssai',
+    { schema: { params: IdParams, body: FileFssaiInput } },
+    async (req, reply) => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'filing.fssai');
+      await requireRequestScope(caller, prisma, req.params.id);
+      // The same rule the vendor's own upload keeps: a key sent back must be
+      // one this module handed out, for this purpose.
+      if (!req.body.files.every((f) => isOurKey(f.key, 'FSSAI'))) {
+        throw new UnknownAccessLinkError();
+      }
+      const { attestation: _attested, ...body } = req.body;
+      await onboarding.submitFssai(
+        prisma,
+        req.params.id,
+        body,
+        await filingFor(caller, req.params.id),
+      );
+      reply.status(204);
+    },
+  );
+
+  zod.get('/requests/:id/staff-form', { schema: { params: IdParams } }, async (req) => {
+    const caller = await requireBackoffice(req, prisma);
+    requirePrivilege(caller, 'filing.staff');
+    await requireRequestScope(caller, prisma, req.params.id);
+    return staffFormView(prisma, req.params.id, {
+      kind: 'BACKOFFICE',
+      personId: caller.personId,
+      name: caller.displayName,
+    });
+  });
+
+  zod.post(
+    '/requests/:id/staff',
+    { schema: { params: IdParams, body: FileStaffInput } },
+    async (req, reply): Promise<CouponView> => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'filing.staff');
+      await requireRequestScope(caller, prisma, req.params.id);
+      const filing = await filingFor(caller, req.params.id);
+      // 🔴 The STALL'S own coupon, found or issued — never a code from the
+      // body. The capacity rule and the coupon's own audit row both still
+      // hold, exactly as they do for the vendor's team registering themselves.
+      const { couponCode } = await staffFormView(prisma, req.params.id, filing.actor);
+      const { attestation: _attested, ...body } = req.body;
+      reply.status(201);
+      return onboarding.registerStaff(prisma, { ...body, couponCode }, filing);
+    },
+  );
+
+  zod.post(
+    '/requests/:id/payment-claim',
+    { schema: { params: IdParams, body: FileClaimInput } },
+    async (req, reply): Promise<PaymentClaimView> => {
+      const caller = await requireBackoffice(req, prisma);
+      requirePrivilege(caller, 'filing.claim');
+      await requireRequestScope(caller, prisma, req.params.id);
+      reply.status(201);
+      return paymentClaims.submitPaymentClaim(
+        prisma,
+        req.params.id,
+        req.body,
+        await filingFor(caller, req.params.id),
+      );
+    },
+  );
 
   /** Correcting an application after the fact — including the bay the team and
    *  the requester settle on, which is what the stall is priced at. */
@@ -933,7 +1101,22 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     // edition; the template attachment is part of an email. Asking for
     // `comms.write` before a form image would mean nobody could put the venue
     // layout on a form without also being able to send mail to every vendor.
-    requirePrivilege(caller, req.body.purpose === 'FORM_NOTE' ? 'config.write' : 'comms.write');
+    // A display block's picture is part of a FORM, authored by somebody who
+    // configures the edition; a template attachment is part of an EMAIL; a
+    // cheque, PAN, GST or certificate is part of a form being filed FOR a
+    // requester. An admin-added file question can sit on any of the five.
+    const purpose = req.body.purpose;
+    if (purpose === 'FORM_NOTE') requirePrivilege(caller, 'config.write');
+    else if (purpose === 'TEMPLATE_ATTACHMENT') requirePrivilege(caller, 'comms.write');
+    else if (purpose === 'FSSAI') requirePrivilege(caller, 'filing.fssai');
+    else if (purpose === 'FORM_FIELD') {
+      requireAnyPrivilege(caller, [
+        'filing.request',
+        'filing.bank',
+        'filing.fssai',
+        'filing.staff',
+      ]);
+    } else requirePrivilege(caller, 'filing.bank');
     return presignUpload(deps.files, req.body);
   });
 

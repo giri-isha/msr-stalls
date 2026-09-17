@@ -13,7 +13,6 @@ import { actorFrom, audit } from './audit';
 import { chargesFor, listZones, planCategoriesFor } from './config';
 import type { Db } from './editions';
 import { UnknownCategoryError, UnknownZoneError } from './errors';
-import { MODULE_KEY } from './roles';
 
 /** ⚠️ Built from the EDITION's categories, not a constant. A column an admin
  *  added has to appear on every row at zero, or the grid renders ragged and the

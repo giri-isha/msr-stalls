@@ -40,7 +40,6 @@ import {
   staffExpected,
 } from './facts';
 import { quoteContext, quoteFor, toQuoteView } from './quotes';
-import { MODULE_KEY } from './roles';
 import { type RequestScope, UNSCOPED, scopeWhere } from './scope';
 
 /** Everything between "you are selected" and "you are all set": the coupon a

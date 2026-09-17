@@ -62,10 +62,9 @@ import type { ZodTypeProvider } from '../../zod-validation';
 import { audit, byRequester, requesterActor } from './audit';
 import { resolveAccessLink, resolveRequesterType } from './accounts';
 import { getBankForm, submitBankDetails } from './bank';
-import { declarationsForForm } from './declarations';
 import { submitPaymentClaim } from './payment-claims';
-import { publicFormFor } from './form-builder';
 import { getPublicConfig } from './config';
+import { fssaiFormView } from './filing';
 import type { StallsDeps } from './deps';
 import { UnknownAccessLinkError } from './errors';
 import { registerStaff, resolveCoupon, submitFssai, toCouponView } from './onboarding';
@@ -501,28 +500,9 @@ export function registerStallsPublicRoutes(app: FastifyInstance, deps: StallsDep
     async (req): Promise<FssaiFormView> => {
       const link = await resolveAccessLink(prisma, req.params.token, 'FSSAI_UPLOAD');
       if (!link.requestId) throw new UnknownAccessLinkError();
-      const r = await prisma.stallRequest.findUnique({
-        where: { id: link.requestId },
-        include: { fssai: { include: { files: true } } },
-      });
-      if (!r) throw new UnknownAccessLinkError();
-      const [form, declarations] = await Promise.all([
-        publicFormFor(prisma, r.editionId, 'FSSAI'),
-        declarationsForForm(prisma, r.editionId, 'FSSAI'),
-      ]);
-      return {
-        form,
-        declarations,
-        reference: r.reference,
-        stallName: r.stallName,
-        requesterName: r.requesterName,
-        uploadedAt: r.fssai?.submittedAt.toISOString() ?? null,
-        verifiedAt: r.fssai?.verifiedAt?.toISOString() ?? null,
-        files: (r.fssai?.files ?? []).map((f) => ({
-          name: f.fileName,
-          uploadedAt: f.uploadedAt.toISOString(),
-        })),
-      };
+      // The same view the backoffice draws when it files this for somebody —
+      // one function, so the two forms cannot ask different questions.
+      return fssaiFormView(prisma, link.requestId);
     },
   );
 

@@ -20,7 +20,7 @@ import {
   UnknownPersonError,
   UnknownRoleError,
 } from './errors';
-import { MODULE_KEY, type BackofficeCaller, assignableRolesFor, editableRolesFor } from './roles';
+import { type BackofficeCaller, assignableRolesFor, editableRolesFor } from './roles';
 
 /** The roles, with the caller's own reach marked on each.
  *

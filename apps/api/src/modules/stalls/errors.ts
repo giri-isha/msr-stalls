@@ -446,6 +446,23 @@ export class BankDetailsLockedError extends Error {
 
 /** A step that the edition's flow config has switched off, or that does not
  *  apply to this requester type. Mapped to 409. */
+/** Two contacts on one filing name two DIFFERENT accounts. Mapped to 409,
+ *  with both names in the message: the filer can see both rows and chooses
+ *  which contact to file under. Merging two vendors' histories on a desk's
+ *  guess is not undoable, so this refuses rather than picking. */
+export class AmbiguousRequesterError extends Error {
+  constructor(
+    readonly byEmail: string,
+    readonly byPhone: string,
+  ) {
+    super(
+      `that email address belongs to ${byEmail} and that mobile number to ${byPhone} — ` +
+        'file with one contact or the other',
+    );
+    this.name = 'AmbiguousRequesterError';
+  }
+}
+
 export class StepNotOpenError extends Error {
   constructor(readonly step: string) {
     super(`the ${step} step is not open for this request`);

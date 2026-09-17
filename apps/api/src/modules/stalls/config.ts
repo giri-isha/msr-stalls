@@ -20,7 +20,6 @@ import { seedBankDeclarations, seedDeclarations } from './declarations';
 import { publicFormsFor, seedFormDefinitions } from './form-builder';
 import { type Db, activeEdition } from './editions';
 import { CategoryInUseError, UnknownZoneError, ZoneExistsError, ZoneInUseError } from './errors';
-import { MODULE_KEY } from './roles';
 
 /** Charges as printed on the 2025 forms. See the warning in `forms.ts`: the
  *  ashram and local welfare forms quote DIFFERENT chair rates, and both are

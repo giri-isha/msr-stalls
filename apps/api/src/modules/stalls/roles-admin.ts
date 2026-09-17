@@ -27,7 +27,7 @@ import {
   UnknownRoleError,
 } from './errors';
 import { actorFrom, audit } from './audit';
-import { MODULE_KEY, type BackofficeCaller, assignableRolesFor, roleTree } from './roles';
+import { type BackofficeCaller, assignableRolesFor, roleTree } from './roles';
 
 /** One role, opened for editing. */
 export async function getRole(

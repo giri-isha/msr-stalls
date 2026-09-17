@@ -9,7 +9,6 @@ import { actorFrom, audit } from './audit';
 import type { StallsDeps } from './deps';
 import type { Db } from './editions';
 import { SignatureProviderError, UnknownRequestError, WrongTemplateError } from './errors';
-import { MODULE_KEY } from './roles';
 
 /** The stall agreement, sent for digital signature.
  *

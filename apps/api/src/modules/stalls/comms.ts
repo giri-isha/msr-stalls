@@ -24,7 +24,6 @@ import { allocatedNumbers, allocatedZone, factsInclude, refreshStage } from './f
 import { ensureCoupon } from './onboarding';
 import { planToView, quoteContext, quoteFor, toQuoteView } from './quotes';
 import { signatureLinkFor } from './signature';
-import { MODULE_KEY } from './roles';
 import { type RequestScope, UNSCOPED, scopeWhere } from './scope';
 
 /** Vendor communication: the editable letters, who has had one, and the log of

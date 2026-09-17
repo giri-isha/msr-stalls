@@ -31,7 +31,6 @@ import {
 import { actorFrom, audit } from './audit';
 import type { Db } from './editions';
 import { SameEditionCopyError } from './errors';
-import { MODULE_KEY } from './roles';
 
 /** One write, deferred so it can run inside the caller's transaction. Built at
  *  plan time beside the row that describes it. */

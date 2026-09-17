@@ -12,7 +12,6 @@ import {
   type RequestWithFacts,
   staffExpected,
 } from './facts';
-import { MODULE_KEY } from './roles';
 import { type RequestScope, UNSCOPED, scopeWhere } from './scope';
 
 /** The check-in counter.

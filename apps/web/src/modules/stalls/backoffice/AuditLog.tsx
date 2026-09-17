@@ -126,7 +126,21 @@ export function AuditLog() {
             </option>
           ))}
         </select>
-        <div style={{ display: 'flex', gap: 4 }} role='group' aria-label='Actor'>
+        {/* A real <fieldset>, not a div wearing role='group': the chips are
+            one choice and a reader should hear the legend before them. */}
+        <fieldset style={{ display: 'flex', gap: 4, border: 0, padding: 0, margin: 0 }}>
+          <legend
+            style={{
+              position: 'absolute',
+              width: 1,
+              height: 1,
+              overflow: 'hidden',
+              clip: 'rect(0 0 0 0)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Actor
+          </legend>
           {KINDS.map(([value, label]) => (
             <button
               key={value || 'all'}
@@ -137,7 +151,7 @@ export function AuditLog() {
               {label}
             </button>
           ))}
-        </div>
+        </fieldset>
         <DateField label='From' value={from} onChange={(v) => setParam('from', v)} compact />
         <DateField label='To' value={to} onChange={(v) => setParam('to', v)} compact />
       </Toolbar>

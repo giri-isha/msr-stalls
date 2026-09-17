@@ -28,7 +28,6 @@ import {
   UnknownRequestError,
 } from './errors';
 import { confirmPayment } from './finance';
-import { MODULE_KEY } from './roles';
 
 /** 🔴 Vendors AND local welfare. Both are charged — `CHARGEABLE` in `quote.ts`
  *  is those two — so both have money to report. An ashram department is billed

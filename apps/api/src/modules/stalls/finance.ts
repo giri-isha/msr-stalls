@@ -17,7 +17,6 @@ import type { Db } from './editions';
 import { DuplicatePaymentError, RefundAlreadySubmittedError, UnknownRequestError } from './errors';
 import { allocatedNumbers, factsInclude, refreshStage, type RequestWithFacts } from './facts';
 import { planToView, quoteContext, quoteFor, toQuoteView } from './quotes';
-import { MODULE_KEY } from './roles';
 import { type RequestScope, UNSCOPED } from './scope';
 
 /** Finance: what is owed, what has come in, and what goes back.
