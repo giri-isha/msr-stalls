@@ -1,4 +1,4 @@
-import { type PendingStep, type PublicRequestStatus, isSelfServe } from '@stalls/core';
+import { type GatedStep, type PublicRequestStatus, isSelfServe } from '@stalls/core';
 import { type ReactNode, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { StatusPill, TYPE_LABEL } from '../components/StatusPill';
@@ -63,11 +63,24 @@ const STATUS_COPY: Record<string, string> = {
  * the API does not tell "done" from "not applicable" for those, and a green
  * tick invented here would be this page deciding.
  *
+ * 🔴 And only while the step is OPEN. An edition may open its steps in an
+ * order, and a step the ordering has not reached yet gets no tab at all — a
+ * door that is not yet a door. It is not hidden from the requester: it sits on
+ * the Overview's Still to do list, greyed, saying what opens it. The Overview
+ * is the road; the tabs are the doors that are actually unlocked.
+ *
+ * ⚠️ `open` is read off the API like everything else here. `gatedSteps` decides
+ * it, the same function the form mint, the coupon route and the letters obey,
+ * so a tab can never offer a step those would refuse.
+ *
  * The marks are facts, not opinions: amber is "in `pending`"; green on Staff
  * is "somebody is registered", green on Payment is "a transfer was confirmed".
  */
 export function portalTabs(r: PublicRequestStatus): Array<TabDef & { key: PortalTab }> {
-  const pending = new Set(r.pending.map((p) => p.step));
+  // ⚠️ `p.open !== false`, not `p.open`. The API and the web deploy separately,
+  // and a page served ahead of an API that does not send the field must keep
+  // showing the tabs it always showed.
+  const pending = new Set(r.pending.filter((p) => p.open !== false).map((p) => p.step));
   const claims = r.paymentClaims ?? [];
   const tabs: Array<TabDef & { key: PortalTab }> = [
     { key: 'overview', label: 'Overview', glyph: 'layout-grid' },
@@ -390,6 +403,25 @@ function Overview({
   );
 }
 
+/** What a locked step is waiting for, in the requester's words.
+ *
+ *  ⚠️ Built from `blockedBy`, which the API fills from the same `gatedSteps`
+ *  that decided the lock. Naming the steps rather than saying "not yet" is the
+ *  difference between a requester who waits and one who writes in asking why a
+ *  form has disappeared. */
+function opensAfter(step: GatedStep): string {
+  const names = (step.blockedBy ?? []).map((s) => STEP_NAME[s] ?? s);
+  if (names.length === 0) return 'Opens later';
+  return `Opens once ${names.join(' and ')} is done`;
+}
+
+const STEP_NAME: Record<string, string> = {
+  BANK_FORM: 'your bank details',
+  PAYMENT: 'your payment',
+  FSSAI: 'your FSSAI certificate',
+  STAFF_REGISTRATION: 'staff registration',
+};
+
 function StepRow({
   step,
   last,
@@ -397,17 +429,24 @@ function StepRow({
   onOpen,
   onPick,
 }: {
-  step: PendingStep;
+  step: GatedStep;
   last: boolean;
   busy: string | null;
   onOpen(step: 'BANK_FORM' | 'FSSAI'): Promise<void>;
   onPick(tab: PortalTab): void;
 }) {
   const mobile = useIsMobile();
+  // 🔴 A step the edition's ordering has not reached. It keeps its place in the
+  // list — the requester should be able to read the whole road — but it offers
+  // no way in, because there is none: the form mint, the coupon route and the
+  // staff registration page would all refuse it.
+  const locked = step.open === false;
   // Narrowed once, outside the closure — a type guard on `step.step` does not
   // survive into the click handler.
   const self = isSelfServe(step.step) ? step.step : null;
-  const action = self ? (
+  const action = locked ? (
+    <span style={{ fontSize: 12, color: 'var(--mfg)' }}>{opensAfter(step)}</span>
+  ) : self ? (
     <Btn kind='primary' onClick={() => void onOpen(self)} disabled={busy !== null}>
       {busy === step.step ? 'Opening…' : 'Open the Form'}
       <Icon name='chevron-right' size={14} />
@@ -438,8 +477,8 @@ function StepRow({
         borderBottom: last ? 'none' : '1px solid var(--bd)',
       }}
     >
-      <Tag tone='warn' size='sm'>
-        <Icon name='clock' size={12} /> {step.label}
+      <Tag tone={locked ? 'neutral' : 'warn'} size='sm'>
+        <Icon name={locked ? 'lock' : 'clock'} size={12} /> {step.label}
       </Tag>
       <span style={{ flex: 1 }} />
       {action}
@@ -460,7 +499,7 @@ function StepTab({
   onOpen,
   children,
 }: {
-  step: PendingStep | undefined;
+  step: GatedStep | undefined;
   busy: boolean;
   onOpen(): void;
   children: ReactNode;

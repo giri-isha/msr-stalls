@@ -1,4 +1,6 @@
 import type {
+  OnboardingStep,
+  StallRequestType,
   ApplyPlanResult,
   AuditEventView,
   FileBankInput,
@@ -285,7 +287,15 @@ export interface BackofficeConfig {
    *  apart. */
   rateCard: RateCardEntry[];
   charges: ChargesInput & { id: string; editionId: string };
-  flow: { bankStepEnabled: boolean; paymentStepEnabled: boolean; fssaiStepEnabled: boolean };
+  /** The three switches say WHETHER a step happens; `stages` says WHEN. The
+   *  lowest stage still outstanding is the one the requester may act on. All
+   *  four at 1 — the default — locks nothing. */
+  flow: {
+    bankStepEnabled: boolean;
+    paymentStepEnabled: boolean;
+    fssaiStepEnabled: boolean;
+    stages: Record<StallRequestType, Record<OnboardingStep, number>>;
+  };
   fineTypes: Array<{ id: string; reason: string; defaultAmountPaise: number; isActive: boolean }>;
   customFields: Array<{
     id: string;

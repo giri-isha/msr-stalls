@@ -41,8 +41,14 @@ const SUBMITTED = [
 ];
 
 /** One selected request with whatever is outstanding on it. */
+/** ⚠️ `open` and `blockedBy` are OPTIONAL here on purpose, and the assertions
+ *  below mostly leave them out. The API and the web deploy separately, so a
+ *  page served ahead of an API that does not send them must keep drawing the
+ *  tabs it always drew — `portalTabs` reads `open !== false` for exactly that,
+ *  and these fixtures are what holds it. The sequencing tests at the bottom
+ *  pass them explicitly. */
 const withPending = (
-  pending: Array<{ step: string; label: string }>,
+  pending: Array<{ step: string; label: string; open?: boolean; blockedBy?: string[] }>,
   extra: Record<string, unknown> = {},
 ) => ({
   displayName: 'Priya Venkat',
@@ -545,5 +551,73 @@ describe('MyRequests', () => {
     await screen.findByText('Second Stall');
     expect(screen.queryByText('Still to do')).not.toBeInTheDocument();
     expect(screen.queryByText(/Nothing is outstanding/)).not.toBeInTheDocument();
+  });
+});
+
+// ── Steps that open in an order ─────────────────────────────────────────────
+//
+// An edition may number its steps, and a step the ordering has not reached is
+// outstanding but not yet the requester's to act on. It gets no tab — a door
+// that is not yet a door — and sits on the Overview saying what opens it.
+
+describe('a step the edition has not opened yet', () => {
+  const sequenced = () =>
+    withPending([
+      { step: 'BANK_FORM', label: 'Bank details pending', open: true, blockedBy: [] },
+      { step: 'PAYMENT', label: 'Payment pending', open: false, blockedBy: ['BANK_FORM'] },
+      {
+        step: 'FSSAI',
+        label: 'FSSAI certificate pending',
+        open: false,
+        blockedBy: ['BANK_FORM'],
+      },
+    ]);
+
+  test('draws a tab for the open step and none for the locked ones', async () => {
+    signedIn(sequenced());
+    render();
+
+    expect(await screen.findByRole('tab', { name: /bank details/i })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: /fssai/i })).toBeNull();
+    // ⚠️ Payment's tab is absent too. It appears on its own terms when the API
+    // sends figures or a claim exists; a locked PAYMENT step alone does not
+    // conjure one.
+    expect(screen.queryByRole('tab', { name: /^payment$/i })).toBeNull();
+  });
+
+  test('lists the locked steps on the Overview, saying what opens them', async () => {
+    signedIn(sequenced());
+    render();
+
+    // 🔴 Still visible. The requester reads the whole road — hiding the step
+    // entirely is how somebody writes in asking why a form vanished.
+    expect(await screen.findByText('Payment pending')).toBeTruthy();
+    expect(screen.getByText('FSSAI certificate pending')).toBeTruthy();
+    expect(screen.getAllByText(/opens once your bank details is done/i).length).toBe(2);
+  });
+
+  test('offers no way in for a locked step', async () => {
+    signedIn(sequenced());
+    render();
+
+    await screen.findByText('Payment pending');
+    // The open step keeps its button; the locked ones have none — and nothing
+    // switches to a Payment tab that does not exist.
+    expect(screen.getAllByRole('button', { name: /open the form/i })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /see payment/i })).toBeNull();
+  });
+
+  test('all-at-once is unchanged — every step keeps its tab and its button', async () => {
+    signedIn(
+      withPending([
+        { step: 'BANK_FORM', label: 'Bank details pending', open: true, blockedBy: [] },
+        { step: 'FSSAI', label: 'FSSAI certificate pending', open: true, blockedBy: [] },
+      ]),
+    );
+    render();
+
+    expect(await screen.findByRole('tab', { name: /bank details/i })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /fssai/i })).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: /open the form/i })).toHaveLength(2);
   });
 });

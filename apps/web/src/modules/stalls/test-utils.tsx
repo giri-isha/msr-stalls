@@ -417,7 +417,9 @@ export function checkInRow(over: Record<string, unknown> = {}) {
     passes2w: 2,
     passes4w: 1,
     passesStaff: 3,
-    pending: [{ step: 'FSSAI', label: 'FSSAI certificate pending' }],
+    pending: [
+      { step: 'FSSAI', label: 'FSSAI certificate pending', stage: 1, open: true, blockedBy: [] },
+    ],
     checkedInAt: null,
     checkedInBy: null,
     note: null,
@@ -577,7 +579,18 @@ export const BACKOFFICE_CONFIG = {
     tableReplacementPaise: 90000,
     damagePenaltyPaise: 25000,
   },
-  flow: { bankStepEnabled: true, paymentStepEnabled: true, fssaiStepEnabled: true },
+  flow: {
+    bankStepEnabled: true,
+    paymentStepEnabled: true,
+    fssaiStepEnabled: true,
+    // All at stage 1: nothing is ever locked, which is the default and what
+    // every existing assertion on this fixture was written against.
+    stages: {
+      VENDOR: { BANK_FORM: 1, PAYMENT: 1, FSSAI: 1, STAFF_REGISTRATION: 1 },
+      LOCAL_WELFARE: { BANK_FORM: 1, PAYMENT: 1, FSSAI: 1, STAFF_REGISTRATION: 1 },
+      ASHRAM: { BANK_FORM: 1, PAYMENT: 1, FSSAI: 1, STAFF_REGISTRATION: 1 },
+    },
+  },
   fineTypes: [],
   customFields: [],
 };

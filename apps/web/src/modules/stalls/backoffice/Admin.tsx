@@ -1,4 +1,11 @@
 import { useEffect, useState } from 'react';
+import {
+  ALL_AT_ONCE,
+  type OnboardingStep,
+  type StallRequestType,
+  needsBankStep,
+  needsPaymentStep,
+} from '@stalls/core';
 import * as api from '../api';
 import { Grid, type PanelProps } from '../components/config';
 import { Panel } from '../components/Panel';
@@ -176,11 +183,81 @@ export function Admin() {
   );
 }
 
-function Flow({ c, writable, run }: PanelProps) {
-  const [v, setV] = useState(c.flow);
-  useEffect(() => setV(c.flow), [c.flow]);
+/** The four steps, in the order they are worked, with what each one is. */
+const FLOW_STEPS: Array<{ step: OnboardingStep; label: string; help: string }> = [
+  {
+    step: 'BANK_FORM',
+    label: 'Bank, GST and Contract Details',
+    help: 'Collected by emailed form after selection.',
+  },
+  {
+    step: 'PAYMENT',
+    label: 'Payment Details and Confirmation',
+    help: 'Payment email, then finance confirms receipt.',
+  },
+  { step: 'FSSAI', label: 'FSSAI Certificate Upload', help: 'Food stalls upload before check-in.' },
+  {
+    step: 'STAFF_REGISTRATION',
+    label: 'Staff Registration',
+    help: 'Never switched off — an unregistered person cannot be let onto the venue.',
+  },
+];
 
-  const Step = ({ k, label, help }: { k: keyof typeof v; label: string; help: string }) => (
+const FLOW_TYPES: Array<{ type: StallRequestType; label: string }> = [
+  { type: 'VENDOR', label: 'Vendor' },
+  { type: 'LOCAL_WELFARE', label: 'Local Welfare' },
+  { type: 'ASHRAM', label: 'Ashram' },
+];
+
+/** Whether a step is asked of a requester type at all.
+ *
+ * ⚠️ Drawn as a DASH rather than left out. A gap in the grid reads as a
+ * mistake; a dash says the step does not exist for that type, which is a fact
+ * about the flow the screen should teach. The rules are `@stalls/core`'s — the
+ * screen asks them rather than repeating them. */
+const stepApplies = (step: OnboardingStep, type: StallRequestType): boolean => {
+  if (step === 'BANK_FORM') return needsBankStep(type);
+  if (step === 'PAYMENT') return needsPaymentStep(type);
+  return true;
+};
+
+const ONE_AT_A_TIME: Record<OnboardingStep, number> = {
+  BANK_FORM: 1,
+  PAYMENT: 2,
+  FSSAI: 3,
+  STAFF_REGISTRATION: 4,
+};
+
+/** ⚠️ The web and the API deploy separately, so a screen served ahead of an API
+ *  that does not send `stages` must still open. All-at-once is the right thing
+ *  to fall back to: it is the default, and it is what such an API is doing. */
+const withStages = (flow: api.BackofficeConfig['flow']): api.BackofficeConfig['flow'] =>
+  flow.stages
+    ? flow
+    : {
+        ...flow,
+        stages: {
+          VENDOR: { ...ALL_AT_ONCE },
+          LOCAL_WELFARE: { ...ALL_AT_ONCE },
+          ASHRAM: { ...ALL_AT_ONCE },
+        },
+      };
+
+function Flow({ c, writable, run }: PanelProps) {
+  const [v, setV] = useState(() => withStages(c.flow));
+  useEffect(() => setV(withStages(c.flow)), [c.flow]);
+
+  const enabled = (k: 'bankStepEnabled' | 'paymentStepEnabled' | 'fssaiStepEnabled') => v[k];
+
+  const Step = ({
+    k,
+    label,
+    help,
+  }: {
+    k: 'bankStepEnabled' | 'paymentStepEnabled' | 'fssaiStepEnabled';
+    label: string;
+    help: string;
+  }) => (
     // The label WRAPS its control, which associates them implicitly; the rule
     // cannot see the input inside <Checkbox>.
     // biome-ignore lint/a11y/noLabelWithoutControl: implicit association by wrapping
@@ -191,13 +268,13 @@ function Flow({ c, writable, run }: PanelProps) {
         gap: 11,
         padding: '12px 14px',
         borderRadius: 'var(--r3)',
-        border: `1px solid ${v[k] ? 'var(--pri)' : 'var(--bd)'}`,
-        background: v[k] ? 'var(--pri-t)' : 'var(--card)',
+        border: `1px solid ${enabled(k) ? 'var(--pri)' : 'var(--bd)'}`,
+        background: enabled(k) ? 'var(--pri-t)' : 'var(--card)',
         cursor: writable ? 'pointer' : 'default',
       }}
     >
       <Checkbox
-        checked={v[k]}
+        checked={enabled(k)}
         disabled={!writable}
         onChange={(e) => setV({ ...v, [k]: e.target.checked })}
         style={{ marginTop: 2 }}
@@ -211,10 +288,19 @@ function Flow({ c, writable, run }: PanelProps) {
     </label>
   );
 
+  const setStage = (type: StallRequestType, step: OnboardingStep, stage: number) =>
+    setV({
+      ...v,
+      stages: { ...v.stages, [type]: { ...v.stages[type], [step]: stage } },
+    });
+
+  const fill = (type: StallRequestType, stages: Record<OnboardingStep, number>) =>
+    setV({ ...v, stages: { ...v.stages, [type]: { ...stages } } });
+
   return (
     <Panel
       title='Onboarding Flow'
-      note='Which steps a selected vendor goes through. Phase 2 and 3 read these.'
+      note='Which steps a selected requester goes through, and in what order.'
       footer={
         <Btn
           kind='primary'
@@ -242,6 +328,99 @@ function Flow({ c, writable, run }: PanelProps) {
           label='FSSAI Certificate Upload'
           help='Food stalls upload before check-in.'
         />
+      </div>
+
+      <div style={{ marginTop: 22 }}>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>When each step opens</div>
+        <p style={{ fontSize: 11.5, color: 'var(--mfg)', margin: '4px 0 12px' }}>
+          The lowest number still outstanding is what the requester can act on; anything numbered
+          above it stays locked until that one is done. Steps sharing a number open together, so all
+          1s opens everything at once.
+        </p>
+
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--mfg)' }}>Step</th>
+              {FLOW_TYPES.map((t) => (
+                <th
+                  key={t.type}
+                  style={{ textAlign: 'center', padding: '6px 8px', color: 'var(--mfg)' }}
+                >
+                  {t.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {FLOW_STEPS.map(({ step, label, help }) => (
+              <tr key={step} style={{ borderTop: '1px solid var(--bd)' }}>
+                <td style={{ padding: '8px' }}>
+                  <span style={{ display: 'block', fontWeight: 600 }}>{label}</span>
+                  <span style={{ display: 'block', fontSize: 11, color: 'var(--mfg)' }}>
+                    {help}
+                  </span>
+                </td>
+                {FLOW_TYPES.map((t) => (
+                  <td key={t.type} style={{ textAlign: 'center', padding: '8px' }}>
+                    {stepApplies(step, t.type) ? (
+                      <input
+                        type='number'
+                        min={1}
+                        max={4}
+                        aria-label={`${label} stage for ${t.label}`}
+                        disabled={!writable}
+                        value={v.stages[t.type][step]}
+                        onChange={(e) => setStage(t.type, step, Number(e.target.value))}
+                        style={{
+                          width: 52,
+                          textAlign: 'center',
+                          padding: '5px 4px',
+                          borderRadius: 'var(--r2)',
+                          border: '1px solid var(--bd)',
+                          background: 'var(--card)',
+                          color: 'inherit',
+                        }}
+                      />
+                    ) : (
+                      // Not asked of this requester type at all — see
+                      // `needsBankStep` and `needsPaymentStep`.
+                      <span
+                        title={`${label} is not asked of a ${t.label.toLowerCase()} request`}
+                        style={{ color: 'var(--mfg)' }}
+                      >
+                        —
+                      </span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+            <tr style={{ borderTop: '1px solid var(--bd)' }}>
+              <td style={{ padding: '8px', color: 'var(--mfg)', fontSize: 11.5 }}>Fill a column</td>
+              {FLOW_TYPES.map((t) => (
+                <td key={t.type} style={{ textAlign: 'center', padding: '8px' }}>
+                  <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+                    <Btn
+                      kind='ghost'
+                      disabled={!writable}
+                      onClick={() => fill(t.type, { ...ALL_AT_ONCE })}
+                    >
+                      All at once
+                    </Btn>
+                    <Btn
+                      kind='ghost'
+                      disabled={!writable}
+                      onClick={() => fill(t.type, ONE_AT_A_TIME)}
+                    >
+                      One at a time
+                    </Btn>
+                  </div>
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
       </div>
     </Panel>
   );
