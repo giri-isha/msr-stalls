@@ -150,8 +150,8 @@ export function StaffTab({
           <PanelTitle icon='info'>How it works</PanelTitle>
           <p style={{ margin: 0, fontSize: 12.5, color: 'var(--mfg)', lineHeight: 1.6 }}>
             Forward the coupon to the people who will work on your stall; each of them registers
-            themselves with it. Register only those who will actually be there — there is no need
-            to use up the whole allowance. Share it with your own team only: everyone who registers
+            themselves with it. Register only those who will actually be there — there is no need to
+            use up the whole allowance. Share it with your own team only: everyone who registers
             with it is recorded against your stall.
           </p>
         </Panel>
