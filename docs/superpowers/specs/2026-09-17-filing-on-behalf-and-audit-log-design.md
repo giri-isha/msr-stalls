@@ -94,6 +94,12 @@ what" cannot be answered today.
    | `POST /requests/:id/staff` | `filing.staff` | `registerStaff` via the request's coupon |
    | `POST /requests/:id/payment-claim` | `filing.claim` | `submitPaymentClaim` |
 
+   A sixth, `GET /requests/file/lookup?contact=`, also on `filing.request`,
+   resolves a contact to an account for the requester step — not the Users
+   directory, which needs `config.read` that a Local Welfare member does not
+   hold. It returns display name, requester type and request count, never a
+   token.
+
    `FileRequestInput` is `{ requester: { displayName, email?, phone? },
    request: SubmitRequestInput, attestation: true }`. Staff filing resolves the
    request's live coupon with `ensureCoupon` and registers against it, so the
@@ -222,7 +228,7 @@ Filing a request from the backoffice:
 ```
 Requests › File a request
   └─ pick form (narrowed to caller's scope)
-  └─ requester: name + email/phone  →  GET /users?contact=  →  attach or new
+  └─ requester: name + email/phone  →  GET /requests/file/lookup?contact=  →  attach or new
   └─ RequestFormBody(config, submit)
        submit → POST /requests/file
                  requirePrivilege('filing.request') → narrowType(scope, form)
