@@ -47,12 +47,15 @@ what" cannot be answered today.
    `requireRequestScope` before it does anything. The form-picker step offers
    only the types inside the caller's scope.
 
-3. **A contact of either kind is enough.** `StallAccount.email` and `.phone`
-   both become nullable, with a check constraint that at least one is present.
-   `email` keeps its unique index (Postgres allows many nulls); `phone` gains a
-   unique index of its own, since it is now a lookup key that can stand alone.
-   Filing takes the requester's display name plus an email, a phone or both.
-   `findAccountByContact` already resolves either.
+3. **A contact of either kind is enough, the way registration already
+   allows.** No schema change. `register` already creates a phone-only account
+   with the placeholder address `mobile+<digits>@stalls.invalid` and an
+   email-only account with `phone: ''`, and `isPlaceholderEmail` keeps the
+   placeholder out of every send and every screen. Filing follows the same
+   convention: the requester's display name plus an email, a phone or both,
+   and `findAccountByContact` resolves either. A mobile stays non-unique,
+   because two stalls can share a shopkeeper's number; the first account
+   registered under it wins, exactly as the access-link lookup already decides.
 
 4. **An existing account is attached to, never duplicated.** Before the form is
    shown, the contacts are resolved. One match: the screen names the account
@@ -139,7 +142,7 @@ what" cannot be answered today.
     | Column | Notes |
     |---|---|
     | `id`, `occurredAt` | |
-    | `editionId?`, `requestId?`, `accountId?` | text refs, no FKs — the trail outlives the rows |
+    | `editionId?`, `requestId?`, `accountId?` | nullable relations, `onDelete: SetNull`, so a row survives its subject and scope can join |
     | `actorKind` | `BACKOFFICE` · `REQUESTER` · `SYSTEM` |
     | `actorRef` | person id, account id, or `system` |
     | `actorName` | display name at the time, so a renamed or deleted person still reads |
@@ -153,6 +156,10 @@ what" cannot be answered today.
 
     Indexes: `(editionId, occurredAt)`, `(requestId, occurredAt)`,
     `(actorRef, occurredAt)`, `(action)`. No route updates or deletes a row.
+    The request and account relations exist for the read side: the scoped log
+    narrows request-bound events through `scopeWhere` on the joined request,
+    and the row keeps its reference when the request is gone. Nothing in the
+    module deletes a request, so `SetNull` is a guarantee rather than a path.
     No retention rule: the log lives as long as the database.
 
 12. **One writer.** `audit(tx, event)` in `apps/api/src/modules/stalls/audit.ts`
@@ -196,7 +203,9 @@ what" cannot be answered today.
 
     - `GET /audit` — the active edition's log. Query: `q` (matches action
       label, actor name, reference), `actions[]`, `actorKind`, `actorRef`,
-      `requestId`, `from`, `to`, `page`, `pageSize`. Edition scope applies
+      `requestId`, `from`, `to`, `page`, `pageSize` (`actions[]` travels as
+      one `action` per call; the screen filters one event type at a time).
+      Edition scope applies
       through `activeEditionFor`. Events carrying a `requestId` are narrowed by
       the request's type through `scopeWhere`; events carrying none — role
       edits, config — are visible to any holder of the privilege. Rows return
