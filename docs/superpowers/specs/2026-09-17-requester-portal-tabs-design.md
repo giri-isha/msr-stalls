@@ -1,7 +1,7 @@
 # The requester's portal: one request, in tabs
 
 Date: 2026-09-17
-Status: Approved
+Status: Built
 
 ## The problem
 
@@ -53,6 +53,11 @@ needs from them. The page should read like one.
    tick invented on the page would be the page deciding. Keeping them visible
    as done is a later, separate addition to `@stalls/core` (`stepStates`
    beside `pendingSteps`), not part of this change.
+
+   As built, the Payment tab's green mark means "a reported transfer was
+   confirmed" rather than "`payment` present and PAYMENT no longer pending":
+   the latter also holds when an admin has switched the payment step off, and
+   a green mark there would be the page deciding. The mark reads a fact.
 
 6. **Reporting a transfer is a dialog.** The inline claim form opened in the
    middle of the payment figures and pushed everything below it down. It
