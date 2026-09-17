@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import {
+  changeSet,
   type Contact,
   type UpdateAccountInput,
   isPlaceholderEmail,
@@ -100,11 +101,17 @@ export async function updateAccount(
     if (held) throw new AccountEmailTakenError(held.displayName);
   }
 
-  const changed: Record<string, { from: string; to: string }> = {};
-  for (const field of ['displayName', 'email', 'phone'] as const) {
-    if (next[field] !== account[field]) changed[field] = { from: account[field], to: next[field] };
-  }
-  if (Object.keys(changed).length === 0) return;
+  // ⚠️ The same `changeSet` the amendment uses, so one shape of "what moved"
+  // is stored everywhere and the two audit screens draw both the same way.
+  const changes = changeSet(account, next);
+  if (changes.length === 0) return;
+
+  // The old `{ field: { from, to } }` shape stays in `detail` as well: the
+  // host's trail has no `changes` column, and this is the reading it has
+  // always had.
+  const changed = Object.fromEntries(
+    changes.map((c) => [c.field, { from: c.before, to: c.after }]),
+  );
 
   await db.stallAccount.update({ where: { id: account.id }, data: next });
   await audit(db, {
@@ -112,6 +119,7 @@ export async function updateAccount(
     action: 'stall_account.updated',
     subject: { type: 'account', ref: account.id },
     accountId: account.id,
+    changes,
     detail: changed,
   });
 }

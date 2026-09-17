@@ -60,6 +60,7 @@ export const STALL_PRIVILEGES = [
   'users.write',
   'roles.write',
   'passwords.write',
+  'audit.read',
 ] as const;
 export type StallPrivilege = (typeof STALL_PRIVILEGES)[number];
 
@@ -336,6 +337,22 @@ export const PRIVILEGE_CATEGORIES: readonly PrivilegeCategory[] = [
       },
     ],
   },
+  {
+    /** 🔴 `sensitive`, like `finance.read`, and for the same kind of reason:
+     *  the log carries the change sets of every record, so a reader of it sees
+     *  what a bank form said before it was corrected. */
+    key: 'audit',
+    name: 'Audit',
+    items: [
+      {
+        code: 'audit.read',
+        label: 'Read the audit log',
+        kind: 'sensitive',
+        description:
+          'Open the Audit Logs page and the Activity Log on a request: who did what, when, and what it said before.',
+      },
+    ],
+  },
 ];
 
 /**
@@ -410,6 +427,8 @@ const LEAD_PRIVILEGES = [
   'equipment.read',
   'config.read',
   'refunds.write',
+  // Reads the log. Sensitive, like `finance.read`, and for the same reason.
+  'audit.read',
 ] as const;
 
 /** The roles the module ships with.

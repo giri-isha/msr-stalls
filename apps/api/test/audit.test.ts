@@ -16,6 +16,8 @@ import { auditedMailer, auditedWhatsApp } from '../src/modules/stalls/audit-send
 import { submitRequest } from '../src/modules/stalls/submit';
 import { ensureCoupon, registerStaff, submitFssai } from '../src/modules/stalls/onboarding';
 import { submitPaymentClaim } from '../src/modules/stalls/payment-claims';
+import { patchRequest } from '../src/modules/stalls/requests';
+import { updateAccount } from '../src/modules/stalls/support';
 import {
   accountFor,
   LogMailer,
@@ -391,5 +393,188 @@ describe('outbound mail and WhatsApp leave a row each', () => {
     } finally {
       await signin.close();
     }
+  });
+});
+
+describe('change sets', () => {
+  test('an amendment records before and after, field by field', async () => {
+    await edition();
+    const { requestId } = await selected(['C1-1']);
+    const lead = await seedBackoffice(['stalls_lead']);
+    await patchRequest(
+      prisma,
+      requestId,
+      { stallName: 'New Name', chairsNeeded: 4, remarks: 'moved' },
+      lead.personId,
+    );
+    const row = await prisma.stallAuditEvent.findFirstOrThrow({
+      where: { requestId, action: 'stall_request.amended' },
+    });
+    expect(row.changes).toEqual([
+      { field: 'stallName', before: 'Green Leaf Organics', after: 'New Name' },
+      { field: 'chairsNeeded', before: 0, after: 4 },
+      { field: 'remarks', before: null, after: 'moved' },
+    ]);
+  });
+
+  test('appliances restated whole appear as one change', async () => {
+    await edition();
+    const { requestId } = await selected(['C1-1']);
+    const lead = await seedBackoffice(['stalls_lead']);
+    await patchRequest(
+      prisma,
+      requestId,
+      { appliances: [{ name: 'Fryer', watts: 2000 }] },
+      lead.personId,
+    );
+    const row = await prisma.stallAuditEvent.findFirstOrThrow({
+      where: { requestId, action: 'stall_request.amended' },
+    });
+    expect(row.changes).toEqual([
+      { field: 'appliances', before: [], after: [{ name: 'Fryer', watts: 2000 }] },
+    ]);
+  });
+
+  test('an account edit records what moved, and nothing when nothing did', async () => {
+    await edition();
+    const accountId = await accountFor();
+    const lead = await seedBackoffice(['stalls_lead']);
+    await updateAccount(
+      prisma,
+      accountId,
+      { displayName: 'Priya V', email: 'priya@greenleaf.example', phone: '9840012345' },
+      lead.personId,
+    );
+    const [row] = await prisma.stallAuditEvent.findMany({
+      where: { action: 'stall_account.updated' },
+    });
+    expect(row.changes).toEqual([
+      { field: 'displayName', before: 'Priya Venkat', after: 'Priya V' },
+    ]);
+    expect(row.accountId).toBe(accountId);
+  });
+});
+
+describe('reading the log', () => {
+  let app: FastifyInstance;
+  beforeAll(async () => {
+    app = await buildApp({ logger: false, mail: new LogMailer(), files: fakeStore() });
+  });
+  afterAll(() => app.close());
+
+  const get = (url: string, who: { headers: { cookie: string } }) =>
+    app.inject({ method: 'GET', url: `/api/m/stalls${url}`, headers: who.headers });
+
+  test('audit.read is required; a volunteer is refused', async () => {
+    await edition();
+    const volunteer = await seedBackoffice(['stalls_volunteer']);
+    expect((await get('/audit', volunteer)).statusCode).toBe(403);
+    const { requestId } = await selected(['C1-1']);
+    expect((await get(`/requests/${requestId}/audit`, volunteer)).statusCode).toBe(403);
+  });
+
+  test('a lead reads the edition’s log, newest first, with labels and the reference', async () => {
+    await edition();
+    const lead = await seedBackoffice(['stalls_lead'], 'deepa@example.org');
+    const { requestId, reference } = await selected(['C1-1']);
+    await audit(prisma, {
+      actor: actorFrom(lead.personId),
+      action: 'stall_request.flagged',
+      requestId,
+    });
+
+    const res = await get('/audit', lead);
+    expect(res.statusCode).toBe(200);
+    const page = res.json();
+    expect(page.total).toBeGreaterThanOrEqual(2);
+    expect(page.items[0].action).toBe('stall_request.flagged');
+    expect(page.items[0].label).toBe('Flagged for Follow-Up');
+    expect(page.items[0].reference).toBe(reference);
+    expect(page.items[0].actorName).toBe('deepa');
+  });
+
+  test('filters: action, actor kind, request, dates and a search on the reference', async () => {
+    await edition();
+    const lead = await seedBackoffice(['stalls_lead']);
+    const { requestId, reference } = await selected(['C1-1']);
+    await audit(prisma, {
+      actor: actorFrom(lead.personId),
+      action: 'stall_request.flagged',
+      requestId,
+    });
+
+    expect((await get('/audit?action=stall_request.flagged', lead)).json().total).toBe(1);
+    expect(
+      (await get('/audit?actorKind=SYSTEM', lead))
+        .json()
+        .items.every((i: { actorKind: string }) => i.actorKind === 'SYSTEM'),
+    ).toBe(true);
+    expect(
+      (await get(`/audit?requestId=${requestId}`, lead))
+        .json()
+        .items.every((i: { requestId: string }) => i.requestId === requestId),
+    ).toBe(true);
+    expect((await get(`/audit?q=${reference}`, lead)).json().total).toBeGreaterThan(0);
+    expect((await get('/audit?from=2000-01-01&to=2000-01-02', lead)).json().total).toBe(0);
+  });
+
+  test('request-type scope narrows request-bound rows and leaves unbound ones', async () => {
+    await edition();
+    const lw = await seedBackoffice(['stalls_local_welfare']);
+    await prisma.stallRole.create({
+      data: {
+        roleKey: 'test_lw_auditor',
+        name: 'LW Auditor',
+        description: '',
+        parentKey: 'stalls_lead',
+        level: 2,
+        isSystem: false,
+        allPrivileges: false,
+        canAssignSameLevel: false,
+        requestTypeScope: ['LOCAL_WELFARE'],
+        sortOrder: 99,
+        privileges: { create: [{ privilege: { connect: { code: 'audit.read' } } }] },
+      },
+    });
+    await prisma.stallBackofficeRole.create({
+      data: { personRef: lw.personId, roleKey: 'test_lw_auditor', grantedBy: SYSTEM_ACTOR_REF },
+    });
+    try {
+      const vendor = await selected(['C1-1']);
+      // No stall number: a request is routinely selected before one exists.
+      const lwReq = await selected([], {
+        requestType: 'LOCAL_WELFARE',
+        depositAcknowledged: true,
+        email: 'lw@example.org',
+        preferredZoneCode: 'A3',
+      });
+      await audit(prisma, {
+        actor: actorFrom(SYSTEM_ACTOR_REF),
+        action: 'stall_zone.updated',
+        subject: { type: 'zone', ref: 'C1' },
+      });
+
+      const items: Array<{ requestId: string | null }> = (
+        await get('/audit?pageSize=200', lw)
+      ).json().items;
+      expect(items.some((i) => i.requestId === lwReq.requestId)).toBe(true);
+      expect(items.some((i) => i.requestId === vendor.requestId)).toBe(false);
+      expect(items.some((i) => i.requestId === null)).toBe(true);
+      expect((await get(`/requests/${vendor.requestId}/audit`, lw)).statusCode).toBe(403);
+    } finally {
+      await prisma.stallBackofficeRole.deleteMany({ where: { roleKey: 'test_lw_auditor' } });
+      await prisma.stallRole.delete({ where: { roleKey: 'test_lw_auditor' } });
+    }
+  });
+
+  test('one request’s timeline', async () => {
+    await edition();
+    const lead = await seedBackoffice(['stalls_lead']);
+    const { requestId } = await selected(['C1-1']);
+    const res = await get(`/requests/${requestId}/audit`, lead);
+    expect(res.statusCode).toBe(200);
+    const items = res.json();
+    expect(items.map((i: { action: string }) => i.action)).toContain('stall_request.selected');
+    expect(items.every((i: { requestId: string }) => i.requestId === requestId)).toBe(true);
   });
 });

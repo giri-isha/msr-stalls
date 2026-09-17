@@ -32,6 +32,7 @@ import {
   FlagRequestInput,
   FlowInput,
   GrantRoleInput,
+  ListAuditQuery,
   ListRequestsQuery,
   ListUsersQuery,
   LogReminderInput,
@@ -105,6 +106,7 @@ import {
   unshortlist,
 } from './selection';
 import * as signature from './signature';
+import { listAudit, requestAudit } from './audit-read';
 import { listUsers } from './directory';
 import { listPrivileges } from './privileges';
 import { createRole, deleteRole, getRole, updateRole } from './roles-admin';
@@ -253,6 +255,16 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     requirePrivilege(caller, 'requests.read');
     await requireRequestScope(caller, prisma, req.params.id);
     return getRequest(prisma, req.params.id);
+  });
+
+  /** One request's own log — what happened to it, who did it, and what each
+   *  field said before. `audit.read` is `sensitive`: the change sets include
+   *  what a bank form said before it was corrected. */
+  zod.get('/requests/:id/audit', { schema: { params: IdParams } }, async (req) => {
+    const caller = await requireBackoffice(req, prisma);
+    requirePrivilege(caller, 'audit.read');
+    await requireRequestScope(caller, prisma, req.params.id);
+    return requestAudit(prisma, req.params.id);
   });
 
   /** Correcting an application after the fact — including the bay the team and
@@ -893,6 +905,21 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
   // ══════════════════════════════════════════════════════════════════════════
   // PHASE 2 — Communication, onboarding, money
   // ══════════════════════════════════════════════════════════════════════════
+
+  // ── Audit ─────────────────────────────────────────────────────────────────
+
+  /** The edition's whole log, filtered and paged.
+   *
+   *  ⚠️ Request-bound rows are narrowed by the caller's requester-type and bay
+   *  scope; rows about roles, bays and accounts are NOT, because they have no
+   *  requester type to narrow by and hiding them would hide the configuration
+   *  change that explains what a reader is looking at. */
+  zod.get('/audit', { schema: { querystring: ListAuditQuery } }, async (req) => {
+    const caller = await requireBackoffice(req, prisma);
+    requirePrivilege(caller, 'audit.read');
+    const edition = await activeEditionFor(prisma, caller);
+    return listAudit(prisma, edition.id, scopeOf(caller), req.query);
+  });
 
   // ── Uploads ───────────────────────────────────────────────────────────────
   // A backoffice-side presign, for the attachment that goes out with a template.

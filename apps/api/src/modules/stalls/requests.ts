@@ -7,6 +7,7 @@ import type {
   RequestPage,
   RequestSummary,
 } from '@stalls/core';
+import { changeSet } from '@stalls/core';
 import { actorFrom, audit } from './audit';
 import type { Db } from './editions';
 import { UnknownRequestError, UnknownZoneError } from './errors';
@@ -206,7 +207,30 @@ export async function patchRequest(
 ): Promise<RequestDetail> {
   const r = await db.stallRequest.findUnique({
     where: { id },
-    select: { id: true, editionId: true },
+    select: {
+      id: true,
+      editionId: true,
+      stallName: true,
+      requesterName: true,
+      email: true,
+      contactNumber: true,
+      address: true,
+      stallType: true,
+      preferredZoneCode: true,
+      agreedZoneCode: true,
+      itemsSelling: true,
+      numStallsRequested: true,
+      remarks: true,
+      plugs5a: true,
+      plugs15a: true,
+      gasStoves: true,
+      tablesNeeded: true,
+      chairsNeeded: true,
+      passes2w: true,
+      passes4w: true,
+      passesStaff: true,
+      appliances: { select: { name: true, watts: true }, orderBy: { sortOrder: 'asc' } },
+    },
   });
   if (!r) throw new UnknownRequestError(id);
 
@@ -223,6 +247,12 @@ export async function patchRequest(
   }
 
   const { appliances, ...scalars } = input;
+  // What moved, field by field, against the row as it stood. Appliances are
+  // ONE field: the list is restated whole, so the whole list is the change.
+  const after: Record<string, unknown> = { ...scalars };
+  if (appliances) after.appliances = appliances.map((a) => ({ name: a.name, watts: a.watts }));
+  const changes = changeSet(r, after);
+
   await db.$transaction(async (tx) => {
     if (Object.keys(scalars).length > 0) {
       await tx.stallRequest.update({ where: { id }, data: scalars });
@@ -246,7 +276,8 @@ export async function patchRequest(
       actor: actorFrom(by),
       action: 'stall_request.amended',
       requestId: id,
-      detail: { fields: Object.keys(input) },
+      changes,
+      detail: { fields: changes.map((c) => c.field) },
     });
   });
 

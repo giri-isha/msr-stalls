@@ -153,6 +153,8 @@ const SHIPPED_HOLDINGS: Record<string, readonly string[]> = {
     'equipment.read',
     'config.read',
     'refunds.write',
+    // Reads the log. Sensitive, like finance.read, and for the same reason.
+    'audit.read',
   ],
   // 🔴 NARROWED, on purpose. Was `['requests.read', 'checkin.write']` — the
   // read was there only because the check-in LIST was gated on it, so staffing
