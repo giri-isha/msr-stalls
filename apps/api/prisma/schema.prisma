@@ -207,6 +207,29 @@ enum StallLoginKind {
   @@schema("stalls")
 }
 
+enum StallAuditActorKind {
+  BACKOFFICE
+  REQUESTER
+  SYSTEM
+
+  @@schema("stalls")
+}
+
+enum StallAuditChannel {
+  BACKOFFICE
+  PORTAL
+  SYSTEM
+
+  @@schema("stalls")
+}
+
+enum StallAuditOutcome {
+  OK
+  FAILED
+
+  @@schema("stalls")
+}
+
 enum StallAshramUsage {
   DEPT_DISPLAY
   DEPT_SALES
@@ -738,6 +761,7 @@ model StallAccount {
   requests    StallRequest[]
   accessLinks StallAccessLink[]
   credentials StallCredential[]
+  auditEvents StallAuditEvent[]
 
   @@map("stall_account")
   @@schema("stalls")
@@ -786,6 +810,62 @@ model StallAccessLink {
   request StallRequest? @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@map("stall_access_link")
+  @@schema("stalls")
+}
+
+/// One thing that happened, written by `audit()` and read back by the Audit
+/// Logs page and a request's Activity Log tab. INSERT-ONLY: no route updates
+/// or deletes a row, and there is no retention rule.
+///
+/// 🔴 Module-owned, beside the Foundation's `activity_trail`, not instead of
+/// it. `audit()` forwards every event to the host's `recordActivity` too, so
+/// the host's console sees what this module did; this table is what the
+/// module's OWN screens read, and it migrates with them.
+///
+/// ⚠️ `requestId` and `accountId` are nullable relations with `SetNull`, not
+/// bare text. The relation is what lets the scoped log narrow request-bound
+/// rows through the request's own `requestType`; `SetNull` is what lets a row
+/// outlive its subject. Nothing in the module deletes a request today, so the
+/// second is a guarantee rather than a path anything takes.
+model StallAuditEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz
+
+  editionId String? @map("edition_id") @db.Uuid
+  requestId String? @map("request_id") @db.Uuid
+  accountId String? @map("account_id") @db.Uuid
+
+  actorKind StallAuditActorKind @map("actor_kind")
+  /// A `person_id` for BACKOFFICE, a `stall_account.id` for REQUESTER, the
+  /// all-zero uuid for SYSTEM. Text, because two of the three are other
+  /// tables' ids and the third is nobody's.
+  actorRef  String              @map("actor_ref")
+  /// As it was at the time. A renamed or deleted person still reads.
+  actorName String              @map("actor_name")
+
+  /// Set when a backoffice member did this FOR a requester — filing a form on
+  /// their behalf. The actor is the member; this is whose request it is.
+  onBehalfOfAccountId String? @map("on_behalf_of_account_id") @db.Uuid
+
+  channel     StallAuditChannel
+  /// `noun.verb`, from `AUDIT_ACTIONS` in `@stalls/core`.
+  action      String
+  subjectType String            @map("subject_type")
+  subjectRef  String            @map("subject_ref")
+
+  /// `[{ field, before, after }]` for an update; null otherwise.
+  changes Json?
+  detail  Json              @default("{}")
+  outcome StallAuditOutcome @default(OK)
+
+  request StallRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  account StallAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@index([editionId, occurredAt(sort: Desc)])
+  @@index([requestId, occurredAt(sort: Desc)])
+  @@index([actorRef, occurredAt(sort: Desc)])
+  @@index([action])
+  @@map("stall_audit_event")
   @@schema("stalls")
 }
 
@@ -1040,6 +1120,7 @@ model StallRequest {
   checkIn       StallCheckIn?
   equipment     StallEquipmentIssue?
   signature     StallContractSignature?
+  auditEvents   StallAuditEvent[]
 
   @@index([editionId, status, stage])
   @@index([editionId, requestType])
