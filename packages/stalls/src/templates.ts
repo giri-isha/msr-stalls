@@ -64,6 +64,17 @@ export const TEMPLATE_PLACEHOLDERS: Array<{ key: string; description: string }> 
     description: 'The itemised charges, one per line with counts and rates, GST and fee total',
   },
   { key: 'depositBreakdown', description: 'Caution deposit split into stall and furniture' },
+  // 🔴 The beneficiary block was PROSE in the body below, which was fine while
+  // the letter was the only place a vendor read it. Their payment page now
+  // prints the same table, and two copies of a bank identity is one bank change
+  // away from a page and a letter naming different beneficiaries. It is the
+  // edition's configuration now, and these render it.
+  { key: 'beneficiaryName', description: 'Account name the transfer is made to' },
+  { key: 'beneficiaryAddress', description: 'The beneficiary’s address' },
+  { key: 'accountType', description: 'Savings or current' },
+  { key: 'bankName', description: 'The bank the accounts are held at' },
+  { key: 'ifscCode', description: 'RTGS / NEFT / IFSC code' },
+  { key: 'branchAddress', description: 'The branch the accounts are held at' },
   { key: 'stallDeposit', description: 'Caution deposit for the stall alone, formatted' },
   { key: 'equipmentDeposit', description: 'Caution deposit for chairs and tables, formatted' },
   { key: 'gstAmount', description: 'The GST alone, formatted' },
@@ -187,9 +198,14 @@ export const DEFAULT_TEMPLATES: TemplateSeed[] = [
     // neither — which is a refund request and a chase, not a payment.
     //
     // ⚠️ The bank identity below — account name, beneficiary address, bank,
-    // IFSC, branch — is TEXT in this template, not configuration. The team
-    // changes banks without a deploy, and the per-vendor account numbers are the
-    // only part that has to be computed.
+    // IFSC, branch — used to be TEXT here, so the team could change banks
+    // without a deploy. It is the EDITION'S SETTINGS now, and still changes
+    // without one: the Admin screen writes them, this letter renders them, and
+    // the vendor's own payment page renders the same rows. It had to move the
+    // day that page started printing the block too — a vendor cannot make an
+    // NEFT transfer from a page that knows the account number and not the
+    // IFSC, and a second copy of the identity is one bank change away from a
+    // letter and a page naming different beneficiaries.
     body: [
       'Namaskaram {{requesterName}},',
       '',
@@ -210,14 +226,13 @@ export const DEFAULT_TEMPLATES: TemplateSeed[] = [
       '',
       'Please pay using the details below.',
       '',
-      '  Account Name              ISHA FOUNDATION',
-      '  Beneficiary Address       Isha Yoga Center, Velliangiri Foothills,',
-      '                            Semmedu Post, Coimbatore 641114',
-      '  Account Type              Savings',
+      '  Account Name              {{beneficiaryName}}',
+      '  Beneficiary Address       {{beneficiaryAddress}}',
+      '  Account Type              {{accountType}}',
       '  Account Number for RENT   {{virtualAccountRent}}',
-      '  Bank Name                 HDFC Bank Ltd',
-      '  RTGS / NEFT / IFSC Code   HDFC0004989',
-      '  Address                   Kanjurmarg Branch, Mumbai',
+      '  Bank Name                 {{bankName}}',
+      '  RTGS / NEFT / IFSC Code   {{ifscCode}}',
+      '  Address                   {{branchAddress}}',
       '',
       'This account is issued to you alone; please do not share it.',
       '',
@@ -229,14 +244,13 @@ export const DEFAULT_TEMPLATES: TemplateSeed[] = [
       '',
       'Please pay using the details below.',
       '',
-      '  Account Name                ISHA FOUNDATION',
-      '  Beneficiary Address         Isha Yoga Center, Velliangiri Foothills,',
-      '                              Semmedu Post, Coimbatore 641114',
-      '  Account Type                Savings',
+      '  Account Name                {{beneficiaryName}}',
+      '  Beneficiary Address         {{beneficiaryAddress}}',
+      '  Account Type                {{accountType}}',
       '  Account Number for DEPOSIT  {{virtualAccountDeposit}}',
-      '  Bank Name                   HDFC Bank Ltd',
-      '  RTGS / NEFT / IFSC Code     HDFC0004989',
-      '  Address                     Kanjurmarg Branch, Mumbai',
+      '  Bank Name                   {{bankName}}',
+      '  RTGS / NEFT / IFSC Code     {{ifscCode}}',
+      '  Address                     {{branchAddress}}',
       '',
       'This account is issued to you alone; please do not share it.',
       '',

@@ -295,6 +295,17 @@ async function templateVars(
         r.contactNumber,
         'DEPOSIT',
       ) ?? '',
+    // Who the transfer is made to. The edition's settings, not prose in the
+    // body — the vendor's own payment page prints the same block, and two
+    // copies of a bank identity is one bank change away from a letter and a
+    // page naming different beneficiaries. Empty renders as a blank line,
+    // which is what every other unfilled placeholder does.
+    beneficiaryName: r.edition.beneficiaryName ?? '',
+    beneficiaryAddress: r.edition.beneficiaryAddress ?? '',
+    accountType: r.edition.bankAccountType ?? '',
+    bankName: r.edition.bankName ?? '',
+    ifscCode: r.edition.bankIfsc ?? '',
+    branchAddress: r.edition.bankBranch ?? '',
   };
 
   const statusLink = await mintAccessLink(db, {

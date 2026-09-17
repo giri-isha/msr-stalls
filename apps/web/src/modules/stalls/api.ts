@@ -376,6 +376,17 @@ export type EditionSettings = {
   /** Where this edition's terms can be read, linked beside the acceptance
    *  tick-box on the bank form. Null until the legal team issues one. */
   termsUrl: string | null;
+  /** Who the money goes to. Rendered by the payment letter AND by the vendor's
+   *  own payment page, which is why it is configuration and not prose in the
+   *  template — two copies of a bank identity is one bank change away from a
+   *  letter and a page naming different beneficiaries. Null until Finance has
+   *  confirmed the edition's account. */
+  beneficiaryName: string | null;
+  beneficiaryAddress: string | null;
+  bankAccountType: string | null;
+  bankName: string | null;
+  bankIfsc: string | null;
+  bankBranch: string | null;
 };
 export const updateEditionSettings = (id: string, input: EditionSettings) =>
   apiFetch<unknown>(`${BASE}/editions/${id}/settings`, { method: 'PATCH', json: input });

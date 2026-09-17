@@ -29,24 +29,46 @@ function row(label: string, amount: string, indent = 0): string {
   return `${text.padEnd(LABEL_WIDTH)}: ${amount.padStart(12)}`;
 }
 
-/** "4 × 1000" — the multiplication, without the money formatting that would
- *  make it harder to read than the total beside it. */
-function sum(line: QuoteLine): string {
+/** "Chair : 2 × 100 × 3 days" — the multiplication, without the money
+ *  formatting that would make it harder to read than the total beside it.
+ *
+ *  ⚠️ Exported, because the vendor's own payment page prints the same
+ *  arithmetic. A second copy on the web is how a letter saying "4 × 1000" ends
+ *  up beside a page saying "4 plug points" for the same line, and the vendor
+ *  who queries their bill is querying one of them. */
+export function chargeSum(line: QuoteLine): string {
   const each = Math.round(line.unitRatePaise / 100);
   const perDay = line.days !== null && line.days > 1 ? ` × ${line.days} days` : '';
   return `${line.label} : ${line.count} × ${each}${perDay}`;
 }
 
-const GROUP_HEADING: Record<QuoteLine['group'], string> = {
+/** The order the groups print in, letter and page alike. */
+export const CHARGE_GROUPS = ['stall', 'plugs', 'equipment'] as const;
+
+/** What each group is indented under. The stall rent stands alone, exactly as
+ *  the 2025 document has it. Exported for the same reason `chargeSum` is. */
+export const CHARGE_GROUP_HEADING: Record<QuoteLine['group'], string> = {
   stall: '',
   plugs: 'Cost of additional plug points',
   equipment: 'Rent for chairs and tables',
 };
 
+/** The rate the GST line is LABELLED with — "GST 18%", as the 2025 letter has
+ *  it, because a reader checking the arithmetic needs the multiplier and not
+ *  just the product.
+ *
+ *  ⚠️ Derived from the figures, never read off today's charge config. This
+ *  renders frozen plans, and a plan quoted at 18% relabelled 12% because an
+ *  admin changed the rate afterwards is a letter that contradicts its own sum.
+ *  Zero net means there is nothing to divide, and nothing to tax. */
+export function gstPercentOf(quote: { netPaise: number; gstPaise: number }): number {
+  return quote.netPaise > 0 ? Math.round((quote.gstPaise / quote.netPaise) * 100) : 0;
+}
+
 export function chargeLines(quote: Quote): string {
   const out: string[] = [];
 
-  for (const group of ['stall', 'plugs', 'equipment'] as const) {
+  for (const group of CHARGE_GROUPS) {
     const lines = quote.lines.filter((l) => l.group === group && l.amountPaise > 0);
     if (lines.length === 0) continue;
 
@@ -54,16 +76,16 @@ export function chargeLines(quote: Quote): string {
       // The rent stands alone, with no heading and no multiplication unless
       // more than one stall was allocated.
       for (const l of lines) {
-        out.push(row(l.count > 1 ? sum(l) : l.label, formatInr(l.amountPaise)));
+        out.push(row(l.count > 1 ? chargeSum(l) : l.label, formatInr(l.amountPaise)));
       }
       continue;
     }
 
-    out.push(GROUP_HEADING[group]);
-    for (const l of lines) out.push(row(sum(l), formatInr(l.amountPaise), 4));
+    out.push(CHARGE_GROUP_HEADING[group]);
+    for (const l of lines) out.push(row(chargeSum(l), formatInr(l.amountPaise), 4));
   }
 
-  out.push(row('GST', formatInr(quote.gstPaise), 12));
+  out.push(row(`GST ${gstPercentOf(quote)}%`, formatInr(quote.gstPaise), 12));
   out.push('');
   out.push(row('Total', formatInr(quote.feeTotalPaise), 21));
   return out.join('\n');
