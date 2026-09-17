@@ -7,21 +7,110 @@
 # Migrations are added, never edited, so only modifications, deletions and
 # renames are refused. See apps/api/prisma/migrations/README.md.
 
-frozen=$(git diff --cached --name-status --diff-filter=MDR -- \
-  'apps/api/prisma/migrations/*/migration.sql' | cut -f2-)
+glob='apps/api/prisma/migrations/*/migration.sql'
 
-[ -z "$frozen" ] && exit 0
+frozen=$(git diff --cached --name-status --diff-filter=MDR -- "$glob" | cut -f2-)
 
-echo "pre-commit: refusing to change a migration that has already been applied."
+if [ -n "$frozen" ]; then
+  echo "pre-commit: refusing to change a migration that has already been applied."
+  echo
+  echo "$frozen" | sed 's/^/    /'
+  echo
+  echo "  Editing one of these forces 'npm run db:migrate' to reset the dev"
+  echo "  database on every run, for you and for everyone else. Restore it:"
+  echo
+  echo "    git checkout HEAD -- <file>"
+  echo
+  echo "  If this migration has genuinely never been applied anywhere:"
+  echo
+  echo "    git commit --no-verify"
+  echo
+  exit 1
+fi
+
+# ── The gap the rule above cannot see ───────────────────────────────────────
+#
+# A migration that is applied and THEN edited before its first commit is staged
+# as an addition, not a modification, so the name-based rule waves it through —
+# git never saw the version that ran. 20260916120000_declarations_per_form went
+# out that way: applied 16:39, committed 16:40, the bytes in between gone for
+# good. So ask the one thing that does remember: the local dev database.
+#
+# Every check below degrades to a pass. No psql, no .env, a database that is
+# down or has never been migrated — none of those are reasons to block a commit.
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR -- "$glob")
+[ -z "$staged" ] && exit 0
+
+command -v psql >/dev/null 2>&1 || exit 0
+[ -f apps/api/.env ] || exit 0
+
+if command -v sha256sum >/dev/null 2>&1; then
+  sha256() { sha256sum | cut -d' ' -f1; }
+elif command -v shasum >/dev/null 2>&1; then
+  sha256() { shasum -a 256 | cut -d' ' -f1; }
+else
+  exit 0
+fi
+
+# Prisma's URL carries parameters libpq rejects outright (schema, pgbouncer,
+# connection_limit), so keep only the ones psql understands. Dropping the query
+# wholesale would lose `host=/var/run/postgresql` and turn a socket connection
+# into a TCP one that asks for a password.
+url=$(sed -n 's/^DATABASE_URL="\(.*\)"$/\1/p' apps/api/.env | tail -1)
+[ -n "$url" ] || exit 0
+base=${url%%\?*}
+query=${url#*\?}
+if [ "$query" = "$url" ]; then
+  dsn=$base
+else
+  keep=''
+  OLDIFS=$IFS
+  IFS='&'
+  for kv in $query; do
+    case $kv in
+      host=*|port=*|sslmode=*|sslcert=*|sslkey=*|sslrootcert=*|connect_timeout=*|application_name=*)
+        keep="${keep:+$keep&}$kv" ;;
+    esac
+  done
+  IFS=$OLDIFS
+  dsn="$base${keep:+?$keep}"
+fi
+
+applied=$(psql "$dsn" -At -F' ' -q \
+  -c 'select migration_name, checksum from public._prisma_migrations where rolled_back_at is null' \
+  2>/dev/null) || exit 0
+[ -n "$applied" ] || exit 0
+
+drifted=''
+for file in $staged; do
+  name=$(basename "$(dirname "$file")")
+  was=$(printf '%s\n' "$applied" | awk -v n="$name" '$1 == n { print $2; exit }')
+  [ -n "$was" ] || continue
+  now=$(git show ":$file" | sha256)
+  [ "$was" = "$now" ] && continue
+  drifted="${drifted}    $file
+      applied $was
+       staged $now
+"
+done
+
+[ -z "$drifted" ] && exit 0
+
+echo "pre-commit: this migration ran against your database, then changed."
 echo
-echo "$frozen" | sed 's/^/    /'
+printf '%s' "$drifted"
 echo
-echo "  Editing one of these forces 'npm run db:migrate' to reset the dev"
-echo "  database on every run, for you and for everyone else. Restore it:"
+echo "  You are committing bytes that no database has ever executed. Every"
+echo "  'npm run db:migrate' from here on — yours, a teammate's, CI's — will"
+echo "  demand a full reset, and once the applied version is gone it cannot be"
+echo "  restored. Undo the edit, or start a new migration for the change:"
 echo
-echo "    git checkout HEAD -- <file>"
+echo "    cd apps/api && npx prisma migrate dev --create-only --name <what>"
 echo
-echo "  If this migration has genuinely never been applied anywhere:"
+echo "  If you have already reset this database, or the edit is deliberate and"
+echo "  you will repair the checksum by hand (README: 'when the applied bytes"
+echo "  are gone'):"
 echo
 echo "    git commit --no-verify"
 echo

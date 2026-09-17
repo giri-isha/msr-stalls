@@ -64,9 +64,8 @@ The migration `20260915220000_form_builder` was modified after it was applied.
 We need to reset the following schemas: "foundation, stalls"
 ```
 
-There is no repair command. The only two ways out are to drop the development
-database or to restore the file to the exact bytes that were applied — so
-restore the file:
+There is no repair command. Drop the development database, or restore the file
+to the exact bytes that were applied — so restore the file:
 
 ```bash
 git log -- apps/api/prisma/migrations/<folder>/     # find the commit that touched it
@@ -85,3 +84,34 @@ find-and-replace and any codemod an exclusion for
 one. A stale name inside an applied migration is not a bug — the file records
 what was run on that date, and on that date the package really was called
 `@msr/stalls`.
+
+### When the applied bytes are gone
+
+Restoring the file assumes git has the version that ran. It does not, if the
+migration was applied and *then* edited before its first commit — the two events
+sit minutes apart and land in one `A` diff, so the only copy of what executed
+was overwritten in the working tree.
+
+`20260916120000_declarations_per_form` went that way: applied 16:39, committed
+16:40:41, and `e029e7b3…` is in no blob in this repository, reachable or not.
+
+Then, and only then, the checksum is what moves. **Prove the schema is already
+correct first** — compare the live database against every object the file
+declares, column by column and index by index. If they agree, the edit was
+prose and the row is safe to correct:
+
+```bash
+sha256sum apps/api/prisma/migrations/<folder>/migration.sql
+psql <db> -c "update public._prisma_migrations set checksum = '<sha256>'
+              where migration_name = '<folder>'"
+```
+
+This repairs one database. Anyone who applied the pre-edit version — a second
+laptop, CI, production — carries the old checksum and has to run the same
+update. A database created afterwards replays the file and records the new
+checksum on its own, so new clones and old ones agree from here.
+
+`.githooks/pre-commit` asks the local dev database for these checksums before
+every commit, so an added-and-already-drifted migration is refused while the
+applied bytes are still on disk to restore. It passes silently when psql is
+missing, `apps/api/.env` has no URL, or the database is down or unmigrated.
