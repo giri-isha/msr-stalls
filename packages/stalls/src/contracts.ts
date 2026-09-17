@@ -3,7 +3,7 @@ import type { Declaration } from './declarations';
 import type { BuilderForm, BuiltForm } from './form-builder';
 import { AUTHORABLE_FIELD_TYPES } from './form-builder';
 import { SELF_SERVE_STEPS } from './access';
-import type { PendingStep } from './onboarding';
+import type { GatedStep } from './onboarding';
 import type { SubmittedSection } from './submitted';
 import { CATEGORY_KEY_PATTERN, ZONE_CODE_PATTERN } from './zones';
 import { RATE_SCOPES } from './rates';
@@ -262,8 +262,14 @@ export interface PublicRequestStatus {
   /** What is still outstanding on a SELECTED request, from the same
    *  `pendingSteps` the Onboarding table and the check-in counter read. Empty
    *  for a request that has not been selected: a vendor waiting on a decision
-   *  has nothing to do, and a list of future chores would read as one. */
-  pending: PendingStep[];
+   *  has nothing to do, and a list of future chores would read as one.
+   *
+   *  🔴 The whole list, LOCKED ONES INCLUDED. `open` says which of them the
+   *  requester may act on now, and `blockedBy` says what a locked one waits
+   *  for. The portal draws a tab only for an open step and lists the locked
+   *  ones greyed on the Overview — so the requester reads the whole road and
+   *  can only walk the part that is theirs. See `gatedSteps`. */
+  pending: GatedStep[];
   /** What is owed and where to send it — the `PAYMENT_DETAILS` letter, as data.
    *
    *  🔴 Present as soon as the request is SELECTED and its zone has a rate —
@@ -857,11 +863,36 @@ export interface PlanCategoryView {
   inUse: boolean;
 }
 
+/** The stage numbers for one requester type.
+ *
+ *  ⚠️ 1–4, and nothing checks that they are contiguous or distinct — both are
+ *  meaningful. All four at 1 is "everything at once"; two at 1 and two at 2 is
+ *  "these two, then the rest"; 1 and 3 with nothing at 2 is simply 1 then 3.
+ *  See `gatedSteps`. */
+export const StepStagesInput = z.object({
+  BANK_FORM: z.number().int().min(1).max(4),
+  PAYMENT: z.number().int().min(1).max(4),
+  FSSAI: z.number().int().min(1).max(4),
+  STAFF_REGISTRATION: z.number().int().min(1).max(4),
+});
+
 export const FlowInput = z.object({
   bankStepEnabled: z.boolean(),
   paymentStepEnabled: z.boolean(),
   fssaiStepEnabled: z.boolean(),
+  /** When each step opens, per requester type. Omitted leaves the edition's
+   *  ordering alone, so a caller that only means to flip a switch does not
+   *  silently reset the grid. */
+  stages: z
+    .object({
+      VENDOR: StepStagesInput,
+      LOCAL_WELFARE: StepStagesInput,
+      ASHRAM: StepStagesInput,
+    })
+    .optional(),
 });
+export type FlowInput = z.infer<typeof FlowInput>;
+export type StepStagesInput = z.infer<typeof StepStagesInput>;
 
 export const FineTypeInput = z.object({
   reason: z.string().trim().min(1).max(200),
