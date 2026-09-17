@@ -607,6 +607,118 @@ describe('MyRequests', () => {
     await waitFor(() => expect(reads).toBe(2));
   });
 
+  test('the deposit drops off the list once it has been reported', async () => {
+    // 🔴 PENDING counts. Waiting for finance to check a claim is not a reason to
+    // send the same transfer in again — two claims against one credit is the
+    // reconciliation by hand this queue replaced.
+    signedIn(
+      withPending([{ step: 'PAYMENT', label: 'Payment pending' }], {
+        payment: PAYMENT,
+        paymentClaims: [
+          {
+            id: 'pc-1',
+            purpose: 'DEPOSIT',
+            amountPaise: 2_000_000,
+            referenceNo: 'UTRDEP',
+            paidOn: '2026-09-05',
+            status: 'PENDING',
+            rejectReason: null,
+          },
+        ],
+      }),
+    );
+    render();
+
+    await userEvent.click(await screen.findByRole('tab', { name: /Payment/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Report Another Transfer/ }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Report a transfer' });
+    // Said out loud: a list that quietly grew shorter reads as a bug.
+    expect(
+      within(dialog).getByText(/already reported the refundable deposit/i),
+    ).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('combobox', { name: /Which payment/ }));
+    const options = within(await screen.findByRole('listbox')).getAllByRole('option');
+    expect(options.map((o) => o.textContent)).toEqual(['Rent']);
+  });
+
+  test('the deposit is reported in full, at a figure the form does not let you edit', async () => {
+    const fx = installFetch([
+      ['GET', /\/public\/session$/, () => SESSION],
+      [
+        'GET',
+        /\/public\/requests$/,
+        () => withPending([{ step: 'PAYMENT', label: 'Payment pending' }], { payment: PAYMENT }),
+      ],
+      ['POST', /\/public\/requests\/payment-claim$/, () => ({ id: 'pc-1' })],
+    ]);
+    render();
+
+    await userEvent.click(await screen.findByRole('tab', { name: /Payment/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Report a Transfer/ }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Report a transfer' });
+    await userEvent.click(within(dialog).getByRole('combobox', { name: /Which payment/ }));
+    await userEvent.click(
+      within(await screen.findByRole('listbox')).getByRole('option', {
+        name: /Refundable deposit/,
+      }),
+    );
+
+    // 🔴 The deposit is held as one figure and refunded as one, so half of it on
+    // the statement is a credit that settles nothing. The field carries the
+    // whole ₹20,000 and will not take anything else.
+    const amount = within(dialog).getByLabelText(/Amount transferred/);
+    expect(amount).toHaveValue(20_000);
+    expect(amount).toHaveAttribute('readonly');
+    await userEvent.type(amount, '5000');
+    expect(amount).toHaveValue(20_000);
+
+    await userEvent.type(within(dialog).getByLabelText(/UTR or reference number/), 'UTRDEP');
+    await userEvent.type(within(dialog).getByLabelText(/Date of transfer/), '2026-09-05');
+    await userEvent.click(within(dialog).getByRole('button', { name: /Report It/ }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(fx.calls.find((c) => c.method === 'POST')?.body).toMatchObject({
+      purpose: 'DEPOSIT',
+      amountPaise: 2_000_000,
+    });
+  });
+
+  test('rent asks for what is left, because it may be sent in instalments', async () => {
+    signedIn(
+      withPending([{ step: 'PAYMENT', label: 'Payment pending' }], {
+        payment: PAYMENT,
+        paymentClaims: [
+          {
+            id: 'pc-1',
+            purpose: 'RENT',
+            amountPaise: 5_000_000,
+            referenceNo: 'UTR1',
+            paidOn: '2026-09-05',
+            status: 'VERIFIED',
+            rejectReason: null,
+          },
+        ],
+      }),
+    );
+    render();
+
+    await userEvent.click(await screen.findByRole('tab', { name: /Payment/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Report Another Transfer/ }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Report a transfer' });
+    // ⚠️ A trader paying the second of three instalments reads this line for the
+    // figure, and "₹1,18,000 is due" is the wrong one.
+    expect(
+      within(dialog).getByText(/reported ₹50,000 so far, so ₹68,000 is left/i),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/Amount transferred/)).toHaveAttribute(
+      'placeholder',
+      '68000',
+    );
+  });
+
   test('shows the coupon and the way to register on the Staff tab', async () => {
     signedIn(
       withPending([{ step: 'STAFF_REGISTRATION', label: 'Staff not registered' }], {

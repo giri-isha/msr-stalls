@@ -6,6 +6,10 @@ import { fieldErrorsFrom } from '../api-client';
 import { formatDate } from '../hooks';
 import { Btn, Dialog, FormField, Icon, Input, Select, Tag, Textarea, useToast } from '../ui';
 
+/** Paise as the plain rupee figure an `<input type="number">` will hold — not
+ *  `formatInr`, which groups and prefixes and is not a number at all. */
+const rupeesOf = (paise: number) => String(paise / 100);
+
 /**
  * Where a requester tells us what they transferred.
  *
@@ -18,6 +22,12 @@ import { Btn, Dialog, FormField, Icon, Input, Select, Tag, Textarea, useToast } 
  * finance verifies it and the payment record is written. Saying otherwise on
  * this page would tell a vendor they were done when nobody had looked.
  *
+ * 🔴 THE TWO PAYMENTS ARE NOT THE SAME SHAPE, and this form is where that
+ * shows. The deposit is one transfer of one figure — it is held as one and
+ * refunded as one — so it is offered ONCE and its amount is fixed. The rent may
+ * arrive in instalments, so its amount stays the requester's to type and what
+ * is already reported is subtracted from what the field offers.
+ *
  * A DIALOG, where it used to unfold inline under the payment figures and push
  * everything below them down the page. The figures stay where they were while
  * the form is open, which matters: the amount owed is what the vendor is
@@ -26,6 +36,7 @@ import { Btn, Dialog, FormField, Icon, Input, Select, Tag, Textarea, useToast } 
 export function PaymentClaimDialog({
   reference,
   payment,
+  claims = [],
   onClose,
   onSubmitted,
   submit: submitProp,
@@ -34,6 +45,13 @@ export function PaymentClaimDialog({
 }: {
   reference: string;
   payment: PublicPaymentDue | null;
+  /** What has already been reported against this request, so the form does not
+   *  offer a payment there is nothing left to report against.
+   *
+   *  ⚠️ Empty where the caller does not know. The backoffice files against a
+   *  request whose claims it has not read, and an unknown history must not hide
+   *  a purpose a member is trying to record. */
+  claims?: readonly PaymentClaimView[];
   onClose: () => void;
   onSubmitted: () => void;
   /** How the claim is sent. The requester's own dialog posts it against their
@@ -52,11 +70,45 @@ export function PaymentClaimDialog({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
+  // 🔴 A PENDING claim counts as reported. Waiting for finance to check one is
+  // not a reason to send the same transfer in again, and two claims against one
+  // credit is the reconciliation by hand this queue replaced. A REJECTED claim
+  // does not count — it is the one thing here that has to be reported again.
+  const reported = claims.filter((c) => c.status !== 'REJECTED');
+  const depositReported = reported.some((c) => c.purpose === 'DEPOSIT');
+  const rentReportedPaise = reported
+    .filter((c) => c.purpose === 'RENT')
+    .reduce((sum, c) => sum + c.amountPaise, 0);
+
+  // 🔴 THE DEPOSIT IS ONE TRANSFER. It is held as one figure and refunded as
+  // one, so half of it on the statement is a credit that settles nothing and
+  // gets chased instead. Where the figure is known the amount is FIXED rather
+  // than merely prefilled — the field below is read-only for it.
+  //
+  // ⚠️ RENT IS THE OPPOSITE, deliberately: a trader may send it in instalments,
+  // so the field stays theirs to type and what is offered is what is left after
+  // everything already reported.
+  const depositTotalPaise = purpose === 'DEPOSIT' && payment ? payment.depositPaise : null;
+  const rentLeftPaise = payment ? Math.max(payment.feePaise - rentReportedPaise, 0) : null;
+
   // ⚠️ Prefilled from what is owed for the purpose chosen, because the figure
   // is right there on the page behind and retyping it is where a digit gets
-  // dropped. Still editable: a vendor who paid a different amount has to be
-  // able to say so, and that gap is exactly what finance needs to see.
+  // dropped. Still editable for rent: a vendor who paid a different amount has
+  // to be able to say so, and that gap is exactly what finance needs to see.
   const owed = payment ? (purpose === 'RENT' ? payment.feePaise : payment.depositPaise) : null;
+  const amountValue = depositTotalPaise !== null ? rupeesOf(depositTotalPaise) : amount;
+
+  // ⚠️ For rent the help carries what is LEFT, not only what the whole thing
+  // costs. A trader paying the second of three instalments is looking at this
+  // line to work out the figure, and "₹20,768 is due" is the wrong one.
+  const amountHelp =
+    depositTotalPaise !== null
+      ? `${formatInr(depositTotalPaise)}, transferred in one go — the deposit cannot be split.`
+      : owed === null
+        ? undefined
+        : rentReportedPaise > 0
+          ? `${formatInr(owed)} is due in all. You have reported ${formatInr(rentReportedPaise)} so far, so ${formatInr(rentLeftPaise ?? 0)} is left. Rent may be sent in instalments.`
+          : `${formatInr(owed)} is due for this. You may send it in instalments.`;
 
   const submit = async () => {
     setErrors({});
@@ -66,8 +118,10 @@ export function PaymentClaimDialog({
         purpose,
         referenceNo: referenceNo.trim(),
         // Rupees on screen, paise on the wire — the whole module counts in
-        // paise so a rounding error cannot appear between two screens.
-        amountPaise: Math.round(Number(amount) * 100),
+        // paise so a rounding error cannot appear between two screens. The
+        // fixed deposit figure skips the field entirely and goes as it is
+        // held: it has to match a statement line to the rupee.
+        amountPaise: depositTotalPaise ?? Math.round(Number(amount) * 100),
         paidOn,
         remitterName: remitterName.trim() || undefined,
         note: note.trim() || undefined,
@@ -84,7 +138,7 @@ export function PaymentClaimDialog({
     }
   };
 
-  const ready = referenceNo.trim() !== '' && amount.trim() !== '' && paidOn !== '';
+  const ready = referenceNo.trim() !== '' && amountValue.trim() !== '' && paidOn !== '';
 
   return (
     <Dialog
@@ -102,14 +156,26 @@ export function PaymentClaimDialog({
       }
     >
       <div style={{ display: 'grid', gap: 12 }}>
-        <FormField id='claim-purpose' label='Which payment' required>
+        <FormField
+          id='claim-purpose'
+          label='Which payment'
+          // ⚠️ The deposit drops OUT of the list once it has been reported,
+          // rather than staying as a choice that leads to a duplicate. Said out
+          // loud, because a list that quietly grew shorter reads as a bug.
+          help={
+            depositReported
+              ? 'You have already reported the refundable deposit, so only rent is left to report.'
+              : undefined
+          }
+          required
+        >
           <Select
             id='claim-purpose'
             value={purpose}
             onChange={(v) => setPurpose(v as 'RENT' | 'DEPOSIT')}
           >
             <option value='RENT'>Rent</option>
-            <option value='DEPOSIT'>Refundable deposit</option>
+            {!depositReported && <option value='DEPOSIT'>Refundable deposit</option>}
           </Select>
         </FormField>
 
@@ -131,7 +197,7 @@ export function PaymentClaimDialog({
         <FormField
           id='claim-amount'
           label='Amount transferred'
-          help={owed !== null ? `${formatInr(owed)} is due for this.` : undefined}
+          help={amountHelp}
           required
           error={errors.amountPaise}
         >
@@ -140,9 +206,14 @@ export function PaymentClaimDialog({
             type='number'
             inputMode='decimal'
             min={1}
-            placeholder={owed !== null ? String(Math.round(owed / 100)) : undefined}
-            value={amount}
+            // ⚠️ `readOnly`, not `disabled`: a disabled field is skipped by the
+            // keyboard and reads as "not asked for", and the deposit figure is
+            // the one thing on this form the requester most needs to SEE.
+            readOnly={depositTotalPaise !== null}
+            placeholder={rentLeftPaise !== null ? rupeesOf(rentLeftPaise) : undefined}
+            value={amountValue}
             invalid={!!errors.amountPaise}
+            style={depositTotalPaise !== null ? { color: 'var(--mfg)' } : undefined}
             onChange={(e) => setAmount(e.target.value)}
           />
         </FormField>

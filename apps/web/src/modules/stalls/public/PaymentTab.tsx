@@ -121,6 +121,9 @@ export function PaymentTab({ request, reload }: { request: PublicRequestStatus; 
         <PaymentClaimDialog
           reference={request.reference}
           payment={payment}
+          // What has been reported already, so the form neither offers the
+          // deposit a second time nor asks for rent that has been sent.
+          claims={claims}
           onClose={() => setOpen(false)}
           // ⚠️ Re-read, because the claim should appear in the list beside the
           // figures — a page that did not would leave the requester unsure
