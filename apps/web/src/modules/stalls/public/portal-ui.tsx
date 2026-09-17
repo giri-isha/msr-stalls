@@ -10,9 +10,16 @@ import { Icon, useIsMobile, useToast } from '../ui';
  * rather than as panels that grew separately.
  */
 
-/** The plate a tab body's block sits on. Fills its grid cell: the tab bodies
- *  lay their panels out two-up above 720px and the grid does the capping. */
-export function Panel({ children }: { children: ReactNode }) {
+/** A tab body's block. Fills its grid cell: the tab bodies lay their panels
+ *  out two-up above 720px and the grid does the capping.
+ *
+ *  🔴 NO plate of its own. The portal drew page, card, rail body, panel and
+ *  sub-panel each with a border and a fill, so the rent breakdown sat in a
+ *  box inside a box inside a box. The card is the one bordered level now; a
+ *  block is a small heading and the rows under it, and what separates two
+ *  blocks is the gap between them. `plate` is the exception for the few things
+ *  a reader has to find again with a bank app in the other hand. */
+export function Panel({ children, plate }: { children: ReactNode; plate?: boolean }) {
   return (
     <div
       style={{
@@ -21,10 +28,13 @@ export function Panel({ children }: { children: ReactNode }) {
         justifyItems: 'start',
         alignContent: 'start',
         width: '100%',
-        padding: '14px 16px',
-        borderRadius: 'var(--r3)',
-        background: 'var(--mut)',
-        border: '1px solid var(--bd)',
+        ...(plate
+          ? {
+              padding: '12px 14px',
+              borderRadius: 'var(--r3)',
+              background: 'var(--mut)',
+            }
+          : {}),
       }}
     >
       {children}
@@ -41,13 +51,15 @@ export function PanelTitle({ icon, children }: { icon?: string; children: ReactN
         display: 'flex',
         alignItems: 'center',
         gap: 7,
-        fontSize: 12,
+        fontSize: 11,
         fontWeight: 700,
+        letterSpacing: '.06em',
+        textTransform: 'uppercase',
         color: 'var(--mfg)',
-        marginBottom: 4,
+        marginBottom: 2,
       }}
     >
-      {icon && <Icon name={icon} size={13} color='var(--pri)' />}
+      {icon && <Icon name={icon} size={12} color='var(--pri)' />}
       {children}
     </div>
   );
@@ -74,7 +86,16 @@ export function Row({ k, v, strong }: { k: string; v: ReactNode; strong?: boolea
       }}
     >
       <div style={{ width: mobile ? undefined : 132, flex: 'none', color: 'var(--mfg)' }}>{k}</div>
-      <div style={{ flex: 1, minWidth: 0, fontWeight: strong ? 700 : 600 }}>{v}</div>
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          fontWeight: strong ? 700 : 600,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {v}
+      </div>
     </div>
   );
 }

@@ -34,8 +34,8 @@ import { Panel, PanelTitle, Row } from './portal-ui';
  * 🔴 ONE request at a time, in TABS, where this was every request as a card
  * and every step as a chip with its detail hanging under it — eleven things
  * in one flow with nothing but vertical gaps saying which belonged to which.
- * The request is the page now: a header band names it, a strip of sections
- * runs under it, and each section has the room to lay its figures out.
+ * The request is the page now: a header band names it, a rail of sections runs
+ * down its left, and each section has the room to lay its figures out.
  */
 export interface RequestViewProps {
   requests: PublicRequestStatus[];
@@ -119,37 +119,42 @@ export function portalTabs(r: PublicRequestStatus): Array<TabDef & { key: Portal
   const pending = new Set(r.pending.filter((p) => p.open !== false).map((p) => p.step));
   const claims = r.paymentClaims ?? [];
   const tabs: Array<TabDef & { key: PortalTab }> = [
-    { key: 'overview', label: 'Overview', glyph: 'layout-grid' },
+    { key: 'overview', label: 'Overview', glyph: 'layout-grid', short: 'Overview' },
   ];
   if (pending.has('BANK_FORM') || r.bank) {
     tabs.push({
       key: 'bank',
       label: 'Bank Details',
+      short: 'Bank',
       glyph: 'file-text',
       // The marks are facts: amber is "we are waiting on this", green is "we
       // have it". Not a claim that the details are correct — that is what the
       // read-back under the tab is for.
-      mark: pending.has('BANK_FORM') ? 'warn' : 'ok',
+      ...marked(pending.has('BANK_FORM') ? 'warn' : 'ok'),
     });
   }
   if (r.payment || pending.has('PAYMENT') || claims.length > 0) {
     tabs.push({
       key: 'payment',
       label: 'Payment',
+      short: 'Payment',
       glyph: 'rupee',
-      mark: pending.has('PAYMENT')
-        ? 'warn'
-        : claims.some((c) => c.status === 'VERIFIED')
-          ? 'ok'
-          : undefined,
+      ...marked(
+        pending.has('PAYMENT')
+          ? 'warn'
+          : claims.some((c) => c.status === 'VERIFIED')
+            ? 'ok'
+            : undefined,
+      ),
     });
   }
   if (pending.has('FSSAI') || r.fssai) {
     tabs.push({
       key: 'fssai',
       label: 'FSSAI',
+      short: 'FSSAI',
       glyph: 'shield',
-      mark: pending.has('FSSAI') ? 'warn' : 'ok',
+      ...marked(pending.has('FSSAI') ? 'warn' : 'ok'),
     });
   }
   // ⚠️ `open !== false`, for the deploy-skew reason above — but the field is
@@ -163,8 +168,11 @@ export function portalTabs(r: PublicRequestStatus): Array<TabDef & { key: Portal
     tabs.push({
       key: 'staff',
       label: 'Staff',
+      short: 'Staff',
       glyph: 'users',
-      mark: pending.has('STAFF_REGISTRATION') ? 'warn' : r.staff.registered > 0 ? 'ok' : undefined,
+      ...marked(
+        pending.has('STAFF_REGISTRATION') ? 'warn' : r.staff.registered > 0 ? 'ok' : undefined,
+      ),
     });
   }
   // ⚠️ `undefined` is tolerated, not just empty. The API and the web deploy
@@ -175,12 +183,25 @@ export function portalTabs(r: PublicRequestStatus): Array<TabDef & { key: Portal
     // Staff — and a tab named for an event the reader took part in reads as a
     // receipt for the act rather than as the answers, which is what they have
     // come back to look up.
-    tabs.push({ key: 'submitted', label: 'Request Form Details', glyph: 'clipboard-list' });
+    tabs.push({
+      key: 'submitted',
+      label: 'Request Form Details',
+      short: 'Form',
+      glyph: 'clipboard-list',
+    });
   }
   return tabs;
 }
 
+/** The mark and its word together, so the rail never says "Due" in green. The
+ *  word is what the rail draws; the dot is what the phone's bar draws. */
+function marked(mark: 'warn' | 'ok' | undefined): Pick<TabDef, 'mark' | 'note'> {
+  if (!mark) return {};
+  return { mark, note: mark === 'warn' ? 'Due' : 'Done' };
+}
+
 export function RequestView({ requests, openStep, getCoupon, reload }: RequestViewProps) {
+  const mobile = useIsMobile();
   const [params, setParams] = useSearchParams();
   // ⚠️ The chosen request lives in the URL, so a refresh or a forwarded link
   // lands on the same one. Anything that matches nothing falls back to the
@@ -200,9 +221,23 @@ export function RequestView({ requests, openStep, getCoupon, reload }: RequestVi
     // content's, so the tab strip — which scrolls sideways on a phone rather
     // than wrapping — would otherwise widen the card past the screen instead
     // of scrolling inside it.
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 14 }}>
+    <div
+      style={{
+        display: 'grid',
+        // 🔴 A LIST down the left where there is more than one request, and
+        // the chosen one beside it — the way a mailbox draws its messages.
+        // The row of pills above the card made a second request look like a
+        // filter on the first; a column of small cards makes it what it is,
+        // another document. On a phone the column would cost the whole
+        // screen, so the pills come back there.
+        gridTemplateColumns:
+          requests.length > 1 && !mobile ? '232px minmax(0, 1fr)' : 'minmax(0, 1fr)',
+        gap: 14,
+        alignItems: 'start',
+      }}
+    >
       {requests.length > 1 && (
-        <Switcher requests={requests} current={current.reference} onPick={pick} />
+        <Switcher requests={requests} current={current.reference} onPick={pick} list={!mobile} />
       )}
       {/* Keyed on the reference so the tab state starts over on a switch — a
           second request opened on the first one's Payment tab would be a page
@@ -218,20 +253,43 @@ export function RequestView({ requests, openStep, getCoupon, reload }: RequestVi
   );
 }
 
-/** The row of requests, drawn only when there is more than one to choose from. */
+/**
+ * The requests to choose between, drawn only when there is more than one.
+ *
+ * `list` is the desktop column of small cards; without it, the phone's row of
+ * pills. Same control, same names, same `aria-pressed` — only the shape.
+ *
+ * ⚠️ The card's third line says how far the request has got — waiting, N
+ * steps left, all in — and NOT which stall it was given. The stall number is
+ * the fact a vendor comes back for, and it belongs on the request's own band
+ * once they have opened it, not on every card in the margin.
+ */
 function Switcher({
   requests,
   current,
   onPick,
+  list,
 }: {
   requests: PublicRequestStatus[];
   current: string;
   onPick(reference: string): void;
+  list: boolean;
 }) {
   return (
     <fieldset
       aria-label='Your Requests'
-      style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: 0, padding: 0, border: 0 }}
+      style={{
+        display: list ? 'grid' : 'flex',
+        gap: 6,
+        flexWrap: 'wrap',
+        alignContent: 'start',
+        margin: 0,
+        padding: 0,
+        border: 0,
+        minWidth: 0,
+        // Follows the request down, like the rail inside it does.
+        ...(list ? { position: 'sticky', top: 72 } : {}),
+      }}
     >
       {requests.map((r) => {
         const on = r.reference === current;
@@ -242,10 +300,12 @@ function Switcher({
             aria-pressed={on}
             onClick={() => onPick(r.reference)}
             style={{
-              display: 'inline-flex',
+              display: list ? 'grid' : 'inline-flex',
               alignItems: 'center',
-              gap: 8,
-              padding: '7px 12px',
+              gap: list ? 2 : 8,
+              justifyItems: 'start',
+              textAlign: 'left',
+              padding: list ? '10px 12px' : '7px 12px',
               borderRadius: 'var(--r2)',
               border: `1px solid ${on ? 'var(--pri)' : 'var(--bd)'}`,
               background: on ? 'var(--pri-t)' : 'var(--card)',
@@ -253,9 +313,13 @@ function Switcher({
               fontSize: 12.5,
               fontWeight: 600,
               cursor: 'pointer',
+              minWidth: 0,
+              width: list ? '100%' : undefined,
             }}
           >
-            {r.stallName}
+            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {r.stallName}
+            </span>
             <span
               style={{
                 fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace',
@@ -266,11 +330,27 @@ function Switcher({
             >
               {r.reference}
             </span>
+            {list && (
+              <span style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--mfg)' }}>
+                {progressOf(r)}
+              </span>
+            )}
           </button>
         );
       })}
     </fieldset>
   );
+}
+
+/** One line on how far a request has got, in the requester's words and with
+ *  no more than the Overview tells them: the working statuses stay "waiting". */
+function progressOf(r: PublicRequestStatus): string {
+  if (r.status === 'REJECTED') return 'Not selected';
+  if (r.status === 'CANCELLED') return 'Cancelled';
+  if (r.status !== 'SELECTED') return 'Waiting on a decision';
+  const open = r.pending.filter((p) => p.open !== false).length;
+  if (open === 0) return r.pending.length === 0 ? 'Nothing outstanding' : 'Next step opens later';
+  return `${open} step${open === 1 ? '' : 's'} to do`;
 }
 
 /** One request: the header band, the tab strip and the open tab's body. */
@@ -317,8 +397,11 @@ function RequestPanel({
           alignItems: 'center',
           gap: 12,
           flexWrap: 'wrap',
-          padding: mobile ? '16px 18px' : '20px 24px',
-          background: 'var(--rail)',
+          // 🔴 A thin line, not a band. The tinted plate under the name made
+          // the header the heaviest thing on the card; a hairline under a name
+          // set in the display face says the same with nothing to compete
+          // against the figures below it.
+          padding: mobile ? '14px 16px' : '16px 22px',
           borderBottom: '1px solid var(--line)',
           borderRadius: 'var(--r4) var(--r4) 0 0',
         }}
@@ -383,51 +466,119 @@ function RequestPanel({
             list and the detail screen draw. */}
       </header>
 
-      <Tabs
-        label='Request Sections'
-        tabs={tabs}
-        active={tab}
-        onPick={(k) => setActive(k as PortalTab)}
-        style={{ padding: mobile ? '0 8px' : '0 12px', marginBottom: 0 }}
-      />
+      {/* 🔴 A RAIL down the left, where this was a strip across the top. The
+          sections are not equals competing for a glance — Overview is where a
+          requester lands and the rest are places they are sent — and a strip
+          drew five of them in a line whose only job was to be scanned once and
+          then sat above a body that had already scrolled it off the screen. A
+          rail keeps the whole list in view while a long Payment section is
+          read, gives each section a full line to be named on rather than a
+          label squeezed between its neighbours, and puts the marks in a column
+          so "what is still outstanding" is one downward glance.
 
-      <div style={{ padding: mobile ? '14px 16px 18px' : '18px 22px 24px' }}>
-        {tab === 'overview' && (
-          <Overview request={r} busy={busy} onOpen={open} onPick={setActive} />
+          ⚠️ Only above 720px. On a phone a 216px rail is half the screen, so
+          the strip goes back across the top and scrolls sideways — which is
+          the same component, turned. */}
+      <div
+        style={{
+          display: 'grid',
+          // ⚠️ `minmax(0, 1fr)` on the body column, not `1fr`. A grid item's
+          // minimum width is its content's, so the payment breakdown's long
+          // account numbers would widen the card past the screen.
+          gridTemplateColumns: mobile ? 'minmax(0, 1fr)' : '216px minmax(0, 1fr)',
+          alignItems: 'stretch',
+          // So a section with one short panel in it still reads as a page with
+          // a rail, rather than as a rail-shaped stub.
+          minHeight: mobile ? undefined : 340,
+        }}
+      >
+        {mobile ? (
+          // 🔴 A BAR ALONG THE BOTTOM of the screen, where this was a strip
+          // across the top of the card. The strip scrolled away with the card
+          // and, six sections wide, scrolled sideways too; a fixed bar is
+          // always there and always under the thumb. Same tablist, turned into
+          // glyphs over short names.
+          <nav
+            aria-label='Request Sections'
+            style={{
+              position: 'fixed',
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 20,
+              background: 'var(--card)',
+              borderTop: '1px solid var(--bd)',
+              padding: '2px 4px',
+              paddingBottom: 'calc(2px + env(safe-area-inset-bottom, 0px))',
+            }}
+          >
+            <Tabs
+              variant='bar'
+              label='Request Sections'
+              tabs={tabs}
+              active={tab}
+              onPick={(k) => setActive(k as PortalTab)}
+            />
+          </nav>
+        ) : (
+          <nav
+            style={{
+              borderRight: '1px solid var(--line)',
+              padding: '14px 10px',
+              minWidth: 0,
+            }}
+          >
+            <Tabs
+              orientation='vertical'
+              label='Request Sections'
+              tabs={tabs}
+              active={tab}
+              onPick={(k) => setActive(k as PortalTab)}
+              // Follows a long section down. The offset clears the shell's own
+              // sticky header, which is the only thing above it.
+              style={{ position: 'sticky', top: 72 }}
+            />
+          </nav>
         )}
-        {/* ⚠️ Outstanding wins over submitted. A vendor asked to redo this —
+
+        <div style={{ padding: mobile ? '14px 16px 18px' : '18px 22px 24px', minWidth: 0 }}>
+          {tab === 'overview' && (
+            <Overview request={r} busy={busy} onOpen={open} onPick={setActive} />
+          )}
+          {/* ⚠️ Outstanding wins over submitted. A vendor asked to redo this —
             the step reopened — must be given the form, not a read-back of the
             details that are being replaced. */}
-        {tab === 'bank' &&
-          (r.pending.some((p) => p.step === 'BANK_FORM') || !r.bank ? (
-            <StepTab
-              step={r.pending.find((p) => p.step === 'BANK_FORM')}
-              busy={busy === 'BANK_FORM'}
-              onOpen={() => void open('BANK_FORM')}
-            >
-              Your bank details, GST number and the name to invoice, so Finance can raise the
-              invoice and return your deposit to the right account after the event. Only vendors are
-              asked for this.
-            </StepTab>
-          ) : (
-            <BankDone bank={r.bank} />
-          ))}
-        {tab === 'payment' && <PaymentTab request={r} reload={reload} />}
-        {tab === 'fssai' &&
-          (r.pending.some((p) => p.step === 'FSSAI') || !r.fssai ? (
-            <StepTab
-              step={r.pending.find((p) => p.step === 'FSSAI')}
-              busy={busy === 'FSSAI'}
-              onOpen={() => void open('FSSAI')}
-            >
-              A stall selling food needs its FSSAI certificate on file before check-in. Upload a
-              photo or scan of it — up to five pages, if it was photographed a page at a time.
-            </StepTab>
-          ) : (
-            <FssaiDone fssai={r.fssai} />
-          ))}
-        {tab === 'staff' && <StaffTab request={r} getCoupon={getCoupon} />}
-        {tab === 'submitted' && <SubmittedTab sections={r.submitted ?? []} />}
+          {tab === 'bank' &&
+            (r.pending.some((p) => p.step === 'BANK_FORM') || !r.bank ? (
+              <StepTab
+                step={r.pending.find((p) => p.step === 'BANK_FORM')}
+                busy={busy === 'BANK_FORM'}
+                onOpen={() => void open('BANK_FORM')}
+              >
+                Your bank details, GST number and the name to invoice, so Finance can raise the
+                invoice and return your deposit to the right account after the event. Only vendors
+                are asked for this.
+              </StepTab>
+            ) : (
+              <BankDone bank={r.bank} />
+            ))}
+          {tab === 'payment' && <PaymentTab request={r} reload={reload} />}
+          {tab === 'fssai' &&
+            (r.pending.some((p) => p.step === 'FSSAI') || !r.fssai ? (
+              <StepTab
+                step={r.pending.find((p) => p.step === 'FSSAI')}
+                busy={busy === 'FSSAI'}
+                onOpen={() => void open('FSSAI')}
+              >
+                A stall selling food needs its FSSAI certificate on file before check-in. Upload a
+                photo or scan of it — up to five pages, if it was photographed a page at a time.
+              </StepTab>
+            ) : (
+              <FssaiDone fssai={r.fssai} />
+            ))}
+          {tab === 'staff' && <StaffTab request={r} getCoupon={getCoupon} />}
+          {tab === 'submitted' && <SubmittedTab sections={r.submitted ?? []} />}
+        </div>
       </div>
     </Card>
   );
@@ -488,8 +639,8 @@ function Overview({
           <Panel>
             <PanelTitle icon='circle-check'>Nothing outstanding</PanelTitle>
             <p style={{ fontSize: 12.5, color: 'var(--mfg)', margin: 0, lineHeight: 1.6 }}>
-              Everything we have asked you for on this request is in. The tabs above are where to
-              check any of it.
+              Everything we have asked you for on this request is in. The sections listed beside
+              this one are where to check any of it.
             </p>
           </Panel>
         ))}

@@ -292,16 +292,31 @@ export function ClaimRow({ claim }: { claim: PaymentClaimView }) {
         fontSize: 12.5,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      {/* 🔴 Two lines, not one wrapping one. What it was and what it was for
+          sat on the same run as the UTR and the date, so on a narrow column
+          the reference wrapped under the amount and the row stopped having a
+          shape — four claims read as eight lines of the same grey. The fact
+          goes on top with its figure hard right, where the panel's other
+          figures are; the paperwork goes underneath, quieter. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <Tag tone={tone} size='sm'>
           {label}
         </Tag>
-        <span style={{ fontWeight: 600 }}>
-          {claim.purpose === 'RENT' ? 'Rent' : 'Deposit'} · {formatInr(claim.amountPaise)}
+        <span style={{ flex: 1, minWidth: 0, fontWeight: 600 }}>
+          {claim.purpose === 'RENT' ? 'Rent' : 'Deposit'}
         </span>
-        <span style={{ color: 'var(--mfg)' }}>
-          {claim.referenceNo} · paid {formatDate(claim.paidOn)}
+        <span
+          style={{
+            fontWeight: 700,
+            fontVariantNumeric: 'tabular-nums',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {formatInr(claim.amountPaise)}
         </span>
+      </div>
+      <div style={{ color: 'var(--mfg)', fontSize: 11.5 }}>
+        {claim.referenceNo} · paid {formatDate(claim.paidOn)}
       </div>
       {claim.status === 'REJECTED' && claim.rejectReason && (
         <div style={{ color: 'var(--des-fg)', lineHeight: 1.55 }}>

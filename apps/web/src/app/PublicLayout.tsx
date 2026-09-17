@@ -6,21 +6,30 @@
 // share is the token scope — `Frame` is the same, so the card, the type and the
 // palette are the product's, not a second look grown for the public side.
 //
-// 🔴 A button where there was a nav. The public side ran with a two-tab rail —
+// 🔴 BUTTONS where there was a nav. The public side ran with a two-tab rail —
 // Request a Stall, My Requests — and the first of those is an action, not a
-// place. With the requests page as the portal there is nothing left to tab
-// between: the way to a new request is a primary button at the top right.
+// place, so a rail drew a verb and a noun as though they were the same kind of
+// thing. They are two buttons now, and the difference is in their weight: New
+// Request is the filled one because it is what a requester DOES from here, and
+// My Requests is the ghost beside it because it is where they GO. Two controls
+// on one line is not a nav; a nav is what you need when there are places to
+// choose between, and there are two.
 //
-// ⚠️ The BODY is capped and centred; the header is not. Going fluid fixed the
-// 1060px column the rail sat in, and then overshot: on a wide monitor a
-// request card with one outstanding step stretched two feet across the screen,
-// which is not more information, only more space between the same words. The
-// cap is generous enough for the application form's two columns and the
-// portal's two-up panels, which are the widest things served here.
+// 🔴 FULL WIDTH. The body ran in a centred 1240px column, which on the monitor
+// this is actually used on left a third of the screen empty on either side of
+// a request that has a rail, a list of other requests and a bill to show. The
+// page is the screen now.
+//
+// ⚠️ Which puts the measure where the CONTENT is, not on the shell. Nothing
+// here stops a line of prose running two feet wide, so everything that is read
+// rather than scanned caps itself: the status sentence, the step hints, the
+// bill. A block that does not cap itself is a bug in that block — do not fix
+// it by putting the column back.
 import { canFileMore } from '@stalls/core';
-import { Link, Outlet, useNavigate } from 'react-router';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { RequesterProvider, useRequester } from '@/modules/stalls';
-import { logoutRequester } from '@/modules/stalls/api';
+import { getPublicConfig, logoutRequester } from '@/modules/stalls/api';
+import { useLoad } from '@/modules/stalls/hooks';
 import { Btn, Frame, Icon, ToastProvider, useIsMobile } from '@/modules/stalls/ui';
 import { useTheme } from '@/modules/stalls/use-theme';
 
@@ -113,6 +122,7 @@ function PublicChrome() {
             </span>
           </Link>
           <div style={{ flex: 1 }} />
+          <MyRequestsButton />
           <RequestStallButton />
           <SignedInAs />
           {/* The one control that stays whoever is reading. A form filled in
@@ -139,10 +149,9 @@ function PublicChrome() {
             <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={15} />
           </button>
         </header>
+        <EditionBar />
         <main
           style={{
-            maxWidth: 1240,
-            margin: '0 auto',
             padding: mobile ? '16px 14px 72px' : '26px 28px 64px',
           }}
         >
@@ -150,6 +159,98 @@ function PublicChrome() {
         </main>
       </div>
     </Frame>
+  );
+}
+
+/**
+ * Which edition this portal is about, on a slim line under the header.
+ *
+ * 🔴 The header named the product and the team; nothing on the page named the
+ * YEAR. A vendor who applied last year and opens the portal this year has no
+ * way to tell which event the requests in front of them belong to — and a
+ * requester holding an old status link even less. One line, read once.
+ *
+ * ⚠️ Drawn only once the edition has loaded, and NOT AT ALL if it cannot: a bar
+ * that says "loading" or nothing is chrome that makes noise. The API sends the
+ * edition's name and year; it does not send dates or a closing day, so the bar
+ * does not invent them.
+ */
+function EditionBar() {
+  const mobile = useIsMobile();
+  const { data } = useLoad(() => getPublicConfig(), []);
+  const edition = data?.edition;
+  if (!edition) return null;
+  const name = edition.name.includes(String(edition.year))
+    ? edition.name
+    : `${edition.name} ${edition.year}`;
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: mobile ? '5px 14px' : '5px 28px',
+        background: 'var(--pri-t)',
+        color: 'var(--info-fg)',
+        borderBottom: '1px solid var(--line)',
+        fontSize: 12,
+        fontWeight: 600,
+      }}
+    >
+      <Icon name='calendar' size={13} />
+      <span
+        style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+      >
+        {name}
+      </span>
+      {!mobile && (
+        <span style={{ fontWeight: 500, opacity: 0.85 }}>· Stall requests and onboarding</span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The way back to the portal — the one PLACE a signed-in requester goes, beside
+ * the one thing they do.
+ *
+ * 🔴 The mark in the corner was the only way back, and a logo that happens to
+ * be a link is a thing you have to already know. Every step out of the portal
+ * is a whole PAGE — the bank form, the FSSAI upload, staff registration, the
+ * application form — so from any of them the portal was somewhere the reader
+ * had to guess their way to. `BackToRequests` puts a link at the top of those
+ * bodies, but it is a per-page courtesy that each new form has to remember; a
+ * header button is there whatever is underneath.
+ *
+ * ⚠️ Ghost, not primary. There is one primary offer in this header and it is
+ * New Request; two filled buttons side by side is two shouts and no emphasis.
+ *
+ * ⚠️ NOTHING when signed out, and nothing while the portal is already what is
+ * on screen — a button that leads where the reader already is, is a control
+ * that does nothing when pressed.
+ *
+ * ⚠️ Labelled whatever it draws. On a phone it is the glyph alone, and an
+ * unlabelled icon button is a button a screen reader cannot name.
+ */
+function MyRequestsButton() {
+  const { requester } = useRequester();
+  const mobile = useIsMobile();
+  const { pathname } = useLocation();
+  if (!requester) return null;
+  if (pathname.startsWith('/stalls/requests')) return null;
+
+  return (
+    <Link
+      to='/stalls/requests'
+      aria-label='My Requests'
+      title='My Requests'
+      style={{ color: 'inherit' }}
+    >
+      <Btn>
+        <Icon name='clipboard-list' size={14} />
+        {mobile ? '' : 'My Requests'}
+      </Btn>
+    </Link>
   );
 }
 

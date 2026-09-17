@@ -2,7 +2,7 @@ import type { CouponSummary, PublicRequestStatus } from '@stalls/core';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { Btn, Icon, Tag, useIsMobile, useToast } from '../ui';
-import { Copyable, Panel, PanelTitle, Row } from './portal-ui';
+import { Panel, PanelTitle, Row } from './portal-ui';
 
 /**
  * The vendor's own team, and the coupon they register against.
@@ -20,12 +20,19 @@ import { Copyable, Panel, PanelTitle, Row } from './portal-ui';
  * would be standing at their stall. So: no coupon is not a dead end, it is a
  * button.
  *
+ * 🔴 The coupon is drawn as a TICKET — the code set large on a dashed plate
+ * with Copy and Share beside it — because forwarding it is the whole job of
+ * this tab. It was one row of eight, in the same 12.5px as "Registered: 3",
+ * and the vendor's kitchen team received it as a screenshot with the wrong
+ * line circled. What is forwarded most gets the shape of a thing you forward.
+ *
  * ⚠️ The warn tag follows `pending`, never this tab's own opinion. Nothing
  * here says a chore is outstanding unless the API did.
  *
  * ⚠️ The coupon is a credential — anyone holding it can add a person to this
  * stall's roster. Showing it to the account holder is exactly right: they are
- * the person who forwards it to their own team.
+ * the person who forwards it to their own team. The WhatsApp share sends the
+ * code and the registration link, nothing else about the stall.
  */
 export function StaffTab({
   request,
@@ -64,7 +71,7 @@ export function StaffTab({
   };
 
   return (
-    <div style={{ display: 'grid', gap: 12 }}>
+    <div style={{ display: 'grid', gap: 14 }}>
       {outstanding && (
         <div>
           <Tag tone='warn' size='sm'>
@@ -75,8 +82,8 @@ export function StaffTab({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: mobile ? '1fr' : 'repeat(2, minmax(0, 1fr))',
-          gap: 12,
+          gridTemplateColumns: mobile ? '1fr' : 'minmax(0, 1.2fr) minmax(0, 1fr)',
+          gap: 16,
           alignItems: 'start',
         }}
       >
@@ -85,50 +92,28 @@ export function StaffTab({
             <PanelTitle icon='users'>
               {coupons.length === 1 ? 'Your coupon' : 'Your coupons'}
             </PanelTitle>
-            {coupons.map((c) => (
-              <Coupon key={c.id} coupon={c} sole={coupons.length === 1} />
-            ))}
-            <Row k='Registered' v={`${staff.registered}`} />
-            {/* ⚠️ "N of 8" read as a quota — which is what had a vendor believing
-                they still owed the stall team five more people. The cap is a
-                ceiling the gate enforces, and the backoffice words it this way. */}
-            {staff.capacity > 0 && (
-              <Row
-                k={coupons.length === 1 ? 'Your coupon admits' : 'Your coupons admit'}
-                v={`up to ${staff.capacity} ${staff.capacity === 1 ? 'person' : 'people'}`}
-              />
-            )}
-            <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: 8,
-                marginTop: 8,
-                paddingTop: 10,
-                width: '100%',
-                borderTop: '1px solid var(--bd)',
-              }}
-            >
+            <div style={{ display: 'grid', gap: 10, width: '100%' }}>
               {coupons.map((c) => (
-                // An in-app route, so a router push — the coupon page is the
-                // same application and a full reload would throw away the
-                // session it is already holding.
-                //
-                // ⚠️ Each code gets its OWN button, named by the code once there
-                // is more than one: the vendor is forwarding one to their
-                // kitchen team and the other to a caterer.
-                <Link
+                <Ticket
                   key={c.id}
-                  to={`/stalls/staff/${encodeURIComponent(c.code)}`}
-                  style={{ color: 'inherit' }}
-                >
-                  <Btn kind='primary'>
-                    Register Staff
-                    {coupons.length > 1 && ` · ${c.code}`}
-                    <Icon name='chevron-right' size={14} />
-                  </Btn>
-                </Link>
+                  coupon={c}
+                  sole={coupons.length === 1}
+                  stall={request.stallName}
+                />
               ))}
+            </div>
+            <div style={{ display: 'grid', gap: 4, width: '100%', marginTop: 6 }}>
+              <Row k='Registered' v={`${staff.registered}`} />
+              {/* ⚠️ "N of 8" read as a quota — which is what had a vendor
+                  believing they still owed the stall team five more people.
+                  The cap is a ceiling the gate enforces, and the backoffice
+                  words it this way. */}
+              {staff.capacity > 0 && (
+                <Row
+                  k={coupons.length === 1 ? 'Your coupon admits' : 'Your coupons admit'}
+                  v={`up to ${staff.capacity} ${staff.capacity === 1 ? 'person' : 'people'}`}
+                />
+              )}
             </div>
           </Panel>
         ) : (
@@ -160,15 +145,108 @@ export function StaffTab({
   );
 }
 
-/** One coupon, as two rows: the code to forward, and — where a stall holds
- *  more than one — how far that particular code has got. */
-function Coupon({ coupon, sole }: { coupon: CouponSummary; sole: boolean }) {
+/** Where a coupon holder registers — the same in-app route the button below
+ *  pushes to, made absolute so it survives being pasted into a chat. */
+function registerUrl(code: string): string {
+  const path = `/stalls/staff/${encodeURIComponent(code)}`;
+  return typeof window === 'undefined' ? path : new URL(path, window.location.origin).toString();
+}
+
+/**
+ * One coupon, as the ticket it is: the code large, and the three things a
+ * vendor does with it — copy it, send it, or register somebody themselves.
+ *
+ * ⚠️ The code is drawn ONCE, in the ticket. The Register Staff button names it
+ * only where there is more than one, so the vendor forwarding one to their
+ * kitchen and the other to a caterer can tell the buttons apart.
+ *
+ * ⚠️ The clipboard is not always there — an insecure origin, an older browser,
+ * a denied permission — so a failure says to copy it by hand rather than doing
+ * nothing. The code is on screen either way.
+ */
+function Ticket({ coupon, sole, stall }: { coupon: CouponSummary; sole: boolean; stall: string }) {
+  const toast = useToast();
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(coupon.code);
+      toast.ok('Coupon copied.');
+    } catch {
+      toast.fail(new Error('Could not copy. Please select the coupon and copy it.'));
+    }
+  };
+  const message =
+    `Staff registration for ${stall}. Register yourself with coupon ${coupon.code} at ` +
+    registerUrl(coupon.code);
+
   return (
-    <div style={{ display: 'grid', gap: 6, justifyItems: 'start', width: '100%' }}>
-      <Row k='Coupon' v={<Copyable value={coupon.code} label='Coupon' />} />
-      {!sole && coupon.capacity > 0 && (
-        <Row k='On this code' v={`${coupon.registered} registered, up to ${coupon.capacity}`} />
-      )}
+    <div
+      style={{
+        display: 'grid',
+        gap: 10,
+        width: '100%',
+        padding: '14px 16px',
+        borderRadius: 'var(--r3)',
+        border: '1.5px dashed var(--pri)',
+        background: 'var(--pri-t)',
+      }}
+    >
+      <div style={{ display: 'grid', gap: 2 }}>
+        <span
+          style={{
+            fontSize: 10.5,
+            fontWeight: 700,
+            letterSpacing: '.08em',
+            textTransform: 'uppercase',
+            color: 'var(--info-fg)',
+          }}
+        >
+          Staff coupon
+        </span>
+        <span
+          style={{
+            fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace',
+            fontSize: 22,
+            fontWeight: 600,
+            letterSpacing: '.06em',
+            wordBreak: 'break-all',
+            lineHeight: 1.2,
+          }}
+        >
+          {coupon.code}
+        </span>
+        {!sole && coupon.capacity > 0 && (
+          <span style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
+            {coupon.registered} registered, up to {coupon.capacity}
+          </span>
+        )}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        <Btn onClick={() => void copy()}>
+          <Icon name='copy' size={14} />
+          Copy
+        </Btn>
+        <a
+          href={`https://wa.me/?text=${encodeURIComponent(message)}`}
+          target='_blank'
+          rel='noreferrer'
+          style={{ color: 'inherit' }}
+        >
+          <Btn>
+            <Icon name='message-circle' size={14} />
+            Share on WhatsApp
+          </Btn>
+        </a>
+        {/* An in-app route, so a router push — the coupon page is the same
+            application and a full reload would throw away the session it is
+            already holding. */}
+        <Link to={`/stalls/staff/${encodeURIComponent(coupon.code)}`} style={{ color: 'inherit' }}>
+          <Btn kind='primary'>
+            Register Staff
+            {!sole && ` · ${coupon.code}`}
+            <Icon name='chevron-right' size={14} />
+          </Btn>
+        </Link>
+      </div>
     </div>
   );
 }
