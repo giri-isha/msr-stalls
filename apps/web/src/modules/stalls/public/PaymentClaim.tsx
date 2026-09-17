@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { submitPaymentClaim } from '../api';
 import { fieldErrorsFrom } from '../api-client';
 import { formatDate } from '../hooks';
-import { Btn, Card, FormField, Icon, Input, Select, Tag, Textarea, useToast } from '../ui';
+import { Btn, Dialog, FormField, Icon, Input, Select, Tag, Textarea, useToast } from '../ui';
 
 /**
  * Where a requester tells us what they transferred.
@@ -17,24 +17,24 @@ import { Btn, Card, FormField, Icon, Input, Select, Tag, Textarea, useToast } fr
  * ⚠️ A CLAIM, not a receipt. Submitting moves nothing: the stage advances when
  * finance verifies it and the payment record is written. Saying otherwise on
  * this page would tell a vendor they were done when nobody had looked.
+ *
+ * A DIALOG, where it used to unfold inline under the payment figures and push
+ * everything below them down the page. The figures stay where they were while
+ * the form is open, which matters: the amount owed is what the vendor is
+ * copying from.
  */
-export function PaymentClaim({
+export function PaymentClaimDialog({
   reference,
   payment,
-  // ⚠️ Defaulted. An API that has not been redeployed yet answers without this
-  // field, and a missing list must not take the whole status page down through
-  // the error boundary — a requester would then see nothing at all, including
-  // the figures they came for.
-  claims = [],
+  onClose,
   onSubmitted,
 }: {
   reference: string;
   payment: PublicPaymentDue | null;
-  claims?: PaymentClaimView[];
+  onClose: () => void;
   onSubmitted: () => void;
 }) {
   const toast = useToast();
-  const [open, setOpen] = useState(false);
   const [purpose, setPurpose] = useState<'RENT' | 'DEPOSIT'>('RENT');
   const [referenceNo, setReferenceNo] = useState('');
   const [amount, setAmount] = useState('');
@@ -45,19 +45,10 @@ export function PaymentClaim({
   const [busy, setBusy] = useState(false);
 
   // ⚠️ Prefilled from what is owed for the purpose chosen, because the figure
-  // is right there on the page above and retyping it is where a digit gets
+  // is right there on the page behind and retyping it is where a digit gets
   // dropped. Still editable: a vendor who paid a different amount has to be
   // able to say so, and that gap is exactly what finance needs to see.
   const owed = payment ? (purpose === 'RENT' ? payment.feePaise : payment.depositPaise) : null;
-
-  const reset = () => {
-    setReferenceNo('');
-    setAmount('');
-    setPaidOn('');
-    setRemitterName('');
-    setNote('');
-    setErrors({});
-  };
 
   const submit = async () => {
     setErrors({});
@@ -74,10 +65,9 @@ export function PaymentClaim({
         remitterName: remitterName.trim() || undefined,
         note: note.trim() || undefined,
       });
-      reset();
-      setOpen(false);
       toast.ok('Thank you. Finance will confirm it against the bank statement.');
       onSubmitted();
+      onClose();
     } catch (e) {
       setErrors(fieldErrorsFrom(e));
       toast.fail(e);
@@ -89,129 +79,104 @@ export function PaymentClaim({
   const ready = referenceNo.trim() !== '' && amount.trim() !== '' && paidOn !== '';
 
   return (
-    <div style={{ display: 'grid', gap: 10 }}>
-      {claims.length > 0 && (
-        <div style={{ display: 'grid', gap: 6 }}>
-          {claims.map((c) => (
-            <ClaimRow key={c.id} claim={c} />
-          ))}
-        </div>
-      )}
+    <Dialog
+      title='Report a transfer'
+      note='Rent and the deposit are paid separately, so please report them separately. We check what you tell us against the bank statement before it counts as paid.'
+      onClose={onClose}
+      footer={
+        <>
+          <Btn onClick={onClose}>Cancel</Btn>
+          <Btn kind='primary' onClick={submit} disabled={busy || !ready}>
+            <Icon name='send' size={14} />
+            {busy ? 'Sending…' : 'Report It'}
+          </Btn>
+        </>
+      }
+    >
+      <div style={{ display: 'grid', gap: 12 }}>
+        <FormField id='claim-purpose' label='Which payment' required>
+          <Select
+            id='claim-purpose'
+            value={purpose}
+            onChange={(v) => setPurpose(v as 'RENT' | 'DEPOSIT')}
+          >
+            <option value='RENT'>Rent</option>
+            <option value='DEPOSIT'>Refundable deposit</option>
+          </Select>
+        </FormField>
 
-      {!open && (
-        <Btn onClick={() => setOpen(true)}>
-          <Icon name='plus' size={14} />
-          {claims.length > 0 ? 'Report another transfer' : 'I have paid — report the transfer'}
-        </Btn>
-      )}
-
-      {open && (
-        <Card pad={16} style={{ display: 'grid', gap: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 700 }}>Report a transfer</div>
-          <p style={{ margin: 0, fontSize: 12, color: 'var(--mfg)', lineHeight: 1.6 }}>
-            Rent and the deposit are paid separately, so please report them separately. We check
-            what you tell us against the bank statement before it counts as paid.
-          </p>
-
-          <FormField id='claim-purpose' label='Which payment' required>
-            <Select
-              id='claim-purpose'
-              value={purpose}
-              onChange={(v) => setPurpose(v as 'RENT' | 'DEPOSIT')}
-            >
-              <option value='RENT'>Rent</option>
-              <option value='DEPOSIT'>Refundable deposit</option>
-            </Select>
-          </FormField>
-
-          <FormField
+        <FormField
+          id='claim-reference'
+          label='UTR or reference number'
+          help='The reference your bank gave the transfer. This is what we match against.'
+          required
+          error={errors.referenceNo}
+        >
+          <Input
             id='claim-reference'
-            label='UTR or reference number'
-            help='The reference your bank gave the transfer. This is what we match against.'
-            required
-            error={errors.referenceNo}
-          >
-            <Input
-              id='claim-reference'
-              value={referenceNo}
-              invalid={!!errors.referenceNo}
-              onChange={(e) => setReferenceNo(e.target.value)}
-            />
-          </FormField>
+            value={referenceNo}
+            invalid={!!errors.referenceNo}
+            onChange={(e) => setReferenceNo(e.target.value)}
+          />
+        </FormField>
 
-          <FormField
+        <FormField
+          id='claim-amount'
+          label='Amount transferred'
+          help={owed !== null ? `${formatInr(owed)} is due for this.` : undefined}
+          required
+          error={errors.amountPaise}
+        >
+          <Input
             id='claim-amount'
-            label='Amount transferred'
-            help={owed !== null ? `${formatInr(owed)} is due for this.` : undefined}
-            required
-            error={errors.amountPaise}
-          >
-            <Input
-              id='claim-amount'
-              type='number'
-              inputMode='decimal'
-              min={1}
-              placeholder={owed !== null ? String(Math.round(owed / 100)) : undefined}
-              value={amount}
-              invalid={!!errors.amountPaise}
-              onChange={(e) => setAmount(e.target.value)}
-            />
-          </FormField>
+            type='number'
+            inputMode='decimal'
+            min={1}
+            placeholder={owed !== null ? String(Math.round(owed / 100)) : undefined}
+            value={amount}
+            invalid={!!errors.amountPaise}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </FormField>
 
-          <FormField
+        <FormField
+          id='claim-paid-on'
+          label='Date of transfer'
+          help='The date it shows on your statement.'
+          required
+          error={errors.paidOn}
+        >
+          <Input
             id='claim-paid-on'
-            label='Date of transfer'
-            help='The date it shows on your statement.'
-            required
-            error={errors.paidOn}
-          >
-            <Input
-              id='claim-paid-on'
-              type='date'
-              value={paidOn}
-              invalid={!!errors.paidOn}
-              onChange={(e) => setPaidOn(e.target.value)}
-            />
-          </FormField>
+            type='date'
+            value={paidOn}
+            invalid={!!errors.paidOn}
+            onChange={(e) => setPaidOn(e.target.value)}
+          />
+        </FormField>
 
-          <FormField
+        <FormField
+          id='claim-remitter'
+          label='Name on the account you paid from'
+          help='Optional, and it helps us find the credit if the reference does not match.'
+        >
+          <Input
             id='claim-remitter'
-            label='Name on the account you paid from'
-            help='Optional, and it helps us find the credit if the reference does not match.'
-          >
-            <Input
-              id='claim-remitter'
-              value={remitterName}
-              onChange={(e) => setRemitterName(e.target.value)}
-            />
-          </FormField>
+            value={remitterName}
+            onChange={(e) => setRemitterName(e.target.value)}
+          />
+        </FormField>
 
-          <FormField id='claim-note' label='Anything we should know'>
-            <Textarea
-              id='claim-note'
-              rows={2}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-            />
-          </FormField>
-
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Btn kind='primary' onClick={submit} disabled={busy || !ready}>
-              <Icon name='send' size={14} />
-              {busy ? 'Sending…' : 'Report it'}
-            </Btn>
-            <Btn
-              onClick={() => {
-                reset();
-                setOpen(false);
-              }}
-            >
-              Cancel
-            </Btn>
-          </div>
-        </Card>
-      )}
-    </div>
+        <FormField id='claim-note' label='Anything we should know'>
+          <Textarea
+            id='claim-note'
+            rows={2}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </FormField>
+      </div>
+    </Dialog>
   );
 }
 
@@ -222,7 +187,7 @@ export function PaymentClaim({
  * the requester what to correct, and a rejection they cannot see returns them
  * to the mailbox this replaced.
  */
-function ClaimRow({ claim }: { claim: PaymentClaimView }) {
+export function ClaimRow({ claim }: { claim: PaymentClaimView }) {
   const tone = claim.status === 'VERIFIED' ? 'ok' : claim.status === 'REJECTED' ? 'des' : 'warn';
   const label =
     claim.status === 'VERIFIED'
@@ -236,10 +201,11 @@ function ClaimRow({ claim }: { claim: PaymentClaimView }) {
       style={{
         display: 'grid',
         gap: 4,
+        width: '100%',
         padding: '9px 12px',
         borderRadius: 'var(--r2)',
         border: '1px solid var(--line)',
-        background: 'var(--rail)',
+        background: 'var(--card)',
         fontSize: 12.5,
       }}
     >

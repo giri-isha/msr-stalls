@@ -11,7 +11,7 @@ import {
   isSelfServe,
 } from '@stalls/core';
 import { StatusPill, TYPE_LABEL } from '../components/StatusPill';
-import { PaymentClaim } from './PaymentClaim';
+import { ClaimRow, PaymentClaimDialog } from './PaymentClaim';
 import { Copyable, Panel, Row } from './portal-ui';
 import { formatDate } from '../hooks';
 import { Btn, Card, Icon, Tag, useIsMobile, useToast } from '../ui';
@@ -403,12 +403,7 @@ function Step({
           can still tell us, and finance would rather have the reference than a
           mailbox. */}
       {step.step === 'PAYMENT' && (
-        <PaymentClaim
-          reference={reference}
-          payment={payment}
-          claims={claims}
-          onSubmitted={onClaimed}
-        />
+        <ClaimShim reference={reference} payment={payment} claims={claims} onClaimed={onClaimed} />
       )}
     </div>
   );
@@ -639,6 +634,40 @@ function Coupon({ coupon, sole }: { coupon: CouponSummary; sole: boolean }) {
       <Row k='Coupon' v={<Copyable value={coupon.code} label='Coupon' />} />
       {!sole && coupon.capacity > 0 && (
         <Row k='On this code' v={`${coupon.registered} registered, up to ${coupon.capacity}`} />
+      )}
+    </div>
+  );
+}
+
+/** Holds the old card together until `RequestView` replaces it. */
+function ClaimShim({
+  reference,
+  payment,
+  claims = [],
+  onClaimed,
+}: {
+  reference: string;
+  payment: PublicPaymentDue | null;
+  claims: PaymentClaimView[];
+  onClaimed(): void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ display: 'grid', gap: 8, justifyItems: 'start' }}>
+      {claims.map((c) => (
+        <ClaimRow key={c.id} claim={c} />
+      ))}
+      <Btn onClick={() => setOpen(true)}>
+        <Icon name='plus' size={14} />
+        {claims.length > 0 ? 'Report Another Transfer' : 'Report a Transfer'}
+      </Btn>
+      {open && (
+        <PaymentClaimDialog
+          reference={reference}
+          payment={payment}
+          onClose={() => setOpen(false)}
+          onSubmitted={onClaimed}
+        />
       )}
     </div>
   );
