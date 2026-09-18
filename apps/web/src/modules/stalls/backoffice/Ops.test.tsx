@@ -168,6 +168,86 @@ describe('check-in', () => {
     await screen.findByText('Green Leaf Organics');
     expect(screen.queryByRole('button', { name: 'Check in' })).not.toBeInTheDocument();
   });
+
+  /** ⚠️ The counter is a phone job and the tiles are what a phone opens on —
+   *  but the same list is read at a desk the night before, to answer "who is
+   *  still not in", and that is a question about the whole table at once. */
+  test('opens as a table at desk width, and keeps the tiles once they are picked', async () => {
+    installFetch([
+      ['GET', /\/me$/, () => ME_ADMIN],
+      ['GET', /\/checkin/, () => [checkInRow()]],
+    ]);
+    render();
+    const user = userEvent.setup();
+
+    await screen.findByText('Green Leaf Organics');
+    const table = screen.getByRole('table');
+    expect(within(table).getByText('1 of 3')).toBeInTheDocument();
+    expect(within(table).getByText('FSSAI certificate pending')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Card View' }));
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.getByText('Green Leaf Organics')).toBeInTheDocument();
+  });
+
+  test('the note survives the switch of shape — both views can say why', async () => {
+    const fetch = installFetch([
+      ['GET', /\/me$/, () => ME_ADMIN],
+      ['GET', /\/checkin/, () => [checkInRow()]],
+      [
+        'POST',
+        /\/checkin\//,
+        (_u, _i, body) =>
+          checkInRow({
+            checkedInAt: '2026-02-14T06:00:00.000Z',
+            note: (body as { note?: string }).note ?? null,
+          }),
+      ],
+    ]);
+    render();
+    const user = userEvent.setup();
+
+    await screen.findByRole('table');
+    await user.type(screen.getByLabelText('Note for Green Leaf Organics'), 'shown on paper');
+    await user.click(screen.getByRole('button', { name: 'Check in' }));
+
+    await waitFor(() => {
+      const post = fetch.calls.find((c) => c.method === 'POST');
+      expect(post?.body).toEqual({ note: 'shown on paper' });
+    });
+  });
+
+  test('pages the counter, twenty-five at a time, and the filter starts over', async () => {
+    const rows = Array.from({ length: 30 }, (_, i) =>
+      checkInRow({
+        requestId: `4444${String(i).padStart(4, '0')}-4444-4444-8444-444444444444`,
+        stallName: `Stall ${i}`,
+        // The last five are already in, which is what the filter then narrows to.
+        checkedInAt: i >= 25 ? '2026-02-14T06:00:00.000Z' : null,
+      }),
+    );
+    installFetch([
+      ['GET', /\/me$/, () => ME_ADMIN],
+      ['GET', /\/checkin/, () => rows],
+    ]);
+    render();
+    const user = userEvent.setup();
+
+    await screen.findByRole('table');
+    expect(screen.getByText('1–25 of 30 stalls')).toBeInTheDocument();
+    expect(screen.getByText('Stall 0')).toBeInTheDocument();
+    expect(screen.queryByText('Stall 26')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Next Page' }));
+    expect(screen.getByText('Stall 26')).toBeInTheDocument();
+    expect(screen.queryByText('Stall 0')).not.toBeInTheDocument();
+
+    // ⚠️ Page two of the old list is not page two of the new one. Narrowing on
+    // page two and staying there is how a working filter reads as lost rows.
+    await user.click(screen.getByRole('button', { name: /^Checked in/ }));
+    expect(screen.getByText('5 stalls')).toBeInTheDocument();
+    expect(screen.getByText('Stall 25')).toBeInTheDocument();
+  });
 });
 
 // ── Chairs and tables ───────────────────────────────────────────────────────

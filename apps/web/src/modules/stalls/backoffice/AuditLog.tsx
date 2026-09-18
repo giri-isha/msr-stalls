@@ -23,6 +23,7 @@ import {
   Tag,
   Toolbar,
   toolBtnStyle,
+  usePageSize,
 } from '../ui';
 import { Actor, Expanded, hasMore } from './ActivityTimeline';
 
@@ -51,8 +52,6 @@ const CHANNEL_LABEL: Record<string, string> = {
   SYSTEM: 'System',
 };
 
-const PAGE_SIZE = 50;
-
 export function AuditLog() {
   const [params, setParams] = useSearchParams();
   const q = params.get('q') ?? '';
@@ -61,6 +60,10 @@ export function AuditLog() {
   const from = params.get('from') ?? '';
   const to = params.get('to') ?? '';
   const page = Number(params.get('page') ?? 0) || 0;
+  // ⚠️ Remembered, not in the URL. Every FILTER here is a link somebody can
+  // send — "the letters that failed yesterday" — and how many rows the person
+  // reading it likes on a page is not part of that question.
+  const [pageSize, setPageSize] = usePageSize('audit');
   const settledQ = useDebounced(q);
 
   const setParam = (key: string, value: string) => {
@@ -82,15 +85,15 @@ export function AuditLog() {
         from: from || undefined,
         to: to || undefined,
         page,
-        pageSize: PAGE_SIZE,
+        pageSize,
       }),
-    [settledQ, action, actorKind, from, to, page],
+    [settledQ, action, actorKind, from, to, page, pageSize],
   );
   const [open, setOpen] = useState<string | null>(null);
 
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
     <div>
@@ -181,9 +184,10 @@ export function AuditLog() {
               page={page}
               pages={pages}
               total={total}
-              size={PAGE_SIZE}
+              size={pageSize}
               noun='event'
               onPage={(p) => setParam('page', String(p))}
+              onSize={setPageSize}
             />
           </div>
           {items.length === 0 ? (

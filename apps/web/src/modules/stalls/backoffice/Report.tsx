@@ -8,7 +8,22 @@ import { Link, useParams } from 'react-router';
 import type { ReportColumn, ReportView } from '@stalls/core';
 import { getReport, reportCsvUrl } from '../api';
 import { useLoad } from '../hooks';
-import { Btn, Empty, ErrorBox, H1, Icon, Loading, TBody, TD, TH, THead, TR, Table } from '../ui';
+import {
+  Btn,
+  Empty,
+  ErrorBox,
+  H1,
+  Icon,
+  Loading,
+  Pager,
+  TBody,
+  TD,
+  TH,
+  THead,
+  TR,
+  Table,
+  usePaged,
+} from '../ui';
 
 /** A cell, as its column says to draw it.
  *
@@ -25,58 +40,74 @@ function cell(value: string | number | null | undefined, kind: ReportColumn['kin
 }
 
 function Body({ view }: { view: ReportView }) {
+  // ⚠️ One `<Report>` serves every report in the catalog, so the key is what
+  // says "different rows now" — without it, opening a short report from page
+  // four of a long one lands on a page that does not exist.
+  //
+  // ⚠️ The remembered rows-per-page is shared by all of them, deliberately:
+  // "show me a hundred at a time" is a statement about how somebody reads a
+  // report, not about which report they opened.
+  const { slice, pager } = usePaged('report', view.rows, view.key);
+
   if (view.rows.length === 0) {
     return <Empty>Nothing to report for this edition yet.</Empty>;
   }
 
   return (
-    <Table>
-      <THead>
-        <TR>
-          {view.columns.map((c) => (
-            // Numbers right, words left — a column of figures that is not
-            // right-aligned cannot be scanned for an order of magnitude.
-            <TH key={c.key} style={c.kind === 'text' ? undefined : { textAlign: 'right' }}>
-              {c.label}
-            </TH>
-          ))}
-        </TR>
-      </THead>
-      <TBody>
-        {/* ⚠️ Keyed on the row's own first text column, not on its index. Every
-            report's leading column is what the row IS — a status, a bay, a
-            requester type — and it is unique within the table, which an index is
-            only by accident. */}
-        {view.rows.map((row) => (
-          <TR key={String(row[view.columns[0]?.key ?? ''] ?? '')}>
-            {view.columns.map((c) => (
-              <TD key={c.key} style={c.kind === 'text' ? undefined : { textAlign: 'right' }}>
-                {cell(row[c.key], c.kind)}
-              </TD>
-            ))}
-          </TR>
-        ))}
-        {view.total && (
-          // The foot, as a row rather than a `<tfoot>`: the table component owns
-          // its own sections, and a total that is visually a row and structurally
-          // a footer reads differently to a screen reader than it looks.
+    <>
+      <Table>
+        <THead>
           <TR>
             {view.columns.map((c) => (
-              <TD
-                key={c.key}
-                style={{
-                  fontWeight: 700,
-                  borderTop: '2px solid var(--bd)',
-                  ...(c.kind === 'text' ? {} : { textAlign: 'right' }),
-                }}
-              >
-                {cell(view.total?.[c.key], c.kind)}
-              </TD>
+              // Numbers right, words left — a column of figures that is not
+              // right-aligned cannot be scanned for an order of magnitude.
+              <TH key={c.key} style={c.kind === 'text' ? undefined : { textAlign: 'right' }}>
+                {c.label}
+              </TH>
             ))}
           </TR>
-        )}
-      </TBody>
-    </Table>
+        </THead>
+        <TBody>
+          {/* ⚠️ Keyed on the row's own first text column, not on its index. Every
+              report's leading column is what the row IS — a status, a bay, a
+              requester type — and it is unique within the table, which an index
+              is only by accident. */}
+          {slice.map((row) => (
+            <TR key={String(row[view.columns[0]?.key ?? ''] ?? '')}>
+              {view.columns.map((c) => (
+                <TD key={c.key} style={c.kind === 'text' ? undefined : { textAlign: 'right' }}>
+                  {cell(row[c.key], c.kind)}
+                </TD>
+              ))}
+            </TR>
+          ))}
+          {/* ⚠️ Drawn on EVERY page, not only the last. It is the total of the
+              report, not of the rows above it — a reader who pages forward and
+              loses the figure would reasonably read that as the report having
+              ended. */}
+          {view.total && (
+            // The foot, as a row rather than a `<tfoot>`: the table component owns
+            // its own sections, and a total that is visually a row and structurally
+            // a footer reads differently to a screen reader than it looks.
+            <TR>
+              {view.columns.map((c) => (
+                <TD
+                  key={c.key}
+                  style={{
+                    fontWeight: 700,
+                    borderTop: '2px solid var(--bd)',
+                    ...(c.kind === 'text' ? {} : { textAlign: 'right' }),
+                  }}
+                >
+                  {cell(view.total?.[c.key], c.kind)}
+                </TD>
+              ))}
+            </TR>
+          )}
+        </TBody>
+      </Table>
+      <Pager {...pager} noun='row' />
+    </>
   );
 }
 

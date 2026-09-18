@@ -260,7 +260,13 @@ export const ListAuditQuery = z.object({
   /** Inclusive. */
   to: IsoDate.optional(),
   page: z.coerce.number().int().min(0).default(0),
-  pageSize: z.coerce.number().int().min(1).max(200).default(50),
+  /**
+   * ⚠️ The ceiling is the largest size the footer OFFERS, and the default is
+   * the one it opens on. When the two drifted — the select naming 500 and this
+   * capping at 200 — the screen asked for five hundred rows, got two hundred,
+   * and drew a pager confidently counting pages that were never fetched.
+   */
+  pageSize: z.coerce.number().int().min(1).max(500).default(25),
 });
 export type ListAuditQuery = z.infer<typeof ListAuditQuery>;
 

@@ -9,8 +9,15 @@
  */
 export const PAGE_SIZES = [25, 50, 75, 100, 200, 300, 400, 500] as const;
 
-/** What a screen shows before anyone chooses. */
-export const DEFAULT_PAGE_SIZE = 50;
+/**
+ * What a screen shows before anyone chooses.
+ *
+ * 25 rather than a screenful-and-a-bit: the first page is what every reader
+ * pays for, on every visit, and most of the lists here are opened to find one
+ * row rather than to read all of them. Anybody who wants the whole area at
+ * once says so in the footer, and is remembered per screen.
+ */
+export const DEFAULT_PAGE_SIZE = 25;
 
 /**
  * The most rows any list endpoint will return.

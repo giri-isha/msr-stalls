@@ -21,6 +21,7 @@ import {
   H1,
   Icon,
   Loading,
+  RowsPerPage,
   Search,
   Select,
   TBody,
@@ -32,6 +33,7 @@ import {
   toolBtnStyle,
   Toolbar,
   useListView,
+  usePageSize,
   ViewToggle,
   ColumnsButton,
   useColumns,
@@ -79,6 +81,11 @@ export function Requests() {
   const zoneCode = params.get('zoneCode') ?? '';
   const flagged = params.get('flagged') === 'true';
   const [view, setView] = useListView('requests');
+  // ⚠️ This pipeline pages on a CURSOR — there is no total and no page to jump
+  // to — so the rows-per-page choice is how many arrive per FETCH rather than
+  // how many are drawn. It is remembered under the same key as every other
+  // list's, because "I read a hundred at a time" is one preference.
+  const [limit, setLimit] = usePageSize('requests');
   const columns = useColumns('requests', COLUMNS);
   // The bays are the edition's own rows, not a list in this file: the venue is
   // redrawn every year, and a filter that cannot offer a new bay hides every
@@ -105,7 +112,7 @@ export function Requests() {
     stage: (stage || undefined) as ListRequestsQuery['stage'],
     zoneCode: (zoneCode || undefined) as ListRequestsQuery['zoneCode'],
     flagged: flagged || undefined,
-    limit: 50,
+    limit,
   };
   const key = JSON.stringify(query);
 
@@ -372,6 +379,7 @@ export function Requests() {
           color: 'var(--mfg)',
         }}
       >
+        <RowsPerPage value={limit} onChange={setLimit} label='Fetch' />
         <span>{loading ? 'Loading…' : `${items.length.toLocaleString('en-IN')} shown`}</span>
         <div style={{ flex: 1 }} />
         {cursor && (

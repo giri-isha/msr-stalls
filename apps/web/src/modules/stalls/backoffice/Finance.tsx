@@ -40,6 +40,7 @@ import {
   Icon,
   Input,
   Loading,
+  Pager,
   Search,
   Select,
   Tag,
@@ -52,6 +53,7 @@ import {
   Table,
   Tabs,
   useIsMobile,
+  usePaged,
   useToast,
 } from '../ui';
 
@@ -198,6 +200,7 @@ function ApplicationsPanel() {
     if (outstanding === 'short') return !r.fullySettled;
     return true;
   });
+  const { slice, pager } = usePaged('finance-due', rows, `${q}|${outstanding}`);
 
   const sendPayment = async (row: PaymentRow) => {
     setBusy(row.requestId);
@@ -245,24 +248,33 @@ function ApplicationsPanel() {
       {rows.length === 0 ? (
         <Empty>No selected vendors owe anything yet.</Empty>
       ) : mobile ? (
-        <div style={{ display: 'grid', gap: 10 }}>
-          {rows.map((r) => (
-            <Card key={r.requestId} pad={14} style={{ display: 'grid', gap: 8 }}>
-              <div style={{ fontWeight: 600 }}>{r.stallName}</div>
-              <Money row={r} />
-              {can('comms.write') && !r.paymentEmailSentAt && (
-                <Btn kind='primary' onClick={() => sendPayment(r)} disabled={busy === r.requestId}>
-                  <Icon name='send' size={14} />
-                  Send Payment Email
+        <>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {slice.map((r) => (
+              <Card key={r.requestId} pad={14} style={{ display: 'grid', gap: 8 }}>
+                <div style={{ fontWeight: 600 }}>{r.stallName}</div>
+                <Money row={r} />
+                {can('comms.write') && !r.paymentEmailSentAt && (
+                  <Btn
+                    kind='primary'
+                    onClick={() => sendPayment(r)}
+                    disabled={busy === r.requestId}
+                  >
+                    <Icon name='send' size={14} />
+                    Send Payment Email
+                  </Btn>
+                )}
+                <Btn onClick={() => setOpen(r)}>
+                  <Icon name='rupee' size={14} />
+                  {canWrite ? 'Record Credit' : 'View Credits'}
                 </Btn>
-              )}
-              <Btn onClick={() => setOpen(r)}>
-                <Icon name='rupee' size={14} />
-                {canWrite ? 'Record Credit' : 'View Credits'}
-              </Btn>
-            </Card>
-          ))}
-        </div>
+              </Card>
+            ))}
+          </div>
+          <Card pad={0} style={{ marginTop: 12, overflow: 'hidden' }}>
+            <Pager {...pager} noun='vendor' />
+          </Card>
+        </>
       ) : (
         <Card pad={0} style={{ overflow: 'hidden' }}>
           <Table>
@@ -282,7 +294,7 @@ function ApplicationsPanel() {
               </TR>
             </THead>
             <TBody>
-              {rows.map((r) => {
+              {slice.map((r) => {
                 const { paidPaise, remainingPaise } = settlement(r);
                 return (
                   <TR key={r.requestId}>
@@ -413,6 +425,7 @@ function ApplicationsPanel() {
               })}
             </TBody>
           </Table>
+          <Pager {...pager} noun='vendor' />
         </Card>
       )}
 
@@ -490,10 +503,14 @@ function ClaimsPanel() {
   const [rejecting, setRejecting] = useState<PaymentClaimRow | null>(null);
   const canWrite = can('finance.write');
 
+  // ⚠️ Above the early returns. `usePaged` is a hook, and a hook that only
+  // runs once the data has landed is a hook that changes order between
+  // renders — React counts them, it does not name them.
+  const rows = data?.claims ?? [];
+  const { slice, pager } = usePaged('finance-claims', rows);
+
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox>{error.message}</ErrorBox>;
-
-  const rows = data?.claims ?? [];
 
   const settle = async (row: PaymentClaimRow, input: ReviewPaymentClaimInput) => {
     setBusy(row.id);
@@ -534,7 +551,7 @@ function ClaimsPanel() {
               </TR>
             </THead>
             <TBody>
-              {rows.map((c) => {
+              {slice.map((c) => {
                 // ⚠️ A mismatch is flagged, not refused. A vendor who paid a
                 // little over, or whose bank deducted a charge, is a normal
                 // case that finance settles by eye.
@@ -588,6 +605,7 @@ function ClaimsPanel() {
               })}
             </TBody>
           </Table>
+          <Pager {...pager} noun='claim' />
         </Card>
       )}
 
@@ -713,6 +731,10 @@ function ConfirmedPanel() {
   const live = filtered.filter((c) => c.voidedAt === null);
   const totalPaise = live.reduce((t, c) => t + c.amountPaise, 0);
   const withdrawnCount = filtered.length - live.length;
+  // ⚠️ The total under the table stays the total of everything the search
+  // matched, not of the page. A figure that changed as you turned pages would
+  // be read as the edition's takings and be wrong on every page but one.
+  const { slice, pager } = usePaged('finance-credits', filtered, q);
 
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox>{error.message}</ErrorBox>;
@@ -748,7 +770,7 @@ function ConfirmedPanel() {
                 </TR>
               </THead>
               <TBody>
-                {filtered.map((c) => {
+                {slice.map((c) => {
                   const withdrawn = c.voidedAt !== null;
                   return (
                     <TR key={c.id}>
@@ -811,6 +833,7 @@ function ConfirmedPanel() {
                 })}
               </TBody>
             </Table>
+            <Pager {...pager} noun='credit' />
           </Card>
           {/* The sum of what is LISTED, so it follows the search rather than
               claiming to be the edition's total when a filter is on. */}
@@ -1317,6 +1340,7 @@ function RefundPanel() {
   );
   const [open, setOpen] = useState<RefundRow | null>(null);
   const canWrite = can('finance.write');
+  const { slice, pager } = usePaged('finance-refunds', filtered, q);
 
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox>{error.message}</ErrorBox>;
@@ -1346,7 +1370,7 @@ function RefundPanel() {
               </TR>
             </THead>
             <TBody>
-              {filtered.map((r) => (
+              {slice.map((r) => (
                 <TR key={r.requestId}>
                   <TD>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{r.stallName}</div>
@@ -1398,6 +1422,7 @@ function RefundPanel() {
               ))}
             </TBody>
           </Table>
+          <Pager {...pager} noun='deposit' />
         </Card>
       )}
 

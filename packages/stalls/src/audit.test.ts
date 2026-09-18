@@ -90,7 +90,7 @@ describe('maskAccountNumber', () => {
 
 describe('ListAuditQuery', () => {
   test('defaults the page and refuses a bad date', () => {
-    expect(ListAuditQuery.parse({})).toMatchObject({ page: 0, pageSize: 50 });
+    expect(ListAuditQuery.parse({})).toMatchObject({ page: 0, pageSize: 25 });
     expect(ListAuditQuery.safeParse({ from: '17/09/2026' }).success).toBe(false);
     expect(ListAuditQuery.safeParse({ actorKind: 'ROBOT' }).success).toBe(false);
   });

@@ -23,6 +23,7 @@ import {
   IconBtn,
   Input,
   Loading,
+  Pager,
   RowActions,
   Search,
   Tag,
@@ -37,6 +38,7 @@ import {
   useColumns,
   type ColumnDef,
   useIsMobile,
+  usePaged,
   useToast,
   titleCase,
 } from '../ui';
@@ -101,6 +103,10 @@ export function Equipment() {
       });
   }, [data, q, filter]);
 
+  // A narrowing returns to the first page — otherwise the filter reads as
+  // lost rows rather than as a page number left behind.
+  const { slice, pager } = usePaged('equipment', rows, `${q}|${filter}`);
+
   const replace = (row: EquipmentRow) =>
     setData((prev) => (prev ?? []).map((r) => (r.requestId === row.requestId ? row : r)));
 
@@ -163,20 +169,25 @@ export function Equipment() {
       ) : rows.length === 0 ? (
         <Empty>No stalls ordered chairs or tables.</Empty>
       ) : mobile ? (
-        <div style={{ display: 'grid', gap: 10 }}>
-          {rows.map((r) => (
-            <EquipmentCard
-              key={r.requestId}
-              row={r}
-              canWrite={canWrite}
-              onRun={run}
-              onEdit={() => setEditing(r)}
-              onCollect={() => setCollecting(r)}
-              onHistory={() => setHistory(r)}
-              onChallan={() => openChallan(r.requestId)}
-            />
-          ))}
-        </div>
+        <>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {slice.map((r) => (
+              <EquipmentCard
+                key={r.requestId}
+                row={r}
+                canWrite={canWrite}
+                onRun={run}
+                onEdit={() => setEditing(r)}
+                onCollect={() => setCollecting(r)}
+                onHistory={() => setHistory(r)}
+                onChallan={() => openChallan(r.requestId)}
+              />
+            ))}
+          </div>
+          <Card pad={0} style={{ marginTop: 12, overflow: 'hidden' }}>
+            <Pager {...pager} noun='stall' />
+          </Card>
+        </>
       ) : (
         <Card pad={0} style={{ overflow: 'hidden' }}>
           <Table>
@@ -193,7 +204,7 @@ export function Equipment() {
               </TR>
             </THead>
             <TBody>
-              {rows.map((r) => (
+              {slice.map((r) => (
                 <TR key={r.requestId}>
                   <TD>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>
@@ -266,6 +277,7 @@ export function Equipment() {
               ))}
             </TBody>
           </Table>
+          <Pager {...pager} noun='stall' />
         </Card>
       )}
 

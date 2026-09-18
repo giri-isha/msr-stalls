@@ -27,6 +27,7 @@ import {
   Icon,
   Input,
   Loading,
+  Pager,
   Search,
   Section,
   Select,
@@ -43,6 +44,7 @@ import {
   Table,
   type Tone,
   useIsMobile,
+  usePaged,
   useToast,
   titleCase,
 } from '../ui';
@@ -119,6 +121,11 @@ export function Onboarding() {
     });
   }, [data, q, outstanding, requestType]);
 
+  // Every narrowing returns to the first page: a filter applied on page four
+  // over a list that still has four pages leaves the reader looking at rows
+  // that have nothing to do with what they just asked for.
+  const { slice, pager } = usePaged('onboarding', rows, `${q}|${outstanding}|${requestType}`);
+
   return (
     <div>
       <H1
@@ -168,28 +175,35 @@ export function Onboarding() {
       ) : rows.length === 0 ? (
         <Empty>No selected stalls to onboard yet.</Empty>
       ) : mobile ? (
-        <div style={{ display: 'grid', gap: 10 }}>
-          {rows.map((r) => (
-            <Card
-              key={r.requestId}
-              pad={14}
-              onAct={() => setOpen(r.requestId)}
-              label={`${r.stallName}, onboarding`}
-              style={{ display: 'grid', gap: 8 }}
-            >
-              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{r.stallName}</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
-                    {r.stallNumbers.join(', ') || '—'}
+        <>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {slice.map((r) => (
+              <Card
+                key={r.requestId}
+                pad={14}
+                onAct={() => setOpen(r.requestId)}
+                label={`${r.stallName}, onboarding`}
+                style={{ display: 'grid', gap: 8 }}
+              >
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{r.stallName}</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
+                      {r.stallNumbers.join(', ') || '—'}
+                    </div>
                   </div>
+                  <TypeBadge type={r.requestType} />
                 </div>
-                <TypeBadge type={r.requestType} />
-              </div>
-              <PendingChips row={r} />
-            </Card>
-          ))}
-        </div>
+                <PendingChips row={r} />
+              </Card>
+            ))}
+          </div>
+          {/* The tiles are not inside a card, so the footer brings its own —
+              otherwise the rule along its top is a line drawn across nothing. */}
+          <Card pad={0} style={{ marginTop: 12, overflow: 'hidden' }}>
+            <Pager {...pager} noun='stall' />
+          </Card>
+        </>
       ) : (
         <Card pad={0} style={{ overflow: 'hidden' }}>
           <Table>
@@ -207,7 +221,7 @@ export function Onboarding() {
               </TR>
             </THead>
             <TBody>
-              {rows.map((r) => (
+              {slice.map((r) => (
                 <TR key={r.requestId} onClick={() => setOpen(r.requestId)}>
                   <TD>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{r.stallName}</div>
@@ -257,6 +271,7 @@ export function Onboarding() {
               ))}
             </TBody>
           </Table>
+          <Pager {...pager} noun='stall' />
         </Card>
       )}
 

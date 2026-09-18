@@ -607,7 +607,10 @@ export const ListRequestsQuery = z.object({
   flagged: z.coerce.boolean().optional(),
   q: z.string().trim().max(200).optional(),
   cursor: z.string().max(200).optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(50),
+  /** ⚠️ The ceiling is the largest size the pipeline's Fetch picker offers.
+   *  When they drifted, picking 500 fetched 200 and the screen reported it as
+   *  the end of the list. */
+  limit: z.coerce.number().int().min(1).max(500).default(25),
 });
 export type ListRequestsQuery = z.infer<typeof ListRequestsQuery>;
 
@@ -1579,7 +1582,8 @@ export const ListUsersQuery = z.object({
   signInState: SignInStateValue.optional(),
   /** Zero-based, as every list endpoint in the module counts pages. */
   page: z.coerce.number().int().min(0).default(0),
-  pageSize: z.coerce.number().int().min(1).max(500).default(50),
+  /** The default the footer opens on; the ceiling is the largest it offers. */
+  pageSize: z.coerce.number().int().min(1).max(500).default(25),
 });
 export type ListUsersQuery = z.infer<typeof ListUsersQuery>;
 

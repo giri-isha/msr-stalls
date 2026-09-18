@@ -27,6 +27,7 @@ import {
   Icon,
   Input,
   Loading,
+  Pager,
   Search,
   Select,
   Tag,
@@ -41,6 +42,7 @@ import {
   Textarea,
   toolBtnStyle,
   useIsMobile,
+  usePaged,
   useToast,
 } from '../ui';
 
@@ -179,6 +181,12 @@ function SendPanel() {
   // and offering the tick would make the result read as a failure.
   const sendable = rows.filter((r) => sentAt(r) === null);
 
+  // ⚠️ Paged for DRAWING only. `sendable` above, and every Select All that
+  // reads it, still spans the whole filtered list — a footer that quietly
+  // narrowed "select all" to the twenty-five rows on screen would send a
+  // fraction of a mailing and report it as the whole of one.
+  const { slice, pager } = usePaged('comms-recipients', rows, `${templateKey}|${q}|${sentFilter}`);
+
   // Clearing the ticks when the letter changes: the set that made sense for the
   // vendor letter is the wrong set for the payment letter.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on letter change
@@ -300,19 +308,24 @@ function SendPanel() {
           {`No selected ${appliesToText(forTypes).toLowerCase()} requests. This letter only goes to ${appliesToText(forTypes)} requests, and only once one is selected.`}
         </Empty>
       ) : mobile ? (
-        <div style={{ display: 'grid', gap: 10 }}>
-          {rows.map((r) => (
-            <RecipientCard
-              key={r.id}
-              r={r}
-              sentAt={sentAt(r)}
-              checked={picked.has(r.id)}
-              onToggle={() => toggle(r.id)}
-              onSend={() => send([r.id])}
-              busy={busy}
-            />
-          ))}
-        </div>
+        <>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {slice.map((r) => (
+              <RecipientCard
+                key={r.id}
+                r={r}
+                sentAt={sentAt(r)}
+                checked={picked.has(r.id)}
+                onToggle={() => toggle(r.id)}
+                onSend={() => send([r.id])}
+                busy={busy}
+              />
+            ))}
+          </div>
+          <Card pad={0} style={{ marginTop: 12, overflow: 'hidden' }}>
+            <Pager {...pager} noun='vendor' />
+          </Card>
+        </>
       ) : (
         <Card pad={0} style={{ overflow: 'hidden' }}>
           <Table>
@@ -327,7 +340,7 @@ function SendPanel() {
               </TR>
             </THead>
             <TBody>
-              {rows.map((r) => {
+              {slice.map((r) => {
                 const sent = sentAt(r);
                 return (
                   <TR key={r.id}>
@@ -375,6 +388,7 @@ function SendPanel() {
               })}
             </TBody>
           </Table>
+          <Pager {...pager} noun='vendor' />
         </Card>
       )}
     </div>
@@ -718,6 +732,8 @@ function ReminderPanel() {
   // logging a call on it is the ordinary sequence.
   const [logging, setLogging] = useState<ReminderRow | null>(null);
   const [showing, setShowing] = useState<ReminderRow | null>(null);
+  // Switching between the two kinds is a different list, so it starts at page one.
+  const { slice, pager } = usePaged('comms-reminders', data ?? [], kind);
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
@@ -759,7 +775,7 @@ function ReminderPanel() {
               </TR>
             </THead>
             <TBody>
-              {(data ?? []).map((r) => (
+              {slice.map((r) => (
                 <TR key={r.requestId}>
                   <TD>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{r.stallName}</div>
@@ -826,6 +842,7 @@ function ReminderPanel() {
               ))}
             </TBody>
           </Table>
+          <Pager {...pager} noun='vendor' />
         </Card>
       )}
 

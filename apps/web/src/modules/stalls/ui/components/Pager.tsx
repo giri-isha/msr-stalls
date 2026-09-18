@@ -8,6 +8,16 @@ import { Select } from './Select';
  * Renders the count even on a single page — knowing there are 41 rows and no
  * more is worth as much as the arrows are.
  *
+ * ⚠️ **The navigation sits at the right, as one group.** Right is where a
+ * table footer is read for it, and that part is convention — what was wrong
+ * was never the side. The arrows and "Page 1 of 2" were five loose flex
+ * children strung along the rule, and the indicator was 12px muted grey among
+ * a row of 12px muted grey, so on a table wide enough to scroll sideways it
+ * read as one more caption and people concluded the list ended at fifty. So
+ * the four arrows and the indicator are now ONE element that cannot be
+ * strung out or wrapped apart, and the indicator carries the weight and the
+ * full-strength colour that says it is state rather than a label.
+ *
  * ⚠️ **Changing the size resets the page, and this component does it** rather
  * than trusting its callers. Ten screens render this footer; the one that
  * forgets asks the server for rows 19,500–20,000 of 9,408 and shows an empty
@@ -52,33 +62,21 @@ export function Pager({
       }}
     >
       {onSize && (
-        /* ⚠️ The label sits BESIDE the picker rather than around it. A `<label>`
-           forwards a click on any non-interactive descendant to the control it
-           names — and the drawn list's option rows are `div`s, so choosing a
-           size inside a wrapping label re-opened the list it had just closed. */
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}>
-          <label htmlFor='stalls-rows-per-page'>Rows</label>
-          <Select
-            id='stalls-rows-per-page'
-            aria-label='Rows per Page'
-            value={String(size)}
-            onChange={(n) => {
-              onSize(Number(n));
-              onPage(0);
-            }}
-            style={{ width: 'auto', padding: '4px 8px', fontSize: 12 }}
-          >
-            {PAGE_SIZES.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </Select>
-        </div>
+        <RowsPerPage
+          value={size}
+          onChange={(n) => {
+            onSize(n);
+            onPage(0);
+          }}
+        />
       )}
-      <div style={{ flex: 1 }}>{rangeLabel({ page, size, total, noun })}</div>
+      <div style={{ flex: 'none' }}>{rangeLabel({ page, size, total, noun })}</div>
+      {/* The slack sits BETWEEN the count and the navigation: that is what puts
+          the arrows on the right edge, and what keeps them there when a wider
+          table stretches the footer under them. */}
+      <div style={{ flex: 1 }} />
       {pages > 1 && (
-        <>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}>
           <Jump
             to={0}
             at={page}
@@ -95,7 +93,19 @@ export function Pager({
             label='Previous Page'
             onPage={onPage}
           />
-          <span style={{ flex: 'none' }}>
+          {/* ⚠️ `--fg` and 600, where the rest of the footer is muted. Which
+              page you are on is the one piece of STATE down here — everything
+              else is a label or a control — and at 12px muted grey it read as
+              another caption and was skipped. */}
+          <span
+            style={{
+              flex: 'none',
+              color: 'var(--fg)',
+              fontWeight: 600,
+              whiteSpace: 'nowrap',
+              padding: '0 2px',
+            }}
+          >
             Page {(page + 1).toLocaleString()} of {pages.toLocaleString()}
           </span>
           <Jump
@@ -114,8 +124,51 @@ export function Pager({
             label='Last Page'
             onPage={onPage}
           />
-        </>
+        </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * How many rows at a time, on its own.
+ *
+ * Split out of the footer for the one list that cannot draw a footer: the
+ * request pipeline pages on a CURSOR, so it knows what it has fetched and
+ * never what it has not — there is no page count to print and no page to jump
+ * to. What it can honour is "fetch me five hundred at a time", which is this
+ * control and nothing else in the footer.
+ *
+ * ⚠️ The label sits BESIDE the picker rather than around it. A `<label>`
+ * forwards a click on any non-interactive descendant to the control it names —
+ * and the drawn list's option rows are `div`s, so choosing a size inside a
+ * wrapping label re-opened the list it had just closed.
+ */
+export function RowsPerPage({
+  value,
+  onChange,
+  label = 'Rows',
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  label?: string;
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}>
+      <label htmlFor='stalls-rows-per-page'>{label}</label>
+      <Select
+        id='stalls-rows-per-page'
+        aria-label='Rows per Page'
+        value={String(value)}
+        onChange={(n) => onChange(Number(n))}
+        style={{ width: 'auto', padding: '4px 8px', fontSize: 12 }}
+      >
+        {PAGE_SIZES.map((n) => (
+          <option key={n} value={n}>
+            {n}
+          </option>
+        ))}
+      </Select>
     </div>
   );
 }

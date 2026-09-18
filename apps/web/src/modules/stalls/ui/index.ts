@@ -40,6 +40,7 @@ export { useBreakpoint, useIsMobile, useIsNarrow, type BP } from './useBreakpoin
 export { useListView, type ListView } from './useListView';
 export { useColumns, type ColumnDef, type ColumnState } from './useColumns';
 export { usePageSize } from './usePageSize';
+export { usePaged, type PagerProps } from './usePaged';
 export { useSidebarRail } from './useSidebarRail';
 export {
   clampPageSize,
@@ -75,7 +76,7 @@ export {
   useLockScroll,
   useTopmostOverlay,
 } from './components/Overlay';
-export { pageSlice, Pager } from './components/Pager';
+export { pageSlice, Pager, RowsPerPage } from './components/Pager';
 export { ColumnsButton } from './components/ColumnsButton';
 export { OptionRow, PopHeader, Popover } from './components/Popover';
 export { RowActions } from './components/RowActions';
