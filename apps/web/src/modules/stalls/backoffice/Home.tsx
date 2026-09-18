@@ -347,7 +347,7 @@ export function Home() {
   const mobile = useIsMobile();
   const narrow = useIsNarrow();
 
-  if (loading) return <Loading />;
+  if (loading && !data) return <Loading />;
   if (error || !data)
     return <ErrorBox>{error?.message ?? 'Could not load your home page.'}</ErrorBox>;
 

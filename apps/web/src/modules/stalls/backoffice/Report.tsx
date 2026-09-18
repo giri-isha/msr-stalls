@@ -84,6 +84,12 @@ export function Report() {
   const { key = '' } = useParams();
   const { data, error, loading } = useLoad(() => getReport(key), [key]);
 
+  // ⚠️ `if (loading)`, NOT the `loading && !data` the rest of the module uses
+  // — and the difference is `[key]`. One `<Report>` serves every report in the
+  // catalog, so on the way from one to the next `data` still holds the LAST
+  // one; keeping it on screen would put the previous report's rows under the
+  // new report's heading. Everywhere that guard is relaxed, the load has no
+  // deps and the stale data is the same data.
   if (loading) return <Loading />;
   if (error || !data) {
     return (

@@ -151,7 +151,7 @@ const STATUS_GLYPH: Record<RequestStatus, string> = {
  *  pipeline. */
 function Kpis() {
   const { data, error, loading } = useLoad(getDashboard);
-  if (loading) return <Loading />;
+  if (loading && !data) return <Loading />;
   if (error || !data) return <ErrorBox>{error?.message ?? 'Could not load the counts.'}</ErrorBox>;
 
   const s = data.byStatus;
@@ -222,7 +222,7 @@ function Kpis() {
 /** The report catalog, grouped as the catalog groups it. */
 function Catalog() {
   const { data, error, loading } = useLoad(listReports);
-  if (loading) return <Loading />;
+  if (loading && !data) return <Loading />;
   if (error || !data) return <ErrorBox>{error?.message ?? 'Could not load the reports.'}</ErrorBox>;
   if (data.reports.length === 0) {
     return <Empty>There are no reports your role can open.</Empty>;

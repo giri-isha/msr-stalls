@@ -21,6 +21,7 @@ import { apiFetch } from '@/modules/stalls/api-client';
 import { useTheme } from '@/modules/stalls/use-theme';
 import type { ResolvedNavGroup } from '@stalls/core';
 import { MeProvider, useMe } from '@/modules/stalls';
+import { RefreshProvider, useRefresh } from '@/modules/stalls/refresh';
 import { InstallPrompt } from './UpdateToast';
 import {
   Frame,
@@ -249,7 +250,17 @@ function Topbar({
   const { me, reload } = useMe();
   const mobile = useIsMobile();
   const { theme, toggle: toggleTheme } = useTheme();
+  const { refreshing, refresh } = useRefresh();
   const [menuOpen, setMenuOpen] = useState(false);
+
+  // The screens refetch off the token in `useRefresh`; `/me` is the one thing
+  // no screen loads, so the button reloads it too. A role granted or a sidebar
+  // rearranged while somebody had the tab open lands with the rest, instead of
+  // waiting for them to think of a hard reload.
+  const refreshAll = () => {
+    refresh();
+    reload();
+  };
 
   const signOut = async () => {
     await apiFetch('/api/dev/signout', { method: 'POST' });
@@ -308,6 +319,29 @@ function Topbar({
         {!mobile && roles && (
           <div style={{ fontSize: 12, color: 'var(--mfg)' }}>{roles || 'no stalls role'}</div>
         )}
+
+        {/* Re-run whatever this screen is loading — see `refresh.tsx`. NOT a
+            page reload: the filters, the scroll position, the expanded rows and
+            anything half-typed all survive it, which is the difference between
+            a control people use to check for something new and one they learn
+            to avoid. Kept on a phone, where a stale list is most likely to be
+            the thing being looked at. */}
+        <button
+          type='button'
+          onClick={refreshAll}
+          disabled={refreshing}
+          style={{ ...topBtn, cursor: refreshing ? 'default' : 'pointer' }}
+          title='Refresh'
+          aria-label='Refresh'
+        >
+          <span
+            className={refreshing ? 'stalls-spin' : undefined}
+            style={{ display: 'flex' }}
+            aria-hidden
+          >
+            <Icon name='refresh' size={15} />
+          </span>
+        </button>
 
         {/* The theme, in the bar rather than inside the account menu. It used
             to be a row in that menu, which put a control people reach for
@@ -496,7 +530,11 @@ function Gate() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: the path is the trigger
   useEffect(() => closeDrawer(), [pathname, closeDrawer]);
 
-  if (status === 'loading') {
+  // ⚠️ `&& !me` — the FIRST load only. `reload()` puts the provider back into
+  // `loading`, and without this guard the refresh button would replace the
+  // whole backoffice with a spinner every time it was pressed. Same shape the
+  // screens use for the same reason: keep what you have while you refetch it.
+  if (status === 'loading' && !me) {
     return (
       <Frame>
         <Loading />
@@ -588,9 +626,14 @@ export function BackofficeLayout() {
     // and the app, and inside it the toast host would unmount on that
     // transition and drop whatever it was holding.
     <ToastProvider>
-      <MeProvider>
-        <Gate />
-      </MeProvider>
+      {/* Outside `MeProvider` for the same reason `ToastProvider` is: the gate
+          swaps its whole subtree at sign-in, and a provider inside it would be
+          rebuilt on that transition. */}
+      <RefreshProvider>
+        <MeProvider>
+          <Gate />
+        </MeProvider>
+      </RefreshProvider>
     </ToastProvider>
   );
 }

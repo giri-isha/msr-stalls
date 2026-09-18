@@ -202,6 +202,34 @@ describe('the backoffice shell', () => {
     expect(screen.getByRole('button', { name: 'Sign Out' })).toBeInTheDocument();
   });
 
+  /** 🔴 The refresh re-runs the SCREEN's loads — it is not `location.reload()`.
+   *  The two assertions that say so: the home payload is asked for a second
+   *  time, and the shell is still standing while it is. */
+  test('the refresh re-asks for the screen and for /me, without blanking the shell', async () => {
+    const fetches = installFetch([ME, HOME]);
+    renderBackoffice();
+
+    await screen.findByText('Mahashivarathri 2026');
+    const before = fetches.calls.filter((c) => c.url.endsWith('/home')).length;
+    expect(before).toBe(1);
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Refresh' }));
+
+    await waitFor(() =>
+      expect(fetches.calls.filter((c) => c.url.endsWith('/home')).length).toBe(2),
+    );
+    // `/me` too — a role granted or a sidebar rearranged mid-session lands with
+    // the rest rather than waiting for a hard reload.
+    expect(fetches.calls.filter((c) => c.url.endsWith('/me')).length).toBe(2);
+
+    // ⚠️ The nav never went away. `MeProvider.reload()` puts the provider back
+    // into `loading`, and the gate used to answer that with a full-page spinner
+    // — pressing Refresh would have thrown the whole backoffice away and drawn
+    // it again, which is the reload this button exists to avoid.
+    expect(screen.getByRole('navigation', { name: 'Main Navigation' })).toBeInTheDocument();
+    expect(screen.getByText('Mahashivarathri 2026')).toBeInTheDocument();
+  });
+
   test('the theme control sits in the bar, not behind the account menu', async () => {
     installFetch([ME, HOME]);
     renderBackoffice();

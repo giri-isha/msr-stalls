@@ -85,7 +85,7 @@ interface Inner {
 
 function Bank({ r, attested, attestation, onDone }: Inner) {
   const { data, error, loading } = useLoad(() => api.getBankFormFor(r.id), [r.id]);
-  if (loading) return <Loading />;
+  if (loading && !data) return <Loading />;
   if (error || !data) return <ErrorBox>{error?.message ?? 'Could not load the form.'}</ErrorBox>;
   return (
     <BankFormBody
@@ -102,7 +102,7 @@ function Bank({ r, attested, attestation, onDone }: Inner) {
 
 function Fssai({ r, attested, attestation, onDone }: Inner) {
   const { data, error, loading } = useLoad(() => api.getFssaiFormFor(r.id), [r.id]);
-  if (loading) return <Loading />;
+  if (loading && !data) return <Loading />;
   if (error || !data) return <ErrorBox>{error?.message ?? 'Could not load the form.'}</ErrorBox>;
   return (
     <FssaiFormBody
@@ -121,7 +121,7 @@ function Fssai({ r, attested, attestation, onDone }: Inner) {
  *  registering a stall's team works through a list, not one name. */
 function Staff({ r, attested, attestation, onDone }: Inner) {
   const { data, error, loading, setData } = useLoad(() => api.getStaffFormFor(r.id), [r.id]);
-  if (loading) return <Loading />;
+  if (loading && !data) return <Loading />;
   if (error || !data) return <ErrorBox>{error?.message ?? 'Could not load the form.'}</ErrorBox>;
   return (
     <StaffFormBody

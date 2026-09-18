@@ -435,6 +435,14 @@
    of generic name a platform stylesheet would also declare. */
 @keyframes stalls-shimmer{from{background-position:-180% 0}to{background-position:180% 0}}
 
+/* The topbar refresh, while its requests are out. Here rather than inline
+   because a keyframe animation has nowhere to live in a style object. */
+@keyframes stalls-spin{to{transform:rotate(360deg)}}
+.stalls-spin{animation:stalls-spin .9s linear infinite}
+/* A spinning glyph on a button nobody can press is decoration; honour the
+   setting and let the disabled state carry the message instead. */
+@media (prefers-reduced-motion:reduce){.stalls-spin{animation:none}}
+
 /* One shimmering block. Sized by the caller; the sweep is here because a
    gradient animation cannot be expressed in an inline style. `--mut` is the
    resting tone and `--hov` the highlight, so it reads as a sheen over the
