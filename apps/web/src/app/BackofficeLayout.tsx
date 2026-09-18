@@ -15,7 +15,7 @@
 // and a bell that never rings are controls that appear to do something and do
 // not, which is the defect the volunteering shell's own notes spend three
 // paragraphs on. When this lands in the host, that chrome comes from the host.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import { apiFetch } from '@/modules/stalls/api-client';
 import { useTheme } from '@/modules/stalls/use-theme';
@@ -36,6 +36,22 @@ import {
   titleCase,
 } from '@/modules/stalls/ui';
 import { DevSignIn } from './DevSignIn';
+
+/**
+ * Nav items kept OUT OF THE SIDEBAR, and out of it only.
+ *
+ * ⚠️ Hidden here in the chrome rather than removed from `NAV_ITEMS`, because
+ * the registry entry is doing three other jobs: it is what the API resolves the
+ * caller's `onboarding.read` against, it is the row Configs › Sidebar offers an
+ * admin, and it is what `nav` below matches the path against to title the
+ * breadcrumb. Deleting it would take the screen's own crumb away and leave it
+ * reading "Home".
+ *
+ * Vendor Onboarding is reached from the Home page instead — its Onboarding
+ * Progress card links there, and the Quick Links card still lists it as a tile,
+ * which is why the filter is applied to `<Sidebar groups>` and NOT to `nav`.
+ */
+const SIDEBAR_HIDDEN = new Set(['onboarding']);
 
 /** The mark, in the sidebar head and on the sign-in screen. */
 const APP_NAME = 'Stall Management';
@@ -459,6 +475,16 @@ function Gate() {
   // content would be a third state nobody asked for. So the preference is kept
   // and simply not applied there.
   const { rail: railWanted, toggle: toggleRail } = useSidebarRail();
+
+  // A group emptied by the filter is dropped with it — a heading with nothing
+  // under it is a rule across the rail and nothing else.
+  const sidebarGroups = useMemo(
+    () =>
+      nav
+        .map((g) => ({ ...g, items: g.items.filter((i) => !SIDEBAR_HIDDEN.has(i.key)) }))
+        .filter((g) => g.items.length > 0),
+    [nav],
+  );
   const rail = railWanted && !narrow;
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
   useEscape(closeDrawer, narrow && drawerOpen);
@@ -526,7 +552,7 @@ function Gate() {
           rail={rail}
           narrow={narrow}
           open={drawerOpen}
-          groups={nav}
+          groups={sidebarGroups}
           onToggleRail={toggleRail}
           onNavigate={closeDrawer}
         />
