@@ -72,6 +72,7 @@ export function PaymentTab({ request, reload }: { request: PublicRequestStatus; 
         </div>
       )}
       {payment && <SeparatelyNote />}
+      {payment && <NotesPanel />}
 
       {/* 🔴 THE BILL AND THE LEDGER, SIDE BY SIDE. The bill caps itself at a
           readable measure — see `Invoice` — so on the full-width page the whole
@@ -126,22 +127,18 @@ export function PaymentTab({ request, reload }: { request: PublicRequestStatus; 
         </div>
       </div>
 
-      {payment && (
+      {payment?.beneficiary && (
         <div
           style={{
-            display: 'grid',
-            // ⚠️ Columns that STOP at 420px rather than splitting whatever
-            // there is. Both of these are prose, and half of a full-width page
-            // is a line a reader loses their place in.
-            gridTemplateColumns: mobile ? '1fr' : 'repeat(auto-fit, minmax(280px, 420px))',
-            gap: 24,
-            alignItems: 'start',
+            // ⚠️ CAPPED at 420px rather than splitting the page. This is a
+            // label-and-value table read with a bank app in the other hand,
+            // and half a full-width page is a rail nothing lines up against.
+            maxWidth: mobile ? undefined : 420,
             paddingTop: 14,
             borderTop: '1px solid var(--line)',
           }}
         >
-          {payment.beneficiary && <BeneficiaryPanel beneficiary={payment.beneficiary} />}
-          <NotesPanel />
+          <BeneficiaryPanel beneficiary={payment.beneficiary} />
         </div>
       )}
 
@@ -665,45 +662,98 @@ function BeneficiaryPanel({ beneficiary }: { beneficiary: PublicBeneficiary }) {
  * payment made through one is a credit on a statement with nobody's name
  * against it, and the vendor is chased for a payment they have made.
  *
- * ⚠️ An amber RULE down the side, not a filled block. The block above the
- * figures is the one instruction that costs money to ignore, and it is filled
- * so it wins; these are reference — true, worth having, read once — and two
- * filled blocks on one page would leave neither of them louder.
+ * 🔴 ABOVE the figures, not under them. In a column below the bill it was a
+ * footnote a scroll past the button it is trying to reach — read, if at all,
+ * after the transfer it was meant to change. A rule that costs money to ignore
+ * is read before the amount or it is not read.
+ *
+ * 🔴 THE RULE LEADS, the reason follows it. "Please do not pay through Google
+ * Pay, PhonePe or Paytm — they do not send the remitter details" is a sentence a
+ * reader has to finish before learning there is a rule in it; "No Google Pay,
+ * PhonePe or Paytm." is the rule, and what follows is why. Seven of these get
+ * scanned rather than read, and a reader who stops at the dark half has still
+ * read the half that matters.
+ *
+ * ⚠️ FULL WIDTH, in columns that fill it. Capped at 420px beside a beneficiary
+ * table that is often absent, every item broke into four or five short lines
+ * with a word stranded on the last — prose set to a measure nothing else on the
+ * page uses. `auto-fit` lays them two or three up on a desktop and one up on a
+ * phone, and no line breaks mid-clause.
+ *
+ * ⚠️ An OUTLINED block with amber markers, not a filled one. The block above
+ * the figures is the one instruction that costs money to ignore and it is
+ * filled so it wins; these are reference — true, worth having, read once — and
+ * two filled blocks on one page would leave neither of them louder.
  */
 function NotesPanel() {
   return (
-    <Panel>
+    <div
+      style={{
+        display: 'grid',
+        gap: 8,
+        padding: '11px 14px 13px',
+        borderRadius: 'var(--r3)',
+        border: '1px solid var(--line)',
+      }}
+    >
       <PanelTitle icon='info'>Before you transfer</PanelTitle>
       <ul
         style={{
           margin: 0,
-          padding: '2px 0 2px 14px',
-          borderLeft: '2px solid var(--warn)',
+          padding: 0,
           listStyle: 'none',
           display: 'grid',
-          gap: 6,
-          fontSize: 12,
-          lineHeight: 1.55,
-          color: 'var(--mfg)',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))',
+          gap: '8px 26px',
         }}
       >
-        <li>NEFT or RTGS only. Cash, cheque and DD are not accepted into these accounts.</li>
-        <li>
-          Please do not pay through Google Pay, PhonePe or Paytm — they do not send the remitter
-          details, so we cannot tell whose payment it is.
-        </li>
-        <li>
-          Add the beneficiary on your bank’s desktop site. Many banking apps will not accept letters
-          in the account number field.
-        </li>
-        <li>HDFC account holders can add it under “Add Beneficiary — ECMS code”.</li>
-        <li>Please transfer from one account only, so the payment can be reconciled.</li>
-        <li>
-          These accounts are issued to you alone. Please do not share them or pay into any other
-          account.
-        </li>
-        <li>Once you have paid, add the payment details here so Finance can match it.</li>
+        {NOTES.map(([rule, why]) => (
+          <Note key={rule} rule={rule} why={why} />
+        ))}
       </ul>
-    </Panel>
+    </div>
   );
 }
+
+/** The rule in the page's own colour, the reason after it in the muted one. */
+function Note({ rule, why }: { rule: string; why: string }) {
+  return (
+    <li style={{ display: 'flex', gap: 9, fontSize: 12.5, lineHeight: 1.55 }}>
+      <span
+        aria-hidden
+        style={{
+          // Nudged to the middle of the first line rather than sat on its
+          // baseline, which is where a flex row would otherwise park it.
+          flex: '0 0 auto',
+          width: 5,
+          height: 5,
+          marginTop: 7,
+          borderRadius: '50%',
+          background: 'var(--warn)',
+        }}
+      />
+      <span style={{ color: 'var(--mfg)' }}>
+        <strong style={{ color: 'var(--fg)', fontWeight: 600 }}>{rule}</strong> {why}
+      </span>
+    </li>
+  );
+}
+
+const NOTES: ReadonlyArray<readonly [rule: string, why: string]> = [
+  ['NEFT or RTGS only.', 'Cash, cheque and DD are not accepted into these accounts.'],
+  [
+    'No Google Pay, PhonePe or Paytm.',
+    'They do not send the remitter details, so we cannot tell whose payment it is.',
+  ],
+  [
+    'Add the beneficiary on your bank’s desktop site.',
+    'Many banking apps will not accept letters in the account number field.',
+  ],
+  ['HDFC account holders', 'can add it under “Add Beneficiary — ECMS code”.'],
+  ['Transfer from one account only,', 'so the payment can be reconciled.'],
+  [
+    'These accounts are issued to you alone.',
+    'Please do not share them or pay into any other account.',
+  ],
+  ['Once you have paid, add the payment details here', 'so Finance can match it.'],
+];
