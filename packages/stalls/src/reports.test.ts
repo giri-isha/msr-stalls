@@ -79,6 +79,17 @@ describe('the CSV', () => {
     expect(csv.split('\n')[1]).toBe('"He said ""hi""",1,0.00');
   });
 
+  // 🔴 The stall name is typed by a vendor and the file is opened in Excel by
+  // the office. A leading `=` there is a formula, not a name.
+  it('defuses a cell a spreadsheet would run as a formula', () => {
+    const csv = reportCsv({
+      ...view,
+      rows: [{ name: '=1+1', n: 1, amt: 0 }],
+      total: undefined,
+    });
+    expect(csv.split('\n')[1]).toBe("'=1+1,1,0.00");
+  });
+
   it('writes the header alone when the report found no rows', () => {
     expect(reportCsv({ ...view, rows: [], total: undefined })).toBe('Bay,Stalls,Collected\n');
   });

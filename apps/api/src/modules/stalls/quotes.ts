@@ -49,7 +49,11 @@ export async function quoteContext(db: Db, editionId: string): Promise<QuoteCont
       plug5aRatePaise: charges.plug5aRatePaise,
       plug15aRatePaise: charges.plug15aRatePaise,
       equipmentDays: charges.equipmentDays,
-      gstPercent: charges.gstPercent,
+      chairPerDay: charges.chairPerDay,
+      tablePerDay: charges.tablePerDay,
+      gstRentPercent: charges.gstRentPercent,
+      gstItemsPercent: charges.gstItemsPercent,
+      gstDepositPercent: charges.gstDepositPercent,
     },
   };
 }

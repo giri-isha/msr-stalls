@@ -292,6 +292,138 @@ describe('the rent matrix', () => {
   });
 });
 
+describe('charges', () => {
+  const openCharges = () => openTab(/^charges$/i);
+
+  // 🔴 The figures are READ in the row and changed in the box the pencil opens.
+  // Forty-five live number inputs was a wall nobody could read a price off, and
+  // left every rate one stray keystroke from moving while an admin scrolled.
+  test('the matrix is read only, and the pencil opens the row', async () => {
+    const fetch = base([
+      ['PUT', /\/config\/charges$/, () => ({})],
+      ['PUT', /\/config\/charge-items$/, () => []],
+    ]);
+    const user = await openCharges();
+
+    // Nothing in the table is typeable.
+    expect(screen.queryByLabelText('Chair rate, Vendor')).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText('Edit Chair'));
+    const box = within(await screen.findByRole('dialog'));
+    await user.clear(box.getByLabelText('Vendor'));
+    await user.type(box.getByLabelText('Vendor'), '250');
+    await user.click(box.getByRole('button', { name: 'Done' }));
+    await user.click(screen.getByRole('button', { name: 'Save Charges' }));
+
+    await waitFor(() => {
+      const call = fetch.calls.find((c) => c.method === 'PUT' && c.url.endsWith('/config/charges'));
+      expect(call?.body).toMatchObject({ vendorChairRatePaise: 25_000 });
+    });
+  });
+
+  // 🔴 Chair and Table used to read "Always". The 2025 forms do quote them by
+  // the day, but a year the team charges flat, the only way to say so was
+  // halving the rate and setting the days to one — which prices correctly and
+  // reads as a lie on the payment letter.
+  test('chair and table can be taken off the daily rate', async () => {
+    const fetch = base([
+      ['PUT', /\/config\/charges$/, () => ({})],
+      ['PUT', /\/config\/charge-items$/, () => []],
+    ]);
+    const user = await openCharges();
+
+    await user.click(screen.getByLabelText('Edit Table'));
+    const box = within(await screen.findByRole('dialog'));
+    await user.click(box.getByLabelText('Charged per day'));
+    await user.click(box.getByRole('button', { name: 'Done' }));
+    await user.click(screen.getByRole('button', { name: 'Save Charges' }));
+
+    await waitFor(() => {
+      const call = fetch.calls.find((c) => c.method === 'PUT' && c.url.endsWith('/config/charges'));
+      expect(call?.body).toMatchObject({ tablePerDay: false, chairPerDay: true });
+    });
+  });
+
+  // 🔴 Archiving and deleting are two different acts. One button could only
+  // offer whichever the row's state selected, so an archived item that had
+  // never been lent offered a bin and no way back — the one state where
+  // bringing it back is most obviously what somebody meant.
+  test('an archived item can be brought back', async () => {
+    const fetch = base([
+      ['PUT', /\/config\/charges$/, () => ({})],
+      ['PUT', /\/config\/charge-items$/, () => []],
+    ]);
+    const user = await openCharges();
+
+    await user.click(screen.getByLabelText('Archive Fan'));
+    expect(screen.getByText('Archived')).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText('Unarchive Fan'));
+    expect(screen.queryByText('Archived')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Save Charges' }));
+    await waitFor(() => {
+      const body = fetch.calls.find((c) => c.url.endsWith('/config/charge-items'))?.body as
+        | { items: Array<{ isActive: boolean }> }
+        | undefined;
+      expect(body?.items[0].isActive).toBe(true);
+    });
+  });
+
+  // ⚠️ The key is what the audit trail and the challan quote, so a rename must
+  // not move it — the row that says a vendor was handed two of them is keyed on
+  // it.
+  test('renaming an item keeps the key it was lent under', async () => {
+    const fetch = base([
+      ['PUT', /\/config\/charges$/, () => ({})],
+      ['PUT', /\/config\/charge-items$/, () => []],
+    ]);
+    const user = await openCharges();
+
+    await user.click(screen.getByLabelText('Edit Fan'));
+    const box = within(await screen.findByRole('dialog'));
+    await user.clear(box.getByLabelText('Name'));
+    await user.type(box.getByLabelText('Name'), 'Pedestal Fan');
+    await user.click(box.getByRole('button', { name: 'Done' }));
+    await user.click(screen.getByRole('button', { name: 'Save Charges' }));
+
+    await waitFor(() => {
+      const body = fetch.calls.find((c) => c.url.endsWith('/config/charge-items'))?.body as
+        | { items: Array<{ key: string; name: string }> }
+        | undefined;
+      expect(body?.items[0]).toMatchObject({ key: 'FAN', name: 'Pedestal Fan' });
+    });
+  });
+
+  // A new row carries a stand-in id so React can key it. It is not a uuid and
+  // the server would refuse it, so it must not be sent.
+  test('a new item is sent without its stand-in id', async () => {
+    const fetch = base([
+      ['PUT', /\/config\/charges$/, () => ({})],
+      ['PUT', /\/config\/charge-items$/, () => []],
+    ]);
+    const user = await openCharges();
+
+    await user.click(screen.getByRole('button', { name: 'Add Item' }));
+    const box = within(await screen.findByRole('dialog'));
+    await user.type(box.getByLabelText('Name'), 'Carpet');
+    await user.clear(box.getByLabelText('Vendor'));
+    await user.type(box.getByLabelText('Vendor'), '500');
+    await user.click(box.getByLabelText('Charged per day'));
+    await user.click(box.getByRole('button', { name: 'Done' }));
+    await user.click(screen.getByRole('button', { name: 'Save Charges' }));
+
+    await waitFor(() => {
+      const body = fetch.calls.find((c) => c.url.endsWith('/config/charge-items'))?.body as
+        | { items: Array<Record<string, unknown>> }
+        | undefined;
+      const carpet = body?.items.find((i) => i.key === 'CARPET');
+      expect(carpet).toMatchObject({ name: 'Carpet', vendorRatePaise: 50_000, perDay: false });
+      expect(carpet).not.toHaveProperty('id');
+    });
+  });
+});
+
 describe('looking at another edition', () => {
   const show = async (user: ReturnType<typeof userEvent.setup>, editionId: string) => {
     await choose(user, screen.getByLabelText('Showing'), editionId);

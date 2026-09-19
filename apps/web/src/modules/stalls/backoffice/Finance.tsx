@@ -1,5 +1,6 @@
 import type {
   PaymentClaimRow,
+  PaymentClaimView,
   PaymentRecordView,
   PaymentRow,
   RefundRow,
@@ -621,6 +622,136 @@ function ClaimsPanel() {
   );
 }
 
+/**
+ * What this requester says they transferred, shown where the credit is entered.
+ *
+ * 🔴 Confirming here calls `reviewPaymentClaim`, which is the SAME call the
+ * claims queue makes — it writes the credit through `confirmPayment` and marks
+ * the claim settled, linked to the record it became. Retyping the figures into
+ * the form below would record the credit and leave the claim PENDING for ever:
+ * the queue would never empty, and a later confirm would try to bank the same
+ * transfer twice.
+ *
+ * ⚠️ "Use these figures" is offered as well, because finance sometimes has to
+ * correct what the vendor typed — a reference off by a character, an amount
+ * that is really two transfers. That path fills the form and leaves the claim
+ * alone, so whoever settles it afterwards still sees it.
+ */
+function ReportedTransfers({
+  row,
+  onToast,
+  onDone,
+  onPrefill,
+}: {
+  row: PaymentRow;
+  onToast: ReturnType<typeof useToast>;
+  onDone: () => void;
+  onPrefill: (claim: PaymentClaimView) => void;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState<PaymentClaimView | null>(null);
+
+  const settle = async (claim: PaymentClaimView, input: ReviewPaymentClaimInput) => {
+    setBusy(claim.id);
+    try {
+      await reviewPaymentClaim(claim.id, input);
+      onToast.ok(input.verdict === 'VERIFY' ? 'Payment confirmed.' : 'Marked as not found.');
+      setRejecting(null);
+      onDone();
+    } catch (e) {
+      onToast.fail(e);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // What is still owed on each side, so a mismatch is visible without arithmetic.
+  const expected = (purpose: PaymentClaimView['purpose']) =>
+    purpose === 'RENT'
+      ? row.quote.payableFeePaise - row.receivedRentPaise
+      : row.quote.depositTotalPaise - row.receivedDepositPaise;
+
+  return (
+    <Card pad={14} style={{ display: 'grid', gap: 10, background: 'var(--rail)' }}>
+      <div style={{ fontSize: 12.5, fontWeight: 600 }}>
+        Reported by the requester — {row.pendingClaims.length} waiting
+      </div>
+      <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
+        Check each reference against the statement. Confirming records the credit and moves the
+        stall on.
+      </div>
+      {row.pendingClaims.map((c) => {
+        // ⚠️ A mismatch is flagged, not refused. A vendor who paid a little
+        // over, or whose bank deducted a charge, is a normal case that finance
+        // settles by eye.
+        const due = expected(c.purpose);
+        const mismatched = due > 0 && due !== c.amountPaise;
+        return (
+          <div
+            key={c.id}
+            style={{
+              display: 'grid',
+              gap: 6,
+              padding: '10px 12px',
+              borderRadius: 8,
+              background: 'var(--card)',
+              border: '1px solid var(--line)',
+            }}
+          >
+            <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+              <Tag tone='neutral' size='sm'>
+                {c.purpose === 'RENT' ? 'Rent' : 'Deposit'}
+              </Tag>
+              <strong style={{ color: mismatched ? 'var(--des-fg)' : undefined }}>
+                {formatInr(c.amountPaise)}
+              </strong>
+              {mismatched && (
+                <span style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
+                  still due {formatInr(due)}
+                </span>
+              )}
+              <span style={{ fontSize: 11.5, color: 'var(--mfg)' }}>{formatDate(c.paidOn)}</span>
+            </div>
+            <div style={{ fontFamily: 'var(--mono)', fontSize: 11.5 }}>
+              {c.referenceNo}
+              {c.remitterName && (
+                <span style={{ fontFamily: 'inherit', color: 'var(--mfg)' }}>
+                  {' '}
+                  · {c.remitterName}
+                </span>
+              )}
+            </div>
+            {c.note && <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>{c.note}</div>}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <Btn
+                kind='primary'
+                disabled={busy !== null}
+                onClick={() => void settle(c, { verdict: 'VERIFY' })}
+              >
+                {busy === c.id ? 'Saving…' : 'Confirm'}
+              </Btn>
+              <Btn disabled={busy !== null} onClick={() => onPrefill(c)}>
+                Use These Figures
+              </Btn>
+              <Btn disabled={busy !== null} onClick={() => setRejecting(c)}>
+                Not Found
+              </Btn>
+            </div>
+          </div>
+        );
+      })}
+      {rejecting && (
+        <RejectDialog
+          claim={{ ...rejecting, stallName: row.stallName }}
+          busy={busy !== null}
+          onClose={() => setRejecting(null)}
+          onReject={(reason) => void settle(rejecting, { verdict: 'REJECT', rejectReason: reason })}
+        />
+      )}
+    </Card>
+  );
+}
+
 /** ⚠️ The reason is REQUIRED, and it is shown to the requester. A rejection
  *  they cannot act on sends them back to the mailbox this step replaced. */
 function RejectDialog({
@@ -629,7 +760,10 @@ function RejectDialog({
   onClose,
   onReject,
 }: {
-  claim: PaymentClaimRow;
+  /** ⚠️ Only what the box prints. Narrower than `PaymentClaimRow` on purpose:
+   *  this is opened both from the queue, which has the whole row, and from the
+   *  credit box, which has a claim and the stall it belongs to. */
+  claim: { stallName: string; referenceNo: string; amountPaise: number };
   busy: boolean;
   onClose: () => void;
   onReject: (reason: string) => void;
@@ -1176,6 +1310,28 @@ function ConfirmDialog({
       }
     >
       <div style={{ display: 'grid', gap: 12 }}>
+        {/* 🔴 ABOVE the form, not on another tab. Finance was reading a
+            reference off the claims queue and typing it into this box by hand —
+            two screens for one act, and a transcription step between a vendor's
+            reference number and the credit recorded against it. Confirming here
+            writes the credit AND settles the claim, which typing the same
+            figures into the form below would not: the claim would sit PENDING
+            for ever and the queue would never empty. */}
+        {canWrite && row.pendingClaims.length > 0 && (
+          <ReportedTransfers
+            row={row}
+            onToast={onToast}
+            onDone={onDone}
+            onPrefill={(c) => {
+              setPurpose(c.purpose);
+              setReferenceNo(c.referenceNo);
+              setAmount(String(paiseToRupees(c.amountPaise)));
+              setReceivedOn(c.paidOn);
+              setRemitter(c.remitterName ?? '');
+            }}
+          />
+        )}
+
         {row.records.length > 0 && (
           <Card pad={0} style={{ overflow: 'hidden' }}>
             <Table>
@@ -1547,6 +1703,24 @@ function RefundDialog({
                 over-ran and the other came back whole. */}
             <Line label='Chairs and Tables Deposit' value={formatInr(row.equipmentDepositPaise)} />
             <Line label='Chairs and Tables' value={`− ${formatInr(row.equipmentDeductionPaise)}`} />
+            {/* 🔴 WHY, not just how much. The penalties below have always been
+                itemised and the furniture deduction was a bare figure — the one
+                a vendor rings up about. These are the FROZEN lines the refund
+                was calculated from, not today's counter, so they still explain
+                the total beside them after somebody corrects a count. */}
+            {row.equipmentLines.map((l) => (
+              <Sub key={l.label} label={l.label} value={formatInr(l.amountPaise)} />
+            ))}
+            {/* Finance settling on a different figure from the counter's is
+                normal — the vendor's account and the counter's note sometimes
+                differ. The gap is what somebody querying the refund is asking
+                about, so it is a line rather than a silent discrepancy. */}
+            {row.equipmentAdjustmentPaise !== 0 && (
+              <Sub
+                label={row.equipmentAdjustmentPaise > 0 ? 'Added by Finance' : 'Reduced by Finance'}
+                value={formatInr(Math.abs(row.equipmentAdjustmentPaise))}
+              />
+            )}
             {row.equipmentShortfallPaise > 0 && (
               <Line
                 label='Beyond That Deposit'
@@ -1556,9 +1730,7 @@ function RefundDialog({
             <Line label='Stall Deposit' value={formatInr(row.stallDepositPaise)} />
             <Line label='Penalties' value={`− ${formatInr(row.fineDeductionPaise)}`} />
             {row.fines.map((f) => (
-              <div key={f.reason} style={{ fontSize: 11.5, color: 'var(--mfg)', paddingLeft: 12 }}>
-                {f.reason} — {formatInr(f.amountPaise)}
-              </div>
+              <Sub key={f.reason} label={f.reason} value={formatInr(f.amountPaise)} />
             ))}
             {row.stallShortfallPaise > 0 && (
               <Line
@@ -1595,8 +1767,18 @@ function RefundDialog({
           </FormField>
           {row.suggestedEquipmentDeductionPaise > 0 && (
             <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
-              Chairs &amp; Tables recorded missing or damaged items worth{' '}
-              {formatInr(row.suggestedEquipmentDeductionPaise)}.{' '}
+              {/* 🔴 Itemised, not just totalled. A vendor disputing a deduction
+                  argues with one line of it — the extra day, or the fan — and
+                  the person settling it has to see which. A single figure can
+                  only be accepted or refused whole. */}
+              <ul style={{ margin: '0 0 6px', paddingLeft: 18 }}>
+                {row.suggestedEquipmentLines.map((l) => (
+                  <li key={l.label}>
+                    {l.label} — {formatInr(l.amountPaise)}
+                  </li>
+                ))}
+              </ul>
+              Chairs &amp; Tables recorded {formatInr(row.suggestedEquipmentDeductionPaise)} in all.{' '}
               <button
                 type='button'
                 onClick={() =>
@@ -1680,6 +1862,26 @@ function RefundDialog({
         </div>
       )}
     </Dialog>
+  );
+}
+
+/** One constituent of the line above it — a fine, a furniture charge. Indented
+ *  and quiet, because it explains a figure rather than being one. */
+function Sub({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        gap: 12,
+        fontSize: 11.5,
+        color: 'var(--mfg)',
+        paddingLeft: 12,
+      }}
+    >
+      <span>{label}</span>
+      <span>{value}</span>
+    </div>
   );
 }
 

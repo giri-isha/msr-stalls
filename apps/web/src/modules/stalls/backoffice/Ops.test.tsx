@@ -258,6 +258,12 @@ describe('chairs and tables', () => {
       me: true,
     });
 
+  // 🔴 Distribute used to be a bare button that stamped the time, and the
+  // extras were typed into a separate Edit dialog somebody had to know to open
+  // first. Two screens for one act at the counter is how a stall goes out
+  // marked distributed with no record of the four extra chairs that went with
+  // it. The totals are asked for, not the extras: a volunteer doing the
+  // subtraction in their head while a vendor waits gets it wrong.
   test('shows what was ordered and walks the counter through distribute', async () => {
     const fetch = installFetch([
       ['GET', /\/me$/, () => ME_ADMIN],
@@ -274,16 +280,39 @@ describe('chairs and tables', () => {
     expect(await screen.findByText('6 ch / 2 tb')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Distribute' }));
 
+    const box = within(screen.getByRole('dialog'));
+    // Pre-filled with what was ordered, so a stall taking exactly its order is
+    // two taps.
+    expect(box.getByLabelText('Chairs Out')).toHaveValue(6);
+    await user.clear(box.getByLabelText('Chairs Out'));
+    await user.type(box.getByLabelText('Chairs Out'), '10');
+    await user.clear(box.getByLabelText('Fan'));
+    await user.type(box.getByLabelText('Fan'), '2');
+
+    // 4 extra chairs at ₹100 and 2 fans at ₹80, one day — priced before it is
+    // saved, so the counter takes the right cash.
+    expect(box.getByText('₹560')).toBeInTheDocument();
+    // Nothing in flight while the figures are still being settled.
+    expect(fetch.calls.filter((c) => c.method === 'POST')).toHaveLength(0);
+
+    await user.click(box.getByRole('button', { name: 'Distribute' }));
+
     await waitFor(() => {
       const post = fetch.calls.find((c) => c.url.includes('/action'));
-      expect(post?.body).toEqual({ action: 'DISTRIBUTE' });
+      expect(post?.body).toEqual({
+        action: 'DISTRIBUTE',
+        handout: { chairs: 10, tables: 2, items: [{ itemId: 'ci1', count: 2 }] },
+      });
     });
     expect(await screen.findByText('Out')).toBeInTheDocument();
   });
 
   // 🔴 These were six inline controls that each fired on its own blur or tick,
-  // so a counter correcting an entry sent a request per change — and the extras
-  // are CHARGED, so a half-typed "12" left as a real 1 on its way to 12.
+  // so a counter correcting an entry sent a request per change.
+  //
+  // ⚠️ The extras are NOT edited here any more — what goes out is counted on
+  // Distribute, and two screens that could both set the same charged figure
+  // meant the one opened last won.
   test('the counter’s figures cross the wire once, not once per field', async () => {
     const collected = {
       distributedAt: '2026-02-13T09:00:00.000Z',
@@ -292,11 +321,7 @@ describe('chairs and tables', () => {
     const fetch = installFetch([
       ['GET', /\/me$/, () => ME_ADMIN],
       ['GET', /\/equipment$/, () => [equipmentRow(collected)]],
-      [
-        'PATCH',
-        /\/equipment\//,
-        () => equipmentRow({ ...collected, extraChairs: 12, extraChargePaise: 60_000 }),
-      ],
+      ['PATCH', /\/equipment\//, () => equipmentRow({ ...collected, missingChairs: 1 })],
     ]);
     render();
     const user = userEvent.setup();
@@ -305,8 +330,7 @@ describe('chairs and tables', () => {
     await user.click(screen.getByLabelText('Edit Green Leaf Organics'));
 
     const box = within(screen.getByRole('dialog'));
-    await user.clear(box.getByLabelText('Extra Chairs'));
-    await user.type(box.getByLabelText('Extra Chairs'), '12');
+    expect(box.queryByLabelText('Extra Chairs')).not.toBeInTheDocument();
     await user.clear(box.getByLabelText('Chairs Missing'));
     await user.type(box.getByLabelText('Chairs Missing'), '1');
     // Nothing in flight while the figures are still being settled.
@@ -317,12 +341,12 @@ describe('chairs and tables', () => {
       const patches = fetch.calls.filter((c) => c.method === 'PATCH');
       expect(patches).toHaveLength(1);
       expect(patches[0].body).toEqual({
-        extraChairs: 12,
-        extraTables: 0,
         missingChairs: 1,
         missingTables: 0,
         damagedChairs: 0,
         damagedTables: 0,
+        daysHeld: 1,
+        items: [{ itemId: 'ci1', missing: 0, damaged: 0 }],
         note: '',
       });
     });
@@ -401,6 +425,8 @@ describe('chairs and tables', () => {
           missingTables: 0,
           damagedChairs: 3,
           damagedTables: 1,
+          daysHeld: 1,
+          items: [{ itemId: 'ci1', missing: 0, damaged: 0 }],
           note: '',
         },
       });
@@ -471,7 +497,7 @@ describe('chairs and tables', () => {
 
     const box = within(screen.getByRole('dialog'));
     expect(box.queryByLabelText('Extra Chairs')).not.toBeInTheDocument();
-    expect(box.getByText(/already been collected in cash/)).toBeInTheDocument();
+    expect(box.getByText(/collected in cash/)).toBeInTheDocument();
     // What was found on return is still the counter's to record.
     expect(box.getByLabelText('Chairs Missing')).toBeInTheDocument();
   });
@@ -515,7 +541,9 @@ describe('chairs and tables', () => {
           tablesOnline: 2,
           extraChairs: 2,
           extraTables: 0,
+          items: [{ name: 'Fan', count: 1, amountPaise: 8_000 }],
           extraChargePaise: 10_000,
+          daysHeld: 1,
           editionName: 'Stalls 2026',
           printedAt: '2026-02-13T09:00:00.000Z',
         }),

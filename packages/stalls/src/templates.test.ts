@@ -3,6 +3,7 @@ import {
   DEFAULT_TEMPLATES,
   TEMPLATE_KEYS,
   TEMPLATE_PLACEHOLDERS,
+  renderHtmlTemplate,
   renderTemplate,
   unknownPlaceholders,
 } from './templates';
@@ -67,5 +68,23 @@ describe('unknownPlaceholders', () => {
   it('knows every documented placeholder', () => {
     const all = TEMPLATE_PLACEHOLDERS.map((p) => `{{${p.key}}}`).join(' ');
     expect(unknownPlaceholders(all)).toEqual([]);
+  });
+});
+
+describe('renderHtmlTemplate', () => {
+  it('escapes a value so a stall name cannot close a tag', () => {
+    expect(renderHtmlTemplate('<p>{{stallName}}</p>', { stallName: 'Ammu & Co <b>' })).toBe(
+      '<p>Ammu &amp; Co &lt;b&gt;</p>',
+    );
+  });
+
+  it('keeps a multi-line value on separate lines', () => {
+    expect(renderHtmlTemplate('{{charges}}', { charges: 'Rent 100\nGST 18' })).toBe(
+      'Rent 100<br>GST 18',
+    );
+  });
+
+  it('leaves the admin’s own markup alone', () => {
+    expect(renderHtmlTemplate('<h1>Hello</h1>', {})).toBe('<h1>Hello</h1>');
   });
 });

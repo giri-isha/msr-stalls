@@ -268,6 +268,54 @@ describe('refunds', () => {
     expect(row?.depositHeldPaise).toBe(rupeesToPaise(8_000));
   });
 
+  // 🔴 FROZEN with the total it explains. The counter's figures can be corrected
+  // after a refund is sent, and a breakdown recomputed from today's counts would
+  // stop adding up to the total the vendor was told.
+  test('the breakdown is frozen onto the refund, not recomputed', async () => {
+    const { requestId } = await selected(['C1-1'], { chairsNeeded: 6 });
+    await deposit(requestId);
+    await patchEquipment(prisma, requestId, { missingChairs: 2 }, SYSTEM);
+
+    const sent = await submitRefund(
+      prisma,
+      requestId,
+      { equipmentDeductionPaise: rupeesToPaise(800), fineTypeIds: [], extraFinePaise: 0 },
+      SYSTEM,
+    );
+    expect(sent.equipmentLines).toEqual([
+      { label: 'Chair not returned', amountPaise: rupeesToPaise(800) },
+    ]);
+
+    // The counter corrects itself afterwards — 2 chairs missing, actually 3.
+    await patchEquipment(prisma, requestId, { missingChairs: 3 }, SYSTEM);
+
+    const row = (await listRefunds(prisma, edition.id)).find((r) => r.requestId === requestId);
+    // The frozen list, unmoved, still explaining the frozen total beside it.
+    expect(row?.equipmentLines).toEqual([
+      { label: 'Chair not returned', amountPaise: rupeesToPaise(800) },
+    ]);
+    expect(row?.equipmentDeductionPaise).toBe(rupeesToPaise(800));
+  });
+
+  // ⚠️ Finance settling on a different figure from the counter's is normal, and
+  // the gap is what somebody querying the refund is asking about.
+  test('a figure finance changed is reported as the gap it is', async () => {
+    const { requestId } = await selected(['C1-1'], { chairsNeeded: 6 });
+    await deposit(requestId);
+    await patchEquipment(prisma, requestId, { missingChairs: 2 }, SYSTEM);
+
+    await submitRefund(
+      prisma,
+      requestId,
+      { equipmentDeductionPaise: rupeesToPaise(500), fineTypeIds: [], extraFinePaise: 0 },
+      SYSTEM,
+    );
+
+    const row = (await listRefunds(prisma, edition.id)).find((r) => r.requestId === requestId);
+    // The counter said Rs.800; finance settled at Rs.500.
+    expect(row?.equipmentAdjustmentPaise).toBe(-rupeesToPaise(300));
+  });
+
   test('the team may overrule the suggestion', async () => {
     const { requestId } = await selected(['C1-1'], { chairsNeeded: 6 });
     await deposit(requestId);

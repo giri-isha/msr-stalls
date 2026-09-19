@@ -169,6 +169,11 @@ describe('chairs and tables', () => {
     expect(rows[0].extraChairs).toBe(2);
   });
 
+  // 🔴 THREE rates, not two. A vendor used to fall through to the ashram
+  // figure here — the one requester type that is never billed at all — so the
+  // counter took Rs.50 for a chair the payment letter had quoted at Rs.100, and
+  // the paper and the till disagreed all day. `quote.ts` has carried the vendor
+  // pair since the letter was written; this file did not.
   test('prices the extras at the requester type’s own rate', async () => {
     const vendor = await selected(['C1-1'], { chairsNeeded: 2, email: 'v@x.example' });
     const lw = await selected(['C1-13'], {
@@ -180,8 +185,8 @@ describe('chairs and tables', () => {
 
     const v = await patchEquipment(prisma, vendor.requestId, { extraChairs: 2 }, SYSTEM);
     const l = await patchEquipment(prisma, lw.requestId, { extraChairs: 2 }, SYSTEM);
-    expect(v.extraChargePaise).toBe(rupeesToPaise(100)); // 2 × Rs.50
-    expect(l.extraChargePaise).toBe(rupeesToPaise(200)); // 2 × Rs.100
+    expect(v.extraChargePaise).toBe(rupeesToPaise(200)); // 2 × Rs.100, the vendor rate
+    expect(l.extraChargePaise).toBe(rupeesToPaise(200)); // 2 × Rs.100, the local welfare one
   });
 
   test('walks the two days: distribute, take cash, collect', async () => {
@@ -225,7 +230,9 @@ describe('chairs and tables', () => {
     expect(slip.chairsOnline).toBe(4);
     expect(slip.tablesOnline).toBe(2);
     expect(slip.extraChairs).toBe(2);
-    expect(slip.extraChargePaise).toBe(rupeesToPaise(2 * 50 + 150));
+    // The VENDOR rates — Rs.100 a chair and Rs.400 a table — not the ashram
+    // figures this used to quote. See the rate test above.
+    expect(slip.extraChargePaise).toBe(rupeesToPaise(2 * 100 + 400));
     expect(slip.editionName).toBe('Stalls 2026');
   });
 
@@ -241,6 +248,8 @@ describe('chairs and tables', () => {
       missingTables: 0,
       damagedChairs: 3,
       damagedTables: 0,
+      daysHeld: 1,
+      items: [],
       note: '3 chairs broken',
     });
 
@@ -261,6 +270,8 @@ describe('chairs and tables', () => {
       missingTables: 0,
       damagedChairs: 0,
       damagedTables: 0,
+      daysHeld: 1,
+      items: [],
     });
     const row = await actOnEquipment(prisma, requestId, 'UNCOLLECT', SYSTEM);
 
@@ -276,6 +287,8 @@ describe('chairs and tables', () => {
       missingTables: 0,
       damagedChairs: 0,
       damagedTables: 0,
+      daysHeld: 1,
+      items: [],
     });
     await patchEquipment(prisma, requestId, { missingChairs: 3 }, SYSTEM);
 
@@ -290,6 +303,156 @@ describe('chairs and tables', () => {
     // than repeating every field the dialog happened to hold.
     expect(history[0].changes).toEqual([{ field: 'missingChairs', before: 1, after: 3 }]);
     expect(history[1].changes).toContainEqual({ field: 'missingChairs', before: 0, after: 1 });
+  });
+
+  /** A fan, priced for whoever is being charged. */
+  async function fan(over: Record<string, unknown> = {}) {
+    return prisma.stallChargeItem.create({
+      data: {
+        editionId: edition.id,
+        key: 'FAN',
+        name: 'Fan',
+        ashramRatePaise: rupeesToPaise(30),
+        lwRatePaise: rupeesToPaise(50),
+        vendorRatePaise: rupeesToPaise(80),
+        perDay: true,
+        missingPaise: rupeesToPaise(600),
+        damagedPaise: rupeesToPaise(300),
+        ...over,
+      },
+    });
+  }
+
+  // 🔴 TOTALS, not extras. The dialog asks how many chairs are going over the
+  // counter and the extra is derived, because a volunteer asked for "the extra"
+  // does the subtraction in their head while a vendor waits.
+  test('distributing takes the totals and works out what is chargeable', async () => {
+    const { requestId } = await selected(['C1-1'], { chairsNeeded: 6, tablesNeeded: 2 });
+    const item = await fan();
+
+    const row = await actOnEquipment(prisma, requestId, 'DISTRIBUTE', SYSTEM, undefined, {
+      chairs: 10,
+      tables: 2,
+      items: [{ itemId: item.id, count: 2 }],
+    });
+
+    expect(row.distributedAt).not.toBeNull();
+    expect(row.extraChairs).toBe(4);
+    expect(row.extraTables).toBe(0);
+    // 4 extra chairs at the VENDOR rate of Rs.100, plus 2 fans at Rs.80 — one
+    // day, which is all the counter takes cash for.
+    expect(row.extraChargePaise).toBe(rupeesToPaise(4 * 100 + 2 * 80));
+    expect(row.items.find((i) => i.itemId === item.id)?.count).toBe(2);
+  });
+
+  // ⚠️ Cash already in the drawer freezes the counts. Undo-and-redistribute
+  // would otherwise rewrite the figure on the signed challan silently.
+  test('refuses to re-count a handout the vendor has already paid for', async () => {
+    const { requestId } = await selected(['C1-1'], { chairsNeeded: 6 });
+    await actOnEquipment(prisma, requestId, 'DISTRIBUTE', SYSTEM, undefined, {
+      chairs: 8,
+      tables: 0,
+      items: [],
+    });
+    await actOnEquipment(prisma, requestId, 'COLLECT_EXTRA_PAYMENT', SYSTEM);
+
+    await expect(
+      actOnEquipment(prisma, requestId, 'DISTRIBUTE', SYSTEM, undefined, {
+        chairs: 20,
+        tables: 0,
+        items: [],
+      }),
+    ).rejects.toThrow();
+    expect((await listEquipment(prisma, edition.id))[0].extraChairs).toBe(2);
+  });
+
+  // 🔴 The counter takes ONE day's cash and the rest is settled at return. On
+  // the morning it goes out nobody knows how many days it will really be.
+  test('settles the days past the first against the deposit', async () => {
+    const { requestId } = await selected(['C1-1'], { chairsNeeded: 6 });
+    const item = await fan();
+    await actOnEquipment(prisma, requestId, 'DISTRIBUTE', SYSTEM, undefined, {
+      chairs: 10,
+      tables: 0,
+      items: [{ itemId: item.id, count: 2 }],
+    });
+
+    const row = await actOnEquipment(prisma, requestId, 'COLLECT', SYSTEM, {
+      missingChairs: 0,
+      missingTables: 0,
+      damagedChairs: 0,
+      damagedTables: 0,
+      daysHeld: 3,
+      items: [{ itemId: item.id, missing: 0, damaged: 0 }],
+    });
+
+    // Two days beyond the one already paid, on the 4 extra chairs and 2 fans.
+    // The six ORDERED chairs are not charged: the payment letter covered them.
+    expect(row.deductionPaise).toBe(rupeesToPaise((4 * 100 + 2 * 80) * 2));
+    expect(row.deductionLines.map((l) => l.label)).toEqual([
+      'Chair — 2 extra days',
+      'Fan — 2 extra days',
+    ]);
+  });
+
+  // ⚠️ Rent AND replacement. They had it for those days and then lost it;
+  // waiving the rent would make losing a fan cheaper than returning it late.
+  test('charges a lost item its rent and its replacement', async () => {
+    const { requestId } = await selected(['C1-1'], { chairsNeeded: 0, tablesNeeded: 0 });
+    const item = await fan();
+    await actOnEquipment(prisma, requestId, 'DISTRIBUTE', SYSTEM, undefined, {
+      chairs: 0,
+      tables: 0,
+      items: [{ itemId: item.id, count: 2 }],
+    });
+
+    const row = await actOnEquipment(prisma, requestId, 'COLLECT', SYSTEM, {
+      missingChairs: 0,
+      missingTables: 0,
+      damagedChairs: 0,
+      damagedTables: 0,
+      daysHeld: 2,
+      items: [{ itemId: item.id, missing: 1, damaged: 1 }],
+    });
+
+    expect(row.deductionPaise).toBe(rupeesToPaise(2 * 80 * 1 + 600 + 300));
+  });
+
+  // A carpet costs what it costs whether it is walked on for one day or three.
+  test('never charges extra days on a flat item', async () => {
+    const { requestId } = await selected(['C1-1'], { chairsNeeded: 0, tablesNeeded: 0 });
+    const item = await fan({ key: 'CARPET', name: 'Carpet', perDay: false });
+    await actOnEquipment(prisma, requestId, 'DISTRIBUTE', SYSTEM, undefined, {
+      chairs: 0,
+      tables: 0,
+      items: [{ itemId: item.id, count: 2 }],
+    });
+
+    const row = await actOnEquipment(prisma, requestId, 'COLLECT', SYSTEM, {
+      missingChairs: 0,
+      missingTables: 0,
+      damagedChairs: 0,
+      damagedTables: 0,
+      daysHeld: 5,
+      items: [{ itemId: item.id, missing: 0, damaged: 0 }],
+    });
+
+    expect(row.deductionPaise).toBe(0);
+  });
+
+  // 🔴 On the PAPER the vendor signs. A fan that left the store with no line on
+  // the challan has no record the vendor ever saw.
+  test('the challan lists what left the store beyond chairs and tables', async () => {
+    const { requestId } = await selected(['C1-1'], { chairsNeeded: 2 });
+    const item = await fan();
+    await actOnEquipment(prisma, requestId, 'DISTRIBUTE', SYSTEM, undefined, {
+      chairs: 2,
+      tables: 0,
+      items: [{ itemId: item.id, count: 3 }],
+    });
+
+    const slip = await challan(prisma, requestId);
+    expect(slip.items).toEqual([{ name: 'Fan', count: 3, amountPaise: rupeesToPaise(240) }]);
   });
 
   test('an undo puts the counter back where it was', async () => {

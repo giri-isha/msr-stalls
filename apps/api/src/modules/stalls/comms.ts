@@ -5,7 +5,6 @@ import {
   type FlowConfig,
   type OnboardingStep,
   type EmailTemplateView,
-  type Quote,
   type QuoteLine,
   type ReminderCallView,
   type ReminderKind,
@@ -20,6 +19,7 @@ import {
   depositLines,
   formatInr,
   isStepAsked,
+  renderHtmlTemplate,
   renderTemplate,
   virtualAccountFor,
 } from '@stalls/core';
@@ -103,6 +103,7 @@ export async function listTemplates(db: Db, editionId: string): Promise<EmailTem
         subject: r.subject,
         body: r.body,
         whatsappBody: r.whatsappBody,
+        htmlBody: r.htmlBody,
         appliesTo: [...(seed?.appliesTo ?? [])],
         updatedAt: r.updatedAt?.toISOString() ?? null,
         attachment:
@@ -118,7 +119,7 @@ export async function updateTemplate(
   db: PrismaClient,
   editionId: string,
   key: StallTemplateKey,
-  patch: { subject: string; body: string },
+  patch: { subject: string; body: string; whatsappBody?: string; htmlBody?: string },
   by: string,
 ): Promise<void> {
   await ensureTemplates(db, editionId);
@@ -367,9 +368,7 @@ async function templateVars(
     // existed have none, and the letter then falls back to the summed figures
     // it has always printed.
     const frozen = (plan?.lines ?? null) as QuoteLine[] | null;
-    const forLetter: Quote | null = frozen
-      ? { ...view, lines: frozen, exempt: false }
-      : (live ?? null);
+    const forLetter = frozen ? { ...view, lines: frozen } : (live ?? null);
     vars.charges = forLetter ? chargeLines(forLetter) : '';
     vars.depositBreakdown = forLetter ? depositLines(forLetter) : '';
   }
@@ -500,7 +499,12 @@ export async function sendTemplate(
     }
 
     const vars = await templateVars(db, r, input.templateKey, deps, by, locked);
-    const subject = renderTemplate(template.subject, vars);
+    // 🔴 A subject is ONE header line. `{{stallName}}` is free text a vendor
+    // typed on the public form, so a newline in it would become the end of the
+    // Subject header and the start of whatever they wrote next — a Bcc, on a
+    // transport that trusts us. Folded to a space at the one place a subject is
+    // built.
+    const subject = renderTemplate(template.subject, vars).replace(/[\r\n]+/g, ' ');
 
     let anySent = false;
     const failures: string[] = [];
@@ -512,6 +516,12 @@ export async function sendTemplate(
       // absence, not a failure, so it is not reported as one.
       if (!rawBody.trim()) continue;
       const text = renderTemplate(rawBody, vars);
+      // Beside the text, never instead of it: a client that cannot render HTML
+      // still gets the letter. Empty is the norm — see `StallEmailTemplate`.
+      const html =
+        isEmail && template.htmlBody.trim()
+          ? renderHtmlTemplate(template.htmlBody, vars)
+          : undefined;
       const to = isEmail ? r.email : r.contactNumber;
 
       try {
@@ -539,6 +549,7 @@ export async function sendTemplate(
             to,
             subject,
             text,
+            html,
             attachments: attachment ? [attachment] : undefined,
             about: { requestId: r.id },
           });
@@ -681,6 +692,22 @@ export async function listReminders(
     include: { reminders: { where: { kind }, orderBy: { calledAt: 'desc' } } },
     orderBy: { stallName: 'asc' },
   });
+
+  // Waiting since SELECTION, not since submission: nothing is owed until the
+  // stall is theirs, so the clock a caller prioritises by starts there. The
+  // audit trail already records the moment; a `selected_at` column would be the
+  // same fact stored twice.
+  const selectedAt = new Map(
+    (
+      await db.stallAuditEvent.groupBy({
+        by: ['requestId'],
+        where: { requestId: { in: rows.map((r) => r.id) }, action: 'stall_request.selected' },
+        _max: { occurredAt: true },
+      })
+    ).map((g) => [g.requestId, g._max.occurredAt]),
+  );
+  const today = Date.now();
+
   return rows.map((r) => ({
     requestId: r.id,
     reference: r.reference,
@@ -690,6 +717,14 @@ export async function listReminders(
     email: r.email,
     kind,
     callCount: r.reminders.length,
+    // Falls back to submission for a request selected before the trail existed
+    // — a wrong-by-a-few-days number still sorts the list, a null does not.
+    daysWaiting: Math.max(
+      0,
+      Math.floor(
+        (today - (selectedAt.get(r.id) ?? r.submittedAt).getTime()) / (24 * 60 * 60 * 1000),
+      ),
+    ),
     lastCalledAt: r.reminders[0]?.calledAt.toISOString() ?? null,
     lastOutcome: r.reminders[0]?.outcome ?? null,
     // ⚠️ The most RECENT day asked for, not the first — a vendor who has moved
@@ -730,11 +765,24 @@ export async function listReminderCalls(
       },
     },
   });
+  // Who rang, by name. `called_by` holds a person id, and an id on a call
+  // history answers nothing — the second question after "what was said" is
+  // "who said it". One lookup for the page, and a ref matching no person (the
+  // system actor, a seeded constant) reads as itself rather than blanking.
+  const names = new Map(
+    (
+      await db.person.findMany({
+        where: { personId: { in: [...new Set(calls.map((c) => c.calledBy))] } },
+        select: { personId: true, displayName: true },
+      })
+    ).map((p) => [p.personId, p.displayName] as const),
+  );
+
   return calls.map((c) => ({
     id: c.id,
     kind: c.kind,
     calledAt: c.calledAt.toISOString(),
-    calledBy: c.calledBy,
+    calledBy: names.get(c.calledBy) ?? c.calledBy,
     outcome: c.outcome,
     callbackDate: c.callbackDate?.toISOString().slice(0, 10) ?? null,
     note: c.note,

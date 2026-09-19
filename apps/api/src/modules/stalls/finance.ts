@@ -8,12 +8,12 @@ import {
   type SubmitRefundInput,
   type VoidPaymentInput,
   computeRefund,
-  equipmentDeduction,
   needsPaymentStep,
 } from '@stalls/core';
 import { ValidationFailedError } from '../../errors';
 import { actorFrom, audit } from './audit';
-import { chargesFor } from './config';
+import { deductionFor } from './equipment';
+import { CLAIM_SELECT, type ClaimRow, toView as toClaimView } from './payment-claim-view';
 import type { Db } from './editions';
 import { DuplicatePaymentError, RefundAlreadySubmittedError, UnknownRequestError } from './errors';
 import { allocatedNumbers, factsInclude, refreshStage, type RequestWithFacts } from './facts';
@@ -63,8 +63,14 @@ function recordView(p: {
   };
 }
 
+/** ⚠️ Wider than `RequestWithFacts`: the finance screen is the only one that
+ *  reads withdrawn credits, and the only one that needs the unsettled claims
+ *  beside them. Both are widened at `listPayments`, not in `factsInclude` —
+ *  every other screen is better off without either. */
+type PaymentSource = RequestWithFacts & { paymentClaims: ClaimRow[] };
+
 async function toPaymentRow(
-  r: RequestWithFacts,
+  r: PaymentSource,
   ctx: Awaited<ReturnType<typeof quoteContext>>,
 ): Promise<PaymentRow> {
   const quote = r.paymentPlan ? planToView(r.paymentPlan) : toQuoteView(quoteFor(r, ctx));
@@ -94,6 +100,9 @@ async function toPaymentRow(
       .slice()
       .sort((a, b) => a.receivedOn.getTime() - b.receivedOn.getTime())
       .map(recordView),
+    // Oldest first: finance works down a queue, and the transfer somebody is
+    // chasing is the one that has been waiting longest.
+    pendingClaims: r.paymentClaims.map(toClaimView),
     receivedRentPaise,
     receivedDepositPaise,
     // An UNPRICED stall is never "settled": A3 and B2 carry no rate, so nothing
@@ -137,7 +146,18 @@ export async function listPayments(
     // is the only screen entitled to see a withdrawn entry — everywhere else it
     // is money that never arrived — and it needs to, because "recorded on the
     // 14th, withdrawn on the 16th" is the answer to the phone call.
-    include: { ...factsInclude, payments: true },
+    include: {
+      ...factsInclude,
+      payments: true,
+      // ⚠️ PENDING only. A settled claim is already a credit in `records`, and
+      // showing it again beside the box that records credits is an invitation
+      // to record it twice.
+      paymentClaims: {
+        where: { status: 'PENDING' },
+        select: CLAIM_SELECT,
+        orderBy: { submittedAt: 'asc' },
+      },
+    },
     orderBy: [{ requestType: 'asc' }, { stallName: 'asc' }],
   });
   const ctx = await quoteContext(db, editionId);
@@ -324,17 +344,28 @@ export async function voidPayment(
 // ── Refunds ─────────────────────────────────────────────────────────────────
 
 type RefundSource = Prisma.StallRequestGetPayload<{
-  include: typeof factsInclude & { equipment: true; fines: true; refund: true };
+  include: typeof factsInclude & {
+    equipment: { include: { items: true } };
+    fines: true;
+    refund: true;
+  };
 }>;
 
-const refundInclude = { ...factsInclude, equipment: true, fines: true, refund: true } as const;
+const refundInclude = {
+  ...factsInclude,
+  // ⚠️ `items` too. Without them the refund prices the chairs and silently
+  // forgets the fans — a deduction that is wrong in the vendor's favour, which
+  // is still wrong and still nobody's to give away.
+  equipment: { include: { items: true } },
+  fines: true,
+  refund: true,
+} as const;
 
 async function toRefundRow(
   db: Db,
   r: RefundSource,
   ctx: Awaited<ReturnType<typeof quoteContext>>,
 ): Promise<RefundRow> {
-  const charges = await chargesFor(db, r.editionId);
   const quote = r.paymentPlan ? planToView(r.paymentPlan) : toQuoteView(quoteFor(r, ctx));
   // What was actually taken, where Finance has confirmed it; the quoted deposit
   // otherwise. A vendor who paid a short deposit gets the short one back.
@@ -354,24 +385,23 @@ async function toRefundRow(
   const equipmentDepositPaise = Math.min(equipmentHeld, heldTotal);
   const stallDepositPaise = heldTotal - equipmentDepositPaise;
 
-  const suggested = r.equipment
-    ? equipmentDeduction(
-        {
-          missingChairs: r.equipment.missingChairs,
-          missingTables: r.equipment.missingTables,
-          damagedChairs: r.equipment.damagedChairs,
-          damagedTables: r.equipment.damagedTables,
-        },
-        {
-          chairReplacementPaise: charges.chairReplacementPaise,
-          tableReplacementPaise: charges.tableReplacementPaise,
-          damagePenaltyPaise: charges.damagePenaltyPaise,
-        },
-      )
-    : 0;
+  const suggestion = r.equipment
+    ? await deductionFor(db, r.editionId, r.requestType, r.equipment)
+    : { totalPaise: 0, lines: [] };
+  const suggested = suggestion.totalPaise;
 
   const fineDeductionPaise = r.fines.reduce((t, f) => t + f.amountPaise, 0);
   const equipmentDeductionPaise = r.refund?.equipmentDeductionPaise ?? suggested;
+
+  // 🔴 The FROZEN breakdown where the refund has been sent, the live suggestion
+  // otherwise — the same rule the payment letter's lines follow. The counter's
+  // figures can be corrected after a refund goes out, and a breakdown recomputed
+  // from today's counts would stop adding up to the total the vendor was told.
+  //
+  // ⚠️ `?? []` covers refunds sent before the column existed. They show the
+  // single figure they always did rather than a breakdown invented today.
+  const frozenLines = (r.refund?.equipmentLines as RefundRow['equipmentLines'] | null) ?? null;
+  const equipmentLines = r.refund ? (frozenLines ?? []) : suggestion.lines;
   // A frozen refund reports the figures it was frozen with; a live one recomputes.
   const computed = computeRefund({
     stallDepositPaise: r.refund?.stallDepositPaise ?? stallDepositPaise,
@@ -389,7 +419,17 @@ async function toRefundRow(
     stallDepositPaise: computed.stallDepositPaise,
     equipmentDepositPaise: computed.equipmentDepositPaise,
     suggestedEquipmentDeductionPaise: suggested,
+    suggestedEquipmentLines: suggestion.lines,
     equipmentDeductionPaise: computed.equipmentDeductionPaise,
+    equipmentLines,
+    // What the lines do not explain. Finance settling on a different figure
+    // from the counter's is normal — the vendor's account and the counter's
+    // note sometimes differ — and the gap is exactly what somebody querying the
+    // refund is asking about, so it is shown rather than quietly absorbed.
+    equipmentAdjustmentPaise:
+      equipmentLines.length === 0
+        ? 0
+        : computed.equipmentDeductionPaise - equipmentLines.reduce((t, l) => t + l.amountPaise, 0),
     fineDeductionPaise: computed.fineDeductionPaise,
     fines: r.fines.map((f) => ({ reason: f.reason, amountPaise: f.amountPaise })),
     stallRefundPaise: computed.stallRefundPaise,
@@ -494,6 +534,11 @@ export async function submitRefund(
       equipmentDepositPaise: computed.equipmentDepositPaise,
       depositHeldPaise: computed.depositHeldPaise,
       equipmentDeductionPaise: computed.equipmentDeductionPaise,
+      // 🔴 Frozen WITH the total it explains. Recomputed later it would drift
+      // from that total the moment anybody corrected the counter, and the
+      // breakdown a vendor is shown when they query the deduction has to be the
+      // one the deduction was made from.
+      equipmentLines: live.suggestedEquipmentLines,
       fineDeductionPaise: computed.fineDeductionPaise,
       refundDuePaise: computed.refundDuePaise,
       stallShortfallPaise: computed.stallShortfallPaise,

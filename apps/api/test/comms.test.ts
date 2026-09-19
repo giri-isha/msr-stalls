@@ -54,6 +54,26 @@ describe('templates', () => {
     await send('SELECTION_VENDOR', [requestId]);
     expect(deps.mail.sent[0].subject).toBe('Confirmed: Green Leaf Organics');
     expect(deps.mail.sent[0].text).toBe('Bay C1. Bye.');
+    // No HTML version written, so the letter is plain text only.
+    expect(deps.mail.sent[0].html).toBeUndefined();
+  });
+
+  test('an HTML version rides beside the text, not instead of it', async () => {
+    const { requestId } = await selected(['C1-1']);
+    await updateTemplate(
+      prisma,
+      edition.id,
+      'SELECTION_VENDOR',
+      {
+        subject: 'Confirmed',
+        body: 'Bay {{zoneCode}}.',
+        htmlBody: '<p>Bay {{zoneCode}} for {{stallName}}.</p>',
+      },
+      SYSTEM,
+    );
+    await send('SELECTION_VENDOR', [requestId]);
+    expect(deps.mail.sent[0].text).toBe('Bay C1.');
+    expect(deps.mail.sent[0].html).toBe('<p>Bay C1 for Green Leaf Organics.</p>');
   });
 
   // 🔴 The team asked that the stall NUMBER not go out before the vendor is
@@ -336,6 +356,19 @@ describe('recipients and reminders', () => {
       },
     });
     expect(await listReminders(prisma, edition.id, 'BANK')).toEqual([]);
+  });
+
+  test('the wait is counted from selection, so the list can be worked oldest first', async () => {
+    const { requestId } = await selected(['C1-1']);
+    // Backdate the selection the way the trail records it — the request became
+    // due then, not when it was submitted.
+    await prisma.stallAuditEvent.updateMany({
+      where: { requestId, action: 'stall_request.selected' },
+      data: { occurredAt: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000) },
+    });
+
+    const [row] = await listReminders(prisma, edition.id, 'BANK');
+    expect(row.daysWaiting).toBe(9);
   });
 
   test('a logged call shows as a count and a date, not just a flag', async () => {

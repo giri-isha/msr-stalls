@@ -42,15 +42,20 @@ const charges = {
   lwTableRatePaise: 30000,
   plug5aRatePaise: 50000,
   plug15aRatePaise: 100000,
-  gstPercent: 18,
+  gstRentPercent: 18,
+  gstItemsPercent: 18,
+  gstDepositPercent: 0,
   crowdPerStall: 1200,
   vendorChairRatePaise: 10000,
   vendorTableRatePaise: 40000,
   chairTableDepositPaise: 400000,
   equipmentDays: 2,
+  chairPerDay: true,
+  tablePerDay: true,
   chairReplacementPaise: 50000,
   tableReplacementPaise: 150000,
-  damagePenaltyPaise: 25000,
+  chairDamagePaise: 25000,
+  tableDamagePaise: 25000,
 };
 
 describe('authorisation', () => {

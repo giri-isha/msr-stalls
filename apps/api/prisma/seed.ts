@@ -894,6 +894,11 @@ async function main() {
     missingTables: 0,
     damagedChairs: 2,
     damagedTables: 0,
+    // Kept two days, so the refund carries an extra day's rent on the extras
+    // as well as the losses — the screen is worth nothing if the demo data
+    // only ever exercises one of the two.
+    daysHeld: 2,
+    items: [],
     note: '2 chairs broken',
   });
   await patchEquipment(prisma, healthCamp, { flagged: true }, volunteer);

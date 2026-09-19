@@ -26,6 +26,8 @@ import type {
   ChallanView,
   ContinueStepInput,
   ContinueStepResponse,
+  ChargeItemInput,
+  ChargeItemView,
   ChargesInput,
   CopyEditionInput,
   CopyPlan,
@@ -46,6 +48,7 @@ import type {
   EmailTemplateView,
   EquipmentAction,
   EquipmentFound,
+  EquipmentHandout,
   EquipmentPatch,
   EquipmentRow,
   FssaiFormView,
@@ -351,6 +354,9 @@ export interface BackofficeConfig {
    *  apart. */
   rateCard: RateCardEntry[];
   charges: ChargesInput & { id: string; editionId: string };
+  /** The extra things this edition lends, retired ones included — the Charges
+   *  screen draws a retired row so it can be switched back on. */
+  chargeItems: ChargeItemView[];
   /** `asked` says WHETHER each step happens, per requester type; `stages` says
    *  WHEN. The lowest stage still outstanding is the one the requester may act
    *  on. Everything asked and all four at 1 — the default — switches nothing
@@ -463,6 +469,8 @@ export const putRateCard = (entries: RateCardEntry[]) =>
   apiFetch<unknown>(`${BASE}/config/rate-card`, { method: 'PUT', json: { entries } });
 export const putCharges = (input: ChargesInput) =>
   apiFetch<unknown>(`${BASE}/config/charges`, { method: 'PUT', json: input });
+export const putChargeItems = (items: ChargeItemInput[]) =>
+  apiFetch<unknown>(`${BASE}/config/charge-items`, { method: 'PUT', json: { items } });
 export const putFlow = (input: BackofficeConfig['flow']) =>
   apiFetch<unknown>(`${BASE}/config/flow`, { method: 'PUT', json: input });
 export const putFineType = (input: {
@@ -714,7 +722,7 @@ export const getTemplates = () => apiFetch<TemplatesResponse>(`${BASE}/comms/tem
 
 export const putTemplate = (
   key: TemplateKeyValue,
-  body: { subject: string; body: string; whatsappBody: string },
+  body: { subject: string; body: string; whatsappBody: string; htmlBody: string },
 ) => apiFetch<void>(`${BASE}/comms/templates/${key}`, { method: 'PUT', json: body });
 
 export const putTemplateAttachment = (
@@ -894,10 +902,20 @@ export const undoCheckIn = (id: string) =>
 export const listEquipment = () => apiFetch<EquipmentRow[]>(`${BASE}/equipment`);
 export const patchEquipment = (id: string, patch: EquipmentPatch) =>
   apiFetch<EquipmentRow>(`${BASE}/equipment/${id}`, { method: 'PATCH', json: patch });
-export const equipmentAction = (id: string, action: EquipmentAction, found?: EquipmentFound) =>
+/** ⚠️ `found` is read on COLLECT and `handout` on DISTRIBUTE; each is ignored
+ *  everywhere else. Both ride WITH the action rather than being saved first and
+ *  the action taken second — over the marquee's wifi that was two requests, and
+ *  the half that landed alone left a stall marked distributed with nobody's
+ *  figures on it. */
+export const equipmentAction = (
+  id: string,
+  action: EquipmentAction,
+  found?: EquipmentFound,
+  handout?: EquipmentHandout,
+) =>
   apiFetch<EquipmentRow>(`${BASE}/equipment/${id}/action`, {
     method: 'POST',
-    json: found ? { action, found } : { action },
+    json: { action, ...(found ? { found } : {}), ...(handout ? { handout } : {}) },
   });
 /** This stall's counter trail only — readable on `equipment.read`, unlike the
  *  request's whole Activity Log. */

@@ -164,17 +164,20 @@ describe('charges', () => {
   test('is one row, so the plan is field by field', async () => {
     await prisma.stallChargeConfig.update({
       where: { editionId: past.id },
-      data: { gstPercent: 12, chairRatePaise: 7_500 },
+      data: { gstRentPercent: 12, chairRatePaise: 7_500 },
     });
     const p = await plan('charges');
     expect(p.overwrite).toHaveLength(1);
-    expect(p.overwrite[0].changes.map((c) => c.field).sort()).toEqual(['Chair (ashram)', 'GST']);
+    expect(p.overwrite[0].changes.map((c) => c.field).sort()).toEqual([
+      'Chair (ashram)',
+      'GST on rent',
+    ]);
 
     await applied('charges');
     const after = await prisma.stallChargeConfig.findUniqueOrThrow({
       where: { editionId: current.id },
     });
-    expect(after.gstPercent).toBe(12);
+    expect(after.gstRentPercent).toBe(12);
     expect(after.chairRatePaise).toBe(7_500);
   });
 

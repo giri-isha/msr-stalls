@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { formatInr, rupeesToPaise } from './money';
 import {
   type ChargeRates,
+  type DeductionLine,
   DEFAULT_5A_PLUGS,
   computeRefund,
   equipmentDeduction,
@@ -22,7 +23,11 @@ const RATES: ChargeRates = {
   plug5aRatePaise: rupeesToPaise(500),
   plug15aRatePaise: rupeesToPaise(1000),
   equipmentDays: 1,
-  gstPercent: 18,
+  chairPerDay: true,
+  tablePerDay: true,
+  gstRentPercent: 18,
+  gstItemsPercent: 18,
+  gstDepositPercent: 0,
 };
 
 const base = {
@@ -256,15 +261,91 @@ describe('refunds', () => {
     expect(r.shortfallPaise).toBe(rupeesToPaise(1_500));
   });
 
+  /** Chairs and tables, as the config columns describe them. */
+  const furniture = (over: Partial<DeductionLine> = {}): DeductionLine[] => [
+    {
+      label: 'Chair',
+      extraCount: 0,
+      ratePaise: rupeesToPaise(100),
+      perDay: true,
+      missing: 2,
+      missingPaise: rupeesToPaise(400),
+      damaged: 3,
+      damagedPaise: rupeesToPaise(250),
+      ...over,
+    },
+    {
+      label: 'Table',
+      extraCount: 0,
+      ratePaise: rupeesToPaise(400),
+      perDay: true,
+      missing: 1,
+      missingPaise: rupeesToPaise(900),
+      damaged: 1,
+      damagedPaise: rupeesToPaise(250),
+    },
+  ];
+
   it('prices missing and damaged furniture', () => {
-    const d = equipmentDeduction(
-      { missingChairs: 2, missingTables: 1, damagedChairs: 3, damagedTables: 1 },
-      {
-        chairReplacementPaise: rupeesToPaise(400),
-        tableReplacementPaise: rupeesToPaise(900),
-        damagePenaltyPaise: rupeesToPaise(250),
-      },
-    );
-    expect(d).toBe(rupeesToPaise(2 * 400 + 900 + 4 * 250));
+    const d = equipmentDeduction(furniture(), 1);
+    expect(d.totalPaise).toBe(rupeesToPaise(2 * 400 + 900 + 3 * 250 + 250));
+  });
+
+  it('charges nothing extra for a single day', () => {
+    const d = equipmentDeduction(furniture({ extraCount: 4 }), 1);
+    expect(d.lines.some((l) => l.label.includes('extra'))).toBe(false);
+  });
+
+  /** 🔴 The day already paid for at the counter is not charged again. Four
+   *  extra chairs kept three days is TWO days of rent here, not three. */
+  it('settles only the days past the first, on what the counter handed out', () => {
+    const d = equipmentDeduction(furniture({ extraCount: 4 }), 3);
+    const rent = d.lines.find((l) => l.label === 'Chair — 2 extra days');
+    expect(rent?.amountPaise).toBe(rupeesToPaise(4 * 100 * 2));
+  });
+
+  /** A flat item took its whole charge in cash when it went out. */
+  it('never charges extra days on a flat item', () => {
+    const carpet: DeductionLine = {
+      label: 'Carpet',
+      extraCount: 2,
+      ratePaise: rupeesToPaise(500),
+      perDay: false,
+      missing: 0,
+      missingPaise: 0,
+      damaged: 0,
+      damagedPaise: 0,
+    };
+    expect(equipmentDeduction([carpet], 5).totalPaise).toBe(0);
+  });
+
+  /** ⚠️ Rent AND replacement on the same item. They had it for those days and
+   *  then lost it; waiving the rent would make losing it cheaper than bringing
+   *  it back late. */
+  it('charges rent and replacement on an item that never came back', () => {
+    const fan: DeductionLine = {
+      label: 'Fan',
+      extraCount: 2,
+      ratePaise: rupeesToPaise(50),
+      perDay: true,
+      missing: 2,
+      missingPaise: rupeesToPaise(600),
+      damaged: 0,
+      damagedPaise: 0,
+    };
+    const d = equipmentDeduction([fan], 3);
+    expect(d.totalPaise).toBe(rupeesToPaise(2 * 50 * 2 + 2 * 600));
+  });
+
+  /** Zeroes are dropped: a list where every item appears whether or not it cost
+   *  anything buries the two rows the vendor is being charged for. */
+  it('lists only what was actually charged', () => {
+    const d = equipmentDeduction(furniture(), 1);
+    expect(d.lines.map((l) => l.label)).toEqual([
+      'Chair not returned',
+      'Chair damaged',
+      'Table not returned',
+      'Table damaged',
+    ]);
   });
 });

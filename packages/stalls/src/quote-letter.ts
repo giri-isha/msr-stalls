@@ -65,7 +65,16 @@ export function gstPercentOf(quote: { netPaise: number; gstPaise: number }): num
   return quote.netPaise > 0 ? Math.round((quote.gstPaise / quote.netPaise) * 100) : 0;
 }
 
-export function chargeLines(quote: Quote): string {
+/** Only what the letter prints. Narrower than `Quote` on purpose: a FROZEN plan
+ *  carries the totals and the lines but not every field a live quote computes,
+ *  and the letter has always rendered both. */
+type LetterCharges = Pick<Quote, 'lines' | 'netPaise' | 'gstPaise' | 'feeTotalPaise'>;
+type LetterDeposits = Pick<
+  Quote,
+  'stallDepositPaise' | 'equipmentDepositPaise' | 'depositTotalPaise'
+>;
+
+export function chargeLines(quote: LetterCharges): string {
   const out: string[] = [];
 
   for (const group of CHARGE_GROUPS) {
@@ -99,7 +108,7 @@ export function chargeLines(quote: Quote): string {
  * read a line for it. Never discounted: the deposit comes back in full, so a
  * concession on it would mean refunding money that was never taken.
  */
-export function depositLines(quote: Quote): string {
+export function depositLines(quote: LetterDeposits): string {
   const out = [row('Caution deposit — stall', formatInr(quote.stallDepositPaise))];
   if (quote.equipmentDepositPaise > 0) {
     out.push(row('Caution deposit — chairs and tables', formatInr(quote.equipmentDepositPaise)));
