@@ -338,6 +338,19 @@ describe('recipients and reminders', () => {
     expect(await listReminders(prisma, edition.id, 'BANK')).toEqual([]);
   });
 
+  test('the wait is counted from selection, so the list can be worked oldest first', async () => {
+    const { requestId } = await selected(['C1-1']);
+    // Backdate the selection the way the trail records it — the request became
+    // due then, not when it was submitted.
+    await prisma.stallAuditEvent.updateMany({
+      where: { requestId, action: 'stall_request.selected' },
+      data: { occurredAt: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000) },
+    });
+
+    const [row] = await listReminders(prisma, edition.id, 'BANK');
+    expect(row.daysWaiting).toBe(9);
+  });
+
   test('a logged call shows as a count and a date, not just a flag', async () => {
     const { requestId } = await selected(['C1-1']);
     await logReminder(prisma, requestId, { kind: 'BANK', note: 'no answer' }, SYSTEM);

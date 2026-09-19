@@ -283,7 +283,7 @@ export function CallHistoryDialog({
                   {c.outcome ? CALL_OUTCOME_LABEL[c.outcome] : 'Not recorded'}
                 </Tag>
                 <span style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
-                  {formatDateTime(c.calledAt)}
+                  {formatDateTime(c.calledAt)} · {c.calledBy}
                 </span>
               </div>
               {c.callbackDate && (

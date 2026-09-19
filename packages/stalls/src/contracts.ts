@@ -1919,6 +1919,10 @@ export interface ReminderRow {
   contactNumber: string;
   email: string;
   kind: ReminderKind;
+  /** Whole days this request has been waiting — measured from selection, which
+   *  is when the bank form and the payment first became due. The column callers
+   *  sort by: the oldest silence is the one to ring first. */
+  daysWaiting: number;
   callCount: number;
   lastCalledAt: string | null;
   /** How the LAST call went, so the list answers "has anyone got through" at a

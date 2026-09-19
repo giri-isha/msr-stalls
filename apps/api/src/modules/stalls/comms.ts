@@ -678,6 +678,22 @@ export async function listReminders(
     include: { reminders: { where: { kind }, orderBy: { calledAt: 'desc' } } },
     orderBy: { stallName: 'asc' },
   });
+
+  // Waiting since SELECTION, not since submission: nothing is owed until the
+  // stall is theirs, so the clock a caller prioritises by starts there. The
+  // audit trail already records the moment; a `selected_at` column would be the
+  // same fact stored twice.
+  const selectedAt = new Map(
+    (
+      await db.stallAuditEvent.groupBy({
+        by: ['requestId'],
+        where: { requestId: { in: rows.map((r) => r.id) }, action: 'stall_request.selected' },
+        _max: { occurredAt: true },
+      })
+    ).map((g) => [g.requestId, g._max.occurredAt]),
+  );
+  const today = Date.now();
+
   return rows.map((r) => ({
     requestId: r.id,
     reference: r.reference,
@@ -687,6 +703,14 @@ export async function listReminders(
     email: r.email,
     kind,
     callCount: r.reminders.length,
+    // Falls back to submission for a request selected before the trail existed
+    // — a wrong-by-a-few-days number still sorts the list, a null does not.
+    daysWaiting: Math.max(
+      0,
+      Math.floor(
+        (today - (selectedAt.get(r.id) ?? r.submittedAt).getTime()) / (24 * 60 * 60 * 1000),
+      ),
+    ),
     lastCalledAt: r.reminders[0]?.calledAt.toISOString() ?? null,
     lastOutcome: r.reminders[0]?.outcome ?? null,
     // ⚠️ The most RECENT day asked for, not the first — a vendor who has moved
@@ -727,11 +751,24 @@ export async function listReminderCalls(
       },
     },
   });
+  // Who rang, by name. `called_by` holds a person id, and an id on a call
+  // history answers nothing — the second question after "what was said" is
+  // "who said it". One lookup for the page, and a ref matching no person (the
+  // system actor, a seeded constant) reads as itself rather than blanking.
+  const names = new Map(
+    (
+      await db.person.findMany({
+        where: { personId: { in: [...new Set(calls.map((c) => c.calledBy))] } },
+        select: { personId: true, displayName: true },
+      })
+    ).map((p) => [p.personId, p.displayName] as const),
+  );
+
   return calls.map((c) => ({
     id: c.id,
     kind: c.kind,
     calledAt: c.calledAt.toISOString(),
-    calledBy: c.calledBy,
+    calledBy: names.get(c.calledBy) ?? c.calledBy,
     outcome: c.outcome,
     callbackDate: c.callbackDate?.toISOString().slice(0, 10) ?? null,
     note: c.note,

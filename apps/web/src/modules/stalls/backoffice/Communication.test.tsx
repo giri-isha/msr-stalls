@@ -276,6 +276,7 @@ describe('reminder calls', () => {
     contactNumber: '9840012345',
     email: 'priya@greenleaf.example',
     kind: 'BANK',
+    daysWaiting: 12,
     callCount: 1,
     lastCalledAt: '2026-01-06T10:00:00.000Z',
     lastOutcome: null,
@@ -495,5 +496,28 @@ describe('reminder calls', () => {
     await user.click(screen.getByRole('button', { name: '2' }));
     expect(await screen.findByText('ring after the weekend')).toBeInTheDocument();
     expect(screen.getByText('Did they pick up?')).toBeInTheDocument();
+  });
+
+  test('the longest wait is at the top, where the caller starts', async () => {
+    installFetch([
+      ['GET', /\/me$/, () => ME_ADMIN],
+      ['GET', /\/comms\/recipients$/, () => recipients],
+      ['GET', /\/comms\/templates$/, () => TEMPLATES],
+      [
+        'GET',
+        /\/comms\/reminders/,
+        // Returned alphabetically, as the API orders it.
+        () => [
+          reminderRow({ requestId: 'r-fresh', stallName: 'Anand Foods', daysWaiting: 2 }),
+          reminderRow({ requestId: 'r-stale', stallName: 'Zenith Crafts', daysWaiting: 41 }),
+        ],
+      ],
+    ]);
+    render();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('tab', { name: 'Reminder calls' }));
+    const names = (await screen.findAllByText(/Foods|Crafts/)).map((n) => n.textContent);
+    expect(names).toEqual(['Zenith Crafts', 'Anand Foods']);
   });
 });

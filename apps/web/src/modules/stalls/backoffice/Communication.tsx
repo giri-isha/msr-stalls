@@ -732,8 +732,15 @@ function ReminderPanel() {
   // logging a call on it is the ordinary sequence.
   const [logging, setLogging] = useState<ReminderRow | null>(null);
   const [showing, setShowing] = useState<ReminderRow | null>(null);
+  // Longest wait first: the list exists to be worked top-down, and alphabetical
+  // order puts a vendor selected yesterday above one nobody has reached in a
+  // month.
+  const rows = useMemo(
+    () => [...(data ?? [])].sort((a, b) => b.daysWaiting - a.daysWaiting),
+    [data],
+  );
   // Switching between the two kinds is a different list, so it starts at page one.
-  const { slice, pager } = usePaged('comms-reminders', data ?? [], kind);
+  const { slice, pager } = usePaged('comms-reminders', rows, kind);
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
@@ -768,6 +775,7 @@ function ReminderPanel() {
               <TR>
                 <TH>Vendor</TH>
                 <TH>Contact</TH>
+                <TH align='right'>Days Waiting</TH>
                 <TH align='right'>Calls Logged</TH>
                 <TH>Last Call</TH>
                 <TH>Call Status</TH>
@@ -783,6 +791,25 @@ function ReminderPanel() {
                   </TD>
                   <TD mono style={{ fontSize: 12 }}>
                     {r.contactNumber}
+                  </TD>
+                  <TD align='right'>
+                    {/* Tinted past a fortnight, red past a month: the caller
+                        should be able to find the rows worth ringing without
+                        reading the number on every line. */}
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: r.daysWaiting >= 14 ? 600 : 400,
+                        color:
+                          r.daysWaiting >= 30
+                            ? 'var(--des)'
+                            : r.daysWaiting >= 14
+                              ? 'var(--warn)'
+                              : 'inherit',
+                      }}
+                    >
+                      {r.daysWaiting}
+                    </span>
                   </TD>
                   <TD align='right'>
                     {/* The count is the way in to what was actually SAID. A
