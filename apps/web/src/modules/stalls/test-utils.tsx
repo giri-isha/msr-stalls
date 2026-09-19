@@ -519,6 +519,9 @@ export function paymentRow(over: Record<string, unknown> = {}) {
     bankDetailsReceivedAt: '2026-01-10T10:00:00.000Z',
     paymentEmailSentAt: null,
     records: [] as unknown[],
+    // Empty by default: most credit tests are about the form, and a reported
+    // transfer sitting above it would put a second "Confirm" in every query.
+    pendingClaims: [] as unknown[],
     receivedRentPaise: 0,
     receivedDepositPaise: 0,
     fullySettled: false,

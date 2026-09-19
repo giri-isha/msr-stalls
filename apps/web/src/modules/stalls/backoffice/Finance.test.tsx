@@ -34,6 +34,8 @@ function refundRow(over: Record<string, unknown> = {}) {
     suggestedEquipmentDeductionPaise: 195_000,
     suggestedEquipmentLines: [{ label: 'Chair not returned', amountPaise: 195_000 }],
     equipmentDeductionPaise: 195_000,
+    equipmentLines: [{ label: 'Chair not returned', amountPaise: 195_000 }],
+    equipmentAdjustmentPaise: 0,
     fineDeductionPaise: 0,
     fines: [] as Array<{ reason: string; amountPaise: number }>,
     stallRefundPaise: 400_000,
@@ -44,6 +46,25 @@ function refundRow(over: Record<string, unknown> = {}) {
     shortfallPaise: 0,
     submittedAt: null,
     voucherRef: null,
+    ...over,
+  };
+}
+
+/** What a requester says they transferred, waiting on finance. */
+function claim(over: Record<string, unknown> = {}) {
+  return {
+    id: 'cl1',
+    purpose: 'RENT',
+    status: 'PENDING',
+    referenceNo: 'YESBN12025022406216143',
+    amountPaise: 2_596_000,
+    paidOn: '2026-02-11',
+    remitterName: 'Priya Venkat',
+    note: null,
+    submittedAt: '2026-02-11T09:00:00.000Z',
+    reviewedAt: null,
+    rejectReason: null,
+    hasReceipt: false,
     ...over,
   };
 }
@@ -113,6 +134,62 @@ describe('what is due', () => {
 });
 
 describe('confirming a credit', () => {
+  // 🔴 Finance was reading a reference off the claims queue and typing it into
+  // this box by hand — two screens for one act, with a transcription step
+  // between a vendor's reference number and the credit recorded against it.
+  test('a reported transfer is confirmed where the credit is entered', async () => {
+    payments = [paymentRow({ pendingClaims: [claim()] })];
+    const fetch = stub([['POST', /\/finance\/claims\/cl1$/, () => [204, null]]]);
+    render();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Record Credit' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    expect(dialog.getByText(/Reported by the requester/)).toBeInTheDocument();
+    expect(dialog.getByText('YESBN12025022406216143')).toBeInTheDocument();
+
+    await user.click(dialog.getByRole('button', { name: 'Confirm' }));
+
+    // 🔴 The REVIEW call, not a plain credit. It writes the receipt through
+    // `confirmPayment` AND settles the claim; retyping the figures into the
+    // form would record the credit and leave the claim pending for ever.
+    await waitFor(() => {
+      const post = fetch.calls.find((c) => c.url.includes('/finance/claims/cl1'));
+      expect(post?.body).toEqual({ verdict: 'VERIFY' });
+    });
+  });
+
+  // ⚠️ Finance sometimes has to correct what the vendor typed. That path fills
+  // the form and leaves the claim alone, so whoever settles it still sees it.
+  test('“use these figures” fills the form and settles nothing', async () => {
+    payments = [paymentRow({ pendingClaims: [claim({ purpose: 'DEPOSIT' })] })];
+    const fetch = stub();
+    render();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Record Credit' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    await user.click(dialog.getByRole('button', { name: 'Use These Figures' }));
+
+    expect(dialog.getByLabelText('Reference Number')).toHaveValue('YESBN12025022406216143');
+    expect(dialog.getByLabelText('Credit Date')).toHaveValue('2026-02-11');
+    expect(dialog.getByLabelText('Remitter Name (Optional)')).toHaveValue('Priya Venkat');
+    expect(fetch.calls.filter((c) => c.method === 'POST')).toHaveLength(0);
+  });
+
+  // ⚠️ A settled claim is already a credit in `records`. Showing it again beside
+  // the box that records credits is an invitation to bank it twice.
+  test('a stall with nothing reported shows no such section', async () => {
+    payments = [paymentRow()];
+    stub();
+    render();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Record Credit' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    expect(dialog.queryByText(/Reported by the requester/)).not.toBeInTheDocument();
+  });
+
   test('records the reference, amount and date', async () => {
     const fetch = stub([['POST', /\/finance\/payments\//, () => [204, null]]]);
     render();
@@ -341,6 +418,79 @@ describe('confirming a credit', () => {
 });
 
 describe('refunds', () => {
+  // 🔴 WHY, not just how much. The penalties were always itemised and the
+  // furniture deduction was a bare figure — the one a vendor rings up about.
+  test('a sent refund says what the furniture deduction was made of', async () => {
+    refunds = [
+      refundRow({
+        submittedAt: '2026-02-20T09:00:00.000Z',
+        voucherRef: 'V-001',
+        equipmentDeductionPaise: 195_000,
+        equipmentLines: [
+          { label: 'Chair — 2 extra days', amountPaise: 80_000 },
+          { label: 'Chair not returned', amountPaise: 115_000 },
+        ],
+        equipmentAdjustmentPaise: 0,
+      }),
+    ];
+    stub();
+    render();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('tab', { name: 'Refunds & deductions' }));
+    await user.click(await screen.findByRole('button', { name: 'Voucher' }));
+
+    const dialog = within(await screen.findByRole('dialog'));
+    expect(dialog.getByText('Chair — 2 extra days')).toBeInTheDocument();
+    expect(dialog.getByText('Chair not returned')).toBeInTheDocument();
+  });
+
+  // ⚠️ Finance settling on a different figure from the counter's is normal, and
+  // the gap is what somebody querying the refund is asking about — so it is a
+  // line of its own rather than lines that quietly fail to add up.
+  test('a figure finance changed is shown as its own line', async () => {
+    refunds = [
+      refundRow({
+        submittedAt: '2026-02-20T09:00:00.000Z',
+        equipmentDeductionPaise: 150_000,
+        equipmentLines: [{ label: 'Chair not returned', amountPaise: 195_000 }],
+        equipmentAdjustmentPaise: -45_000,
+      }),
+    ];
+    stub();
+    render();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('tab', { name: 'Refunds & deductions' }));
+    await user.click(await screen.findByRole('button', { name: 'Voucher' }));
+
+    const dialog = within(await screen.findByRole('dialog'));
+    expect(dialog.getByText('Reduced by Finance')).toBeInTheDocument();
+    expect(dialog.getByText('₹450')).toBeInTheDocument();
+  });
+
+  // Refunds sent before the breakdown existed have none to show, and the screen
+  // falls back to the single figure it always did rather than inventing one.
+  test('a refund sent before the breakdown existed still reads', async () => {
+    refunds = [
+      refundRow({
+        submittedAt: '2026-02-20T09:00:00.000Z',
+        equipmentLines: [],
+        equipmentAdjustmentPaise: 0,
+      }),
+    ];
+    stub();
+    render();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('tab', { name: 'Refunds & deductions' }));
+    await user.click(await screen.findByRole('button', { name: 'Voucher' }));
+
+    const dialog = within(await screen.findByRole('dialog'));
+    expect(dialog.getByText('Chairs and Tables')).toBeInTheDocument();
+    expect(dialog.queryByText(/by Finance/)).not.toBeInTheDocument();
+  });
+
   test('offers the deduction the chairs counter recorded, and previews the refund', async () => {
     stub();
     render();

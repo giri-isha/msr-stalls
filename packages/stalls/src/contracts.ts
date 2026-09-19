@@ -2361,6 +2361,14 @@ export interface PaymentRow {
   bankDetailsReceivedAt: string | null;
   paymentEmailSentAt: string | null;
   records: PaymentRecordView[];
+  /** What this requester says they have transferred and finance has not settled
+   *  yet.
+   *
+   *  🔴 Carried on the row so the credit box can show them where the credit is
+   *  entered. They have their own tab, but a reported transfer and the credit it
+   *  becomes are the same act: finance was reading a reference off one screen
+   *  and typing it into another. */
+  pendingClaims: PaymentClaimView[];
   /** Sum of confirmed receipts, per purpose. */
   receivedRentPaise: number;
   receivedDepositPaise: number;
@@ -2399,6 +2407,22 @@ export interface RefundRow {
    *  the person settling it needs to see which part is being argued about. */
   suggestedEquipmentLines: Array<{ label: string; amountPaise: number }>;
   equipmentDeductionPaise: number;
+  /** What `equipmentDeductionPaise` was MADE OF.
+   *
+   *  🔴 The FROZEN list on a refund already sent, and the live suggestion
+   *  otherwise — the same rule the payment letter's lines follow. The counter's
+   *  figures can be corrected afterwards, and a breakdown recomputed from
+   *  today's would stop adding up to the total the vendor was told.
+   *
+   *  ⚠️ May not sum to `equipmentDeductionPaise`: finance can settle on a
+   *  different figure from the counter's suggestion. `equipmentAdjustmentPaise`
+   *  is that gap, and it is shown rather than hidden. Empty on refunds sent
+   *  before the figures were itemised. */
+  equipmentLines: Array<{ label: string; amountPaise: number }>;
+  /** The deduction minus what its lines add up to — positive where finance
+   *  charged more than the counter suggested, negative where they charged less.
+   *  Zero when the lines explain the whole figure. */
+  equipmentAdjustmentPaise: number;
   fineDeductionPaise: number;
   fines: Array<{ reason: string; amountPaise: number }>;
   /** What comes back out of each deposit, and their sum. */

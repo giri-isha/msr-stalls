@@ -10,7 +10,7 @@
 // The 2025 letter filled this gap with "please send transfer details on E-mail
 // IDs finance.support@… once you make the payment" — a mailbox, matched by hand.
 import { Prisma } from '@prisma/client';
-import type { PrismaClient, StallPaymentPurpose } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client';
 import {
   type PaymentClaimRow,
   type PaymentClaimView,
@@ -20,6 +20,7 @@ import {
   payableFeePaise,
 } from '@stalls/core';
 import { type Filing, actorFrom, audit } from './audit';
+import { CLAIM_SELECT, toView } from './payment-claim-view';
 import { flowFor } from './config';
 import type { Db } from './editions';
 import {
@@ -36,58 +37,6 @@ import { confirmPayment } from './finance';
  *  internally and owes nothing here, so a claim from one is a claim about
  *  nothing. */
 const MAY_CLAIM = new Set(['VENDOR', 'LOCAL_WELFARE']);
-
-const SELECT = {
-  id: true,
-  purpose: true,
-  status: true,
-  referenceNo: true,
-  amountPaise: true,
-  paidOn: true,
-  remitterName: true,
-  note: true,
-  receiptKey: true,
-  submittedAt: true,
-  reviewedAt: true,
-  rejectReason: true,
-} as const;
-
-type ClaimRow = {
-  id: string;
-  purpose: StallPaymentPurpose;
-  status: string;
-  referenceNo: string;
-  amountPaise: number;
-  paidOn: Date;
-  remitterName: string | null;
-  note: string | null;
-  receiptKey: string | null;
-  submittedAt: Date;
-  reviewedAt: Date | null;
-  rejectReason: string | null;
-};
-
-/** ⚠️ `hasReceipt`, not the key itself. The key is a handle on a private file;
- *  the requester only needs to know their upload arrived, and the backoffice
- *  fetches it through the media store with its own authorisation. */
-function toView(c: ClaimRow): PaymentClaimView {
-  return {
-    id: c.id,
-    purpose: c.purpose,
-    status: c.status as PaymentClaimView['status'],
-    referenceNo: c.referenceNo,
-    amountPaise: c.amountPaise,
-    // A banking date. `toISOString().slice(0, 10)` rather than the whole
-    // instant: there is no time-of-day on a statement line.
-    paidOn: c.paidOn.toISOString().slice(0, 10),
-    remitterName: c.remitterName,
-    note: c.note,
-    submittedAt: c.submittedAt.toISOString(),
-    reviewedAt: c.reviewedAt?.toISOString() ?? null,
-    rejectReason: c.rejectReason,
-    hasReceipt: c.receiptKey !== null,
-  };
-}
 
 /**
  * Records what a requester says they transferred.
@@ -128,7 +77,7 @@ export async function submitPaymentClaim(
         receiptKey: input.receiptKey || null,
         note: input.note || null,
       },
-      select: SELECT,
+      select: CLAIM_SELECT,
     });
     await audit(db, {
       actor: filing.actor,
@@ -161,7 +110,7 @@ export async function claimsFor(db: Db, requestId: string): Promise<PaymentClaim
   const rows = await db.stallPaymentClaim.findMany({
     where: { requestId },
     orderBy: { submittedAt: 'desc' },
-    select: SELECT,
+    select: CLAIM_SELECT,
   });
   return rows.map(toView);
 }
@@ -179,7 +128,7 @@ export async function pendingClaims(db: Db, editionId: string): Promise<PaymentC
     where: { status: 'PENDING', request: { editionId } },
     orderBy: { submittedAt: 'asc' },
     select: {
-      ...SELECT,
+      ...CLAIM_SELECT,
       request: {
         select: {
           id: true,
@@ -231,7 +180,7 @@ export async function reviewPaymentClaim(
 ): Promise<void> {
   const claim = await db.stallPaymentClaim.findFirst({
     where: { id: claimId, request: { editionId } },
-    select: { ...SELECT, requestId: true },
+    select: { ...CLAIM_SELECT, requestId: true },
   });
   if (!claim) throw new UnknownRequestError(claimId);
   // A settled claim is a record, not a draft. Re-verifying would write a second
