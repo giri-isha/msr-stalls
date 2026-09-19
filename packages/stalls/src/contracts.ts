@@ -1825,6 +1825,9 @@ export interface EmailTemplateView {
    *  written to be read on a phone — a letter pasted into WhatsApp whole is a
    *  wall of text nobody scrolls. Empty means this template is email-only. */
   whatsappBody: string;
+  /** The HTML version of `body`, sent beside it rather than instead of it.
+   *  Empty means this letter goes out as plain text only. */
+  htmlBody: string;
   appliesTo: string[];
   /** Null while the seeded text has never been edited. */
   updatedAt: string | null;
@@ -1837,6 +1840,7 @@ export const UpdateTemplateInput = z.object({
   subject: z.string().trim().min(1).max(300),
   body: z.string().trim().min(1).max(20_000),
   whatsappBody: z.string().trim().max(4000).default(''),
+  htmlBody: z.string().trim().max(60_000).default(''),
 });
 
 export const SendEmailInput = z.object({

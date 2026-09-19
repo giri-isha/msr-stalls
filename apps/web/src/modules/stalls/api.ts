@@ -722,7 +722,7 @@ export const getTemplates = () => apiFetch<TemplatesResponse>(`${BASE}/comms/tem
 
 export const putTemplate = (
   key: TemplateKeyValue,
-  body: { subject: string; body: string; whatsappBody: string },
+  body: { subject: string; body: string; whatsappBody: string; htmlBody: string },
 ) => apiFetch<void>(`${BASE}/comms/templates/${key}`, { method: 'PUT', json: body });
 
 export const putTemplateAttachment = (

@@ -141,11 +141,18 @@ export interface ReportView {
  *
  *  ⚠️ Money is written in RUPEES, not paise: a column headed "Collected" whose
  *  cells are a hundred times the figure on the screen is a spreadsheet somebody
- *  will circulate. */
+ *  will circulate.
+ *
+ *  🔴 Cells hold text a VENDOR typed — a stall name, a contact, a note — and
+ *  the file is opened in Excel by somebody in the office. A cell beginning
+ *  `=`, `+`, `-` or `@` is a formula there, not a name, so it is prefixed with
+ *  a quote: the spreadsheet shows the text and runs nothing. */
 export function reportCsv(view: ReportView): string {
   const cell = (v: string | number | null | undefined, kind: ReportColumnKind): string => {
     if (v === null || v === undefined) return '';
-    const text = kind === 'money' && typeof v === 'number' ? (v / 100).toFixed(2) : String(v);
+    const raw = kind === 'money' && typeof v === 'number' ? (v / 100).toFixed(2) : String(v);
+    // A number we computed is never a formula; only text a person supplied is.
+    const text = typeof v === 'string' && /^[=+\-@\t\r]/.test(v) ? `'${raw}` : raw;
     return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
   };
 

@@ -54,6 +54,26 @@ describe('templates', () => {
     await send('SELECTION_VENDOR', [requestId]);
     expect(deps.mail.sent[0].subject).toBe('Confirmed: Green Leaf Organics');
     expect(deps.mail.sent[0].text).toBe('Bay C1. Bye.');
+    // No HTML version written, so the letter is plain text only.
+    expect(deps.mail.sent[0].html).toBeUndefined();
+  });
+
+  test('an HTML version rides beside the text, not instead of it', async () => {
+    const { requestId } = await selected(['C1-1']);
+    await updateTemplate(
+      prisma,
+      edition.id,
+      'SELECTION_VENDOR',
+      {
+        subject: 'Confirmed',
+        body: 'Bay {{zoneCode}}.',
+        htmlBody: '<p>Bay {{zoneCode}} for {{stallName}}.</p>',
+      },
+      SYSTEM,
+    );
+    await send('SELECTION_VENDOR', [requestId]);
+    expect(deps.mail.sent[0].text).toBe('Bay C1.');
+    expect(deps.mail.sent[0].html).toBe('<p>Bay C1 for Green Leaf Organics.</p>');
   });
 
   // 🔴 The team asked that the stall NUMBER not go out before the vendor is

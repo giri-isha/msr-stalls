@@ -1553,6 +1553,11 @@ model StallEmailTemplate {
   /// Empty means this template is email-only, which the send path treats as an
   /// absence rather than a failure.
   whatsappBody    String           @default("") @map("whatsapp_body")
+  /// The HTML version of the letter, sent ALONGSIDE `body` rather than instead
+  /// of it — a mail client that cannot render it falls back to the plain text,
+  /// and so does a vendor reading on a feature phone. Empty is the norm: the
+  /// letter goes out as text only, exactly as it did before this column.
+  htmlBody        String           @default("") @map("html_body")
   /// The zone map or contract that goes out with the letter. A media-store key,
   /// not bytes — the module never holds a file in a column.
   attachmentKey   String?          @map("attachment_key")

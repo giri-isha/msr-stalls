@@ -495,6 +495,7 @@ function TemplatePanel() {
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [whatsappBody, setWhatsappBody] = useState('');
+  const [htmlBody, setHtmlBody] = useState('');
   const [dirty, setDirty] = useState(false);
 
   const current = data?.templates.find((t) => t.key === key);
@@ -505,12 +506,13 @@ function TemplatePanel() {
     setSubject(current.subject);
     setBody(current.body);
     setWhatsappBody(current.whatsappBody);
+    setHtmlBody(current.htmlBody);
     setDirty(false);
-  }, [current?.key, current?.subject, current?.body, current?.whatsappBody]);
+  }, [current?.key, current?.subject, current?.body, current?.whatsappBody, current?.htmlBody]);
 
   const unknown = useMemo(
-    () => unknownPlaceholders(`${subject}\n${body}\n${whatsappBody}`),
-    [subject, body, whatsappBody],
+    () => unknownPlaceholders(`${subject}\n${body}\n${whatsappBody}\n${htmlBody}`),
+    [subject, body, whatsappBody, htmlBody],
   );
 
   if (loading && !data) return <Loading />;
@@ -523,7 +525,7 @@ function TemplatePanel() {
       // empty string, and an empty WhatsApp body means "this letter is email
       // only" — so a save that left it out silently switched the WhatsApp
       // message off every time somebody fixed a typo in the email.
-      await putTemplate(key, { subject, body, whatsappBody });
+      await putTemplate(key, { subject, body, whatsappBody, htmlBody });
       toast.ok('Template saved.');
       setDirty(false);
       reload();
@@ -598,6 +600,28 @@ function TemplatePanel() {
             placeholder='Leave empty to send this letter by email only.'
             onChange={(e) => {
               setWhatsappBody(e.target.value);
+              setDirty(true);
+            }}
+            style={{ fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 12.5 }}
+          />
+        </label>
+
+        {/* 🔴 The HTML version goes out BESIDE the plain text, not instead of
+            it: the mail is multipart, and a client that cannot render this —
+            or a vendor reading on a feature phone — still gets the body above.
+            Empty is the normal state; the letter is then plain text, as it has
+            always been. Values are escaped when they are filled in, so a
+            placeholder cannot close a tag; a column-aligned one such as
+            {{charges}} needs a <pre> around it to keep its alignment. */}
+        <label htmlFor='template-html' style={{ display: 'grid', gap: 5 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 600 }}>HTML version (optional)</span>
+          <Textarea
+            id='template-html'
+            rows={10}
+            value={htmlBody}
+            placeholder='Leave empty to send this letter as plain text only.'
+            onChange={(e) => {
+              setHtmlBody(e.target.value);
               setDirty(true);
             }}
             style={{ fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontSize: 12.5 }}

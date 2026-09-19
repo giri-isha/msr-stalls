@@ -19,6 +19,7 @@ import {
   depositLines,
   formatInr,
   isStepAsked,
+  renderHtmlTemplate,
   renderTemplate,
   virtualAccountFor,
 } from '@stalls/core';
@@ -102,6 +103,7 @@ export async function listTemplates(db: Db, editionId: string): Promise<EmailTem
         subject: r.subject,
         body: r.body,
         whatsappBody: r.whatsappBody,
+        htmlBody: r.htmlBody,
         appliesTo: [...(seed?.appliesTo ?? [])],
         updatedAt: r.updatedAt?.toISOString() ?? null,
         attachment:
@@ -117,7 +119,7 @@ export async function updateTemplate(
   db: PrismaClient,
   editionId: string,
   key: StallTemplateKey,
-  patch: { subject: string; body: string },
+  patch: { subject: string; body: string; whatsappBody?: string; htmlBody?: string },
   by: string,
 ): Promise<void> {
   await ensureTemplates(db, editionId);
@@ -497,7 +499,12 @@ export async function sendTemplate(
     }
 
     const vars = await templateVars(db, r, input.templateKey, deps, by, locked);
-    const subject = renderTemplate(template.subject, vars);
+    // 🔴 A subject is ONE header line. `{{stallName}}` is free text a vendor
+    // typed on the public form, so a newline in it would become the end of the
+    // Subject header and the start of whatever they wrote next — a Bcc, on a
+    // transport that trusts us. Folded to a space at the one place a subject is
+    // built.
+    const subject = renderTemplate(template.subject, vars).replace(/[\r\n]+/g, ' ');
 
     let anySent = false;
     const failures: string[] = [];
@@ -509,6 +516,12 @@ export async function sendTemplate(
       // absence, not a failure, so it is not reported as one.
       if (!rawBody.trim()) continue;
       const text = renderTemplate(rawBody, vars);
+      // Beside the text, never instead of it: a client that cannot render HTML
+      // still gets the letter. Empty is the norm — see `StallEmailTemplate`.
+      const html =
+        isEmail && template.htmlBody.trim()
+          ? renderHtmlTemplate(template.htmlBody, vars)
+          : undefined;
       const to = isEmail ? r.email : r.contactNumber;
 
       try {
@@ -536,6 +549,7 @@ export async function sendTemplate(
             to,
             subject,
             text,
+            html,
             attachments: attachment ? [attachment] : undefined,
             about: { requestId: r.id },
           });

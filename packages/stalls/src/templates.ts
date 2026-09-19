@@ -338,6 +338,28 @@ export function renderTemplate(text: string, vars: Record<string, string | undef
   return text.replace(PLACEHOLDER, (_, key: string) => vars[key] ?? '');
 }
 
+const HTML_ESCAPE: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+};
+
+/** The same substitution for an HTML body. The TEMPLATE is trusted — an admin
+ *  with `comms.write` wrote the markup on purpose — but the VALUES are not:
+ *  a stall called "Ammu & Co <Kitchen>" must not close a tag in a vendor's
+ *  inbox, so every filled value is escaped.
+ *
+ *  Newlines inside a value become `<br>`, because several of them are
+ *  multi-line — `charges` is the itemised bill — and HTML would otherwise run
+ *  the lines together. Their column alignment still needs a `<pre>` around the
+ *  placeholder in the template; a `<br>` keeps the rows apart, not aligned. */
+export function renderHtmlTemplate(html: string, vars: Record<string, string | undefined>): string {
+  return html.replace(PLACEHOLDER, (_, key: string) =>
+    (vars[key] ?? '').replace(/[&<>"]/g, (c) => HTML_ESCAPE[c]).replace(/\n/g, '<br>'),
+  );
+}
+
 /** Placeholders used in a body that the module cannot fill. Shown as a warning
  *  in the editor while an admin types, so a typo is caught before it reaches a
  *  vendor rather than after. */
