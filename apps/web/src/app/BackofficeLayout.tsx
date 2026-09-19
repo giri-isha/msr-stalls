@@ -153,7 +153,10 @@ function Sidebar({
               flex: 'none',
             }}
           >
-            <Icon name='layout-grid' size={17} />
+            {/* The brand mark, and the same one `tools/make-icons.py` draws into the
+                installed icon. Change it here and the icons are stale until that
+                script is re-run and its PNGs committed. */}
+            <Icon name='store' size={17} />
           </div>
           {!rail && (
             <div style={{ minWidth: 0 }}>

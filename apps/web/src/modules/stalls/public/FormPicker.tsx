@@ -150,8 +150,7 @@ export function FormPicker() {
           sentence about it here said the same thing twice. */}
       {!signedIn && (
         <p style={{ fontSize: 12, color: 'var(--mfg)', marginTop: 20, lineHeight: 1.6 }}>
-          Already submitted? Use the link in your confirmation email to check your status — or{' '}
-          <Link to='/stalls/status'>have it emailed to you again</Link>.
+          Already submitted? Use the link in your confirmation email to check your status.
         </p>
       )}
     </div>
