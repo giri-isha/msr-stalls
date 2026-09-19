@@ -1595,8 +1595,18 @@ function RefundDialog({
           </FormField>
           {row.suggestedEquipmentDeductionPaise > 0 && (
             <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
-              Chairs &amp; Tables recorded missing or damaged items worth{' '}
-              {formatInr(row.suggestedEquipmentDeductionPaise)}.{' '}
+              {/* 🔴 Itemised, not just totalled. A vendor disputing a deduction
+                  argues with one line of it — the extra day, or the fan — and
+                  the person settling it has to see which. A single figure can
+                  only be accepted or refused whole. */}
+              <ul style={{ margin: '0 0 6px', paddingLeft: 18 }}>
+                {row.suggestedEquipmentLines.map((l) => (
+                  <li key={l.label}>
+                    {l.label} — {formatInr(l.amountPaise)}
+                  </li>
+                ))}
+              </ul>
+              Chairs &amp; Tables recorded {formatInr(row.suggestedEquipmentDeductionPaise)} in all.{' '}
               <button
                 type='button'
                 onClick={() =>

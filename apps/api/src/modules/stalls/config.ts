@@ -2,6 +2,8 @@ import type { PrismaClient, StallEdition, StallRateScope } from '@prisma/client'
 import {
   ALL_ASKED,
   ALL_AT_ONCE,
+  type ChargeItemsInput,
+  type ChargeItemView,
   type ChargesInput,
   type FlowAsked,
   type FlowConfig,
@@ -48,7 +50,12 @@ const CHARGES_2025 = {
   vendorTableRatePaise: rupeesToPaise(400),
   plug5aRatePaise: rupeesToPaise(500),
   plug15aRatePaise: rupeesToPaise(1000),
-  gstPercent: 18,
+  // Rent and furniture at the 2025 rate; the deposit at zero, because a
+  // refundable deposit is not a supply and taxing one is a decision somebody
+  // has to make deliberately rather than inherit from a default.
+  gstRentPercent: 18,
+  gstItemsPercent: 18,
+  gstDepositPercent: 0,
   crowdPerStall: 1000,
   // Phase 2 and 3. The 2025 payment sheet carries a flat Rs.4000 "Chair and
   // table Deposit" per vendor; the replacement and damage figures are not
@@ -56,9 +63,12 @@ const CHARGES_2025 = {
   // furniture actually costs to replace.
   chairTableDepositPaise: rupeesToPaise(4000),
   equipmentDays: 1,
+  chairPerDay: true,
+  tablePerDay: true,
   chairReplacementPaise: rupeesToPaise(400),
   tableReplacementPaise: rupeesToPaise(900),
-  damagePenaltyPaise: rupeesToPaise(250),
+  chairDamagePaise: rupeesToPaise(250),
+  tableDamagePaise: rupeesToPaise(250),
 };
 
 const FINES_2025 = [
@@ -117,6 +127,10 @@ export async function ensureEditionDefaults(db: Db, editionId: string): Promise<
     create: { editionId, ...CHARGES_2025 },
     update: {},
   });
+  // ⚠️ No default charge ITEMS, deliberately. The catalogue is whatever the
+  // team decided to lend that year; seeding a fan nobody owns would put a row
+  // on every challan for equipment that does not exist. A new edition copied
+  // from an old one inherits its catalogue — see `edition-copy.ts`.
   // The flow, all asked and all at stage 1 — every step open at once, which is
   // how the flow has always behaved. Written rather than left implicit so the
   // Admin grids open on real rows.
@@ -335,7 +349,7 @@ export async function getPublicConfig(db: Db, scope: RateScope = 'VENDOR'): Prom
       };
     }),
     charges: {
-      gstPercent: charges.gstPercent,
+      gstPercent: charges.gstRentPercent,
     },
     maxStallsPerRequest: edition.maxStallsPerRequest,
     // The other half of the same rule. Public so the form can say "you already
@@ -575,6 +589,89 @@ export async function updateCharges(
     detail: input,
   });
   return updated;
+}
+
+/** The extra things this edition lends, newest thinking at the top of the
+ *  screen but sorted for the counter.
+ *
+ *  ⚠️ Every item, retired ones included. The Charges screen has to draw a
+ *  retired row so it can be un-retired, and the refund screen has to price what
+ *  was lent last week under an item somebody switched off yesterday. Callers
+ *  that only want what the counter can hand out today filter on `isActive` —
+ *  see `activeChargeItems`. */
+export async function chargeItemsFor(db: Db, editionId: string): Promise<ChargeItemView[]> {
+  const rows = await db.stallChargeItem.findMany({
+    where: { editionId },
+    orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    include: { _count: { select: { issued: true } } },
+  });
+  return rows.map(({ _count, editionId: _e, ...r }) => ({ ...r, inUse: _count.issued > 0 }));
+}
+
+/** What the counter can hand out today. */
+export async function activeChargeItems(db: Db, editionId: string) {
+  return db.stallChargeItem.findMany({
+    where: { editionId, isActive: true },
+    orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+  });
+}
+
+/**
+ * Replace the catalogue with what the screen is holding.
+ *
+ * 🔴 Rows absent from the payload are DEACTIVATED, not deleted, unless they
+ * have never been lent. An item is the reason a challan says what it says and
+ * a deposit was docked what it was docked; deleting it would take a vendor's
+ * receipt with it. The database enforces this too — `onDelete: Restrict` on the
+ * issue row — so a bug here fails loudly instead of quietly shredding records.
+ *
+ * ⚠️ Matched on `id`, falling back to `key` for a row the screen has just
+ * added. Matching on name would rename-and-orphan: "Fan" becoming "Pedestal
+ * Fan" would create a second item and leave everything lent under the first.
+ */
+export async function replaceChargeItems(
+  db: PrismaClient,
+  editionId: string,
+  input: ChargeItemsInput,
+  by: string,
+): Promise<ChargeItemView[]> {
+  const existing = await db.stallChargeItem.findMany({
+    where: { editionId },
+    include: { _count: { select: { issued: true } } },
+  });
+  const keptIds = new Set(input.items.map((i) => i.id).filter(Boolean));
+
+  await db.$transaction(async (tx) => {
+    for (const item of input.items) {
+      const { id, ...data } = item;
+      const match = id
+        ? existing.find((e) => e.id === id)
+        : existing.find((e) => e.key === item.key);
+      if (match) {
+        await tx.stallChargeItem.update({ where: { id: match.id }, data });
+        keptIds.add(match.id);
+      } else {
+        await tx.stallChargeItem.create({ data: { editionId, ...data } });
+      }
+    }
+    for (const e of existing) {
+      if (keptIds.has(e.id)) continue;
+      if (e._count.issued > 0) {
+        await tx.stallChargeItem.update({ where: { id: e.id }, data: { isActive: false } });
+      } else {
+        await tx.stallChargeItem.delete({ where: { id: e.id } });
+      }
+    }
+  });
+
+  await audit(db, {
+    actor: actorFrom(by),
+    action: 'stall_charges.updated',
+    subject: { type: 'edition', ref: editionId },
+    editionId: editionId,
+    detail: { items: input.items },
+  });
+  return chargeItemsFor(db, editionId);
 }
 
 /** The edition's flow: which steps each requester type is asked, and when each

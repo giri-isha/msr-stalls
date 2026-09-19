@@ -5,7 +5,6 @@ import {
   type FlowConfig,
   type OnboardingStep,
   type EmailTemplateView,
-  type Quote,
   type QuoteLine,
   type ReminderCallView,
   type ReminderKind,
@@ -367,9 +366,7 @@ async function templateVars(
     // existed have none, and the letter then falls back to the summed figures
     // it has always printed.
     const frozen = (plan?.lines ?? null) as QuoteLine[] | null;
-    const forLetter: Quote | null = frozen
-      ? { ...view, lines: frozen, exempt: false }
-      : (live ?? null);
+    const forLetter = frozen ? { ...view, lines: frozen } : (live ?? null);
     vars.charges = forLetter ? chargeLines(forLetter) : '';
     vars.depositBreakdown = forLetter ? depositLines(forLetter) : '';
   }

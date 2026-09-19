@@ -309,7 +309,7 @@ model StallEdition {
   /// much ground a single request can ask for, and on its own it never limited
   /// how many requests an account could file. A vendor wanting six bays used to
   /// be six unbounded requests.
-  maxOpenRequests Int                 @default(2)   @map("max_open_requests")
+  maxOpenRequests Int                  @default(2) @map("max_open_requests")
   requestCapScope StallRequestCapScope @default(OPEN) @map("request_cap_scope")
 
   /// Who the money goes to, as the payment letter and the vendor's own payment
@@ -354,6 +354,7 @@ model StallEdition {
   planCategories  StallPlanCategory[]
   rateCard        StallRateCard[]
   charges         StallChargeConfig?
+  chargeItems     StallChargeItem[]
   fineTypes       StallFineType[]
   formDefinitions StallFormDefinition[]
   customFields    StallFormField[]
@@ -498,25 +499,116 @@ model StallChargeConfig {
   vendorTableRatePaise Int    @default(40000) @map("vendor_table_rate_paise")
   plug5aRatePaise      Int    @map("plug_5a_rate_paise")
   plug15aRatePaise     Int    @map("plug_15a_rate_paise")
-  gstPercent           Int    @default(18) @map("gst_percent")
+  /// 🔴 THREE rates, because the decision is made three times: the rent is
+  /// taxed, whether the furniture is taxed is a call the team makes each year,
+  /// and a refundable deposit is not a supply — it is seeded at zero rather
+  /// than assumed. One rate could not express "GST on the stall, none on the
+  /// chairs", which is a position the team has actually taken.
+  ///
+  /// ⚠️ Plug points are charged at the ITEMS rate, not the rent one. They are
+  /// something supplied alongside the stall, the same as a fan.
+  gstRentPercent       Int    @default(18) @map("gst_rent_percent")
+  gstItemsPercent      Int    @default(18) @map("gst_items_percent")
+  gstDepositPercent    Int    @default(0) @map("gst_deposit_percent")
   /// The Planning screen's divisor: expected crowd ÷ this = suggested stalls.
   crowdPerStall        Int    @default(1000) @map("crowd_per_stall")
 
   /// A flat refundable deposit against the furniture, charged once when any is
   /// taken. The 2025 payment sheet carries one figure per vendor in its
   /// "Chair and table Deposit" column, not a per-chair amount.
-  chairTableDepositPaise Int @default(400000) @map("chair_table_deposit_paise")
+  chairTableDepositPaise Int     @default(400000) @map("chair_table_deposit_paise")
   /// How many days the chairs and tables are held. The forms quote per-day
   /// rates; this is what they are multiplied by.
-  equipmentDays          Int @default(1) @map("equipment_days")
+  equipmentDays          Int     @default(1) @map("equipment_days")
+  /// Whether the rate above is a DAILY rate at all. The 2025 forms quote both
+  /// per day, which is why this defaults to true — but a year the team decides
+  /// a chair is a flat charge for the whole event has nowhere else to say so,
+  /// and the alternative is an admin halving the rate and setting the days to
+  /// one, which prices correctly and reads as a lie on the payment letter.
+  chairPerDay            Boolean @default(true) @map("chair_per_day")
+  tablePerDay            Boolean @default(true) @map("table_per_day")
   /// Charged against the deposit for furniture that does not come back.
-  chairReplacementPaise  Int @default(40000) @map("chair_replacement_paise")
-  tableReplacementPaise  Int @default(90000) @map("table_replacement_paise")
-  damagePenaltyPaise     Int @default(25000) @map("damage_penalty_paise")
+  chairReplacementPaise  Int     @default(40000) @map("chair_replacement_paise")
+  tableReplacementPaise  Int     @default(90000) @map("table_replacement_paise")
+  /// 🔴 One figure PER ROW, not one shared between them. It used to be a single
+  /// `damage_penalty_paise` charged for a broken chair and a broken table
+  /// alike; on a screen that lays the items out as rows, that is a cell whose
+  /// edit silently moves the row below it. Both were backfilled from the old
+  /// column, so nothing repriced on the day this split landed.
+  chairDamagePaise       Int     @default(25000) @map("chair_damage_paise")
+  tableDamagePaise       Int     @default(25000) @map("table_damage_paise")
 
   edition StallEdition @relation(fields: [editionId], references: [id], onDelete: Cascade)
 
   @@map("stall_charge_config")
+  @@schema("stalls")
+}
+
+/// Anything else the counter hands out: a fan, a carpet, a shamiana pole.
+///
+/// Rows rather than more columns on the config above, because this list is not
+/// knowable in advance — it is whatever the team decided to lend that year, and
+/// a column per item means a migration every edition. Chairs and tables stay on
+/// the config: they are ordered online, priced onto the payment letter and
+/// counted on the challan, and moving them here would re-line every frozen
+/// letter for nothing.
+///
+/// ⚠️ Three rates, one per requester type, exactly like chairs and tables — see
+/// the note on `chairTableRates` in `quote.ts`. A single rate here would
+/// reintroduce the bug that file exists to document.
+model StallChargeItem {
+  id        String @id @default(uuid()) @db.Uuid
+  editionId String @map("edition_id") @db.Uuid
+  /// Stable across renames: the audit trail and the challan quote it.
+  key       String
+  name      String
+
+  ashramRatePaise Int @default(0) @map("ashram_rate_paise")
+  lwRatePaise     Int @default(0) @map("lw_rate_paise")
+  vendorRatePaise Int @default(0) @map("vendor_rate_paise")
+
+  /// A fan is rented by the day; laying a carpet is charged once. Without this
+  /// the two can only be priced by pretending one of them is the other.
+  perDay Boolean @default(true) @map("per_day")
+
+  /// Charged against the furniture deposit when it does not come back, and when
+  /// it comes back unusable.
+  missingPaise Int @default(0) @map("missing_paise")
+  damagedPaise Int @default(0) @map("damaged_paise")
+
+  /// Retired, not deleted: an item that was lent last year is still the reason
+  /// a row on last year's challan says what it says.
+  isActive  Boolean @default(true) @map("is_active")
+  sortOrder Int     @default(0) @map("sort_order")
+
+  edition StallEdition              @relation(fields: [editionId], references: [id], onDelete: Cascade)
+  issued  StallEquipmentIssueItem[]
+
+  @@unique([editionId, key])
+  @@map("stall_charge_item")
+  @@schema("stalls")
+}
+
+/// How many of one item this stall took, and how many came back wrong.
+///
+/// ⚠️ `onDelete: Restrict` on the item, so an item that has been lent to anybody
+/// cannot be deleted out from under the record of lending it. Retiring it sets
+/// `isActive` instead, and the row stays readable.
+model StallEquipmentIssueItem {
+  id        String @id @default(uuid()) @db.Uuid
+  requestId String @map("request_id") @db.Uuid
+  itemId    String @map("item_id") @db.Uuid
+
+  count   Int @default(0)
+  missing Int @default(0)
+  damaged Int @default(0)
+
+  issue StallEquipmentIssue @relation(fields: [requestId], references: [requestId], onDelete: Cascade)
+  item  StallChargeItem     @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@unique([requestId, itemId])
+  @@index([itemId])
+  @@map("stall_equipment_issue_item")
   @@schema("stalls")
 }
 
@@ -1056,12 +1148,12 @@ model StallRole {
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
-  privileges StallRolePrivilege[]
-  grants     StallBackofficeRole[]
+  privileges  StallRolePrivilege[]
+  grants      StallBackofficeRole[]
   navItems    StallRoleNavItem[]
   homeWidgets StallRoleHomeWidget[]
-  parent     StallRole?            @relation("StallRoleTree", fields: [parentKey], references: [roleKey], onDelete: SetNull, onUpdate: Cascade)
-  children   StallRole[]           @relation("StallRoleTree")
+  parent      StallRole?            @relation("StallRoleTree", fields: [parentKey], references: [roleKey], onDelete: SetNull, onUpdate: Cascade)
+  children    StallRole[]           @relation("StallRoleTree")
 
   @@index([parentKey])
   @@map("stall_role")
@@ -2001,11 +2093,19 @@ model StallEquipmentIssue {
   /// broken chairs the same as one.
   damagedChairs    Int       @default(0) @map("damaged_chairs")
   damagedTables    Int       @default(0) @map("damaged_tables")
+  /// How many days the furniture was actually out, read off the counter at
+  /// collection. The payment letter priced the ORDERED furniture for the days
+  /// it was planned to be held; what the counter handed out beyond that order
+  /// took one day's cash and nothing more, so the remaining days are settled
+  /// here, against the deposit. One figure per stall rather than per item: it
+  /// all goes back in one trip.
+  daysHeld         Int       @default(1) @map("days_held")
   note             String?
   flagged          Boolean   @default(false)
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
-  request StallRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  request StallRequest              @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  items   StallEquipmentIssueItem[]
 
   @@map("stall_equipment_issue")
   @@schema("stalls")

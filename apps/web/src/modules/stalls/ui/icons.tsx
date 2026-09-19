@@ -1,5 +1,7 @@
 import {
   AlertTriangle,
+  Archive,
+  ArchiveRestore,
   ArrowLeftRight,
   ArrowRight,
   Ban,
@@ -87,6 +89,8 @@ import {
  *   plus          create, add another one
  *   pencil        open the editor for an existing thing
  *   trash         delete or remove a row
+ *   archive       retire a row that has to stay readable — NOT a delete
+ *   'archive-restore'  bring a retired row back into use
  *   x             clear a mark without deleting the row (un-verify, un-tick)
  *   send          send an email, submit an application, hand off to Finance
  *   refresh       do it again — re-send, re-issue, reload
@@ -172,6 +176,8 @@ const REGISTRY: Record<string, LucideIcon> = {
   sun: Sun,
   target: Target,
   ticket: Ticket,
+  archive: Archive,
+  'archive-restore': ArchiveRestore,
   trash: Trash2,
   undo: Undo2,
   user: User,

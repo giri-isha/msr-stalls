@@ -256,6 +256,9 @@ export interface PublicConfig {
   /** Priced at the scope of the form being rendered — see `PublicZone`. */
   zones: PublicZone[];
   charges: {
+    /** The rate on the RENT, which is the only figure this payload carries a
+     *  price for. Furniture and deposits have their own rates now — see the
+     *  note on `ChargesInput`. */
     gstPercent: number;
   };
   /** The cap on how many stalls one request may ask for in a single bay.
@@ -1074,7 +1077,12 @@ export const ChargesInput = z.object({
   lwTableRatePaise: Paise,
   plug5aRatePaise: Paise,
   plug15aRatePaise: Paise,
-  gstPercent: z.number().int().min(0).max(100),
+  /** Three rates, not one. The rent is taxed; whether the furniture is taxed is
+   *  a call the team makes each year; a refundable deposit is not a supply and
+   *  normally sits at zero. Plug points are charged at the ITEMS rate. */
+  gstRentPercent: z.number().int().min(0).max(100),
+  gstItemsPercent: z.number().int().min(0).max(100),
+  gstDepositPercent: z.number().int().min(0).max(100),
   crowdPerStall: z.number().int().min(1).max(100_000),
   vendorChairRatePaise: Paise,
   vendorTableRatePaise: Paise,
@@ -1084,11 +1092,50 @@ export const ChargesInput = z.object({
   /** How many days the chairs and tables are held. The forms quote per-day
    *  rates; this is what they are multiplied by. */
   equipmentDays: z.number().int().min(1).max(30),
+  /** Whether the chair and table rates are daily rates at all. */
+  chairPerDay: z.boolean(),
+  tablePerDay: z.boolean(),
   chairReplacementPaise: Paise,
   tableReplacementPaise: Paise,
-  damagePenaltyPaise: Paise,
+  /** One per row, not one shared between them — see the note on the model. */
+  chairDamagePaise: Paise,
+  tableDamagePaise: Paise,
 });
 export type ChargesInput = z.infer<typeof ChargesInput>;
+
+/** An item the counter lends beyond chairs and tables: a fan, a carpet.
+ *
+ *  ⚠️ `key` is stable across renames because the audit trail and the challan
+ *  quote it. Renaming "Fan" to "Pedestal Fan" must not orphan the row that says
+ *  a vendor was handed two of them. */
+export const ChargeItemInput = z.object({
+  id: z.uuid().optional(),
+  key: z
+    .string()
+    .trim()
+    .min(1)
+    .max(40)
+    .regex(/^[A-Z0-9_]+$/, 'Use capitals, digits and underscores'),
+  name: z.string().trim().min(1).max(60),
+  ashramRatePaise: Paise,
+  lwRatePaise: Paise,
+  vendorRatePaise: Paise,
+  perDay: z.boolean(),
+  missingPaise: Paise,
+  damagedPaise: Paise,
+  isActive: z.boolean(),
+  sortOrder: z.number().int().min(0).max(200),
+});
+export type ChargeItemInput = z.infer<typeof ChargeItemInput>;
+
+export const ChargeItemsInput = z.object({ items: z.array(ChargeItemInput).max(40) });
+export type ChargeItemsInput = z.infer<typeof ChargeItemsInput>;
+
+export interface ChargeItemView extends Omit<ChargeItemInput, 'id'> {
+  id: string;
+  /** Lent to at least one stall, so it can be retired but not deleted. */
+  inUse: boolean;
+}
 
 /** The planning grid's columns, as data. */
 export const PlanCategoryInput = z.object({
@@ -2347,6 +2394,10 @@ export interface RefundRow {
    *  suggestion, not the answer — the counter's note and the vendor's account
    *  sometimes differ and a person settles it. */
   suggestedEquipmentDeductionPaise: number;
+  /** The suggestion, itemised: extra days' rent, what did not come back, what
+   *  came back broken. A vendor arguing with a deduction is owed the list, and
+   *  the person settling it needs to see which part is being argued about. */
+  suggestedEquipmentLines: Array<{ label: string; amountPaise: number }>;
   equipmentDeductionPaise: number;
   fineDeductionPaise: number;
   fines: Array<{ reason: string; amountPaise: number }>;
@@ -2635,6 +2686,35 @@ export interface CheckInRow {
 
 // ── Chairs and tables ───────────────────────────────────────────────────────
 
+/** How many of one catalogue item this stall took, and how many came back
+ *  wrong. Keyed by the item's id: the counter's row has to survive the item
+ *  being renamed between the day it went out and the day it came back. */
+export const EquipmentItemCount = z.object({
+  itemId: z.uuid(),
+  count: z.number().int().min(0).max(500),
+});
+export type EquipmentItemCount = z.infer<typeof EquipmentItemCount>;
+
+export const EquipmentItemFound = z.object({
+  itemId: z.uuid(),
+  missing: z.number().int().min(0).max(500),
+  damaged: z.number().int().min(0).max(500),
+});
+export type EquipmentItemFound = z.infer<typeof EquipmentItemFound>;
+
+/** What the counter is handing over, in one payload.
+ *
+ *  🔴 Chairs and tables are TOTALS handed out, not the extras — that is what the
+ *  volunteer at the table is counting. The extra is derived by subtracting what
+ *  was ordered, because a counter asked for "the extra" has to do the
+ *  subtraction in their head while somebody waits, and gets it wrong. */
+export const EquipmentHandout = z.object({
+  chairs: z.number().int().min(0).max(500),
+  tables: z.number().int().min(0).max(500),
+  items: z.array(EquipmentItemCount).max(40).default([]),
+});
+export type EquipmentHandout = z.infer<typeof EquipmentHandout>;
+
 export const EquipmentPatch = z.object({
   extraChairs: z.number().int().min(0).max(500).optional(),
   extraTables: z.number().int().min(0).max(500).optional(),
@@ -2657,6 +2737,13 @@ export const EquipmentFound = z.object({
   missingTables: z.number().int().min(0).max(500),
   damagedChairs: z.number().int().min(0).max(500),
   damagedTables: z.number().int().min(0).max(500),
+  /** How many days it was actually out, read off at the counter. The cash taken
+   *  when it was handed over covered ONE day of whatever the payment letter had
+   *  not already paid for; the rest is settled against the deposit. Defaults to
+   *  1, which charges nothing extra — the figure has to be entered, not
+   *  assumed. */
+  daysHeld: z.number().int().min(1).max(60).default(1),
+  items: z.array(EquipmentItemFound).max(40).default([]),
   note: z.string().trim().max(500).optional(),
 });
 export type EquipmentFound = z.infer<typeof EquipmentFound>;
@@ -2676,6 +2763,10 @@ export type EquipmentAction = z.infer<typeof EquipmentAction>;
 export const EquipmentActionInput = z.object({
   action: EquipmentAction,
   found: EquipmentFound.optional(),
+  /** Read on DISTRIBUTE and ignored elsewhere, the way `found` is read only on
+   *  COLLECT. Handing the furniture over and recording what was handed over are
+   *  one act at the counter, so they are one request here. */
+  handout: EquipmentHandout.optional(),
 });
 export type EquipmentActionInput = z.infer<typeof EquipmentActionInput>;
 
@@ -2692,6 +2783,12 @@ export interface EquipmentRow {
   tablesRequested: number;
   extraChairs: number;
   extraTables: number;
+  /** This requester type's chair and table rates, already resolved. The counter
+   *  prices the handout live, before it is saved, and working out which of
+   *  three columns applies is not the counter's job — nor something a second
+   *  implementation of should exist to get subtly wrong. */
+  chairRatePaise: number;
+  tableRatePaise: number;
   /** What the extras cost at this requester type's rate — collected in cash at
    *  the counter, which is why it is shown as a figure and not just a count. */
   extraChargePaise: number;
@@ -2704,10 +2801,33 @@ export interface EquipmentRow {
    *  once per chair or table, not once per stall. */
   damagedChairs: number;
   damagedTables: number;
+  daysHeld: number;
+  /** Every active catalogue item, whether or not this stall took any — the
+   *  counter dialog draws a row per item and needs the rates to price it, and a
+   *  list that dropped the zeroes could not tell "took none" from "no such
+   *  item this year". */
+  items: EquipmentItemRow[];
   /** Priced from the admin's replacement rates; feeds the refund screen. */
   deductionPaise: number;
+  /** The deduction, broken out. A vendor disputing it is owed the list. */
+  deductionLines: Array<{ label: string; amountPaise: number }>;
   note: string | null;
   flagged: boolean;
+}
+
+/** One catalogue item as the counter sees it against one stall. */
+export interface EquipmentItemRow {
+  itemId: string;
+  name: string;
+  perDay: boolean;
+  /** This requester type's rate, already resolved — the counter is not the
+   *  place to work out which of three columns applies. */
+  ratePaise: number;
+  missingPaise: number;
+  damagedPaise: number;
+  count: number;
+  missing: number;
+  damaged: number;
 }
 
 /** Everything the two-part paper challan prints. Assembled by the API so the
@@ -2722,7 +2842,12 @@ export interface ChallanView {
   tablesOnline: number;
   extraChairs: number;
   extraTables: number;
+  /** Anything beyond chairs and tables, with what it cost. The paper the vendor
+   *  signs has to list the fan, or the only record that it left the store is a
+   *  screen the vendor never saw. */
+  items: Array<{ name: string; count: number; amountPaise: number }>;
   extraChargePaise: number;
+  daysHeld: number;
   editionName: string;
   printedAt: string;
 }

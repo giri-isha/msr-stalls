@@ -8,12 +8,11 @@ import {
   type SubmitRefundInput,
   type VoidPaymentInput,
   computeRefund,
-  equipmentDeduction,
   needsPaymentStep,
 } from '@stalls/core';
 import { ValidationFailedError } from '../../errors';
 import { actorFrom, audit } from './audit';
-import { chargesFor } from './config';
+import { deductionFor } from './equipment';
 import type { Db } from './editions';
 import { DuplicatePaymentError, RefundAlreadySubmittedError, UnknownRequestError } from './errors';
 import { allocatedNumbers, factsInclude, refreshStage, type RequestWithFacts } from './facts';
@@ -324,17 +323,28 @@ export async function voidPayment(
 // ── Refunds ─────────────────────────────────────────────────────────────────
 
 type RefundSource = Prisma.StallRequestGetPayload<{
-  include: typeof factsInclude & { equipment: true; fines: true; refund: true };
+  include: typeof factsInclude & {
+    equipment: { include: { items: true } };
+    fines: true;
+    refund: true;
+  };
 }>;
 
-const refundInclude = { ...factsInclude, equipment: true, fines: true, refund: true } as const;
+const refundInclude = {
+  ...factsInclude,
+  // ⚠️ `items` too. Without them the refund prices the chairs and silently
+  // forgets the fans — a deduction that is wrong in the vendor's favour, which
+  // is still wrong and still nobody's to give away.
+  equipment: { include: { items: true } },
+  fines: true,
+  refund: true,
+} as const;
 
 async function toRefundRow(
   db: Db,
   r: RefundSource,
   ctx: Awaited<ReturnType<typeof quoteContext>>,
 ): Promise<RefundRow> {
-  const charges = await chargesFor(db, r.editionId);
   const quote = r.paymentPlan ? planToView(r.paymentPlan) : toQuoteView(quoteFor(r, ctx));
   // What was actually taken, where Finance has confirmed it; the quoted deposit
   // otherwise. A vendor who paid a short deposit gets the short one back.
@@ -354,21 +364,10 @@ async function toRefundRow(
   const equipmentDepositPaise = Math.min(equipmentHeld, heldTotal);
   const stallDepositPaise = heldTotal - equipmentDepositPaise;
 
-  const suggested = r.equipment
-    ? equipmentDeduction(
-        {
-          missingChairs: r.equipment.missingChairs,
-          missingTables: r.equipment.missingTables,
-          damagedChairs: r.equipment.damagedChairs,
-          damagedTables: r.equipment.damagedTables,
-        },
-        {
-          chairReplacementPaise: charges.chairReplacementPaise,
-          tableReplacementPaise: charges.tableReplacementPaise,
-          damagePenaltyPaise: charges.damagePenaltyPaise,
-        },
-      )
-    : 0;
+  const suggestion = r.equipment
+    ? await deductionFor(db, r.editionId, r.requestType, r.equipment)
+    : { totalPaise: 0, lines: [] };
+  const suggested = suggestion.totalPaise;
 
   const fineDeductionPaise = r.fines.reduce((t, f) => t + f.amountPaise, 0);
   const equipmentDeductionPaise = r.refund?.equipmentDeductionPaise ?? suggested;
@@ -389,6 +388,7 @@ async function toRefundRow(
     stallDepositPaise: computed.stallDepositPaise,
     equipmentDepositPaise: computed.equipmentDepositPaise,
     suggestedEquipmentDeductionPaise: suggested,
+    suggestedEquipmentLines: suggestion.lines,
     equipmentDeductionPaise: computed.equipmentDeductionPaise,
     fineDeductionPaise: computed.fineDeductionPaise,
     fines: r.fines.map((f) => ({ reason: f.reason, amountPaise: f.amountPaise })),

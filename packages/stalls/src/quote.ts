@@ -49,7 +49,17 @@ export interface ChargeRates {
   plug5aRatePaise: number;
   plug15aRatePaise: number;
   equipmentDays: number;
-  gstPercent: number;
+  /** Whether the chair and table rates are daily rates at all — a year the team
+   *  charges flat has nowhere else to say so. */
+  chairPerDay: boolean;
+  tablePerDay: boolean;
+  /** 🔴 Three rates. See the note on `StallChargeConfig` — the rent is taxed,
+   *  the furniture is taxed only if the team says so this year, and a
+   *  refundable deposit is not a supply. Plug points are charged at the ITEMS
+   *  rate: they are supplied alongside the stall, like a fan. */
+  gstRentPercent: number;
+  gstItemsPercent: number;
+  gstDepositPercent: number;
 }
 
 /** Which rate card column a requester is quoted from. Ashram types never reach
@@ -109,6 +119,14 @@ export interface Quote {
   /** "Total Before GST" on the 2025 sheet. */
   netPaise: number;
   gstPaise: number;
+  /** The three GST rates, applied and kept apart. They sum to `gstPaise`.
+   *
+   *  ⚠️ `gstDepositPaise` is charged but NOT refundable — it rides in
+   *  `feeTotalPaise` rather than in `depositTotalPaise`, so the deposit that
+   *  comes back at the end is still the whole deposit that was paid in. */
+  gstRentPaise: number;
+  gstItemsPaise: number;
+  gstDepositPaise: number;
   /** "Fee Total". */
   feeTotalPaise: number;
   stallDepositPaise: number;
@@ -189,6 +207,9 @@ export function quoteRequest(
     equipmentFeePaise: 0,
     netPaise: 0,
     gstPaise: 0,
+    gstRentPaise: 0,
+    gstItemsPaise: 0,
+    gstDepositPaise: 0,
     feeTotalPaise: 0,
     stallDepositPaise: 0,
     equipmentDepositPaise: 0,
@@ -210,11 +231,16 @@ export function quoteRequest(
   const plugFeePaise =
     Math.max(0, input.plugs5a) * rates.plug5aRatePaise +
     Math.max(0, input.plugs15a) * rates.plug15aRatePaise;
+  // ⚠️ The multiplier is per ROW, not per quote. A chair charged by the day and
+  // a table charged flat is a position the team can take, and one `days` over
+  // the pair could not express it.
+  const chairDays = rates.chairPerDay ? days : null;
+  const tableDays = rates.tablePerDay ? days : null;
   const equipmentFeePaise =
-    (Math.max(0, input.chairs) * chair + Math.max(0, input.tables) * table) * days;
+    Math.max(0, input.chairs) * chair * (chairDays ?? 1) +
+    Math.max(0, input.tables) * table * (tableDays ?? 1);
 
   const netPaise = stallFeePaise + plugFeePaise + equipmentFeePaise;
-  const { gst, gross } = addGst(netPaise, rates.gstPercent);
 
   // Area-wise, off the rate row for this bay and scope — not one flat figure
   // for the whole venue.
@@ -223,6 +249,22 @@ export function quoteRequest(
   // the 2025 sheet carries one figure per vendor, not a per-chair amount.
   const equipmentDepositPaise =
     input.chairs > 0 || input.tables > 0 ? rates.chairTableDepositPaise : 0;
+  const depositTotalPaise = stallDepositPaise + equipmentDepositPaise;
+
+  // 🔴 Three buckets, each at its own rate, and each ROUNDED on its own. The
+  // team's position is not always "GST at one rate on everything" — the rent
+  // can be taxed while the chairs are not — and one rate over one net cannot
+  // express that. Plugs sit with the furniture: both are things supplied
+  // alongside the stall rather than the ground itself.
+  const gstRentPaise = addGst(stallFeePaise, rates.gstRentPercent).gst;
+  const gstItemsPaise = addGst(plugFeePaise + equipmentFeePaise, rates.gstItemsPercent).gst;
+  // ⚠️ Charged on the deposit, but it does NOT join the deposit. GST is not
+  // refundable; folding it into `depositTotalPaise` would mean the refund
+  // screen handing back tax that was remitted, out of a deposit that was never
+  // that large.
+  const gstDepositPaise = addGst(depositTotalPaise, rates.gstDepositPercent).gst;
+  const gst = gstRentPaise + gstItemsPaise + gstDepositPaise;
+  const gross = netPaise + gst;
 
   return {
     // ⚠️ Every item, including the ones charged nothing. The letter drops the
@@ -240,19 +282,22 @@ export function quoteRequest(
         rates.plug15aRatePaise,
         null,
       ),
-      line('chairs', 'equipment', 'Chair', Math.max(0, input.chairs), chair, days),
-      line('tables', 'equipment', 'Table', Math.max(0, input.tables), table, days),
+      line('chairs', 'equipment', 'Chair', Math.max(0, input.chairs), chair, chairDays),
+      line('tables', 'equipment', 'Table', Math.max(0, input.tables), table, tableDays),
     ],
     stallFeePaise,
     plugFeePaise,
     equipmentFeePaise,
     netPaise,
     gstPaise: gst,
+    gstRentPaise,
+    gstItemsPaise,
+    gstDepositPaise,
     feeTotalPaise: gross,
     stallDepositPaise,
     equipmentDepositPaise,
-    depositTotalPaise: stallDepositPaise + equipmentDepositPaise,
-    grandTotalPaise: gross + stallDepositPaise + equipmentDepositPaise,
+    depositTotalPaise,
+    grandTotalPaise: gross + depositTotalPaise,
     exempt: false,
   };
 }
@@ -355,31 +400,77 @@ export function computeRefund(input: RefundInput): Refund {
   };
 }
 
-/** What the team owes for furniture that did not come back whole. An item that
- *  never came back is charged at the replacement rate an admin configures; one
- *  that came back broken carries the damage penalty instead — it is a repair,
- *  not a replacement, and the same penalty covers a chair or a table.
+/**
+ * One chargeable thing, as the return counter settles it.
  *
- *  ⚠️ Damage is counted, not ticked. It was a flag, which priced three broken
- *  chairs as one; a vendor asked to account for the deduction is owed a figure
- *  that follows the chairs. */
+ * 🔴 ONE shape for chairs, tables and anything else the counter lends. Chairs
+ * and tables are priced off columns on the charge config and a fan off a row in
+ * the item catalogue, but what happens to them at the end is identical — rent
+ * for the days nobody paid for, a replacement charge for what never came back,
+ * a penalty for what came back broken. Two code paths for one arithmetic is how
+ * a fan gets charged a rule the chairs are not.
+ */
+export interface DeductionLine {
+  label: string;
+  /** What the counter handed out BEYOND what the payment letter already paid
+   *  for: the extra chairs, and the whole count of anything the letter never
+   *  knew about. The letter priced the ordered furniture for the days it was
+   *  planned to be held, so charging those days again here would bill them
+   *  twice. */
+  extraCount: number;
+  ratePaise: number;
+  /** A fan is rented by the day, laying a carpet is charged once. Flat items
+   *  took their whole charge in cash at the counter and settle nothing here. */
+  perDay: boolean;
+  missing: number;
+  missingPaise: number;
+  damaged: number;
+  damagedPaise: number;
+}
+
+/**
+ * What the vendor owes at the end, off the furniture deposit.
+ *
+ * Three charges, each itemised rather than summed into one figure: the rent for
+ * days beyond the one the counter took cash for, a replacement charge for what
+ * never came back, and a penalty for what came back broken.
+ *
+ * 🔴 Itemised because a vendor disputing a deduction is owed the list. "₹3,400
+ * withheld" cannot be argued with; "2 fans × ₹600 not returned" can be, and
+ * sometimes should be — the counter's note and the vendor's account differ, and
+ * a person settles it.
+ *
+ * ⚠️ Extra-day rent is charged on the FULL count handed out, including anything
+ * missing. They had it for those days and then lost it: the rent and the
+ * replacement are different debts, and waiving the first because of the second
+ * would make losing an item cheaper than returning it late.
+ *
+ * ⚠️ `daysHeld` is what the counter read off at collection, not the configured
+ * `equipmentDays`. One day is already paid — that is the cash taken when it was
+ * handed over — so only the days past the first are settled here.
+ */
 export function equipmentDeduction(
-  input: {
-    missingChairs: number;
-    missingTables: number;
-    damagedChairs: number;
-    damagedTables: number;
-  },
-  rates: {
-    chairReplacementPaise: number;
-    tableReplacementPaise: number;
-    damagePenaltyPaise: number;
-  },
-): number {
-  const damaged = Math.max(0, input.damagedChairs) + Math.max(0, input.damagedTables);
-  return (
-    Math.max(0, input.missingChairs) * rates.chairReplacementPaise +
-    Math.max(0, input.missingTables) * rates.tableReplacementPaise +
-    damaged * rates.damagePenaltyPaise
-  );
+  lines: DeductionLine[],
+  daysHeld: number,
+): { totalPaise: number; lines: Array<{ label: string; amountPaise: number }> } {
+  const extraDays = Math.max(0, Math.floor(daysHeld) - 1);
+  const out: Array<{ label: string; amountPaise: number }> = [];
+
+  for (const l of lines) {
+    const rent = l.perDay ? Math.max(0, l.extraCount) * l.ratePaise * extraDays : 0;
+    const missing = Math.max(0, l.missing) * l.missingPaise;
+    const damaged = Math.max(0, l.damaged) * l.damagedPaise;
+    // Zeroes are dropped: a list where every item appears whether or not it
+    // was charged buries the two rows that cost the vendor money.
+    if (rent > 0) {
+      out.push({
+        label: `${l.label} — ${extraDays} extra ${extraDays === 1 ? 'day' : 'days'}`,
+        amountPaise: rent,
+      });
+    }
+    if (missing > 0) out.push({ label: `${l.label} not returned`, amountPaise: missing });
+    if (damaged > 0) out.push({ label: `${l.label} damaged`, amountPaise: damaged });
+  }
+
+  return { totalPaise: out.reduce((t, l) => t + l.amountPaise, 0), lines: out };
 }

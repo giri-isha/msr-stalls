@@ -81,6 +81,7 @@ export function Equipment() {
   // inside a <tr> is markup React will not have.
   const [editing, setEditing] = useState<EquipmentRow | null>(null);
   const [collecting, setCollecting] = useState<EquipmentRow | null>(null);
+  const [distributing, setDistributing] = useState<EquipmentRow | null>(null);
   const [history, setHistory] = useState<EquipmentRow | null>(null);
   const mobile = useIsMobile();
   const canWrite = can('equipment.write');
@@ -179,6 +180,7 @@ export function Equipment() {
                 onRun={run}
                 onEdit={() => setEditing(r)}
                 onCollect={() => setCollecting(r)}
+                onDistribute={() => setDistributing(r)}
                 onHistory={() => setHistory(r)}
                 onChallan={() => openChallan(r.requestId)}
               />
@@ -269,6 +271,7 @@ export function Equipment() {
                       onRun={run}
                       onEdit={() => setEditing(r)}
                       onCollect={() => setCollecting(r)}
+                      onDistribute={() => setDistributing(r)}
                       onHistory={() => setHistory(r)}
                       onChallan={() => openChallan(r.requestId)}
                     />
@@ -284,6 +287,9 @@ export function Equipment() {
       {editing && <CounterDialog row={editing} onRun={run} onClose={() => setEditing(null)} />}
       {collecting && (
         <CollectDialog row={collecting} onRun={run} onClose={() => setCollecting(null)} />
+      )}
+      {distributing && (
+        <DistributeDialog row={distributing} onRun={run} onClose={() => setDistributing(null)} />
       )}
       {history && <HistoryDialog row={history} onClose={() => setHistory(null)} />}
       {challan && <ChallanDialog data={challan} onClose={() => setChallan(null)} />}
@@ -375,6 +381,12 @@ interface FoundDraft {
   missingTables: string;
   damagedChairs: string;
   damagedTables: string;
+  /** How many days it was actually out. One day was paid in cash when it was
+   *  handed over; the rest is settled against the deposit. */
+  daysHeld: string;
+  /** Keyed by item id, not by name — the item can be renamed between the day it
+   *  went out and the day it came back. */
+  items: Record<string, { missing: string; damaged: string }>;
   note: string;
 }
 
@@ -385,6 +397,10 @@ const draftOf = (row: EquipmentRow): FoundDraft => ({
   missingTables: String(row.missingTables),
   damagedChairs: String(row.damagedChairs),
   damagedTables: String(row.damagedTables),
+  daysHeld: String(row.daysHeld),
+  items: Object.fromEntries(
+    row.items.map((i) => [i.itemId, { missing: String(i.missing), damaged: String(i.damaged) }]),
+  ),
   note: row.note ?? '',
 });
 
@@ -393,13 +409,27 @@ const num = (s: string) => {
   return Number.isInteger(x) && x >= 0 && x <= 500 ? x : null;
 };
 
-const foundValid = (d: FoundDraft) => COUNTS.every((k) => num(d[k]) !== null);
+const days = (s: string) => {
+  const x = Number(s);
+  return Number.isInteger(x) && x >= 1 && x <= 60 ? x : null;
+};
+
+const foundValid = (d: FoundDraft) =>
+  COUNTS.every((k) => num(d[k]) !== null) &&
+  days(d.daysHeld) !== null &&
+  Object.values(d.items).every((i) => num(i.missing) !== null && num(i.damaged) !== null);
 
 const foundOf = (d: FoundDraft): EquipmentFound => ({
   missingChairs: num(d.missingChairs) ?? 0,
   missingTables: num(d.missingTables) ?? 0,
   damagedChairs: num(d.damagedChairs) ?? 0,
   damagedTables: num(d.damagedTables) ?? 0,
+  daysHeld: days(d.daysHeld) ?? 1,
+  items: Object.entries(d.items).map(([itemId, i]) => ({
+    itemId,
+    missing: num(i.missing) ?? 0,
+    damaged: num(i.damaged) ?? 0,
+  })),
   note: d.note.trim(),
 });
 
@@ -410,9 +440,11 @@ const foundOf = (d: FoundDraft): EquipmentFound => ({
  *  come back — what never came back at all, and what came back unusable — and
  *  the counter is looking at both. */
 function FoundFields({
+  row,
   value,
   onChange,
 }: {
+  row: EquipmentRow;
   value: FoundDraft;
   onChange: (d: FoundDraft) => void;
 }) {
@@ -423,6 +455,29 @@ function FoundFields({
     onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
       onChange({ ...value, [k]: e.target.value }),
   });
+  const itemField = (itemId: string, k: 'missing' | 'damaged') => ({
+    type: 'number' as const,
+    min: 0,
+    value: value.items[itemId]?.[k] ?? '0',
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
+      onChange({
+        ...value,
+        items: {
+          ...value.items,
+          [itemId]: {
+            missing: value.items[itemId]?.missing ?? '0',
+            damaged: value.items[itemId]?.damaged ?? '0',
+            [k]: e.target.value,
+          },
+        },
+      }),
+  });
+
+  // Only what this stall actually took. Every item in the catalogue drawn
+  // against every stall is a form the counter scrolls past to reach the two
+  // lines that matter.
+  const taken = row.items.filter((i) => i.count > 0);
+
   return (
     <>
       <Pair>
@@ -441,6 +496,31 @@ function FoundFields({
           <Input id='eq-dtb' {...field('damagedTables')} />
         </FormField>
       </Pair>
+      {taken.map((item) => (
+        <Pair key={item.itemId}>
+          <FormField id={`eq-m-${item.itemId}`} label={`${item.name} Missing`}>
+            <Input id={`eq-m-${item.itemId}`} {...itemField(item.itemId, 'missing')} />
+          </FormField>
+          <FormField id={`eq-d-${item.itemId}`} label={`${item.name} Damaged`}>
+            <Input id={`eq-d-${item.itemId}`} {...itemField(item.itemId, 'damaged')} />
+          </FormField>
+        </Pair>
+      ))}
+      {/* 🔴 Not the configured "days furniture is held" — that is what the
+          payment letter PLANNED for and billed the ordered furniture at. This
+          is what actually happened, and it is the only figure that can settle
+          the days nobody has been charged for. Defaults to 1, which charges
+          nothing extra: the number has to be entered, not assumed. */}
+      <FormField id='eq-days' label='Days Held'>
+        <Input
+          id='eq-days'
+          type='number'
+          min={1}
+          max={60}
+          value={value.daysHeld}
+          onChange={(e) => onChange({ ...value, daysHeld: e.target.value })}
+        />
+      </FormField>
       <FormField id='eq-note' label='Condition Note'>
         <Input
           id='eq-note'
@@ -450,6 +530,149 @@ function FoundFields({
         />
       </FormField>
     </>
+  );
+}
+
+/**
+ * Handing it over: count what leaves the store, take the cash, stamp it out.
+ *
+ * 🔴 TOTALS, not extras. The dialog asks "how many chairs are you handing
+ * over" and works out the extra by subtracting what was ordered, because a
+ * volunteer asked for "the extra" does the subtraction in their head while a
+ * vendor waits — and gets it wrong. The figure they are looking at on the
+ * trolley is the total.
+ *
+ * 🔴 Distribute used to be a bare button that stamped the time, and the extras
+ * were typed into a separate Edit dialog somebody had to know to open first.
+ * Two screens for one act at the counter is how a stall goes out marked
+ * distributed with no record of the four extra chairs that went with it.
+ *
+ * ⚠️ The cash shown is ONE day for the per-day things, however long they are
+ * kept. The payment letter already priced the ordered furniture for the days it
+ * was planned to be held; nobody knows on the morning it goes out how many days
+ * it will really be, so the rest is settled at return, against the deposit.
+ */
+function DistributeDialog({
+  row,
+  onRun,
+  onClose,
+}: {
+  row: EquipmentRow;
+  onRun: Run;
+  onClose: () => void;
+}) {
+  const [chairs, setChairs] = useState(String(row.chairsRequested + row.extraChairs));
+  const [tables, setTables] = useState(String(row.tablesRequested + row.extraTables));
+  const [items, setItems] = useState<Record<string, string>>(
+    Object.fromEntries(row.items.map((i) => [i.itemId, String(i.count)])),
+  );
+  const [saving, setSaving] = useState(false);
+
+  const valid =
+    num(chairs) !== null &&
+    num(tables) !== null &&
+    Object.values(items).every((c) => num(c) !== null);
+
+  // Priced exactly as the server prices it, so the counter and the till never
+  // disagree — see `extraCharge` in the API.
+  const extraChairs = Math.max(0, (num(chairs) ?? 0) - row.chairsRequested);
+  const extraTables = Math.max(0, (num(tables) ?? 0) - row.tablesRequested);
+  const cashPaise = row.items.reduce(
+    (total, i) => total + (num(items[i.itemId] ?? '0') ?? 0) * i.ratePaise,
+    extraChairs * row.chairRatePaise + extraTables * row.tableRatePaise,
+  );
+
+  const distribute = async () => {
+    setSaving(true);
+    const ok = await onRun(
+      () =>
+        equipmentAction(row.requestId, 'DISTRIBUTE', undefined, {
+          chairs: num(chairs) ?? 0,
+          tables: num(tables) ?? 0,
+          items: row.items.map((i) => ({
+            itemId: i.itemId,
+            count: num(items[i.itemId] ?? '0') ?? 0,
+          })),
+        }),
+      'Distributed.',
+    );
+    if (ok) onClose();
+    else setSaving(false);
+  };
+
+  const countField = (value: string, set: (v: string) => void) => ({
+    type: 'number' as const,
+    min: 0,
+    value,
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => set(e.target.value),
+  });
+
+  return (
+    <Dialog
+      title={`Distribute — ${row.stallName}`}
+      note={`${row.stallNumbers.join(', ') || 'No stall number'} · ordered ${row.chairsRequested} chairs and ${row.tablesRequested} tables.`}
+      onClose={onClose}
+      width={520}
+      footer={
+        <>
+          <Btn onClick={onClose}>Cancel</Btn>
+          <Btn kind='primary' onClick={distribute} disabled={saving || !valid}>
+            <Icon name='package' size={14} />
+            Distribute
+          </Btn>
+        </>
+      }
+    >
+      <div style={{ display: 'grid', gap: 14 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--mfg)' }}>
+          Count what is going out. Chairs and tables start at what was ordered — change them if the
+          vendor is taking more.
+        </div>
+        <Pair>
+          <FormField id='eq-hch' label='Chairs Out'>
+            <Input id='eq-hch' {...countField(chairs, setChairs)} />
+          </FormField>
+          <FormField id='eq-htb' label='Tables Out'>
+            <Input id='eq-htb' {...countField(tables, setTables)} />
+          </FormField>
+        </Pair>
+        {/* Every item the edition lends, at zero — unlike the collect dialog,
+            which shows only what this stall took. Nothing has gone out yet, so
+            a list filtered to what went out would be empty. */}
+        {row.items.length > 0 && (
+          <Pair>
+            {row.items.map((item) => (
+              <FormField key={item.itemId} id={`eq-h-${item.itemId}`} label={item.name}>
+                <Input
+                  id={`eq-h-${item.itemId}`}
+                  {...countField(items[item.itemId] ?? '0', (v) =>
+                    setItems({ ...items, [item.itemId]: v }),
+                  )}
+                />
+              </FormField>
+            ))}
+          </Pair>
+        )}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'baseline',
+            gap: 12,
+            padding: '10px 12px',
+            borderRadius: 8,
+            background: 'var(--rail)',
+          }}
+        >
+          <span style={{ fontSize: 12.5, color: 'var(--mfg)' }}>Cash to take now</span>
+          <strong style={{ fontSize: 16 }}>{formatInr(cashPaise)}</strong>
+        </div>
+        <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
+          One day’s rent on anything beyond what the payment letter already covered. If it is kept
+          longer, the remaining days are charged against the deposit when it comes back.
+        </div>
+      </div>
+    </Dialog>
   );
 }
 
@@ -511,7 +734,7 @@ function CollectDialog({
           Count what came back against what went out. Leave the figures at zero if everything
           returned whole.
         </div>
-        <FoundFields value={v} onChange={setV} />
+        <FoundFields row={row} value={v} onChange={setV} />
         <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
           What is missing is priced at the admin’s replacement rate and what came back damaged at
           the damage penalty, per item; both are deducted from this stall’s deposit on the refund
@@ -523,15 +746,18 @@ function CollectDialog({
 }
 
 /**
- * The details of the row, corrected: the extras taken at the counter, and —
- * once the stall has been collected — the figures that collection recorded.
+ * What collection recorded, corrected afterwards.
  *
  * 🔴 One PATCH, not six. These were six inline controls that each fired on its
  * own blur or tick, so a counter correcting an entry — two chairs missing, no,
  * three, and one of them broken — sent three requests, and the middle one was
- * a figure nobody meant. Worse, the extras are CHARGED: a half-typed "12" used
- * to leave the counter as a 1 before it left as a 12. Here the figures are
- * settled first and sent once.
+ * a figure nobody meant. Here the figures are settled first and sent once.
+ *
+ * ⚠️ The extras are NOT here any more. What goes out is counted on Distribute,
+ * with the vendor in front of the trolley; typing it here as well meant two
+ * screens could set the same charged figure, and the one somebody happened to
+ * open last won. Undoing the distribution is the way to change it, and that is
+ * logged.
  *
  * ⚠️ What was found on return is NOT offered before the stall is collected.
  * Filling it in here would leave the deduction priced against a row that still
@@ -547,44 +773,21 @@ function CounterDialog({
   onRun: Run;
   onClose: () => void;
 }) {
-  const [v, setV] = useState({
-    extraChairs: String(row.extraChairs),
-    extraTables: String(row.extraTables),
-    ...draftOf(row),
-  });
+  const [v, setV] = useState(draftOf(row));
   const [saving, setSaving] = useState(false);
 
   const collected = row.collectedAt !== null;
-  const valid = num(v.extraChairs) !== null && num(v.extraTables) !== null && foundValid(v);
+  const valid = foundValid(v);
 
-  // ⚠️ The extras are frozen once the cash has been taken. Re-pricing a charge
-  // the vendor has already paid at the counter would leave the money in the
-  // drawer disagreeing with the figure on the screen.
-  const extrasLocked = row.extraCollectedAt !== null;
-
-  // Cash taken and not yet collected: every figure on this row is either paid
-  // for or not yet counted, so there is nothing here to save. Saving anyway
-  // would file an edit that changed nothing, and the history is worth more than
-  // the rows nobody caused.
-  const editable = !extrasLocked || collected;
-
-  const extraField = (k: 'extraChairs' | 'extraTables') => ({
-    type: 'number' as const,
-    min: 0,
-    value: v[k],
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) => setV({ ...v, [k]: e.target.value }),
-  });
+  // Nothing has been counted yet, so there is nothing here to correct. Saving
+  // anyway would file an edit that changed nothing, and the history is worth
+  // more than the rows nobody caused.
+  const editable = collected;
 
   const save = async () => {
     setSaving(true);
     const ok = await onRun(
-      () =>
-        patchEquipment(row.requestId, {
-          ...(extrasLocked
-            ? {}
-            : { extraChairs: num(v.extraChairs) ?? 0, extraTables: num(v.extraTables) ?? 0 }),
-          ...(collected ? foundOf(v) : {}),
-        }),
+      () => patchEquipment(row.requestId, collected ? foundOf(v) : {}),
       'Saved.',
     );
     if (ok) onClose();
@@ -608,23 +811,20 @@ function CounterDialog({
       }
     >
       <div style={{ display: 'grid', gap: 14 }}>
+        {/* Read-only. What went out is set on Distribute and nowhere else —
+            see the note on this dialog. */}
         <Section title='Taken at the Counter'>
-          {extrasLocked ? (
-            <div style={{ fontSize: 12.5, color: 'var(--mfg)' }}>
-              {formatInr(row.extraChargePaise)} for {row.extraChairs} extra chairs and{' '}
-              {row.extraTables} extra tables has already been collected in cash, so the extras are
-              fixed.
-            </div>
-          ) : (
-            <Pair>
-              <FormField id='eq-xch' label='Extra Chairs'>
-                <Input id='eq-xch' {...extraField('extraChairs')} />
-              </FormField>
-              <FormField id='eq-xtb' label='Extra Tables'>
-                <Input id='eq-xtb' {...extraField('extraTables')} />
-              </FormField>
-            </Pair>
-          )}
+          <div style={{ fontSize: 12.5, color: 'var(--mfg)' }}>
+            {row.extraChairs} extra chairs and {row.extraTables} extra tables
+            {row.items.filter((i) => i.count > 0).length > 0 &&
+              `, ${row.items
+                .filter((i) => i.count > 0)
+                .map((i) => `${i.count} ${i.name}`)
+                .join(', ')}`}
+            {' · '}
+            {formatInr(row.extraChargePaise)}
+            {row.extraCollectedAt ? ' collected in cash.' : ' due in cash.'}
+          </div>
         </Section>
 
         {collected ? (
@@ -633,7 +833,7 @@ function CounterDialog({
               Recorded when this stall was collected. Correcting a figure here changes the
               deduction, and the history says who changed it.
             </div>
-            <FoundFields value={v} onChange={(d) => setV({ ...v, ...d })} />
+            <FoundFields row={row} value={v} onChange={(d) => setV({ ...v, ...d })} />
           </Section>
         ) : (
           <div style={{ fontSize: 11.5, color: 'var(--mfg)' }}>
@@ -719,6 +919,7 @@ function Actions({
   onRun,
   onEdit,
   onCollect,
+  onDistribute,
   onHistory,
   onChallan,
 }: {
@@ -727,6 +928,7 @@ function Actions({
   onRun: Run;
   onEdit: () => void;
   onCollect: () => void;
+  onDistribute: () => void;
   onHistory: () => void;
   onChallan: () => void;
 }) {
@@ -746,7 +948,10 @@ function Actions({
             Undo
           </Btn>
         ) : (
-          <Btn kind='primary' onClick={() => act('DISTRIBUTE', 'Distributed.')}>
+          // Opens the count rather than stamping the time, the way Collect
+          // does: what goes out is written down while the vendor is standing
+          // there, not remembered and typed in afterwards.
+          <Btn kind='primary' onClick={onDistribute}>
             <Icon name='package' size={14} />
             Distribute
           </Btn>
@@ -795,6 +1000,7 @@ function EquipmentCard({
   onRun,
   onEdit,
   onCollect,
+  onDistribute,
   onHistory,
   onChallan,
 }: {
@@ -803,6 +1009,7 @@ function EquipmentCard({
   onRun: Run;
   onEdit: () => void;
   onCollect: () => void;
+  onDistribute: () => void;
   onHistory: () => void;
   onChallan: () => void;
 }) {
@@ -846,6 +1053,7 @@ function EquipmentCard({
         onRun={onRun}
         onEdit={onEdit}
         onCollect={onCollect}
+        onDistribute={onDistribute}
         onHistory={onHistory}
         onChallan={onChallan}
       />
@@ -918,6 +1126,12 @@ function ChallanDialog({ data, onClose }: { data: ChallanView; onClose: () => vo
                 Extra at counter: <strong>{data.extraChairs}</strong> chairs,{' '}
                 <strong>{data.extraTables}</strong> tables — {formatInr(data.extraChargePaise)}
               </div>
+              {/* 🔴 On the PAPER, not only on the screen. This is the copy the
+                  vendor signs and takes away; a fan that left the store with no
+                  line on it has no record the vendor ever saw. */}
+              {data.items.length > 0 && (
+                <div>Also taken: {data.items.map((i) => `${i.count} × ${i.name}`).join(', ')}</div>
+              )}
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>

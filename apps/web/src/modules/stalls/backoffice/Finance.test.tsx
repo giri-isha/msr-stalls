@@ -32,6 +32,7 @@ function refundRow(over: Record<string, unknown> = {}) {
     stallDepositPaise: 400_000,
     equipmentDepositPaise: 400_000,
     suggestedEquipmentDeductionPaise: 195_000,
+    suggestedEquipmentLines: [{ label: 'Chair not returned', amountPaise: 195_000 }],
     equipmentDeductionPaise: 195_000,
     fineDeductionPaise: 0,
     fines: [] as Array<{ reason: string; amountPaise: number }>,

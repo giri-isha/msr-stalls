@@ -286,7 +286,11 @@ async function planRates(db: Db, from: string, to: string): Promise<SectionPlan>
 
 /* ── Charges ────────────────────────────────────────────────────────────────*/
 
-type ChargeRow = Record<keyof ChargesInput, number>;
+/** ⚠️ Not `Record<…, number>` any more. Two of the charge fields are booleans —
+ *  whether the chair and table rates are daily rates at all — and typing them
+ *  as numbers made `true` copy across as a value the formatter printed as a
+ *  figure. */
+type ChargeRow = Pick<ChargesInput, (typeof CHARGE_KEYS)[number]>;
 
 /**
  * One row per edition, so the plan is field-by-field rather than row-by-row.
@@ -305,13 +309,18 @@ const CHARGE_FIELDS: Field<ChargeRow>[] = [
   f('Table (vendor)', (r) => r.vendorTableRatePaise, money),
   f('5A plug', (r) => r.plug5aRatePaise, money),
   f('15A plug', (r) => r.plug15aRatePaise, money),
-  f('GST', (r) => r.gstPercent, percent),
+  f('GST on rent', (r) => r.gstRentPercent, percent),
+  f('GST on items', (r) => r.gstItemsPercent, percent),
+  f('GST on deposit', (r) => r.gstDepositPercent, percent),
   f('Crowd per stall', (r) => r.crowdPerStall, count),
   f('Chair and table deposit', (r) => r.chairTableDepositPaise, money),
   f('Days furniture is held', (r) => r.equipmentDays, count),
+  f('Chair charged per day', (r) => r.chairPerDay, yesNo),
+  f('Table charged per day', (r) => r.tablePerDay, yesNo),
   f('Chair replacement', (r) => r.chairReplacementPaise, money),
   f('Table replacement', (r) => r.tableReplacementPaise, money),
-  f('Damage penalty', (r) => r.damagePenaltyPaise, money),
+  f('Chair damage penalty', (r) => r.chairDamagePaise, money),
+  f('Table damage penalty', (r) => r.tableDamagePaise, money),
 ];
 
 const CHARGE_KEYS = [
@@ -323,14 +332,94 @@ const CHARGE_KEYS = [
   'vendorTableRatePaise',
   'plug5aRatePaise',
   'plug15aRatePaise',
-  'gstPercent',
+  'gstRentPercent',
+  'gstItemsPercent',
+  'gstDepositPercent',
   'crowdPerStall',
   'chairTableDepositPaise',
   'equipmentDays',
+  'chairPerDay',
+  'tablePerDay',
   'chairReplacementPaise',
   'tableReplacementPaise',
-  'damagePenaltyPaise',
+  'chairDamagePaise',
+  'tableDamagePaise',
 ] as const satisfies readonly (keyof ChargesInput)[];
+
+/* ── The item catalogue ─────────────────────────────────────────────────────*/
+
+/** ⚠️ Copied WITH the charges, not as its own section. "Copy the charges from
+ *  last year" and "copy what we lend from last year" are one decision on the
+ *  screen, and a new edition that inherited the rates but not the fan would
+ *  price a challan it cannot print a line for. */
+type ItemRow = {
+  key: string;
+  name: string;
+  ashramRatePaise: number;
+  lwRatePaise: number;
+  vendorRatePaise: number;
+  perDay: boolean;
+  missingPaise: number;
+  damagedPaise: number;
+  isActive: boolean;
+  sortOrder: number;
+};
+
+const ITEM_FIELDS: Field<ItemRow>[] = [
+  f('Name', (r) => r.name),
+  f('Rate (ashram)', (r) => r.ashramRatePaise, money),
+  f('Rate (local welfare)', (r) => r.lwRatePaise, money),
+  f('Rate (vendor)', (r) => r.vendorRatePaise, money),
+  f('Charged per day', (r) => r.perDay, yesNo),
+  f('Not returned', (r) => r.missingPaise, money),
+  f('Damaged', (r) => r.damagedPaise, money),
+  f('In use', (r) => r.isActive, yesNo),
+];
+
+const itemData = (r: ItemRow): Omit<ItemRow, 'key'> => ({
+  name: r.name,
+  ashramRatePaise: r.ashramRatePaise,
+  lwRatePaise: r.lwRatePaise,
+  vendorRatePaise: r.vendorRatePaise,
+  perDay: r.perDay,
+  missingPaise: r.missingPaise,
+  damagedPaise: r.damagedPaise,
+  isActive: r.isActive,
+  sortOrder: r.sortOrder,
+});
+
+async function planChargeItems(db: Db, from: string, to: string, plan: SectionPlan): Promise<void> {
+  const [src, dst] = await Promise.all([
+    db.stallChargeItem.findMany({ where: { editionId: from }, orderBy: { sortOrder: 'asc' } }),
+    db.stallChargeItem.findMany({ where: { editionId: to } }),
+  ]);
+  const have = new Map(dst.map((x) => [x.key, x]));
+  for (const item of src) {
+    const mine = have.get(item.key) ?? null;
+    const row = {
+      key: item.key,
+      label: item.name,
+      changes: changesBetween(ITEM_FIELDS, mine, item),
+    };
+    const data = itemData(item);
+    if (!mine) {
+      plan.create.push(row);
+      plan.ops.push((tx) =>
+        tx.stallChargeItem.create({ data: { editionId: to, key: item.key, ...data } }),
+      );
+    } else if (row.changes.length > 0) {
+      plan.overwrite.push(row);
+      plan.ops.push((tx) =>
+        tx.stallChargeItem.update({
+          where: { editionId_key: { editionId: to, key: item.key } },
+          data,
+        }),
+      );
+    } else {
+      plan.unchanged += 1;
+    }
+  }
+}
 
 const chargeData = (r: ChargeRow): ChargeRow =>
   Object.fromEntries(CHARGE_KEYS.map((k) => [k, r[k]])) as ChargeRow;
@@ -341,6 +430,7 @@ async function planCharges(db: Db, from: string, to: string): Promise<SectionPla
     db.stallChargeConfig.findUnique({ where: { editionId: to } }),
   ]);
   const plan = empty();
+  await planChargeItems(db, from, to, plan);
   if (!src) return plan;
   const row = {
     key: 'charges',

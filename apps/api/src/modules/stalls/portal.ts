@@ -292,7 +292,7 @@ export async function statusView(db: Db, account: StallAccount): Promise<PublicS
             r.status === 'SELECTED'
               ? paymentDue(r, view, {
                   lines: frozen ?? live?.lines ?? null,
-                  gstPercent: ctx.rates.gstPercent,
+                  gstPercent: ctx.rates.gstRentPercent,
                 })
               : null,
           // 🔴 Their own claims, INCLUDING rejected ones with the reason. That

@@ -4,6 +4,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
+  ChargeItemsInput,
   ChargesInput,
   type CopyPlan,
   type CopyResult,
@@ -804,17 +805,28 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     const caller = await requireBackoffice(req, prisma);
     requirePrivilege(caller, 'config.read');
     const edition = await editionFor(prisma, caller, req.query.editionId);
-    const [zones, planCategories, rateCard, charges, flow, fineTypes, customFields] =
+    const [zones, planCategories, rateCard, charges, chargeItems, flow, fineTypes, customFields] =
       await Promise.all([
         config.listZones(prisma, edition.id),
         config.listPlanCategories(prisma, edition.id),
         config.rateCardFor(prisma, edition.id),
         config.chargesFor(prisma, edition.id),
+        config.chargeItemsFor(prisma, edition.id),
         config.flowView(prisma, edition.id),
         config.listFineTypes(prisma, edition.id),
         config.listCustomFields(prisma, edition.id),
       ]);
-    return { edition, zones, planCategories, rateCard, charges, flow, fineTypes, customFields };
+    return {
+      edition,
+      zones,
+      planCategories,
+      rateCard,
+      charges,
+      chargeItems,
+      flow,
+      fineTypes,
+      customFields,
+    };
   });
 
   /** The edition's bays on their own, behind `requests:read` rather than
@@ -950,6 +962,15 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
     requirePrivilege(caller, 'config.write');
     const edition = await activeEditionFor(prisma, caller);
     return config.updateCharges(prisma, edition.id, req.body, caller.personId);
+  });
+
+  /** ⚠️ Read on `/config` with everything else, not from here. One screen edits
+   *  the rates and the catalogue as one table, so one read fills it. */
+  zod.put('/config/charge-items', { schema: { body: ChargeItemsInput } }, async (req) => {
+    const caller = await requireBackoffice(req, prisma);
+    requirePrivilege(caller, 'config.write');
+    const edition = await activeEditionFor(prisma, caller);
+    return config.replaceChargeItems(prisma, edition.id, req.body, caller.personId);
   });
 
   zod.put('/config/flow', { schema: { body: FlowInput } }, async (req) => {
@@ -1883,6 +1904,7 @@ export function registerStallsBackofficeRoutes(app: FastifyInstance, deps: Stall
         req.body.action,
         caller.personId,
         req.body.found,
+        req.body.handout,
       );
     },
   );
